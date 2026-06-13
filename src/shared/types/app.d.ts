@@ -100,6 +100,10 @@ interface AppConfig {
   appTheme: AppTheme
   customTheme?: string
   autoCheckUpdate: boolean
+  autoProxySwitch?: boolean
+  proxySwitchPriority?: string[]
+  proxyHealthCheckInterval?: number
+  proxyTimeoutThreshold?: number
   silentStart: boolean
   autoCloseConnection: boolean
   closeMode: 'all' | 'group'
@@ -162,6 +166,7 @@ interface ProfileItem {
   file?: string // local
   verify?: boolean // remote
   interval?: number
+  updateTime?: string
   home?: string
   updated?: number
   override?: string[]
@@ -170,6 +175,7 @@ interface ProfileItem {
   substore?: boolean
   locked?: boolean
   autoUpdate?: boolean
+  disableRemoteInterval?: boolean
 }
 
 interface SubscriptionUserInfo {

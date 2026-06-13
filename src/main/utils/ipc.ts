@@ -69,6 +69,11 @@ import {
   stopNetworkDetection
 } from '../core/manager'
 import {
+  startProxyHealthMonitor,
+  stopProxyHealthMonitor,
+  restartProxyHealthMonitor
+} from '../core/proxyHealthMonitor'
+import {
   checkCorePermission,
   manualGrantCorePermition,
   revokeCorePermission
@@ -411,6 +416,9 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('quitWithoutCore', ipcErrorWrapper(quitWithoutCore))
   ipcMain.handle('startNetworkDetection', ipcErrorWrapper(startNetworkDetection))
   ipcMain.handle('stopNetworkDetection', ipcErrorWrapper(stopNetworkDetection))
+  ipcMain.handle('startProxyHealthMonitor', () => startProxyHealthMonitor())
+  ipcMain.handle('stopProxyHealthMonitor', () => stopProxyHealthMonitor())
+  ipcMain.handle('restartProxyHealthMonitor', () => restartProxyHealthMonitor())
   ipcMain.handle('quitApp', () => app.quit())
   ipcMain.handle('notDialogQuit', () => {
     setNotQuitDialog()

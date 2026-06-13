@@ -19,6 +19,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import { deepMerge } from '../utils/merge'
 import { getUserAgent } from '../utils/userAgent'
 import { execWithElevation } from '../utils/elevation'
+import { updateProvider, deleteProvider } from '../core/provider'
 
 let profileConfig: ProfileConfig // profile.yaml
 const FILE_PERMISSION_ELEVATION_REQUIRED = 'FILE_PERMISSION_ELEVATION_REQUIRED'
@@ -69,8 +70,12 @@ export async function updateProfileItem(item: ProfileItem): Promise<void> {
     throw new Error('Profile not found')
   }
   config.items[index] = item
-  if (!item.autoUpdate) await delProfileUpdater(item.id)
   await setProfileConfig(config)
+  if (!item.autoUpdate) {
+    await delProfileUpdater(item.id)
+  } else {
+    await addProfileUpdater(item)
+  }
 }
 
 export async function addProfileItem(item: Partial<ProfileItem>): Promise<void> {
@@ -105,6 +110,7 @@ export async function removeProfileItem(id: string): Promise<void> {
   if (existsSync(profilePath(id))) {
     await rm(profilePath(id))
   }
+  await deleteProvider(id)
   if (shouldRestart) {
     await restartCore()
   }
@@ -130,8 +136,10 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
     ua: item.ua,
     verify: item.verify ?? false,
     autoUpdate: item.autoUpdate ?? true,
+    disableRemoteInterval: item.disableRemoteInterval ?? false,
     substore: item.substore || false,
     interval: item.interval || 0,
+    updateTime: item.updateTime,
     override: item.override || [],
     useProxy: item.useProxy || false,
     updated: new Date().getTime()
@@ -253,11 +261,13 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
       const intervalKey = Object.keys(headers).find((k) =>
         k.toLowerCase().endsWith('profile-update-interval')
       )
-      if (intervalKey) {
+      if (intervalKey && !newItem.disableRemoteInterval) {
         newItem.interval = parseInt(headers[intervalKey]) * 60
         if (newItem.interval) {
           newItem.locked = true
         }
+      } else if (newItem.disableRemoteInterval) {
+        newItem.locked = false
       }
       const userinfoKey = Object.keys(headers).find((k) =>
         k.toLowerCase().endsWith('subscription-userinfo')
@@ -306,7 +316,17 @@ export async function getProfileParseStr(id: string | undefined): Promise<string
 export async function setProfileStr(id: string, content: string): Promise<void> {
   const { current } = await getProfileConfig()
   await writeFile(profilePath(id), content, 'utf-8')
-  if (current === id) await restartCore()
+
+  if (current === id) {
+    const config = parseYaml<MihomoConfig>(content)
+    if (typeof config === 'object' && config !== null) {
+      const result = await updateProvider(id, config)
+      if (result.success) {
+        return
+      }
+    }
+    await restartCore()
+  }
 }
 
 export async function getProfile(id: string | undefined): Promise<MihomoConfig> {

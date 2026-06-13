@@ -2,15 +2,16 @@ import { execFile } from 'child_process'
 import path from 'path'
 import { promisify } from 'util'
 import { getAppConfig, getProfileConfig } from '../config'
-import { mihomoCorePath, mihomoTestDir, mihomoWorkConfigPath } from '../utils/dirs'
+import { mihomoCorePath, mihomoTestDir, mihomoWorkConfigPath, profilesDir } from '../utils/dirs'
 
 export async function checkProfile(): Promise<void> {
   const { core = 'mihomo', diffWorkDir = false, safePaths = [] } = await getAppConfig()
   const { current } = await getProfileConfig()
   const corePath = mihomoCorePath(core)
   const execFilePromise = promisify(execFile)
+  const allSafePaths = [...new Set([...safePaths, profilesDir()])]
   const env = {
-    SAFE_PATHS: safePaths.join(path.delimiter)
+    SAFE_PATHS: allSafePaths.join(path.delimiter)
   }
   try {
     await execFilePromise(

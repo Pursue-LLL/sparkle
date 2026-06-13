@@ -179,7 +179,7 @@ const Proxies: React.FC = () => {
     showGroupSelectedProxy = false,
     showProxyDetailTooltip = false,
     proxyDisplayOrder = 'default',
-    autoCloseConnection = true,
+    autoCloseConnection = false,
     closeMode = 'all',
     proxyCols = 'auto',
     delayTestUrlScope = 'group',

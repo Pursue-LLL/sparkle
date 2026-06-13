@@ -13,7 +13,7 @@ const OutboundModeSwitcher: React.FC<Props> = ({ iconOnly }: Props) => {
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
   const { mutate: mutateGroups } = useGroups()
   const { appConfig } = useAppConfig()
-  const { autoCloseConnection = true } = appConfig || {}
+  const { autoCloseConnection = false } = appConfig || {}
   const { mode } = controledMihomoConfig || {}
 
   const onChangeMode = async (mode: OutboundMode): Promise<void> => {

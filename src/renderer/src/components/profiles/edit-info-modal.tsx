@@ -314,6 +314,30 @@ const EditInfoModal: React.FC<Props> = (props) => {
                 {values.type === 'remote' &&
                   values.autoUpdate &&
                   renderField(
+                    '指定更新时间',
+                    <Input
+                      aria-label="指定更新时间"
+                      type="time"
+                      className="w-40"
+                      value={values.updateTime ?? ''}
+                      variant="secondary"
+                      onChange={(event) => {
+                        setValues({ ...values, updateTime: event.target.value || undefined })
+                      }}
+                      placeholder="留空则使用间隔"
+                    />,
+                    {
+                      actions: (
+                        <Label className="text-sm text-foreground-500">
+                          每天定时更新，留空则按间隔更新
+                        </Label>
+                      )
+                    }
+                  )}
+                {values.type === 'remote' &&
+                  values.autoUpdate &&
+                  !values.updateTime &&
+                  renderField(
                     '更新间隔（分钟）',
                     <Input
                       aria-label="更新间隔（分钟）"

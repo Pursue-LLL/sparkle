@@ -21,6 +21,11 @@ import { deepMerge } from '../utils/merge'
 import vm from 'vm'
 import { existsSync, writeFileSync } from 'fs'
 import path from 'path'
+import {
+  extractProxies,
+  generateProxyProvider,
+  generateBaseConfigWithProvider
+} from './provider'
 
 let runtimeConfigStr: string,
   rawProfileStr: string,
@@ -47,9 +52,25 @@ export async function generateProfile(): Promise<void> {
     delete configToMerge.sniffer
   }
 
-  const profile = deepMerge(JSON.parse(JSON.stringify(currentProfile)), configToMerge)
+  const useProvider = current && current !== 'default'
+  let profile: MihomoConfig
+
+  if (useProvider) {
+    const proxies = extractProxies(currentProfile)
+
+    if (proxies.length > 0) {
+      await generateProxyProvider(current, proxies)
+      const baseConfig = generateBaseConfigWithProvider(currentProfile, current)
+      profile = deepMerge(JSON.parse(JSON.stringify(baseConfig)), configToMerge)
+    } else {
+      profile = deepMerge(JSON.parse(JSON.stringify(currentProfile)), configToMerge)
+    }
+  } else {
+    profile = deepMerge(JSON.parse(JSON.stringify(currentProfile)), configToMerge)
+  }
 
   await cleanProfile(profile, controlDns, controlSniff)
+  ensureRuleProxyGroupAliases(profile)
 
   runtimeConfig = profile
   runtimeConfigStr = stringifyYaml(profile)
@@ -80,6 +101,58 @@ async function cleanProfile(
   cleanDnsConfig(profile, controlDns)
   cleanSnifferConfig(profile, controlSniff)
   cleanProxyConfigs(profile)
+}
+
+const RULE_BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'DNS', 'NOOP'])
+const RULE_MODIFIERS = new Set(['no-resolve'])
+
+interface ProxyGroupConfig {
+  name: string
+  type: string
+  proxies?: string[]
+  use?: string[]
+}
+
+function extractRulePolicyTargets(rules: string[]): string[] {
+  const targets: string[] = []
+
+  for (const rule of rules) {
+    const trimmed = rule.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+
+    const parts = trimmed.split(',')
+    while (parts.length > 0 && RULE_MODIFIERS.has(parts[parts.length - 1].trim())) {
+      parts.pop()
+    }
+    if (parts.length < 3) continue
+
+    const target = parts[parts.length - 1].trim()
+    if (target && !RULE_BUILTIN_TARGETS.has(target)) {
+      targets.push(target)
+    }
+  }
+
+  return targets
+}
+
+function ensureRuleProxyGroupAliases(profile: MihomoConfig): void {
+  const groups = profile['proxy-groups'] as ProxyGroupConfig[] | undefined
+  const rules = profile.rules as string[] | undefined
+  if (!groups?.length || !rules?.length) return
+
+  const groupNames = new Set(groups.map((group) => group.name))
+  const mainSelectGroup = groups.find((group) => group.type === 'select')?.name
+  if (!mainSelectGroup) return
+
+  for (const target of new Set(extractRulePolicyTargets(rules))) {
+    if (groupNames.has(target)) continue
+    groups.push({
+      name: target,
+      type: 'select',
+      proxies: [mainSelectGroup]
+    })
+    groupNames.add(target)
+  }
 }
 
 function cleanBooleanConfigs(profile: MihomoConfig): void {
@@ -113,14 +186,21 @@ function cleanBooleanConfigs(profile: MihomoConfig): void {
 }
 
 function cleanNumberConfigs(profile: MihomoConfig): void {
+  if (!profile['disable-keep-alive']) {
+    if (profile['keep-alive-idle'] == null || profile['keep-alive-idle'] === 0) {
+      profile['keep-alive-idle'] = 600
+    }
+    if (profile['keep-alive-interval'] == null || profile['keep-alive-interval'] === 0) {
+      profile['keep-alive-interval'] = 30
+    }
+  }
+
   ;[
     'port',
     'socks-port',
     'redir-port',
     'tproxy-port',
-    'mixed-port',
-    'keep-alive-idle',
-    'keep-alive-interval'
+    'mixed-port'
   ].forEach((key) => {
     if (profile[key] === 0) delete (profile as Partial<MihomoConfig>)[key]
   })

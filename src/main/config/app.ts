@@ -66,6 +66,27 @@ function migrateLegacyEncryptedConfig(config: AppConfig): { config: AppConfig; m
   return { config: result, migrated }
 }
 
+/** Upgrade legacy Sparkle defaults to Cursor-optimized stability settings. */
+function migrateLegacyCursorDefaults(config: AppConfig): { config: AppConfig; migrated: boolean } {
+  const result = { ...config }
+  let migrated = false
+
+  if (result.autoProxySwitch === false) {
+    result.autoProxySwitch = true
+    migrated = true
+  }
+  if (result.autoCloseConnection === true) {
+    result.autoCloseConnection = false
+    migrated = true
+  }
+  if (result.proxyHealthCheckInterval === 120) {
+    result.proxyHealthCheckInterval = 60
+    migrated = true
+  }
+
+  return { config: result, migrated }
+}
+
 async function writeCurrentConfig(): Promise<void> {
   const previousPromise = writePromise
   writePromise = (async () => {
@@ -84,12 +105,14 @@ export async function getAppConfig(force = false): Promise<AppConfig> {
       if (!parsed || !isValidConfig(parsed)) {
         const backup = await readFile(`${appConfigPath()}.backup`, 'utf-8')
         const migration = migrateLegacyEncryptedConfig(parseYaml<AppConfig>(backup))
-        appConfig = migration.config
-        migrated = migration.migrated
+        const cursorMigration = migrateLegacyCursorDefaults(migration.config)
+        appConfig = deepMerge({ ...defaultConfig }, cursorMigration.config)
+        migrated = migration.migrated || cursorMigration.migrated
       } else {
         const migration = migrateLegacyEncryptedConfig(parsed)
-        appConfig = migration.config
-        migrated = migration.migrated
+        const cursorMigration = migrateLegacyCursorDefaults(migration.config)
+        appConfig = deepMerge({ ...defaultConfig }, cursorMigration.config)
+        migrated = migration.migrated || cursorMigration.migrated
       }
       if (migrated) {
         try {
@@ -122,7 +145,7 @@ export function getAppConfigSync(): AppConfig {
     const raw = readFileSync(appConfigPath(), 'utf-8')
     const data = parseYaml<AppConfig>(raw)
     if (typeof data === 'object' && data !== null) {
-      return migrateLegacyEncryptedConfig(data).config
+      return deepMerge({ ...defaultConfig }, migrateLegacyEncryptedConfig(data).config)
     }
     return defaultConfig
   } catch (e) {

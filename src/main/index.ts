@@ -11,6 +11,8 @@ import { init } from './utils/init'
 import { join } from 'path'
 import { initShortcut } from './resolve/shortcut'
 import { initProfileUpdater } from './core/profileUpdater'
+import { startProxyHealthMonitor } from './core/proxyHealthMonitor'
+import { startNetworkStabilityMonitor } from './core/networkStabilityMonitor'
 import { startMonitor } from './resolve/trafficMonitor'
 import { showFloatingWindow } from './resolve/floatingWindow'
 import { getAppConfigSync } from './config/app'
@@ -179,6 +181,8 @@ app.whenReady().then(async () => {
       const [startPromise] = await startCore()
       startPromise.then(async () => {
         await initProfileUpdater()
+        await startProxyHealthMonitor()
+        await startNetworkStabilityMonitor()
       })
       coreStarted = true
     } catch (e) {

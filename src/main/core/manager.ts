@@ -411,12 +411,15 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
       await appendAppLog(`[Manager]: set dns failed, ${error}\n`)
     }
   }
+  // 自动将 profiles 目录添加到安全路径中，供 proxy-provider 文件访问
+  const { profilesDir } = await import('../utils/dirs')
+  const allSafePaths = [...new Set([...safePaths, profilesDir()])]
   const env = createCoreEnvironment({
     disableLoopbackDetector,
     disableEmbedCA,
     disableSystemCA,
     disableNftables,
-    safePaths
+    safePaths: allSafePaths
   })
 
   let initialized = false
@@ -444,7 +447,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
     const serviceProfile: ServiceCoreLaunchProfile = {
       core_path: corePath,
       args: spawnArgs,
-      safe_paths: safePaths,
+      safe_paths: allSafePaths,
       env,
       mihomo_cpu_priority: mihomoCpuPriority,
       log_path: coreLogPath(),
