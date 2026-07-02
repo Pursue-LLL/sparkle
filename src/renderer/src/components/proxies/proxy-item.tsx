@@ -1,7 +1,13 @@
-import { Button, Card, CardBody } from '@heroui/react'
+import { Button, Card, CardBody, Chip, Tooltip } from '@heroui/react'
+import { formatStabilityMarkerTooltip } from '@renderer/hooks/use-commercial-node-stability'
 import { mihomoUnfixedProxy } from '@renderer/utils/ipc'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FaMapPin } from 'react-icons/fa6'
+import {
+  formatProxyDelaySampleAge,
+  formatProxyDelayTooltip,
+  latestProxyDelayHistoryEntry
+} from '@renderer/utils/proxy-delay-sample-age'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
 
 interface Props {
@@ -14,12 +20,87 @@ interface Props {
   group: ControllerMixedGroup
   onSelect: (group: string, proxy: string) => void
   selected: boolean
+  stabilityMarker?: CommercialNodeStabilityEntry
+  benchmarkScore?: CommercialNodeStabilityEntry
 }
 
 const isGroup = (
   proxy: ControllerProxiesDetail | ControllerGroupDetail
 ): proxy is ControllerGroupDetail => {
   return 'now' in proxy && typeof (proxy as ControllerGroupDetail).now === 'string'
+}
+
+function delayColor(delay: number): 'primary' | 'success' | 'warning' | 'danger' {
+  if (delay === -1) return 'primary'
+  if (delay === 0) return 'danger'
+  if (delay < 500) return 'success'
+  return 'warning'
+}
+
+function delayText(delay: number): string {
+  if (delay === -1) return '测试'
+  if (delay === 0) return '超时'
+  return delay.toString()
+}
+
+interface ProxyDelayControlProps {
+  delay: number
+  sampleTime?: string
+  loading: boolean
+  onDelay: () => void
+  buttonClassName: string
+  textClassName?: string
+}
+
+const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
+  delay,
+  sampleTime,
+  loading,
+  onDelay,
+  buttonClassName,
+  textClassName = 'text-xs'
+}) => {
+  const ageLabel = useMemo(
+    () => (delay === -1 ? undefined : formatProxyDelaySampleAge(sampleTime)),
+    [delay, sampleTime]
+  )
+  const tooltip = useMemo(
+    () => formatProxyDelayTooltip(delay, sampleTime),
+    [delay, sampleTime]
+  )
+
+  const button = (
+    <Button
+      isIconOnly
+      isLoading={loading}
+      color={delayColor(delay)}
+      onPress={onDelay}
+      variant="light"
+      className={buttonClassName}
+    >
+      <span className={textClassName}>{delayText(delay)}</span>
+    </Button>
+  )
+
+  return (
+    <div className="flex flex-col items-center shrink-0">
+      {tooltip ? (
+        <Tooltip content={tooltip} placement="left" delay={200}>
+          {button}
+        </Tooltip>
+      ) : (
+        button
+      )}
+      {ageLabel ? (
+        <span
+          className="text-[9px] text-foreground-400 leading-none mt-0.5 max-w-[56px] truncate"
+          title={tooltip}
+        >
+          {ageLabel}
+        </span>
+      ) : null}
+    </div>
+  )
 }
 
 const ProxyItem: React.FC<Props> = (props) => {
@@ -32,17 +113,16 @@ const ProxyItem: React.FC<Props> = (props) => {
     proxy,
     selected,
     onSelect,
-    onProxyDelay
+    onProxyDelay,
+    stabilityMarker,
+    benchmarkScore
   } = props
   const shouldShowGroupSelectedProxy =
     showGroupSelectedProxy && isGroup(proxy) && Boolean(proxy.now)
 
-  const delay = useMemo(() => {
-    if (proxy.history.length > 0) {
-      return proxy.history[proxy.history.length - 1].delay
-    }
-    return -1
-  }, [proxy])
+  const delaySample = useMemo(() => latestProxyDelayHistoryEntry(proxy.history), [proxy.history])
+  const delay = delaySample?.delay ?? -1
+  const delaySampleTime = delaySample?.time
 
   const [loading, setLoading] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -135,18 +215,6 @@ const ProxyItem: React.FC<Props> = (props) => {
     document.addEventListener('mousemove', handleMouseMove)
     return () => document.removeEventListener('mousemove', handleMouseMove)
   }, [showTooltip])
-  function delayColor(delay: number): 'primary' | 'success' | 'warning' | 'danger' {
-    if (delay === -1) return 'primary'
-    if (delay === 0) return 'danger'
-    if (delay < 500) return 'success'
-    return 'warning'
-  }
-
-  function delayText(delay: number): string {
-    if (delay === -1) return '测试'
-    if (delay === 0) return '超时'
-    return delay.toString()
-  }
 
   const onDelay = (): void => {
     setLoading(true)
@@ -157,6 +225,42 @@ const ProxyItem: React.FC<Props> = (props) => {
   }
 
   const fixed = group.fixed && group.fixed === proxy.name
+
+  const stabilityBadge =
+    stabilityMarker !== undefined ? (
+      <Tooltip content={formatStabilityMarkerTooltip(stabilityMarker)} placement="top">
+        <Chip
+          size="sm"
+          color="warning"
+          variant="flat"
+          className="h-4 min-h-4 px-1 text-[10px] ml-1 shrink-0"
+        >
+          {stabilityMarker.kind === 'vps' ? '24h自建推荐' : '24h商业推荐'}
+        </Chip>
+      </Tooltip>
+    ) : null
+
+  const cursorAgentBadge =
+    benchmarkScore && !stabilityMarker ? (
+      <Tooltip content={formatStabilityMarkerTooltip(benchmarkScore)} placement="top">
+        <Chip
+          size="sm"
+          color={
+            benchmarkScore.cursorStability === 'risk'
+              ? 'danger'
+              : benchmarkScore.cursorStability === 'watch'
+                ? 'warning'
+                : benchmarkScore.cursorStability === 'unknown'
+                  ? 'default'
+                  : 'success'
+          }
+          variant="flat"
+          className="h-4 min-h-4 px-1 text-[10px] ml-1 shrink-0"
+        >
+          Agent·{benchmarkScore.cursorStabilityLabel}
+        </Chip>
+      </Tooltip>
+    ) : null
 
   return (
     <div
@@ -191,6 +295,8 @@ const ProxyItem: React.FC<Props> = (props) => {
                 <div className="flex flex-col gap-0 flex-1 min-w-0">
                   <div className="text-ellipsis overflow-hidden whitespace-nowrap">
                     <div className="flag-emoji inline">{proxy.name}</div>
+                    {stabilityBadge}
+                    {cursorAgentBadge}
                   </div>
                   <div className="text-[12px] text-foreground-500 leading-snug mt-0.5 overflow-hidden whitespace-nowrap text-ellipsis">
                     <span>{proxy.type}</span>
@@ -220,22 +326,21 @@ const ProxyItem: React.FC<Props> = (props) => {
                       <FaMapPin className="text-xs le" />
                     </Button>
                   )}
-                  <Button
-                    isIconOnly
-                    isLoading={loading}
-                    color={delayColor(delay)}
-                    onPress={onDelay}
-                    variant="light"
-                    className="h-8 w-8 min-w-8 p-0 text-xs"
-                  >
-                    {delayText(delay)}
-                  </Button>
+                  <ProxyDelayControl
+                    delay={delay}
+                    sampleTime={delaySampleTime}
+                    loading={loading}
+                    onDelay={onDelay}
+                    buttonClassName="h-8 w-8 min-w-8 p-0 text-xs"
+                  />
                 </div>
               </>
             ) : (
               <>
                 <div className="text-ellipsis overflow-hidden whitespace-nowrap">
                   <div className="flag-emoji inline">{proxy.name}</div>
+                  {stabilityBadge}
+                  {cursorAgentBadge}
                   {proxyDisplayLayout === 'single' && (
                     <>
                       <div className="inline ml-2 text-foreground-500">{proxy.type}</div>
@@ -265,16 +370,14 @@ const ProxyItem: React.FC<Props> = (props) => {
                     </div>
                   )}
                   <div className="flex items-center">
-                    <Button
-                      isIconOnly
-                      isLoading={loading}
-                      color={delayColor(delay)}
-                      onPress={onDelay}
-                      variant="light"
-                      className="h-full w-8 min-w-8 p-0 text-sm"
-                    >
-                      {delayText(delay)}
-                    </Button>
+                    <ProxyDelayControl
+                      delay={delay}
+                      sampleTime={delaySampleTime}
+                      loading={loading}
+                      onDelay={onDelay}
+                      buttonClassName="h-full w-8 min-w-8 p-0 text-sm"
+                      textClassName="text-sm"
+                    />
                   </div>
                 </div>
               </>
@@ -287,6 +390,7 @@ const ProxyItem: React.FC<Props> = (props) => {
           proxy={proxy}
           anchorEl={showTooltip ? wrapperRef.current : null}
           visible={showTooltip}
+          benchmarkScore={benchmarkScore ?? stabilityMarker}
         />
       )}
     </div>
