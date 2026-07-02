@@ -11,7 +11,7 @@ import { init } from './utils/init'
 import { join } from 'path'
 import { initShortcut } from './resolve/shortcut'
 import { initProfileUpdater } from './core/profileUpdater'
-import { startProxyHealthMonitor } from './core/proxyHealthMonitor'
+import { bootstrapCursorNetworkDefaults } from './core/cursorNetworkOptimize'
 import { startNetworkStabilityMonitor } from './core/networkStabilityMonitor'
 import { startMonitor } from './resolve/trafficMonitor'
 import { showFloatingWindow } from './resolve/floatingWindow'
@@ -178,11 +178,18 @@ app.whenReady().then(async () => {
       if (is.dev) {
         await initialWindowDisplayPromise
       }
+      await bootstrapCursorNetworkDefaults()
       const [startPromise] = await startCore()
       startPromise.then(async () => {
         await initProfileUpdater()
-        await startProxyHealthMonitor()
+        const { stopVpsCursorProbe } = await import('./core/vpsCursorProbe')
+        stopVpsCursorProbe()
         await startNetworkStabilityMonitor()
+        appendAppLog(
+          '[App]: current-node 60s probe ON; 6-VPS batch api2 probe OFF (manual mihomo delay for history)\n'
+        )
+        const { applyCursorDedicatedVpsSelection } = await import('./core/cursorDedicatedDefault')
+        await applyCursorDedicatedVpsSelection()
       })
       coreStarted = true
     } catch (e) {
