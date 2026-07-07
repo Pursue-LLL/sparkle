@@ -70,6 +70,9 @@ interface NetworkStabilityEvent {
   probe_latency_ms?: number
   probe_hold_ms?: number
   probe_early_close?: boolean
+  probe_welcome_only?: boolean
+  probe_marathon_applicable?: boolean
+  probe_sse_bytes?: number
   probe_target_kind?: 'api2_short' | 'api2_long_hold' | 'api2_stream_buffer'
   stream_first_byte_ms?: number
   stream_buffered?: boolean
@@ -432,6 +435,9 @@ async function runLongProbeCycle(): Promise<void> {
       probe_latency_ms: probeResult.latencyMs,
       probe_hold_ms: probeResult.holdMs,
       probe_early_close: probeResult.earlyClose,
+      probe_welcome_only: probeResult.welcomeOnly === true,
+      probe_marathon_applicable: probeResult.marathonApplicable !== false,
+      probe_sse_bytes: probeResult.sseBytes,
       probe_target_kind: 'api2_long_hold',
       error_code: probeResult.errorCode,
       error_detail: probeResult.errorDetail
@@ -445,7 +451,9 @@ async function runLongProbeCycle(): Promise<void> {
         isCursorBidiSystemicFailure({
           status: probeResult.status,
           earlyClose: probeResult.earlyClose,
-          errorCode: probeResult.errorCode
+          errorCode: probeResult.errorCode,
+          welcomeOnly: probeResult.welcomeOnly,
+          marathonApplicable: probeResult.marathonApplicable
         }),
       errorDetail: probeResult.errorDetail
     })
@@ -474,7 +482,7 @@ async function runLongProbeCycle(): Promise<void> {
       error_detail: streamProbe.errorDetail
     })
 
-    if (!probeResult.ok) {
+    if (!probeResult.ok && probeResult.marathonApplicable !== false) {
       longProbeFailures += 1
 
       const bidiLikelyBroken =
@@ -482,7 +490,9 @@ async function runLongProbeCycle(): Promise<void> {
         isCursorBidiSystemicFailure({
           status: probeResult.status,
           earlyClose: probeResult.earlyClose,
-          errorCode: probeResult.errorCode
+          errorCode: probeResult.errorCode,
+          welcomeOnly: probeResult.welcomeOnly,
+          marathonApplicable: probeResult.marathonApplicable
         })
 
       const { autoProxySwitch = true } = await getAppConfig()
