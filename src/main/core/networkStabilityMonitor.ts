@@ -7,16 +7,16 @@ import { mihomoGroups, mihomoProxyDelay } from './mihomoApi'
 import { homeDir } from '../utils/dirs'
 import {
   applyCursorBidiOptimize,
-  CURSOR_MARATHON_PROBE_HOLD_MS,
+  CURSOR_LONG_PROBE_TARGET,
   CURSOR_MARATHON_PROBE_INTERVAL_MS,
-  CURSOR_LONG_STREAM_15M_CAP_MIN_MS,
-  CURSOR_LONG_STREAM_15M_CAP_MAX_MS,
   ensureCursorMarathonKeepAlive,
   isCursorBidiSystemicFailure,
   isCursorLongStream15mCap,
-  probeCursorStreamBuffering
+  probeCursorApiLongHold,
+  probeCursorStreamBuffering,
+  verifyCursorLongProbeTargetReachable
 } from './cursorNetworkOptimize'
-import { resolveCursorStableSelectorGroup, CURSOR_DELAY_TEST_URL } from './cursorProxyGroup'
+import { resolveCursorStableSelectorGroup } from './cursorProxyGroup'
 import {
   evaluateLongStreamAlert,
   evaluateNetworkProbeAlert,
@@ -24,19 +24,21 @@ import {
   resetNetworkAlertState
 } from './networkAlertNotifier'
 import { shouldSkipCommercialBenchmarkDuringBurst } from './networkBurstGateCore'
+import { shouldDeferShortProbeDuringLongHold } from './networkStabilityProbeGateCore'
 import { appendAppLog, getCachedMihomoLogs } from '../utils/log'
 import { showNotification } from '../utils/notification'
 
 const PROBE_TARGET = 'https://api2.cursor.sh'
-/** Agent SSE backend host (same family as Cursor Composer long streams). */
-const LONG_PROBE_TARGET = 'https://agent.api5.cursor.sh'
+/** Agent SSE backend — long hold uses api2 (agent.api5 is Connect/binary, not plain HTTP). */
+const LONG_PROBE_TARGET = CURSOR_LONG_PROBE_TARGET
 const PROBE_INTERVAL_MS = 60_000
+/** Keep in sync with cursorNetworkOptimize marathon probe timing. */
 const LONG_PROBE_INTERVAL_MS = CURSOR_MARATHON_PROBE_INTERVAL_MS
-const LONG_PROBE_HOLD_MS = CURSOR_MARATHON_PROBE_HOLD_MS
 const BURST_PROBE_INTERVAL_MS = 15_000
 const BURST_DURATION_MS = 5 * 60_000
 const BURST_FAILURE_THRESHOLD = 2
 const PROBE_TIMEOUT_MS = 15_000
+const LONG_PROBE_PROXY_SMOKE_DELAY_MS = 25_000
 const RETENTION_MS = 24 * 60 * 60 * 1000
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const TUN_RESTART_COOLDOWN_MS = 5 * 60_000
@@ -68,7 +70,7 @@ interface NetworkStabilityEvent {
   probe_latency_ms?: number
   probe_hold_ms?: number
   probe_early_close?: boolean
-  probe_target_kind?: 'api2_short' | 'agent_long_hold' | 'api2_stream_buffer'
+  probe_target_kind?: 'api2_short' | 'api2_long_hold' | 'api2_stream_buffer'
   stream_first_byte_ms?: number
   stream_buffered?: boolean
   error_code?: string
@@ -230,13 +232,29 @@ function clearTunLostDebounceTimer(): void {
   }
 }
 
+async function shouldDeferTunCoreRestart(): Promise<boolean> {
+  const proxyNode = await resolveCurrentProxyNode()
+  if (!proxyNode) {
+    return false
+  }
+  return shouldDeferCursorFailover(proxyNode)
+}
+
 async function confirmTunInterfaceLostAfterDebounce(): Promise<void> {
   tunLostDebounceTimer = null
   const signalCount = tunLostSignalCount
   tunLostSignalCount = 0
 
-  if (signalCount >= 2) {
-    await handleTunInterfaceLost()
+  if (await shouldDeferTunCoreRestart()) {
+    await appendAppLog(
+      `[NetworkStabilityMonitor]: defer TUN restart (signals=${signalCount}) — Cursor api2 reachable on current node\n`
+    )
+    await appendEvent({
+      ts: new Date().toISOString(),
+      kind: 'tun_interface_recovered',
+      error_detail: `tun lost signals=${signalCount} — cursor api2 ok, skip restartCore`
+    })
+    tunInterfaceLostLatched = false
     return
   }
 
@@ -261,7 +279,9 @@ async function scheduleTunInterfaceLostRecovery(): Promise<void> {
   if (tunLostDebounceTimer) {
     tunLostSignalCount += 1
     clearTunLostDebounceTimer()
-    await handleTunInterfaceLost()
+    tunLostDebounceTimer = setTimeout(() => {
+      void confirmTunInterfaceLostAfterDebounce()
+    }, 500)
     return
   }
 
@@ -292,6 +312,14 @@ async function handleTunInterfaceLost(): Promise<void> {
     return
   }
 
+  if (await shouldDeferTunCoreRestart()) {
+    await appendAppLog(
+      '[NetworkStabilityMonitor]: defer TUN restart at handle — Cursor api2 reachable on current node\n'
+    )
+    tunInterfaceLostLatched = false
+    return
+  }
+
   if (now - lastTunRestartAt < TUN_RESTART_COOLDOWN_MS) {
     await appendAppLog(
       '[NetworkStabilityMonitor]: TUN interface lost — restart skipped (cooldown active)\n'
@@ -317,6 +345,7 @@ async function handleTunInterfaceLost(): Promise<void> {
       variant: 'warning'
     })
     lastTunRestartAt = now
+    burstUntil = Date.now() + BURST_DURATION_MS
     const { restartCore } = await import('./manager')
     await restartCore()
     await appendEvent({
@@ -365,114 +394,6 @@ function seedTunLogWatchCursor(): void {
   tunLostSignalCount = 0
 }
 
-async function probeCursorApiLongHold(
-  proxyHost: string,
-  proxyPort: number,
-  viaDirectTun = false
-): Promise<{
-  ok: boolean
-  status?: number
-  latencyMs: number
-  holdMs: number
-  earlyClose: boolean
-  errorCode?: string
-  errorDetail?: string
-}> {
-  const startedAt = Date.now()
-  try {
-    const response = await axios.get(`${LONG_PROBE_TARGET}/`, {
-      ...(viaDirectTun
-        ? {}
-        : {
-            proxy: {
-              host: proxyHost,
-              port: proxyPort,
-              protocol: 'http'
-            }
-          }),
-      timeout: LONG_PROBE_HOLD_MS + 15_000,
-      validateStatus: () => true,
-      maxRedirects: 0,
-      responseType: 'stream',
-      headers: {
-        Accept: 'text/event-stream, application/connect+proto, */*',
-        'User-Agent': 'Sparkle-LongProbe/1.0'
-      }
-    })
-    let earlyClose = false
-    await new Promise<void>((resolve) => {
-      let settled = false
-      const finish = (): void => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        try {
-          response.data.destroy()
-        } catch {
-          // ignore stream teardown errors
-        }
-        resolve()
-      }
-      const timer = setTimeout(finish, LONG_PROBE_HOLD_MS)
-      response.data.on('error', () => {
-        earlyClose = true
-        finish()
-      })
-      response.data.on('end', () => {
-        earlyClose = true
-        finish()
-      })
-      response.data.on('data', () => {
-        /* drain */
-      })
-      response.data.resume()
-    })
-    const latencyMs = Date.now() - startedAt
-    const is15mCap =
-      earlyClose &&
-      latencyMs >= CURSOR_LONG_STREAM_15M_CAP_MIN_MS &&
-      latencyMs <= CURSOR_LONG_STREAM_15M_CAP_MAX_MS
-    const transportOk = earlyClose
-      ? latencyMs >= LONG_PROBE_HOLD_MS - 2_000
-      : true
-    return {
-      ok:
-        transportOk &&
-        response.status > 0 &&
-        response.status < 500,
-      status: response.status,
-      latencyMs,
-      holdMs: latencyMs,
-      earlyClose,
-      errorCode: is15mCap
-        ? 'LONG_STREAM_15M_CAP'
-        : earlyClose && !transportOk
-          ? 'LONG_PROBE_EARLY_CLOSE'
-          : undefined,
-      errorDetail: is15mCap
-        ? `Stream closed after ${latencyMs}ms (~15min proxy cap)`
-        : earlyClose && !transportOk
-          ? `Stream closed after ${latencyMs}ms (hold target ${LONG_PROBE_HOLD_MS}ms)`
-          : undefined
-    }
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException & {
-      message?: string
-      response?: { status?: number }
-    }
-    const latencyMs = Date.now() - startedAt
-    return {
-      ok: false,
-      status: err.response?.status,
-      latencyMs,
-      holdMs: latencyMs,
-      earlyClose: true,
-      errorCode: err.code ?? 'LONG_PROBE_FAILED',
-      errorDetail: err.message ?? String(error)
-    }
-  }
-}
-
 async function runLongProbeCycle(): Promise<void> {
   if (!isMonitoring || isLongProbing) {
     scheduleNextLongProbe()
@@ -511,7 +432,7 @@ async function runLongProbeCycle(): Promise<void> {
       probe_latency_ms: probeResult.latencyMs,
       probe_hold_ms: probeResult.holdMs,
       probe_early_close: probeResult.earlyClose,
-      probe_target_kind: 'agent_long_hold',
+      probe_target_kind: 'api2_long_hold',
       error_code: probeResult.errorCode,
       error_detail: probeResult.errorDetail
     })
@@ -537,23 +458,24 @@ async function runLongProbeCycle(): Promise<void> {
       })
     }
 
+    const streamProbe = await probeCursorStreamBuffering(host, port, viaDirectTun)
+    await appendEvent({
+      ts: new Date().toISOString(),
+      kind: 'stream_buffer_probe',
+      proxy_node: proxyNode,
+      probe_target: PROBE_TARGET,
+      probe_via: probeVia,
+      probe_ok: !streamProbe.buffered,
+      probe_status: streamProbe.status,
+      probe_latency_ms: streamProbe.firstByteMs,
+      probe_target_kind: 'api2_stream_buffer',
+      stream_first_byte_ms: streamProbe.firstByteMs,
+      stream_buffered: streamProbe.buffered,
+      error_detail: streamProbe.errorDetail
+    })
+
     if (!probeResult.ok) {
       longProbeFailures += 1
-      const streamProbe = await probeCursorStreamBuffering(host, port, viaDirectTun)
-      await appendEvent({
-        ts: new Date().toISOString(),
-        kind: 'stream_buffer_probe',
-        proxy_node: proxyNode,
-        probe_target: PROBE_TARGET,
-        probe_via: probeVia,
-        probe_ok: !streamProbe.buffered,
-        probe_status: streamProbe.status,
-        probe_latency_ms: streamProbe.firstByteMs,
-        probe_target_kind: 'api2_stream_buffer',
-        stream_first_byte_ms: streamProbe.firstByteMs,
-        stream_buffered: streamProbe.buffered,
-        error_detail: streamProbe.errorDetail
-      })
 
       const bidiLikelyBroken =
         streamProbe.buffered ||
@@ -650,6 +572,10 @@ async function runProbeCycle(): Promise<void> {
     scheduleNextProbe()
     return
   }
+  if (shouldDeferShortProbeDuringLongHold(isLongProbing)) {
+    scheduleNextProbe()
+    return
+  }
 
   isProbing = true
   try {
@@ -673,98 +599,26 @@ async function runProbeCycle(): Promise<void> {
     if (wasOffline) {
       await appendEvent({ ts, kind: 'online' })
       wasOffline = false
+      burstUntil = 0
+      shortProbeFailures = 0
     }
 
     await scanTunLogEvents()
 
     void ensureCursorMarathonKeepAlive()
 
-    const { host, port } = await getProxyEndpoint()
-    const viaDirectTun = await shouldProbeViaDirectTun()
-    const probeVia = viaDirectTun ? 'direct/tun' : `http://${host}:${port}`
-    const proxyNode = await resolveCurrentProxyNode()
-
-    let proxyDelayMs: number | undefined
-    if (proxyNode) {
-      try {
-        const delayResult = await mihomoProxyDelay(proxyNode, CURSOR_DELAY_TEST_URL)
-        proxyDelayMs = delayResult.delay ?? undefined
-      } catch {
-        proxyDelayMs = undefined
-      }
-    }
-
-    const probeResult = await probeCursorApi(host, port, viaDirectTun)
-    lastCursorProbe = {
-      ok: probeResult.ok,
-      atMs: Date.now(),
-      proxyNode
-    }
-    await appendEvent({
-      ts,
-      kind: 'probe',
-      proxy_node: proxyNode,
-      proxy_delay_ms: proxyDelayMs,
-      probe_target: PROBE_TARGET,
-      probe_via: probeVia,
-      probe_ok: probeResult.ok,
-      probe_status: probeResult.status,
-      probe_latency_ms: probeResult.latencyMs,
-      probe_target_kind: 'api2_short',
-      error_code: probeResult.errorCode,
-      error_detail: probeResult.errorDetail
-    })
-
-    void evaluateNetworkProbeAlert({
-      proxyNode,
-      proxyDelayMs,
-      probeOk: probeResult.ok,
-      probeLatencyMs: probeResult.latencyMs,
-      errorDetail: probeResult.errorDetail
-    })
-
-    const { cursorBidiOptimize = true, autoProxySwitch = true } = await getAppConfig()
-    if (cursorBidiOptimize !== false && autoProxySwitch) {
-      const streamProbe = await probeCursorStreamBuffering(
-        host,
-        port,
-        viaDirectTun
-      )
-      await appendEvent({
-        ts: new Date().toISOString(),
-        kind: 'stream_buffer_probe',
-        proxy_node: proxyNode,
-        probe_target: PROBE_TARGET,
-        probe_via: probeVia,
-        probe_ok: !streamProbe.buffered,
-        probe_status: streamProbe.status,
-        probe_latency_ms: streamProbe.firstByteMs,
-        probe_target_kind: 'api2_stream_buffer',
-        stream_first_byte_ms: streamProbe.firstByteMs,
-        stream_buffered: streamProbe.buffered,
-        error_detail: streamProbe.errorDetail
-      })
-
-      if (streamProbe.buffered && !bidiOptimizeTriggered) {
-        bidiOptimizeTriggered = await tryApplyCursorBidiOptimize('api2-stream-buffered')
-      }
-    }
-
-    if (probeResult.ok) {
+    const connectivityOk = await runCursorShortConnectivityCheck({ notify: true })
+    if (connectivityOk) {
       shortProbeFailures = 0
-      burstUntil = 0
+      if (!tunInterfaceLostLatched) {
+        burstUntil = 0
+      }
       if (tunInterfaceLostLatched) {
         tunInterfaceLostLatched = false
       }
     } else {
       shortProbeFailures += 1
-      if (
-        probeResult.errorCode === 'ECONNABORTED' &&
-        probeResult.latencyMs >= 14_000
-      ) {
-        shortProbeFailures = Math.max(shortProbeFailures, BURST_FAILURE_THRESHOLD)
-        burstUntil = Date.now() + BURST_DURATION_MS
-      } else if (shortProbeFailures >= BURST_FAILURE_THRESHOLD) {
+      if (shortProbeFailures >= BURST_FAILURE_THRESHOLD) {
         burstUntil = Date.now() + BURST_DURATION_MS
       }
     }
@@ -782,6 +636,17 @@ async function runProbeCycle(): Promise<void> {
 export function getNetworkBurstUntilMs(): number {
   return burstUntil
 }
+
+/** True while the 60s short connectivity cycle (axios HEAD) is in flight. */
+export function isNetworkStabilityShortProbeActive(): boolean {
+  return isProbing
+}
+
+export function isNetworkStabilityLongProbeActive(): boolean {
+  return isLongProbing
+}
+
+export { shouldDeferShortProbeDuringLongHold } from './networkStabilityProbeGateCore'
 
 export function isNetworkStabilityBurstActive(nowMs: number = Date.now()): boolean {
   return shouldSkipCommercialBenchmarkDuringBurst(burstUntil, nowMs)
@@ -806,6 +671,83 @@ export function getRecentLongProbeFailure(
     return null
   }
   return lastLongProbe
+}
+
+interface CursorShortConnectivityOptions {
+  /** When true, drive networkAlertEnabled notifications (60s monitor). */
+  notify?: boolean
+}
+
+/** HTTP api2 check via current proxy — does not write mihomo proxy.history or events jsonl. */
+async function runCursorShortConnectivityCheck(
+  options: CursorShortConnectivityOptions = {}
+): Promise<boolean> {
+  const { host, port } = await getProxyEndpoint()
+  const viaDirectTun = await shouldProbeViaDirectTun()
+  const proxyNode = await resolveCurrentProxyNode()
+  const probeResult = await probeCursorApi(host, port, viaDirectTun)
+  const proxyDelayMs =
+    probeResult.latencyMs > 0 ? probeResult.latencyMs : undefined
+  lastCursorProbe = {
+    ok: probeResult.ok,
+    atMs: Date.now(),
+    proxyNode
+  }
+  if (options.notify) {
+    void evaluateNetworkProbeAlert({
+      proxyNode,
+      proxyDelayMs,
+      probeOk: probeResult.ok,
+      probeLatencyMs: probeResult.latencyMs,
+      errorDetail: probeResult.errorDetail
+    })
+  }
+  return probeResult.ok
+}
+
+async function verifyCursorLongProbeViaCurrentProxy(): Promise<{
+  ok: boolean
+  proxyNode?: string
+  delayMs?: number
+  errorDetail?: string
+}> {
+  try {
+    const proxyNode = await resolveCurrentProxyNode()
+    if (!proxyNode) {
+      return { ok: false, errorDetail: 'no current Cursor proxy node' }
+    }
+    const result = await mihomoProxyDelay(proxyNode, LONG_PROBE_TARGET)
+    const delayMs = result.delay ?? 0
+    if (delayMs <= 0) {
+      return {
+        ok: false,
+        proxyNode,
+        errorDetail: `mihomo delay to ${LONG_PROBE_TARGET} timed out`
+      }
+    }
+    return { ok: true, proxyNode, delayMs }
+  } catch (error) {
+    const err = error as Error
+    return { ok: false, errorDetail: err.message ?? String(error) }
+  }
+}
+
+function scheduleLongProbeProxySmoke(): void {
+  setTimeout(() => {
+    void (async () => {
+      if (!isMonitoring) return
+      const proxySmoke = await verifyCursorLongProbeViaCurrentProxy()
+      if (!proxySmoke.ok) {
+        appendAppLog(
+          `[NetworkStability]: long_probe proxy smoke FAILED (${proxySmoke.proxyNode ?? 'unknown'}): ${proxySmoke.errorDetail ?? 'unknown'}\n`
+        )
+        return
+      }
+      appendAppLog(
+        `[NetworkStability]: long_probe proxy smoke OK (${proxySmoke.proxyNode}, ${proxySmoke.delayMs}ms → ${LONG_PROBE_TARGET})\n`
+      )
+    })()
+  }, LONG_PROBE_PROXY_SMOKE_DELAY_MS)
 }
 
 export function getRecentCursorProbe(
@@ -840,16 +782,7 @@ export async function shouldDeferCursorFailover(currentProxy: string): Promise<b
 }
 
 export async function runCursorApiProbeCheck(): Promise<boolean> {
-  const { host, port } = await getProxyEndpoint()
-  const viaDirectTun = await shouldProbeViaDirectTun()
-  const proxyNode = await resolveCurrentProxyNode()
-  const probeResult = await probeCursorApi(host, port, viaDirectTun)
-  lastCursorProbe = {
-    ok: probeResult.ok,
-    atMs: Date.now(),
-    proxyNode
-  }
-  return probeResult.ok
+  return runCursorShortConnectivityCheck({ notify: false })
 }
 
 export async function recordProxySwitch(fromProxy: string, toProxy: string): Promise<void> {
@@ -874,6 +807,17 @@ export async function startNetworkStabilityMonitor(): Promise<void> {
   seedTunLogWatchCursor()
   await ensureEventsDir()
   await pruneEventsFile()
+  const longProbeSmoke = await verifyCursorLongProbeTargetReachable()
+  if (!longProbeSmoke.ok) {
+    appendAppLog(
+      `[NetworkStability]: long_probe target smoke FAILED (${LONG_PROBE_TARGET}): ${longProbeSmoke.errorDetail ?? 'unknown'}\n`
+    )
+  } else {
+    appendAppLog(
+      `[NetworkStability]: long_probe target smoke OK (${LONG_PROBE_TARGET}, HTTP ${longProbeSmoke.status ?? '?'})\n`
+    )
+  }
+  scheduleLongProbeProxySmoke()
   scheduleNextProbe(5_000)
   scheduleNextLongProbe(30_000)
 }
