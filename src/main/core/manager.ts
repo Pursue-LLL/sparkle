@@ -5,8 +5,7 @@ import {
   getAppConfig,
   getControledMihomoConfig,
   getProfileConfig,
-  patchAppConfig,
-  patchControledMihomoConfig
+  patchAppConfig
 } from '../config'
 import { app, ipcMain } from 'electron'
 import {
@@ -73,9 +72,14 @@ import {
   createProviderInitializationTracker,
   isControllerListenError,
   isControllerReadyLog,
-  isTunPermissionError,
   isUpdaterFinishedLog
 } from './startup-chain'
+import {
+  ensureTunCorePermissionBeforeStart,
+  resetTunStartupGuardState,
+  verifyTunAfterCoreReady,
+  watchTunStartupLogLine
+} from './tunStartupGuard'
 export {
   checkCorePermission,
   checkCorePermissionSync,
@@ -254,9 +258,30 @@ async function startMihomoApiStreams(): Promise<void> {
   retry = 10
 }
 
+async function startMihomoApiStreamsWithGrace(timeoutMs = 10_000): Promise<void> {
+  try {
+    await Promise.race([
+      startMihomoApiStreams(),
+      delay(timeoutMs).then(() => {
+        throw new Error(`startMihomoApiStreams timed out after ${timeoutMs}ms`)
+      })
+    ])
+  } catch (error) {
+    await appendAppLog(
+      `[Manager]: ${error instanceof Error ? error.message : String(error)} (continuing core init)\n`
+    )
+  }
+}
+
+let lastCoreReadyAtMs = 0
+
+export function getLastCoreReadyAtMs(): number {
+  return lastCoreReadyAtMs
+}
+
 async function completeCoreInitialization(logLevel?: LogLevel): Promise<void> {
   const tasks: Promise<unknown>[] = [
-    delay(100).then(() => {
+    delay(100).then(async () => {
       mainWindow?.webContents.send('groupsUpdated')
       mainWindow?.webContents.send('rulesUpdated')
     }),
@@ -269,6 +294,8 @@ async function completeCoreInitialization(logLevel?: LogLevel): Promise<void> {
 
   await Promise.all(tasks)
   setMihomoLogSource('ws')
+  lastCoreReadyAtMs = Date.now()
+  void delay(5_000).then(() => verifyTunAfterCoreReady())
 }
 
 async function waitForMihomoReady(): Promise<void> {
@@ -403,6 +430,8 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   if (!serviceCoreRunning) {
     await stopCore()
   }
+  resetTunStartupGuardState()
+  await ensureTunCorePermissionBeforeStart()
   setMihomoLogSource('out')
   if (tun?.enable && autoSetDNSMode !== 'none') {
     try {
@@ -560,12 +589,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
               const handleProviderInitialization = async (logLine: string): Promise<void> => {
                 providerTracker.track(logLine)
 
-                if (isTunPermissionError(logLine)) {
-                  patchControledMihomoConfig({ tun: { enable: false } })
-                  mainWindow?.webContents.send('controledMihomoConfigUpdated')
-                  ipcMain.emit('updateTrayMenu')
-                  reject('虚拟网卡启动失败，前往内核设置页尝试手动授予内核权限')
-                }
+                watchTunStartupLogLine(logLine)
 
                 if (providerTracker.isReady(logLine)) {
                   await waitForMihomoReady()
@@ -583,7 +607,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
               })
             })
           ])
-          await startMihomoApiStreams()
+          await startMihomoApiStreamsWithGrace()
         }
       })
     })
@@ -600,7 +624,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
       hookWaiter.promise
         .then(async () => {
           initialized = true
-          await startMihomoApiStreams()
+          void startMihomoApiStreamsWithGrace()
           resolve([completeCoreInitialization(logLevel)])
         })
         .catch(reject)
@@ -797,6 +821,7 @@ function handleDirectCoreLogData(data: Buffer | string): void {
   }
 
   for (const line of lines) {
+    watchTunStartupLogLine(line)
     notifyCoreLog({ text: line })
   }
 }

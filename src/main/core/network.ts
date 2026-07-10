@@ -52,7 +52,15 @@ async function getOriginDNS(): Promise<void> {
 }
 
 async function setDNS(dns: string, mode: 'none' | 'exec' | 'service'): Promise<void> {
+  if (mode === 'none') {
+    return
+  }
   const service = await getDefaultService()
+  if (dns === 'Empty') {
+    const execFilePromise = promisify(execFile)
+    await execFilePromise('networksetup', ['-setdnsservers', service, 'Empty'])
+    return
+  }
   const dnsServers = dns.split(' ')
   if (mode === 'exec') {
     const execFilePromise = promisify(execFile)
@@ -61,7 +69,6 @@ async function setDNS(dns: string, mode: 'none' | 'exec' | 'service'): Promise<v
   }
   if (mode === 'service') {
     await setSysDns(service, dnsServers)
-    return
   }
 }
 
@@ -84,7 +91,11 @@ export async function recoverDNS(): Promise<void> {
   if (net.isOnline()) {
     const { originDNS, autoSetDNSMode = 'none' } = await getAppConfig()
     if (originDNS) {
-      await setDNS(originDNS, autoSetDNSMode)
+      try {
+        await setDNS(originDNS, autoSetDNSMode)
+      } catch {
+        // Corporate Macs may block networksetup; avoid repeated recover spam.
+      }
       await patchAppConfig({ originDNS: undefined })
     }
   } else {
