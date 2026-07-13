@@ -19,7 +19,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import { deepMerge } from '../utils/merge'
 import { getUserAgent } from '../utils/userAgent'
 import { execWithElevation } from '../utils/elevation'
-import { updateProvider, deleteProvider } from '../core/provider'
+import { deleteProvider } from '../core/provider'
 
 let profileConfig: ProfileConfig // profile.yaml
 const FILE_PERMISSION_ELEVATION_REQUIRED = 'FILE_PERMISSION_ELEVATION_REQUIRED'
@@ -318,14 +318,16 @@ export async function setProfileStr(id: string, content: string): Promise<void> 
   await writeFile(profilePath(id), content, 'utf-8')
 
   if (current === id) {
-    const config = parseYaml<MihomoConfig>(content)
-    if (typeof config === 'object' && config !== null) {
-      const result = await updateProvider(id, config)
-      if (result.success) {
-        return
-      }
+    // Rebuild merged profile (subscription + global override VPS) then hot-reload provider.
+    // Raw updateProvider() alone drops override leaf nodes on scheduled subscription refresh.
+    try {
+      const { generateProfile } = await import('../core/factory')
+      const { mihomoUpdateProxyProviders } = await import('../core/mihomoApi')
+      await generateProfile()
+      await mihomoUpdateProxyProviders(id)
+    } catch {
+      await restartCore()
     }
-    await restartCore()
   }
 }
 

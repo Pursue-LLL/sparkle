@@ -71,7 +71,7 @@ function migrateLegacyCursorDefaults(config: AppConfig): { config: AppConfig; mi
   const result = { ...config }
   let migrated = false
 
-  if (result.autoProxySwitch === false) {
+  if (result.autoProxySwitch === undefined) {
     result.autoProxySwitch = true
     migrated = true
   }
@@ -82,6 +82,17 @@ function migrateLegacyCursorDefaults(config: AppConfig): { config: AppConfig; mi
   if (result.proxyHealthCheckInterval === 120) {
     result.proxyHealthCheckInterval = 60
     migrated = true
+  }
+  if (result.cursorBidiOptimize === undefined) {
+    result.cursorBidiOptimize = true
+    migrated = true
+  }
+  if (result.cursorProxyAppPathPrefixes === undefined) {
+    result.cursorProxyAppPathPrefixes = [...defaultConfig.cursorProxyAppPathPrefixes!]
+    migrated = true
+  }
+  if (result.cursorSysProxyLock === undefined && result.cursorBidiOptimize !== false) {
+    result.cursorSysProxyLock = false
   }
 
   return { config: result, migrated }

@@ -10,9 +10,8 @@ import { createApplicationMenu } from './resolve/menu'
 import { init } from './utils/init'
 import { join } from 'path'
 import { initShortcut } from './resolve/shortcut'
-import { initProfileUpdater } from './core/profileUpdater'
 import { bootstrapCursorNetworkDefaults } from './core/cursorNetworkOptimize'
-import { startNetworkStabilityMonitor } from './core/networkStabilityMonitor'
+import { runPostCoreBootstrap } from './core/postCoreBootstrap'
 import { startMonitor } from './resolve/trafficMonitor'
 import { showFloatingWindow } from './resolve/floatingWindow'
 import { getAppConfigSync } from './config/app'
@@ -180,16 +179,10 @@ app.whenReady().then(async () => {
       }
       await bootstrapCursorNetworkDefaults()
       const [startPromise] = await startCore()
-      startPromise.then(async () => {
-        await initProfileUpdater()
-        const { stopVpsCursorProbe } = await import('./core/vpsCursorProbe')
-        stopVpsCursorProbe()
-        await startNetworkStabilityMonitor()
-        appendAppLog(
-          '[App]: current-node 60s probe ON; 6-VPS batch api2 probe OFF (manual mihomo delay for history)\n'
+      void runPostCoreBootstrap(startPromise).catch(async (error) => {
+        await appendAppLog(
+          `[PostCoreBootstrap]: failed: ${error instanceof Error ? error.message : String(error)}\n`
         )
-        const { applyCursorDedicatedVpsSelection } = await import('./core/cursorDedicatedDefault')
-        await applyCursorDedicatedVpsSelection()
       })
       coreStarted = true
     } catch (e) {

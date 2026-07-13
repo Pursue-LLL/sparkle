@@ -6,5 +6,6 @@ dist
 out
 .DS_Store
 *.log*
+*.tsbuildinfo
 .idea
 *.ttf

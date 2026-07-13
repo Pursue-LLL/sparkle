@@ -14,7 +14,14 @@ if (process.argv.slice(2).length !== 0) {
 }
 
 if (process.env.SKIP_PREPARE === '1') {
-  console.log('Skipping prepare script...')
+  const sidecarMihomo = path.join(cwd, 'extra', 'sidecar', 'mihomo')
+  if (!fs.existsSync(sidecarMihomo)) {
+    console.error(
+      'SKIP_PREPARE=1 but extra/sidecar/mihomo is missing. Run `node scripts/prepare.ts` or download mihomo before building.'
+    )
+    process.exit(1)
+  }
+  console.log('Skipping prepare script (sidecar/mihomo present)...')
   process.exit(0)
 }
 

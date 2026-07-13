@@ -17,6 +17,10 @@ import {
   scoreNodeQuality,
   type NodeTransportObservations
 } from './nodeQualityScore'
+import {
+  shouldExcludeProbeSampleFromNodeScoring,
+  type ProbeAttribution
+} from './cursorTransportHealthCore'
 
 export interface NodeStats {
   node: string
@@ -29,10 +33,7 @@ export interface NodeStats {
 }
 
 export interface NodeTransportStats {
-  longProbeTotal: number
-  longProbeOk: number
   transportFailures: number
-  marathon15mCaps: number
 }
 
 export interface DerivedStats {
@@ -58,12 +59,8 @@ export interface DerivedStats {
   slow500Penalty: number
   jitterPenalty: number
   recentSlowPenalty: number
-  longProbeSuccessRate: number | null
-  longProbeTotal: number
-  longProbeOk: number
   transportFailures: number
-  marathon15mCaps: number
-  longProbeBonus: number
+  transportFailurePenalty: number
   combinedScore: number
   eligibleForBadge: boolean
   badgeBlockReason?: string
@@ -94,52 +91,15 @@ function readJsonlSince<T extends { ts?: string | number }>(
 
 function emptyTransportStats(): NodeTransportStats {
   return {
-    longProbeTotal: 0,
-    longProbeOk: 0,
-    transportFailures: 0,
-    marathon15mCaps: 0
+    transportFailures: 0
   }
 }
 
 export function buildNodeTransportStats(
-  networkEventsPath: string,
   agentFailuresPath: string,
   sinceMs: number
 ): Map<string, NodeTransportStats> {
   const map = new Map<string, NodeTransportStats>()
-
-  for (const row of readJsonlSince<{
-    ts?: string
-    kind?: string
-    proxy_node?: string
-    probe_ok?: boolean
-    probe_hold_ms?: number
-    probe_early_close?: boolean
-    probe_welcome_only?: boolean
-    probe_marathon_applicable?: boolean
-    error_code?: string
-  }>(networkEventsPath, sinceMs)) {
-    if (!row.proxy_node) continue
-    const cur = map.get(row.proxy_node) ?? emptyTransportStats()
-
-    if (row.kind === 'long_probe') {
-      if (row.probe_marathon_applicable === false || row.probe_welcome_only === true) {
-        continue
-      }
-      const is15mCap =
-        row.error_code === 'LONG_STREAM_15M_CAP' ||
-        (row.probe_early_close === true &&
-          typeof row.probe_hold_ms === 'number' &&
-          row.probe_hold_ms >= 840_000 &&
-          row.probe_hold_ms <= 960_000)
-      map.set(row.proxy_node, {
-        ...cur,
-        longProbeTotal: cur.longProbeTotal + 1,
-        longProbeOk: cur.longProbeOk + (row.probe_ok ? 1 : 0),
-        marathon15mCaps: cur.marathon15mCaps + (is15mCap ? 1 : 0)
-      })
-    }
-  }
 
   for (const row of readJsonlSince<{
     ts?: string | number
@@ -165,12 +125,16 @@ export function buildStats(
     kind?: 'vps' | 'commercial'
     delay_ms: number
     ok: boolean
+    probe_attribution?: ProbeAttribution
   }>,
   recentWindowMs: number
 ): Map<string, NodeStats> {
   const recentCutoff = Date.now() - recentWindowMs
   const stats = new Map<string, NodeStats>()
   for (const sample of samples) {
+    if (sample.probe_attribution && shouldExcludeProbeSampleFromNodeScoring(sample.probe_attribution)) {
+      continue
+    }
     const existing = stats.get(sample.node) ?? {
       node: sample.node,
       region: sample.region,
@@ -199,10 +163,7 @@ function toTransportObservations(
 ): NodeTransportObservations | undefined {
   if (!transport) return undefined
   return {
-    longProbeTotal: transport.longProbeTotal,
-    longProbeOk: transport.longProbeOk,
-    transportFailures: transport.transportFailures,
-    marathon15mCaps: transport.marathon15mCaps
+    transportFailures: transport.transportFailures
   }
 }
 
@@ -230,10 +191,6 @@ export function deriveNodeRankingStats(
             stats.delays.length
         )
       : 0
-  const longProbeTotal = transport24h?.longProbeTotal ?? 0
-  const longProbeOk = transport24h?.longProbeOk ?? 0
-  const longProbeSuccessRate =
-    longProbeTotal > 0 ? longProbeOk / longProbeTotal : null
 
   return {
     stats,
@@ -258,12 +215,8 @@ export function deriveNodeRankingStats(
     slow500Penalty: quality.slow500Penalty,
     jitterPenalty: quality.jitterPenalty,
     recentSlowPenalty: quality.recentSlowPenalty,
-    longProbeSuccessRate,
-    longProbeTotal,
-    longProbeOk,
     transportFailures: transport24h?.transportFailures ?? 0,
-    marathon15mCaps: transport24h?.marathon15mCaps ?? 0,
-    longProbeBonus: quality.longProbeBonus,
+    transportFailurePenalty: quality.transportFailurePenalty,
     combinedScore: quality.combinedScore,
     eligibleForBadge: quality.eligibleForBadge,
     badgeBlockReason: quality.badgeBlockReason,

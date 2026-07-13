@@ -59,10 +59,13 @@ export async function mihomoUpdateRuleProviders(name: string): Promise<void> {
 
 export async function mihomoChangeProxy(
   group: string,
-  proxy: string
-): Promise<ControllerProxiesDetail> {
+  proxy: string,
+  options?: { source?: 'auto' | 'manual' }
+): Promise<ControllerProxiesDetail | null> {
   return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke('mihomoChangeProxy', group, proxy)
+    await window.electron.ipcRenderer.invoke('mihomoChangeProxy', group, proxy, {
+      source: options?.source ?? 'manual'
+    })
   )
 }
 
@@ -603,6 +606,34 @@ export async function stopProxyHealthMonitor(): Promise<void> {
 
 export async function restartProxyHealthMonitor(): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('restartProxyHealthMonitor'))
+}
+
+export async function startCommercialNodeBenchmark(): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('startCommercialNodeBenchmark'))
+}
+
+export async function stopCommercialNodeBenchmark(): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('stopCommercialNodeBenchmark'))
+}
+
+export async function restartCommercialNodeBenchmark(): Promise<void> {
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke('restartCommercialNodeBenchmark')
+  )
+}
+
+export async function generateCommercialNodeReport(): Promise<string> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('generateCommercialNodeReport'))
+}
+
+export async function getCommercialNodeReportPath(): Promise<string> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getCommercialNodeReportPath'))
+}
+
+export async function getCommercialNodeStabilityMarkers(): Promise<CommercialNodeStabilitySnapshot> {
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke('getCommercialNodeStabilityMarkers')
+  )
 }
 
 let applyThemeRunning = false

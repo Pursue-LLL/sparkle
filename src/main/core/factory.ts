@@ -26,6 +26,19 @@ import {
   generateProxyProvider,
   generateBaseConfigWithProvider
 } from './provider'
+import {
+  collectSubscriptionGroupNames,
+  removeNonSubscriptionProxyGroups,
+  rewriteMissingRuleProxyGroupTargets
+} from './profileGroupNormalize'
+import { showNotification } from '../utils/notification'
+import {
+  CURSOR_DEDICATED_GROUP_NAME,
+  LEGACY_CURSOR_DEDICATED_GROUP_NAME
+} from './cursorProxyGroup'
+import { appendAppLog } from '../utils/log'
+
+let cursorDedicatedGroupRenameNotified = false
 
 let runtimeConfigStr: string,
   rawProfileStr: string,
@@ -69,8 +82,59 @@ export async function generateProfile(): Promise<void> {
     profile = deepMerge(JSON.parse(JSON.stringify(currentProfile)), configToMerge)
   }
 
+  if (profile.proxies && Array.isArray(profile.proxies)) {
+    const { applyHysteria2ProxiesQuicStability } = await import('./hysteria2QuicStability')
+    ;(profile as MihomoConfig).proxies = applyHysteria2ProxiesQuicStability(
+      profile.proxies as unknown[],
+    ) as MihomoConfig['proxies']
+  }
+
   await cleanProfile(profile, controlDns, controlSniff)
-  ensureRuleProxyGroupAliases(profile)
+  dedupeProxyGroupProviderUse(profile)
+  const subscriptionGroupNames = collectSubscriptionGroupNames(currentProfile)
+  const leafProxyNames = (extractProxies(currentProfile) as { name?: string }[])
+    .map((proxy) => proxy.name)
+    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+  const { ensureCustomProxyGroups } = await import('./customProxyGroups')
+  const providerProfileId = current && current !== 'default' ? current : undefined
+  const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
+  if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
+    cursorDedicatedGroupRenameNotified = true
+    const detail =
+      `代理组「${LEGACY_CURSOR_DEDICATED_GROUP_NAME}」已重命名为「${CURSOR_DEDICATED_GROUP_NAME}」。` +
+      '请在 Sparkle 代理页为 Guard 专用组重新选择 VPS 节点；非 3.1.15 的 Cursor 现走 🚀 节点选择。'
+    await appendAppLog(`[Factory]: ${detail}\n`)
+    void showNotification({
+      title: 'Cursor 代理组已更新',
+      body: detail,
+      variant: 'warning'
+    })
+  }
+  rewriteMissingRuleProxyGroupTargets(profile)
+  removeNonSubscriptionProxyGroups(profile, subscriptionGroupNames)
+  const { ensureSelectGroupsDefaultToAutoSwitch } = await import('./defaultAutoSwitchProxy')
+  const { proxySwitchPriority = [] } = await getAppConfig()
+  const { resolveEffectiveRegionPriority } = await import('./regionPriority')
+  ensureSelectGroupsDefaultToAutoSwitch(profile, providerProfileId, {
+    leafProxyNames,
+    regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority)
+  })
+  const { ensureVpsDirectBypass } = await import('./vpsDirectBypass')
+  await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
+  const { cursorBidiOptimize = true, cursorProxyAppPathPrefixes } = await getAppConfig()
+  if (cursorBidiOptimize !== false) {
+    const { DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES, injectCursorDomainRules } = await import(
+      './cursorRuleInjection'
+    )
+    injectCursorDomainRules(
+      profile,
+      cursorProxyAppPathPrefixes ?? [...DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES]
+    )
+  }
+  const { ensureCorporateDirectRules } = await import('./corporateDirectRules')
+  ensureCorporateDirectRules(profile)
+  const { ensureFakeIpRoutingIntegrity } = await import('./fakeIpRoutingIntegrity')
+  ensureFakeIpRoutingIntegrity(profile)
 
   runtimeConfig = profile
   runtimeConfigStr = stringifyYaml(profile)
@@ -103,9 +167,6 @@ async function cleanProfile(
   cleanProxyConfigs(profile)
 }
 
-const RULE_BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'DNS', 'NOOP'])
-const RULE_MODIFIERS = new Set(['no-resolve'])
-
 interface ProxyGroupConfig {
   name: string
   type: string
@@ -113,45 +174,13 @@ interface ProxyGroupConfig {
   use?: string[]
 }
 
-function extractRulePolicyTargets(rules: string[]): string[] {
-  const targets: string[] = []
-
-  for (const rule of rules) {
-    const trimmed = rule.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-
-    const parts = trimmed.split(',')
-    while (parts.length > 0 && RULE_MODIFIERS.has(parts[parts.length - 1].trim())) {
-      parts.pop()
-    }
-    if (parts.length < 3) continue
-
-    const target = parts[parts.length - 1].trim()
-    if (target && !RULE_BUILTIN_TARGETS.has(target)) {
-      targets.push(target)
-    }
-  }
-
-  return targets
-}
-
-function ensureRuleProxyGroupAliases(profile: MihomoConfig): void {
+function dedupeProxyGroupProviderUse(profile: MihomoConfig): void {
   const groups = profile['proxy-groups'] as ProxyGroupConfig[] | undefined
-  const rules = profile.rules as string[] | undefined
-  if (!groups?.length || !rules?.length) return
-
-  const groupNames = new Set(groups.map((group) => group.name))
-  const mainSelectGroup = groups.find((group) => group.type === 'select')?.name
-  if (!mainSelectGroup) return
-
-  for (const target of new Set(extractRulePolicyTargets(rules))) {
-    if (groupNames.has(target)) continue
-    groups.push({
-      name: target,
-      type: 'select',
-      proxies: [mainSelectGroup]
-    })
-    groupNames.add(target)
+  if (!groups) return
+  for (const group of groups) {
+    if (group.use && Array.isArray(group.use)) {
+      group.use = [...new Set(group.use)]
+    }
   }
 }
 
@@ -188,10 +217,10 @@ function cleanBooleanConfigs(profile: MihomoConfig): void {
 function cleanNumberConfigs(profile: MihomoConfig): void {
   if (!profile['disable-keep-alive']) {
     if (profile['keep-alive-idle'] == null || profile['keep-alive-idle'] === 0) {
-      profile['keep-alive-idle'] = 600
+      profile['keep-alive-idle'] = 3600
     }
     if (profile['keep-alive-interval'] == null || profile['keep-alive-interval'] === 0) {
-      profile['keep-alive-interval'] = 30
+      profile['keep-alive-interval'] = 60
     }
   }
 

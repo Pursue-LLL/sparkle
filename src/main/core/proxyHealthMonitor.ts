@@ -5,6 +5,9 @@ import { appendAppLog } from '../utils/log'
 import { recordProxySwitch } from './networkStabilityMonitor'
 import { showNotification } from '../utils/notification'
 import { BrowserWindow } from 'electron'
+import { resolveFailoverProxyGroup } from './customProxyGroups'
+import { CURSOR_DELAY_TEST_URL } from './cursorProxyGroup'
+import { nodeMatchesRegion, resolveEffectiveRegionPriority } from './regionPriority'
 
 let healthCheckTimer: NodeJS.Timeout | null = null
 let isMonitoring = false
@@ -13,10 +16,6 @@ let lastFailoverAt = 0
 
 const MIN_FAILOVER_INTERVAL_MS = 5 * 60_000
 const DELAY_RECHECK_WAIT_MS = 2_000
-
-const DEFAULT_PROXY_PRIORITY = ['新加坡', '台湾', '日本']
-
-const BLOCKED_REGION_KEYWORDS = ['香港', 'hongkong', 'hong kong']
 
 function getMainWindow(): BrowserWindow | null {
   const { mainWindow } = require('..')
@@ -34,13 +33,7 @@ function formatError(error: unknown): string {
 }
 
 function normalizePriorityList(priorityList: string[]): string[] {
-  const filtered = priorityList.filter(
-    (priority) =>
-      !BLOCKED_REGION_KEYWORDS.some((blocked) =>
-        priority.toLowerCase().includes(blocked.toLowerCase())
-      )
-  )
-  return filtered.length > 0 ? filtered : DEFAULT_PROXY_PRIORITY
+  return resolveEffectiveRegionPriority(priorityList)
 }
 
 function isAllowedRegionProxy(proxyName: string, priorityList: string[]): boolean {
@@ -60,7 +53,7 @@ export async function startProxyHealthMonitor(): Promise<void> {
   if (!autoProxySwitch) return
 
   isMonitoring = true
-  appendAppLog('[ProxyHealthMonitor]: started (failover-only, SG/TW/JP)\n')
+  appendAppLog('[ProxyHealthMonitor]: started (failover-only, SG/JP/TW/KR/US)\n')
 
   void runHealthCheckSafely()
 
@@ -164,10 +157,7 @@ function isRoutingProxy(proxy: ControllerProxiesDetail | ControllerGroupDetail):
 }
 
 function getPrimaryProxyGroup(groups: ControllerMixedGroup[]): ControllerMixedGroup | undefined {
-  return (
-    groups.find((group) => group.type === 'Selector' && group.name !== 'GLOBAL') ??
-    groups.find((group) => group.name !== 'GLOBAL')
-  )
+  return resolveFailoverProxyGroup(groups)
 }
 
 async function checkProxyHealth(): Promise<void> {
@@ -188,7 +178,7 @@ async function checkProxyHealth(): Promise<void> {
 
   if (isDisallowedRegionProxy(currentProxy, priorityList)) {
     appendAppLog(
-      `[ProxyHealthMonitor]: current proxy "${currentProxy}" is outside SG/TW/JP, switching\n`
+      `[ProxyHealthMonitor]: current proxy "${currentProxy}" is outside SG/JP/TW/KR/US, switching\n`
     )
     await applyPrioritySelection(
       firstGroup,
@@ -252,24 +242,8 @@ async function measureProxyDelay(
 
 async function shouldKeepProxyDespiteDelayFailure(currentProxy: string): Promise<boolean> {
   try {
-    const { getRecentCursorProbe, runCursorApiProbeCheck } = await import(
-      './networkStabilityMonitor'
-    )
-    const recent = getRecentCursorProbe()
-    if (recent?.ok && recent.proxyNode === currentProxy) {
-      appendAppLog(
-        `[ProxyHealthMonitor]: delay unhealthy but recent Cursor API probe ok, keeping "${currentProxy}"\n`
-      )
-      return true
-    }
-
-    const probeOk = await runCursorApiProbeCheck()
-    if (probeOk) {
-      appendAppLog(
-        `[ProxyHealthMonitor]: delay unhealthy but live Cursor API probe ok, keeping "${currentProxy}"\n`
-      )
-      return true
-    }
+    const { shouldDeferCursorFailover } = await import('./networkStabilityMonitor')
+    return shouldDeferCursorFailover(currentProxy)
   } catch (error) {
     appendAppLog(
       `[ProxyHealthMonitor]: Cursor API probe guard failed: ${formatError(error)}\n`
@@ -369,7 +343,7 @@ async function applyPrioritySelection(
     return true
   }
 
-  appendAppLog('[ProxyHealthMonitor]: no available SG/TW/JP proxy found\n')
+  appendAppLog('[ProxyHealthMonitor]: no available SG/JP/TW/KR/US proxy found\n')
   try {
     const { current, items } = await getProfileConfig()
     const currentItem = items.find((item) => item.id === current)
@@ -400,7 +374,7 @@ async function measureAllowedProxies(
   for (const proxy of proxies) {
     const p = (async () => {
       try {
-        const result = await mihomoProxyDelay(proxy.name)
+        const result = await mihomoProxyDelay(proxy.name, CURSOR_DELAY_TEST_URL)
         const delay = result.delay ?? 0
         proxy.history = [{ time: new Date().toISOString(), delay }]
       } catch {
@@ -420,37 +394,8 @@ async function measureAllowedProxies(
   await Promise.allSettled(results)
 }
 
-function extractPriorityKeywords(priority: string): string[] {
-  const keywords = new Set<string>()
-  const chineseSegments = priority.match(/[\u4e00-\u9fff]+/g) ?? []
-  for (const segment of chineseSegments) {
-    keywords.add(segment.toLowerCase())
-  }
-
-  const lower = priority.toLowerCase()
-  const latinKeywords = ['singapore', 'taiwan', 'japan', 'sg', 'tw', 'jp']
-  for (const keyword of latinKeywords) {
-    if (lower.includes(keyword)) {
-      keywords.add(keyword)
-    }
-  }
-
-  return [...keywords]
-}
-
 function proxyMatchesPriority(proxyName: string, priority: string): boolean {
-  const normalizedProxyName = proxyName.toLowerCase()
-  const keywords = extractPriorityKeywords(priority)
-
-  if (keywords.length === 0) {
-    const normalizedPriority = priority.toLowerCase()
-    return (
-      normalizedProxyName.includes(normalizedPriority) ||
-      normalizedPriority.includes(normalizedProxyName)
-    )
-  }
-
-  return keywords.some((keyword) => normalizedProxyName.includes(keyword))
+  return nodeMatchesRegion(proxyName, priority)
 }
 
 function selectProxyByPriority(

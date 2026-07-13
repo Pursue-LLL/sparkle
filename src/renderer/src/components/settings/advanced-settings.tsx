@@ -8,7 +8,9 @@ import {
   patchControledMihomoConfig,
   restartCore,
   startNetworkDetection,
-  stopNetworkDetection
+  stopNetworkDetection,
+  restartCommercialNodeBenchmark,
+  stopCommercialNodeBenchmark
 } from '@renderer/utils/ipc'
 import { platform } from '@renderer/utils/init'
 import { IoIosHelpCircle } from 'react-icons/io'
@@ -30,7 +32,11 @@ const AdvancedSettings: React.FC = () => {
     envType = [platform === 'win32' ? 'powershell' : 'bash'],
     networkDetection = false,
     networkDetectionBypass = ['VMware', 'vEthernet'],
-    networkDetectionInterval = 10
+    networkDetectionInterval = 10,
+    networkAlertEnabled = true,
+    commercialNodeBenchmarkEnabled = false,
+    commercialNodeBenchmarkIntervalSec = 60,
+    commercialNodeBenchmarkReportIntervalSec = 3600
   } = appConfig || {}
 
   const pauseSSIDArray = pauseSSID ?? emptyArray
@@ -170,6 +176,53 @@ const AdvancedSettings: React.FC = () => {
               await restartCore()
             } catch (e) {
               notify(e, { variant: 'danger' })
+            }
+          }}
+        />
+      </SettingItem>
+      <SettingItem
+        compatKey="legacy"
+        title="Cursor 网络异常通知"
+        actions={
+          <Tooltip content="HY2 节点延迟过高或 api2 探针连续失败时发送系统通知（与自动切节点无关）">
+            <Button isIconOnly size="sm" variant="light">
+              <IoIosHelpCircle className="text-lg" />
+            </Button>
+          </Tooltip>
+        }
+        divider
+      >
+        <Switch
+          size="sm"
+          isSelected={networkAlertEnabled}
+          onValueChange={(v) => {
+            patchAppConfig({ networkAlertEnabled: v })
+          }}
+        />
+      </SettingItem>
+      <SettingItem
+        compatKey="legacy"
+        title="Cursor 节点 24h 质量报告"
+        actions={
+          <Tooltip
+            content={`仅探韩日 6 个 canonical VPS（间隔=配置 intervalSec；有效并发=min(配置,3,2)=2 对齐 delay 槽）。商业 batch 已关闭。Cursor 连接≥20 或短探针进行时自动跳过 VPS batch；60s 探针在马拉松时写缓存 probe 行。core 就绪后 45s grace 再 warmup/monitor。TUN 丢失有 grace/debounce，api2 仍通时不 restartCore。报告每 ${Math.round(commercialNodeBenchmarkReportIntervalSec / 60)}min → cursor-node-quality-report.md。`}
+          >
+            <Button isIconOnly size="sm" variant="light">
+              <IoIosHelpCircle className="text-lg" />
+            </Button>
+          </Tooltip>
+        }
+        divider
+      >
+        <Switch
+          size="sm"
+          isSelected={commercialNodeBenchmarkEnabled}
+          onValueChange={async (v) => {
+            await patchAppConfig({ commercialNodeBenchmarkEnabled: v })
+            if (v) {
+              await restartCommercialNodeBenchmark()
+            } else {
+              await stopCommercialNodeBenchmark()
             }
           }}
         />

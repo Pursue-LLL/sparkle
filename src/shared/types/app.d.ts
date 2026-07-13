@@ -101,9 +101,33 @@ interface AppConfig {
   customTheme?: string
   autoCheckUpdate: boolean
   autoProxySwitch?: boolean
+  cursorBidiOptimize?: boolean
+  /** macOS Cursor .app bundle path prefixes routed to Cursor 3.1.15 专用; other installs use 🚀 节点选择 via PROCESS-NAME rules. */
+  cursorProxyAppPathPrefixes?: string[]
+  /** When true, block re-enabling system HTTP proxy (breaks Cursor Agent bidi). */
+  cursorSysProxyLock?: boolean
+  /** Prune idle duplicate Cursor mihomo sockets during marathon (preserves active SSE). */
+  cursorConnectionHygieneEnabled?: boolean
   proxySwitchPriority?: string[]
   proxyHealthCheckInterval?: number
   proxyTimeoutThreshold?: number
+  /** Notify when Cursor proxy delay/latency exceeds thresholds (independent of autoProxySwitch). */
+  networkAlertEnabled?: boolean
+  networkAlertDelayThresholdMs?: number
+  networkAlertProbeLatencyThresholdMs?: number
+  networkAlertConsecutiveHits?: number
+  networkAlertCooldownMs?: number
+  /** Probe commercial subscription nodes every N seconds; 24h rolling report. */
+  commercialNodeBenchmarkEnabled?: boolean
+  commercialNodeBenchmarkIntervalSec?: number
+  commercialNodeBenchmarkReportIntervalSec?: number
+  commercialNodeBenchmarkConcurrency?: number
+  commercialNodeBenchmarkRegions?: string[]
+  commercialNodeBenchmarkNotifyOnReport?: boolean
+  /** Directory for cursor-node-quality-report.md (default: ~/.sparkle). */
+  commercialNodeBenchmarkReportDir?: string
+  /** Include JP/KR VPS leaf nodes in Cursor benchmark alongside commercial nodes. */
+  commercialNodeBenchmarkIncludeVps?: boolean
   silentStart: boolean
   autoCloseConnection: boolean
   closeMode: 'all' | 'group'
@@ -206,4 +230,38 @@ interface SubStoreSub {
   displayName?: string
   icon?: string
   tag?: string[]
+}
+
+interface CommercialNodeStabilityEntry {
+  node: string
+  kind: 'vps' | 'commercial'
+  region: string
+  rank: number
+  combinedScore: number
+  stabilityScore: number
+  probeScore: number
+  sessionScore: number
+  sessionScore24h: number
+  sessionScore2h: number | null
+  sessionScoreSource: '2h' | '24h'
+  sessionObservations2h: number
+  p50: number
+  successRate: number
+  slow500Rate: number
+  jitter: number
+  eligibleForBadge: boolean
+  badgeBlockReason?: string
+  cursorStability: 'excellent' | 'good' | 'watch' | 'risk' | 'unknown'
+  cursorStabilityLabel: string
+  cursorStabilityHint: string
+  transportFailures: number
+}
+
+interface CommercialNodeStabilitySnapshot {
+  updatedAt: string
+  enabled: boolean
+  minSamples: number
+  topStable: CommercialNodeStabilityEntry[]
+  markersByNode: Record<string, CommercialNodeStabilityEntry>
+  scoresByNode: Record<string, CommercialNodeStabilityEntry>
 }

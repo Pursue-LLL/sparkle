@@ -32,6 +32,18 @@ export async function triggerSysProxy(
   useRegistry = false
 ): Promise<void> {
   if (enable) {
+    const { cursorBidiOptimize = true, cursorSysProxyLock = false } = await getAppConfig()
+    if (cursorBidiOptimize !== false && cursorSysProxyLock) {
+      await appendAppLog(
+        '[SysProxy]: blocked enable — cursorSysProxyLock (Cursor Agent bidi requires TUN, not HTTP proxy)\n'
+      )
+      showNotification({
+        title: 'Sparkle: system proxy locked',
+        body: 'Cursor bidi optimize is active. Disable cursorSysProxyLock in config to use system HTTP proxy.',
+        variant: 'warning'
+      })
+      return
+    }
     if (net.isOnline()) {
       await setSysProxy(onlyActiveDevice, useRegistry)
     } else {

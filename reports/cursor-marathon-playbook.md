@@ -8,6 +8,7 @@
 1. **换 mihomo 节点 ≠ Cursor 计次**，但会 **RST 进行中的 Agent SSE** → 触发 stream-eof → 逼用户 Continue → **浪费 Included**。
 2. **赛中（有 parallel agent 在跑）绝不换节点** — 比 TLS 偶发更危险。
 3. TLS / stream 优化靠 **赛前** stack 配好，不是靠赛中切换。
+4. **api2 全系 ~77s `[unavailable]` 且 Marketplace 仍 200** → 多为 **Sparkle/mihomo TUN 出站池僵死**，不是节点坏了；**退出 Sparkle 重启** 有效，换节点无效。详见 [BUGFIX_LOG.md](../BUGFIX_LOG.md) BUG-2026-07-09-001。
 
 ## 赛前（无 Agent 在跑）
 
@@ -15,8 +16,9 @@
 - [ ] TUN 开；系统 HTTP 代理关（`cursorSysProxyLock`）
 - [ ] Cursor 域名走 `🎯 Cursor-专用` **Selector**（固定节点）
 - [ ] **禁止** Cursor 流量走 UrlTest / 自动选择 / 故障转移
-- [ ] 节点通过 **16min 长流 probe**（`agent.api5.cursor.sh`）
+- [ ] 节点通过 **60s api2 短探测**（`api2.cursor.sh` HEAD；`network-stability-events.jsonl` kind:probe）
 - [ ] keep-alive-idle ≥ 3600s；fake-ip-filter 含 `+.cursor.sh` / `+.workers.dev`
+- [ ] VPS 维护：**禁止频繁** `systemctl restart sing-box`（单进程，restart 断所有 Reality/HY2/TUIC；见 `VPS-INFRA.md` §运维规范）
 
 ## 赛中（marathon + parallel）
 
@@ -27,7 +29,7 @@
 
 ## 赛后（全 Agent idle）
 
-- [ ] 长流 probe 变差 → **此时** 换 Cursor 专用节点给下一轮
+- [ ] 短探测连续失败 / agent RST 增多 → **此时** 换 Cursor 专用节点给下一轮
 - [ ] 查 `~/.sparkle/network-stability-events.jsonl`
 
 ## 断连 vs 代理（日志对照）
