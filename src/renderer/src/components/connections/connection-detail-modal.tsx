@@ -12,6 +12,7 @@ import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { BaseEditor } from '@renderer/components/base/base-editor-lazy'
 import { calcTraffic } from '@renderer/utils/calc'
+import { routingIntegrityMismatchHint } from '@renderer/utils/routingIntegrity'
 import dayjs from 'dayjs'
 import { BiCopy } from 'react-icons/bi'
 
@@ -110,6 +111,7 @@ function buildCopyMenuItems(value: string | string[], displayName?: string, pref
 const ConnectionDetailModal = ({ connection, onClose }: Props) => {
   const [viewMode, setViewMode] = useState<'detail' | 'raw'>('detail')
   const rawJson = useMemo(() => JSON.stringify(connection, null, 2), [connection])
+  const routingIntegrityHint = useMemo(() => routingIntegrityMismatchHint(connection), [connection])
 
   const renderRow = (
     title: string,
@@ -208,6 +210,15 @@ const ConnectionDetailModal = ({ connection, onClose }: Props) => {
       )
     },
     { kind: 'static', title: '代理链', content: [...connection.chains].reverse().join('>>') },
+    ...(routingIntegrityHint
+      ? [
+          {
+            kind: 'static' as const,
+            title: '路由一致性',
+            content: <span className="text-warning">{routingIntegrityHint}</span>
+          }
+        ]
+      : []),
     { kind: 'static', title: '上传速度', content: `${calcTraffic(connection.uploadSpeed || 0)}/s` },
     {
       kind: 'static',

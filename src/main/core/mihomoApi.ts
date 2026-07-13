@@ -9,6 +9,19 @@ import { floatingWindow } from '../resolve/floatingWindow'
 import { mihomoIpcPath, serviceIpcPath } from '../utils/dirs'
 import { publishMihomoLog } from '../utils/log'
 import { createSignedServiceAxios, getServiceAuthHeaders } from '../service/api'
+import { DEFAULT_GENERAL_DELAY_TEST_URL } from './cursorProxyGroup'
+import { withMihomoDelayProbeSlot } from './mihomoProbeCoordinator'
+import {
+  buildProviderProxyLookup,
+  resolveGroupMemberProxies
+} from './mihomoGroupMembersCore'
+
+export type MihomoChangeProxySource = 'auto' | 'manual' | 'bootstrap'
+
+export interface MihomoChangeProxyOptions {
+  /** Manual/bootstrap switches bypass Cursor api2 failover defer. Default: auto. */
+  source?: MihomoChangeProxySource
+}
 
 let axiosIns: AxiosInstance = null!
 let mihomoTrafficWs: WebSocket | null = null
@@ -151,6 +164,14 @@ export const mihomoGroups = async (): Promise<ControllerMixedGroup[]> => {
   const { mode = 'rule' } = await getControledMihomoConfig()
   if (mode === 'direct') return []
   const proxies = await mihomoProxies()
+  let providerLookup = buildProviderProxyLookup(null)
+  try {
+    providerLookup = buildProviderProxyLookup(await mihomoProxyProviders())
+  } catch {
+    // Provider API unavailable — fall back to /proxies-only resolution.
+  }
+  const resolveMembers = (memberNames: string[]) =>
+    resolveGroupMemberProxies(memberNames, proxies.proxies, providerLookup)
   const runtime = await getRuntimeConfig()
   const groups: ControllerMixedGroup[] = []
   runtime?.['proxy-groups']?.forEach((group: { name: string; url?: string }) => {
@@ -158,14 +179,14 @@ export const mihomoGroups = async (): Promise<ControllerMixedGroup[]> => {
     if (proxies.proxies[name] && 'all' in proxies.proxies[name] && !proxies.proxies[name].hidden) {
       const newGroup = proxies.proxies[name]
       newGroup.testUrl = url
-      const newAll = newGroup.all.map((name) => proxies.proxies[name])
+      const newAll = resolveMembers(newGroup.all)
       groups.push({ ...newGroup, all: newAll })
     }
   })
   if (!groups.find((group) => group.name === 'GLOBAL')) {
     const newGlobal = proxies.proxies['GLOBAL'] as ControllerGroupDetail
     if (!newGlobal.hidden) {
-      const newAll = newGlobal.all.map((name) => proxies.proxies[name])
+      const newAll = resolveMembers(newGlobal.all)
       groups.push({ ...newGlobal, all: newAll })
     }
   }
@@ -198,8 +219,30 @@ export const mihomoUpdateRuleProviders = async (name: string): Promise<void> => 
 
 export const mihomoChangeProxy = async (
   group: string,
-  proxy: string
-): Promise<ControllerProxiesDetail> => {
+  proxy: string,
+  options: MihomoChangeProxyOptions = {}
+): Promise<ControllerProxiesDetail | null> => {
+  const source = options.source ?? 'auto'
+
+  if (source === 'auto') {
+    const { isCursorSelectorGroupName } = await import('./cursorProxyGroup')
+    if (isCursorSelectorGroupName(group)) {
+      const groups = await mihomoGroups()
+      const targetGroup = groups?.find((item) => item.name === group)
+      const current = targetGroup?.now
+      if (current && current !== proxy) {
+        const { shouldDeferCursorFailover } = await import('./networkStabilityMonitor')
+        if (await shouldDeferCursorFailover(current)) {
+          const { appendAppLog } = await import('../utils/log')
+          await appendAppLog(
+            `[mihomoChangeProxy]: defer auto switch ${group} "${current}" → "${proxy}" — api2 reachable\n`
+          )
+          return null
+        }
+      }
+    }
+  }
+
   const instance = await getAxios()
   return await instance.put(`/proxies/${encodeURIComponent(group)}`, { name: proxy })
 }
@@ -209,16 +252,81 @@ export const mihomoUnfixedProxy = async (group: string): Promise<ControllerProxi
   return await instance.delete(`/proxies/${encodeURIComponent(group)}`)
 }
 
+async function mihomoProxyDelayFromProvider(
+  proxy: string
+): Promise<ControllerProxiesDelay> {
+  const providers = await mihomoProxyProviders()
+  let providerName: string | undefined
+  for (const [name, detail] of Object.entries(providers.providers)) {
+    if (detail.proxies?.some((item) => item.name === proxy)) {
+      providerName = name
+      break
+    }
+  }
+  if (!providerName) {
+    return { delay: 0, message: `provider leaf not found: ${proxy}` }
+  }
+
+  try {
+    await mihomoUpdateProxyProviders(providerName)
+  } catch {
+    // Fall back to cached provider history when healthcheck fails.
+  }
+
+  const refreshed = await mihomoProxyProviders()
+  const proxyDetail = refreshed.providers[providerName]?.proxies?.find((item) => item.name === proxy)
+  const history = proxyDetail?.history ?? []
+  const last = history[history.length - 1]
+  if (last && last.delay > 0) {
+    return { delay: last.delay }
+  }
+  return { delay: 0, message: `no provider delay history for ${proxy}` }
+}
+
+async function mihomoProxyDelayUnchecked(
+  proxy: string,
+  url?: string
+): Promise<ControllerProxiesDelay> {
+  const appConfig = await getAppConfig()
+  const { delayTestUrl, delayTestTimeout } = appConfig
+  const instance = await getAxios()
+  try {
+    return await instance.get(`/proxies/${encodeURIComponent(proxy)}/delay`, {
+      params: {
+        url: url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL,
+        timeout: delayTestTimeout || 5000
+      }
+    })
+  } catch (error) {
+    const proxies = await mihomoProxies()
+    if (proxies.proxies[proxy]) {
+      throw error
+    }
+    const providerDelay = await mihomoProxyDelayFromProvider(proxy)
+    if (providerDelay.delay !== undefined && providerDelay.delay > 0) {
+      return providerDelay
+    }
+    throw error
+  }
+}
+
 export const mihomoProxyDelay = async (
   proxy: string,
   url?: string
 ): Promise<ControllerProxiesDelay> => {
+  return withMihomoDelayProbeSlot(() => mihomoProxyDelayUnchecked(proxy, url))
+}
+
+async function mihomoGroupDelayUnchecked(
+  group: string,
+  url?: string
+): Promise<ControllerGroupDelay> {
   const appConfig = await getAppConfig()
   const { delayTestUrl, delayTestTimeout } = appConfig
   const instance = await getAxios()
-  return await instance.get(`/proxies/${encodeURIComponent(proxy)}/delay`, {
+  return await instance.get(`/group/${encodeURIComponent(group)}/delay`, {
     params: {
-      url: url || delayTestUrl || 'https://www.gstatic.com/generate_204',
+      url: url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL,
       timeout: delayTestTimeout || 5000
     }
   })
@@ -228,15 +336,7 @@ export const mihomoGroupDelay = async (
   group: string,
   url?: string
 ): Promise<ControllerGroupDelay> => {
-  const appConfig = await getAppConfig()
-  const { delayTestUrl, delayTestTimeout } = appConfig
-  const instance = await getAxios()
-  return await instance.get(`/group/${encodeURIComponent(group)}/delay`, {
-    params: {
-      url: url || delayTestUrl || 'https://www.gstatic.com/generate_204',
-      timeout: delayTestTimeout || 5000
-    }
-  })
+  return withMihomoDelayProbeSlot(() => mihomoGroupDelayUnchecked(group, url))
 }
 
 export const mihomoRulesDisable = async (rules: Record<string, boolean>): Promise<void> => {

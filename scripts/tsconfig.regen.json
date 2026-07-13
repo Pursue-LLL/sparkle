@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.node.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "electron": ["./electron-mock.mjs"],
+      "@electron-toolkit/utils": ["./electron-toolkit-mock.mjs"]
+    }
+  },
+  "include": ["./regenerate-work-config.ts", "../src/main/**/*.ts"]
+}

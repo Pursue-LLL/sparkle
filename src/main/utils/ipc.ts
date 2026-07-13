@@ -74,6 +74,14 @@ import {
   restartProxyHealthMonitor
 } from '../core/proxyHealthMonitor'
 import {
+  restartCommercialNodeBenchmark,
+  stopCommercialNodeBenchmark,
+  startCommercialNodeBenchmark,
+  generateCommercialNodeReport,
+  getCommercialNodeReportPath,
+  getCommercialNodeStabilityMarkers
+} from '../core/commercialNodeBenchmark'
+import {
   checkCorePermission,
   manualGrantCorePermition,
   revokeCorePermission
@@ -238,8 +246,8 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('mihomoUpdateRuleProviders', (_e, name) =>
     ipcErrorWrapper(mihomoUpdateRuleProviders)(name)
   )
-  ipcMain.handle('mihomoChangeProxy', (_e, group, proxy) =>
-    ipcErrorWrapper(mihomoChangeProxy)(group, proxy)
+  ipcMain.handle('mihomoChangeProxy', (_e, group, proxy, options) =>
+    ipcErrorWrapper(mihomoChangeProxy)(group, proxy, options)
   )
   ipcMain.handle('mihomoUnfixedProxy', (_e, group) => ipcErrorWrapper(mihomoUnfixedProxy)(group))
   ipcMain.handle('mihomoUpgradeGeo', ipcErrorWrapper(mihomoUpgradeGeo))
@@ -419,6 +427,14 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('startProxyHealthMonitor', () => startProxyHealthMonitor())
   ipcMain.handle('stopProxyHealthMonitor', () => stopProxyHealthMonitor())
   ipcMain.handle('restartProxyHealthMonitor', () => restartProxyHealthMonitor())
+  ipcMain.handle('startCommercialNodeBenchmark', () => startCommercialNodeBenchmark())
+  ipcMain.handle('stopCommercialNodeBenchmark', () => stopCommercialNodeBenchmark())
+  ipcMain.handle('restartCommercialNodeBenchmark', () => restartCommercialNodeBenchmark())
+  ipcMain.handle('generateCommercialNodeReport', () => generateCommercialNodeReport({ notify: true }))
+  ipcMain.handle('getCommercialNodeReportPath', async () => getCommercialNodeReportPath())
+  ipcMain.handle('getCommercialNodeStabilityMarkers', async () =>
+    getCommercialNodeStabilityMarkers()
+  )
   ipcMain.handle('quitApp', () => app.quit())
   ipcMain.handle('notDialogQuit', () => {
     setNotQuitDialog()

@@ -63,11 +63,23 @@ function validateProxies(proxies: unknown[]): boolean {
   })
 }
 
+import { applyHysteria2ProxiesQuicStability } from './hysteria2QuicStability'
+
 /**
- * 从订阅配置中提取 proxies
+ * 从订阅配置中提取 proxies，并对 Hysteria 2 节点注入 QUIC/TUN 稳定性参数
  */
 export function extractProxies(config: MihomoConfig): unknown[] {
-  return config.proxies || []
+  const proxies = config.proxies || []
+  return applyHysteria2ProxiesQuicStability(proxies)
+}
+
+/** Merge profile provider into group.use without duplicate provider IDs. */
+function normalizeGroupUse(existing: string[] | undefined, profileId: string): string[] {
+  const merged = existing ? [...existing] : []
+  if (!merged.includes(profileId)) {
+    merged.push(profileId)
+  }
+  return [...new Set(merged)]
 }
 
 /**
@@ -137,22 +149,24 @@ export function generateBaseConfigWithProvider(
       if (hasProxyRefs) {
         // 引用了代理节点，需要 provider
         if (group.use && Array.isArray(group.use)) {
-          newGroup.use = [...group.use, profileId]
+          newGroup.use = normalizeGroupUse(group.use, profileId)
+          // 组已显式配置 use（如 override 自建节点 + 订阅 filter）：保留 leaf 节点引用
+          // mihomo 支持 proxies 与 use/filter 并存
         } else {
-          newGroup.use = [profileId]
-        }
-        // 移除直接代理引用，保留组引用和特殊关键词（DIRECT、REJECT 等）
-        const groupRefs = newGroup.proxies.filter(
-          (name: string) => allGroupNames.has(name) || !proxyNames.has(name)
-        )
-        if (groupRefs.length > 0) {
-          newGroup.proxies = groupRefs
-        } else {
-          delete newGroup.proxies
+          newGroup.use = normalizeGroupUse(undefined, profileId)
+          // 纯订阅节点列表：迁移至 provider，移除 leaf 引用
+          const groupRefs = newGroup.proxies.filter(
+            (name: string) => allGroupNames.has(name) || !proxyNames.has(name)
+          )
+          if (groupRefs.length > 0) {
+            newGroup.proxies = groupRefs
+          } else {
+            delete newGroup.proxies
+          }
         }
       } else if (group.use && Array.isArray(group.use)) {
-        // 已有 use 字段的组，追加 provider
-        newGroup.use = [...group.use, profileId]
+        // 已有 use 字段的组，追加 provider（去重）
+        newGroup.use = normalizeGroupUse(group.use, profileId)
       }
       // 仅引用其他组的组：不添加 use，保持原样
 

@@ -6,9 +6,10 @@ interface Props {
   proxy: ControllerProxiesDetail | ControllerGroupDetail
   anchorEl: HTMLElement | null
   visible: boolean
+  benchmarkScore?: CommercialNodeStabilityEntry
 }
 
-const TOOLTIP_WIDTH = 228
+const TOOLTIP_WIDTH = 248
 const SPARK_W = 200
 const BAR_H = 28
 const LABEL_H = 14
@@ -47,7 +48,28 @@ function getDelaySvgColor(delay: number): string {
   return 'var(--color-warning)'
 }
 
-const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
+function getCursorStabilityChipColor(
+  level: CommercialNodeStabilityEntry['cursorStability']
+): DelayColor {
+  switch (level) {
+    case 'excellent':
+    case 'good':
+      return 'success'
+    case 'watch':
+      return 'warning'
+    case 'risk':
+      return 'danger'
+    default:
+      return 'default'
+  }
+}
+
+function formatSignedScore(value: number): string {
+  if (value > 0) return `+${value.toFixed(1)}`
+  return value.toFixed(1)
+}
+
+const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchmarkScore }) => {
   const [pos, setPos] = useState<{ top: number; left: number; side: 'left' | 'right' } | null>(null)
   const [finalTop, setFinalTop] = useState<number | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -72,7 +94,7 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
     const h = panelRef.current.offsetHeight
     const clamped = Math.min(pos.top, vh - h - 8)
     setFinalTop(Math.max(8, clamped))
-  }, [pos, anchorEl])
+  }, [pos, anchorEl, benchmarkScore])
 
   if (!visible || !pos || !anchorEl) return null
 
@@ -98,6 +120,8 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
 
   const arrowBorderColor = 'var(--color-separator)'
   const arrowFillColor = 'var(--color-surface-secondary)'
+
+  const hasSessionObs = benchmarkScore && benchmarkScore.transportFailures > 0
 
   return createPortal(
     <div
@@ -159,6 +183,86 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
         </div>
 
         <Separator variant="tertiary" />
+
+        {benchmarkScore && (
+          <>
+            <div className="px-3 pt-2 pb-1.5">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-[10px] text-muted">Cursor Agent 稳定性</span>
+                <Chip
+                  color={getCursorStabilityChipColor(benchmarkScore.cursorStability)}
+                  variant="soft"
+                  size="sm"
+                  className="h-4 min-h-4 px-1 text-[10px]"
+                >
+                  {benchmarkScore.cursorStabilityLabel}
+                </Chip>
+              </div>
+              <p className="text-[10px] text-muted/80 leading-snug mb-1.5">
+                {benchmarkScore.cursorStabilityHint}
+              </p>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+                <span className="text-muted">Agent 断连</span>
+                <span
+                  className={`justify-self-end ${benchmarkScore.transportFailures > 0 ? 'text-warning' : ''}`}
+                >
+                  {benchmarkScore.transportFailures > 0
+                    ? `${benchmarkScore.transportFailures} 次 RST`
+                    : '0'}
+                </span>
+                <span className="text-muted">session 分</span>
+                <span className="justify-self-end">
+                  {hasSessionObs || benchmarkScore.sessionScoreSource === '2h'
+                    ? `${formatSignedScore(benchmarkScore.sessionScore)} (${benchmarkScore.sessionScoreSource})`
+                    : '—'}
+                </span>
+                {benchmarkScore.sessionScoreSource === '2h' &&
+                  benchmarkScore.sessionScore24h !== benchmarkScore.sessionScore && (
+                    <>
+                      <span className="text-muted">session 24h</span>
+                      <span className="justify-self-end text-muted/80">
+                        {formatSignedScore(benchmarkScore.sessionScore24h)}
+                      </span>
+                    </>
+                  )}
+                <span className="text-muted">combined</span>
+                <span className="justify-self-end font-medium">
+                  {benchmarkScore.combinedScore.toFixed(1)}
+                </span>
+              </div>
+              {!benchmarkScore.eligibleForBadge && benchmarkScore.badgeBlockReason && (
+                <p className="text-[10px] text-warning/90 mt-1 leading-snug">
+                  未达推荐门槛：{benchmarkScore.badgeBlockReason}
+                </p>
+              )}
+            </div>
+            <Separator variant="tertiary" />
+            <div className="px-3 pt-2 pb-1.5">
+              <span className="text-[10px] text-muted block mb-1">24h api2 短探测</span>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+                <span className="text-muted">P50</span>
+                <span className="justify-self-end">{Math.round(benchmarkScore.p50)}ms</span>
+                <span className="text-muted">&gt;500ms</span>
+                <span className="justify-self-end">
+                  {(benchmarkScore.slow500Rate * 100).toFixed(1)}%
+                </span>
+                <span className="text-muted">jitter</span>
+                <span
+                  className={`justify-self-end ${benchmarkScore.jitter > 150 ? 'text-warning' : ''}`}
+                >
+                  {Math.round(benchmarkScore.jitter)}ms
+                </span>
+                <span className="text-muted">成功率</span>
+                <span className="justify-self-end">
+                  {(benchmarkScore.successRate * 100).toFixed(1)}%
+                </span>
+                <span className="text-muted">probe 分</span>
+                <span className="justify-self-end">{benchmarkScore.probeScore.toFixed(1)}</span>
+              </div>
+            </div>
+            <Separator variant="tertiary" />
+          </>
+        )}
 
         <div className="px-3 py-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
           <span className="text-[10px] text-muted">类型</span>
@@ -282,7 +386,7 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
 
         <Separator variant="tertiary" />
         <div className="px-3 pt-2 pb-2.5">
-          <span className="text-[10px] text-muted block mb-1.5">历史延迟</span>
+          <span className="text-[10px] text-muted block mb-1.5">测速记录（mihomo）</span>
           {history.length > 0 ? (
             <svg width={SPARK_W} height={CHART_H}>
               {history.map((h, i) => {

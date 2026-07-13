@@ -145,7 +145,7 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
       electron:
-        specifier: ^42.0.1
+        specifier: 42.0.1
         version: 42.0.1
       electron-builder:
         specifier: 26.8.2

@@ -5,6 +5,11 @@ import { useGroups } from './hooks/use-groups'
 import { mihomoChangeProxy, mihomoGroupDelay, mihomoCloseConnections } from './utils/ipc'
 import { useAppConfig } from './hooks/use-app-config'
 import { calcTraffic } from './utils/calc'
+import ConfirmModal from './components/base/base-confirm'
+import {
+  cursorProxySwitchConfirmDescription,
+  isCursorSelectorGroupName
+} from './utils/cursor-proxy-groups'
 
 interface TrafficData {
   up: number
@@ -18,6 +23,11 @@ const TrayMenuApp: React.FC = () => {
 
   const [traffic, setTraffic] = useState<TrafficData>({ up: 0, down: 0 })
   const [testingGroup, setTestingGroup] = useState<string | null>(null)
+  const [pendingProxySwitch, setPendingProxySwitch] = useState<{
+    group: string
+    proxy: string
+    current: string
+  } | null>(null)
 
   useEffect(() => {
     window.electron.ipcRenderer.on('mihomoTraffic', (_e, info: TrafficData) => {
@@ -48,14 +58,27 @@ const TrayMenuApp: React.FC = () => {
     }
   }
 
+  const executeProxySwitch = async (groupName: string, proxyName: string): Promise<void> => {
+    await mihomoChangeProxy(groupName, proxyName)
+    if (autoCloseConnection) {
+      await mihomoCloseConnections()
+    }
+    mutate()
+  }
+
   const handleSelectProxy = async (groupName: string, proxyName: string): Promise<void> => {
     try {
-      await mihomoChangeProxy(groupName, proxyName)
-      if (autoCloseConnection) {
-        await mihomoCloseConnections()
+      const groupObj = groups?.find((item) => item.name === groupName)
+      const current = groupObj?.now ?? ''
+      if (current === proxyName) {
+        return
       }
-      mutate()
-    } catch (e) {
+      if (isCursorSelectorGroupName(groupName)) {
+        setPendingProxySwitch({ group: groupName, proxy: proxyName, current })
+        return
+      }
+      await executeProxySwitch(groupName, proxyName)
+    } catch {
       // ignore
     }
   }
@@ -95,6 +118,31 @@ const TrayMenuApp: React.FC = () => {
   }, [groups])
 
   return (
+    <>
+      {pendingProxySwitch && (
+        <ConfirmModal
+          title="切换 Cursor 节点"
+          description={cursorProxySwitchConfirmDescription(
+            pendingProxySwitch.group,
+            pendingProxySwitch.current,
+            pendingProxySwitch.proxy
+          )}
+          confirmText="确认切换"
+          cancelText="取消"
+          onChange={(open) => {
+            if (!open) {
+              setPendingProxySwitch(null)
+            }
+          }}
+          onConfirm={async () => {
+            const pending = pendingProxySwitch
+            setPendingProxySwitch(null)
+            if (pending) {
+              await executeProxySwitch(pending.group, pending.proxy)
+            }
+          }}
+        />
+      )}
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-content1 rounded-xl border border-divider">
       <div className="flex items-center justify-between px-3 py-2 border-b border-divider bg-content2/50">
         <div className="flex items-center gap-2">
@@ -231,6 +279,7 @@ const TrayMenuApp: React.FC = () => {
         )}
       </ScrollShadow>
     </div>
+    </>
   )
 }
 
