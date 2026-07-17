@@ -38,6 +38,8 @@ export type ProbeAttribution =
   | 'transport_partition_stale'
   | 'deferred_load'
   | 'offline'
+  | 'ssh_target_unresolved'
+  | 'fake_ip_misroute'
 
 export type RecoveryLevel = 'L0' | 'L1' | 'L2' | 'L3'
 
@@ -188,7 +190,9 @@ export function shouldExcludeProbeSampleFromNodeScoring(attribution: ProbeAttrib
   return (
     attribution === 'transport_partition_stale' ||
     attribution === 'deferred_load' ||
-    attribution === 'offline'
+    attribution === 'offline' ||
+    attribution === 'ssh_target_unresolved' ||
+    attribution === 'fake_ip_misroute'
   )
 }
 

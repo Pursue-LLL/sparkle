@@ -2,6 +2,8 @@ import dns from 'node:dns'
 
 const IPV4_PATTERN = /^(\d{1,3}\.){3}\d{1,3}$/
 
+export const VPS_SSH_HOST_ALIASES = ['kr-vps', 'jp-vps'] as const
+
 function parseIpv4(ip: string): number[] | null {
   if (!IPV4_PATTERN.test(ip)) {
     return null
@@ -84,6 +86,25 @@ function buildDirectRule(ip: string): string {
   return `IP-CIDR,${ip}/32,DIRECT,no-resolve`
 }
 
+function buildDomainDirectRule(host: string): string {
+  return `DOMAIN,${host},DIRECT,no-resolve`
+}
+
+function hasDirectRuleForDomain(rules: string[], host: string): boolean {
+  const normalized = host.trim().toLowerCase()
+  return rules.some((entry) => {
+    const trimmed = entry.trim()
+    if (!trimmed || trimmed.startsWith('#')) {
+      return false
+    }
+    const parts = trimmed.split(',')
+    if (parts[0]?.trim() !== 'DOMAIN') {
+      return false
+    }
+    return (parts[1]?.trim() ?? '').toLowerCase() === normalized
+  })
+}
+
 function hasDirectRuleForIp(rules: string[], ip: string): boolean {
   const cidr = `${ip}/32`
   return rules.some((entry) => {
@@ -110,25 +131,26 @@ function prependUnique(values: string[] | undefined, additions: string[]): strin
   return merged
 }
 
-function prependDirectRules(rules: string[] | undefined, ips: string[]): string[] {
-  const existing = rules ?? []
-  const additions = ips
-    .filter((ip) => !hasDirectRuleForIp(existing, ip))
-    .map(buildDirectRule)
-  return [...additions, ...existing]
-}
-
 /**
  * Ensure outbound dials to VPS proxy servers bypass TUN/sniffer mis-routing.
  * Without this, TLS SNI (e.g. cloudflare.com) can match domain rules and loop via another proxy.
  */
 export async function ensureVpsDirectBypass(profile: MihomoConfig, leafProxies: unknown[]): Promise<void> {
   const ips = await collectVpsServerIps(leafProxies)
-  if (ips.length === 0) {
+  const existingRules = profile.rules as string[] | undefined
+  const domainRules = VPS_SSH_HOST_ALIASES.filter(
+    (host) => !hasDirectRuleForDomain(existingRules ?? [], host)
+  ).map(buildDomainDirectRule)
+
+  if (domainRules.length === 0 && ips.length === 0) {
     return
   }
 
-  ;(profile as any).rules = prependDirectRules(profile.rules as string[] | undefined, ips)
+  const existing = existingRules ?? []
+  const ipAdditions = ips
+    .filter((ip) => !hasDirectRuleForIp(existing, ip))
+    .map(buildDirectRule)
+  ;(profile as any).rules = [...domainRules, ...ipAdditions, ...existing]
 
   if (profile.tun?.enable) {
     const tun = profile.tun as MihomoTunConfig
