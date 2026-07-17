@@ -164,11 +164,11 @@ describe('cursorTransportHealthCore', () => {
         cooldowns,
         nowMs: NOW
       }),
-      'L0'
+      'L1'
     )
   })
 
-  it('closes hung connections on hung scan even when short probe is healthy', () => {
+  it('does not L0-close hung Agent streams when hung scan probe is healthy', () => {
     const cooldowns = { lastL0AtMs: 0, lastL1AtMs: 0, lastL2AtMs: 0, lastL3AtMs: 0 }
     assert.equal(
       decideRecoveryAction({
@@ -180,11 +180,11 @@ describe('cursorTransportHealthCore', () => {
         cooldowns,
         nowMs: NOW
       }),
-      'L0'
+      'none'
     )
   })
 
-  it('reports L0 cooldown for healthy hung scan when throttled', () => {
+  it('does not report L0 cooldown for healthy hung scan', () => {
     const reason = describeRecoveryBlockReason({
       probe: { api2Ok: true, marketplaceOk: true, api2LatencyMs: 0, marketplaceLatencyMs: 0 },
       attribution: 'healthy',
@@ -199,7 +199,7 @@ describe('cursorTransportHealthCore', () => {
       },
       nowMs: NOW
     })
-    assert.equal(reason, 'L0_cooldown')
+    assert.equal(reason, undefined)
   })
 
   it('applies independent recovery cooldowns', () => {
@@ -213,7 +213,7 @@ describe('cursorTransportHealthCore', () => {
     assert.equal(canExecuteRecoveryLevel('L3', cooldowns, NOW), false)
   })
 
-  it('describeRecoveryBlockReason reports L0 cooldown when hung but throttled', () => {
+  it('describeRecoveryBlockReason reports L1 cooldown for partition stale when throttled', () => {
     const reason = describeRecoveryBlockReason({
       probe: { api2Ok: false, marketplaceOk: true, api2LatencyMs: 77_000, marketplaceLatencyMs: 400 },
       attribution: 'transport_partition_stale',
@@ -221,13 +221,13 @@ describe('cursorTransportHealthCore', () => {
       tunInterfaceLostConfirmed: false,
       priorRecoveryFailed: false,
       cooldowns: {
-        lastL0AtMs: NOW - 5_000,
-        lastL1AtMs: 0,
+        lastL0AtMs: 0,
+        lastL1AtMs: NOW - 5_000,
         lastL2AtMs: 0,
         lastL3AtMs: 0
       },
       nowMs: NOW
     })
-    assert.equal(reason, 'L0_cooldown')
+    assert.equal(reason, 'L1_cooldown')
   })
 })

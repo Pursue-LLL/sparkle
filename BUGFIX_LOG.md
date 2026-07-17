@@ -28,6 +28,21 @@
 
 ## 2026-07-17
 
+### BUG-2026-07-17-005 · v1.26.38 · CTHC L0 误杀 Agent SSE（1.26.36 回归）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | 今日 Included 计次暴增；单次请求 token 攒不到 20M；`L0 closed N hung` ×112 |
+| **关联产品** | Sparkle 1.26.36 |
+| **根因** | `decideRecoveryAction` 在 1.26.36 把 hung→L0 提到 healthy 之前；hung_scan 每 30s 杀 Agent 长连接 |
+| **证据** | 07-16 app log L0=0 hung=19 action=none；07-17 L0=112/56 events；git a64e9fd diff |
+| **修复** | 恢复 healthy 优先；**移除 L0 阶梯**（零 mihomo 吞吐 ≠ 可杀） |
+| **回归** | `cursorTransportHealthCore.test.ts` |
+| **用户动作** | 安装 Sparkle **1.26.38** pkg 并重启 core |
+
+---
+
 ### BUG-2026-07-17-004 · v1.26.37 · vpsL4Probe fake-ip 假阴性
 
 | 字段 | 内容 |
