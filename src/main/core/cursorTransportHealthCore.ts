@@ -232,13 +232,11 @@ export function canExecuteRecoveryLevel(
 export function decideRecoveryAction(context: RecoveryDecisionContext): RecoveryAction {
   const nowMs = context.nowMs ?? Date.now()
 
-  if (context.hungConnectionIds.length > 0 && canExecuteRecoveryLevel('L0', context.cooldowns, nowMs)) {
-    return 'L0'
-  }
-
   if (context.attribution === 'healthy') {
     return 'none'
   }
+
+  // Never L0-close Agent SSE from zero mihomo throughput (tool/thinking idle is normal).
 
   if (
     context.attribution === 'transport_partition_stale' &&
@@ -275,21 +273,11 @@ export function decideRecoveryAction(context: RecoveryDecisionContext): Recovery
 export function describeRecoveryBlockReason(context: RecoveryDecisionContext): string | undefined {
   const nowMs = context.nowMs ?? Date.now()
 
-  if (
-    context.hungConnectionIds.length > 0 &&
-    !canExecuteRecoveryLevel('L0', context.cooldowns, nowMs)
-  ) {
-    return 'L0_cooldown'
-  }
-
   if (context.attribution === 'healthy') {
     return undefined
   }
 
   const intended: RecoveryLevel[] = []
-  if (context.hungConnectionIds.length > 0) {
-    intended.push('L0')
-  }
   if (context.attribution === 'transport_partition_stale') {
     intended.push('L1')
   }
@@ -306,9 +294,6 @@ export function describeRecoveryBlockReason(context: RecoveryDecisionContext): s
     }
   }
 
-  if (context.attribution === 'transport_partition_stale' && context.hungConnectionIds.length === 0) {
-    return 'awaiting_hung_connections_for_L0'
-  }
   if (context.priorRecoveryFailed === false && !context.probe.api2Ok) {
     return 'awaiting_prior_recovery_failure_for_L3'
   }
