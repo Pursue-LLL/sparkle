@@ -130,7 +130,7 @@ describe('cursorTransportHealthCore', () => {
     assert.equal(shouldDeferDestructiveRecoveryAfterLiveProbe(true, 'KR-VPS-TUIC', 'SG-VPS'), false)
   })
 
-  it('escalates recovery ladder for transport partition stale', () => {
+  it('holds recovery on transport partition stale when marketplace is healthy', () => {
     const cooldowns = { lastL0AtMs: 0, lastL1AtMs: 0, lastL2AtMs: 0, lastL3AtMs: 0 }
     assert.equal(
       decideRecoveryAction({
@@ -147,7 +147,7 @@ describe('cursorTransportHealthCore', () => {
         cooldowns,
         nowMs: NOW
       }),
-      'L1'
+      'none'
     )
     assert.equal(
       decideRecoveryAction({
@@ -164,7 +164,58 @@ describe('cursorTransportHealthCore', () => {
         cooldowns,
         nowMs: NOW
       }),
-      'L1'
+      'none'
+    )
+  })
+
+  it('agent-stability-first regression guard: never L0/L1 on healthy or split-brain probes', () => {
+    const cooldowns = { lastL0AtMs: 0, lastL1AtMs: 0, lastL2AtMs: 0, lastL3AtMs: 0 }
+    const cases = [
+      {
+        probe: { api2Ok: true, marketplaceOk: true, api2LatencyMs: 0, marketplaceLatencyMs: 0 },
+        attribution: 'healthy' as const,
+        hungConnectionIds: ['conn-hung-1', 'conn-hung-2']
+      },
+      {
+        probe: { api2Ok: false, marketplaceOk: true, api2LatencyMs: 46, marketplaceLatencyMs: 733 },
+        attribution: 'transport_partition_stale' as const,
+        hungConnectionIds: ['conn-hung-19']
+      }
+    ]
+    for (const item of cases) {
+      assert.equal(
+        decideRecoveryAction({
+          probe: item.probe,
+          attribution: item.attribution,
+          hungConnectionIds: item.hungConnectionIds,
+          tunInterfaceLostConfirmed: false,
+          priorRecoveryFailed: false,
+          cooldowns,
+          nowMs: NOW
+        }),
+        'none'
+      )
+    }
+  })
+
+  it('escalates to L3 only when api2 and marketplace are both offline after prior failure', () => {
+    const cooldowns = { lastL0AtMs: 0, lastL1AtMs: 0, lastL2AtMs: 0, lastL3AtMs: 0 }
+    assert.equal(
+      decideRecoveryAction({
+        probe: {
+          api2Ok: false,
+          marketplaceOk: false,
+          api2LatencyMs: -1,
+          marketplaceLatencyMs: -1
+        },
+        attribution: 'offline',
+        hungConnectionIds: ['conn-1'],
+        tunInterfaceLostConfirmed: false,
+        priorRecoveryFailed: true,
+        cooldowns,
+        nowMs: NOW
+      }),
+      'L3'
     )
   })
 
@@ -213,7 +264,7 @@ describe('cursorTransportHealthCore', () => {
     assert.equal(canExecuteRecoveryLevel('L3', cooldowns, NOW), false)
   })
 
-  it('describeRecoveryBlockReason reports L1 cooldown for partition stale when throttled', () => {
+  it('reports agent_stability_hold for split-brain partition stale', () => {
     const reason = describeRecoveryBlockReason({
       probe: { api2Ok: false, marketplaceOk: true, api2LatencyMs: 77_000, marketplaceLatencyMs: 400 },
       attribution: 'transport_partition_stale',
@@ -228,6 +279,6 @@ describe('cursorTransportHealthCore', () => {
       },
       nowMs: NOW
     })
-    assert.equal(reason, 'L1_cooldown')
+    assert.equal(reason, 'agent_stability_hold')
   })
 })

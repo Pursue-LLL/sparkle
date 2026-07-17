@@ -39,12 +39,13 @@ describe('cursorConnectionHygieneCore', () => {
     assert.equal(shouldDeferNetworkProbeForCursorLoad(20), true)
   })
 
-  it('closes only idle duplicates beyond per-host cap', () => {
+  it('closes only idle duplicates beyond per-host cap on non-critical hosts', () => {
     const rows: ConnectionHygieneRow[] = []
     for (let index = 0; index < CURSOR_CONN_DUPLICATE_PER_HOST_MAX + 2; index += 1) {
       rows.push(
         row({
           id: `id-${index}`,
+          host: 'cdn.example.com',
           startMs: NOW - index * 60_000 - CURSOR_CONN_IDLE_MIN_AGE_MS
         })
       )
@@ -67,11 +68,34 @@ describe('cursorConnectionHygieneCore', () => {
     )
 
     const stale = selectStaleCursorConnectionsToClose(rows, NOW)
-    assert.equal(stale.length, 3)
-    assert.ok(stale.includes('id-3'))
+    assert.equal(stale.length, 2)
     assert.ok(stale.includes('id-4'))
     assert.ok(stale.includes('id-5'))
+    assert.ok(!stale.includes('id-3'))
     assert.ok(!stale.includes('active'))
+  })
+
+  it('never closes idle duplicates on critical Agent transport hosts', () => {
+    const rows: ConnectionHygieneRow[] = []
+    for (let index = 0; index < CURSOR_CONN_DUPLICATE_PER_HOST_MAX + 4; index += 1) {
+      rows.push(
+        row({
+          id: `critical-${index}`,
+          host: 'api2.cursor.sh',
+          startMs: NOW - index * 60_000 - CURSOR_CONN_IDLE_MIN_AGE_MS
+        })
+      )
+    }
+    for (let index = 0; index < 8; index += 1) {
+      rows.push(
+        row({
+          id: `pad-${index}`,
+          host: `host-${index}`,
+          startMs: NOW - CURSOR_CONN_IDLE_MIN_AGE_MS - 120_000
+        })
+      )
+    }
+    assert.deepEqual(selectStaleCursorConnectionsToClose(rows, NOW), [])
   })
 
   it('skips hygiene below minimum connection count', () => {

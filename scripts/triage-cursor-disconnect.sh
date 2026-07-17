@@ -125,4 +125,23 @@ if [[ -f "$SPARKLE_DIR/api2-probe-ledger.jsonl" ]]; then
   tail -40 "$SPARKLE_DIR/api2-probe-ledger.jsonl" >"$OUT/sparkle-ledger-tail.jsonl"
 fi
 
+# Latest 6 VPS nodes (UI 测速记录 source — must match proxy-detail-tooltip history[-8])
+SOCK=/tmp/sparkle-mihomo-api.sock
+if [[ -S "$SOCK" ]]; then
+  curl -s --unix-socket "$SOCK" http://localhost/providers/proxies \
+    | python3 -c "
+import json,sys
+nodes=['JP-VPS-HY2','JP-VPS-Reality','JP-VPS-TUIC','KR-VPS-HY2','KR-VPS-Reality','KR-VPS-TUIC']
+d=json.load(sys.stdin)
+for pid, prov in d.get('providers',{}).items():
+    if not pid.endswith('-vps'):
+        continue
+    for px in prov.get('proxies',[]):
+        if px.get('name') not in nodes:
+            continue
+        last8=[h.get('delay',0) for h in (px.get('history') or [])[-8:]]
+        print(px['name'], 'provider=', pid, 'last8=', last8, 'alive=', px.get('alive'))
+" >"$OUT/mihomo-vps-history-last8.txt" 2>/dev/null || true
+fi
+
 log "Done. Open $OUT/REPORT.md and fill §V5 VPS @ A."

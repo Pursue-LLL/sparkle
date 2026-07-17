@@ -1,4 +1,5 @@
 import { CURSOR_PROCESS_NAMES } from './cursorRuleInjection'
+import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 
 /** Defer api2 probes while Cursor has many live mihomo sockets (marathon). */
 export const CURSOR_CONN_PROBE_DEFER_THRESHOLD = 20
@@ -79,6 +80,10 @@ export function selectStaleCursorConnectionsToClose(
   }
 
   for (const bucket of byKey.values()) {
+    const host = bucket[0]?.host.trim() || 'unknown'
+    if (isCriticalCursorHost(host)) {
+      continue
+    }
     const sorted = [...bucket].sort((a, b) => b.startMs - a.startMs)
     for (let index = CURSOR_CONN_DUPLICATE_PER_HOST_MAX; index < sorted.length; index += 1) {
       const row = sorted[index]
@@ -123,5 +128,7 @@ export function selectGlobalIdleCursorConnectionsToClose(
       .map((row) => row.id)
   )
 
-  return idleRows.filter((row) => !keepIds.has(row.id)).map((row) => row.id)
+  return idleRows
+    .filter((row) => !keepIds.has(row.id) && !isCriticalCursorHost(row.host))
+    .map((row) => row.id)
 }
