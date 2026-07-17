@@ -28,6 +28,7 @@
 6. **Sparkle L0 @ 60s hung 会误杀 Agent tool 暂停中的 Connect 流**（v1.26.33）；**v1.26.34+** 改为 **12min** 阈值 + 每 host 保留最新 **6** 条（v1.26.36，并行 Agent 保护）。若 A 时刻 app-log 有 `L0 closed N hung` 且运行 <12min → 定责 **Sparkle L0 误杀/过度清理**，非 Cursor Marathon cap。
 7. **`客户端 · resumeAction` / `resumeAction HTTP` 是断流后的恢复动作，不是根因。** 必须继续查 renderer `agent-error` + VPS @ A。
 8. **非 `max-steps-cap` 断连，未完成 VPS @ A 证据矩阵（§V5）前，禁止输出 definitive 根因。**
+9. **Sparkle 必须用 pkg 安装到 `/Applications`**（≥**1.26.40** 含 Agent-stability-first + deep sign）。❌ 禁止 `ditto`/`cp -R` 覆盖 · ❌ 禁止从 `dist/mac-arm64/Sparkle.app` 日常使用 · 见 [BUGFIX_LOG BUG-003/007](./BUGFIX_LOG.md)。
 
 ---
 

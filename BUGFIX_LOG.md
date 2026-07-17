@@ -50,7 +50,24 @@
 | **症状** | 1.26.38 后 partition_stale 仍可能 L1 关 critical-host；Hygiene 可能清 api2 长 idle |
 | **修复** | `marketplaceOk → none`（禁 L1 split-brain 杀流）；Hygiene 跳过 critical transport host；`cursorCriticalTransportCore.ts` 共享 SSOT |
 | **防回归** | `agent-stability-first regression guard` 单测（healthy + partition_stale + hung → none） |
-| **用户动作** | 安装 Sparkle **1.26.39** pkg |
+| **用户动作** | 安装 Sparkle **1.26.40+** pkg（含 1.26.39 Agent-stability-first + deep sign 启动修复） |
+
+---
+
+### BUG-2026-07-17-007 · v1.26.40 · 从 dist 直接启动 / pkg 未覆盖 → DYLD Team ID 崩溃
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | Sparkle **1.26.39** 启动即崩溃：`DYLD Library missing` · `@rpath/Electron Framework` · `different Team IDs` · dyld 尝试加载 `dist/mac-arm64/.../Electron Framework` |
+| **关联产品** | Sparkle 本地 dev 构建 ≤1.26.39 |
+| **根因** | ① **双击 `dist/mac-arm64/Sparkle.app` 直接运行**（非 `/Applications`）· ② electron-builder adhoc 分签名，主二进制与 Electron Framework **Team ID 不一致** · ③ `sudo installer` 未完整覆盖时 `/Applications` 仍为旧版（如 1.26.36）而用户从 dist 启动 |
+| **修复** | `scripts/deepSignMac.cjs` + electron-builder 根级 `afterSign`：`codesign --deep --force --sign -` 整包重签后再打 pkg |
+| **禁止** | ❌ `open dist/mac-arm64/Sparkle.app` 作为日常使用 · ❌ ditto/cp 覆盖（见 BUG-003）· ❌ 只更新 Info.plist 不替换 Framework |
+| **正确流程** | 仍用 **BUG-003「Sparkle 本地 pkg 升级（标准）」**：`rm -rf` 旧 app → `sudo installer -pkg … -target /` → `open /Applications/Sparkle.app` |
+| **dev 自测** | 1.26.40+ build 后 dist app 可短暂启动验证；**生产环境只用 `/Applications`** |
+| **回归** | build log 出现 `replacing existing signature`；`open dist/.../Sparkle.app` 不 DYLD 崩溃 |
+| **用户动作** | 安装 **1.26.40+** pkg，勿从 dist 启动 |
 
 ---
 
@@ -104,17 +121,18 @@
 | **状态** | **FIXED**（流程文档化） |
 | **症状** | Sparkle **1.26.35** 启动即崩溃：`DYLD Library missing` · Electron Framework **Team ID 与主二进制不一致**（`mapping process and mapped file have different Team IDs`） |
 | **关联产品** | Sparkle 本地 dev 构建 → `/Applications/Sparkle.app` |
-| **根因** | 用 **`ditto` / `cp -R`** 把 `dist/mac-arm64/Sparkle.app` **覆盖**到已安装的 `/Applications/Sparkle.app`，只替换了部分文件；旧版 **Electron Framework** 签名残留，与新 `Sparkle` 主二进制不匹配 |
-| **禁止** | ❌ `ditto dist/mac-arm64/Sparkle.app /Applications/Sparkle.app` · ❌ `cp -R` 覆盖 · ❌ 在旧 app 上「增量复制」 |
-| **正确流程** | 见下方 **「Sparkle 本地 pkg 升级（标准）」** |
+| **根因** | 用 **`ditto` / `cp -R`** 把 `dist/mac-arm64/Sparkle.app` **覆盖**到已安装的 `/Applications/Sparkle.app`，只替换了部分文件；旧版 **Electron Framework** 签名残留，与新 `Sparkle` 主二进制不匹配。**或**从 **`dist/mac-arm64` 直接 `open`**（≤1.26.39 adhoc 分签名，见 BUG-007） |
+| **禁止** | ❌ `ditto dist/mac-arm64/Sparkle.app /Applications/Sparkle.app` · ❌ `cp -R` 覆盖 · ❌ 在旧 app 上「增量复制」 · ❌ **`open dist/mac-arm64/Sparkle.app` 日常使用**（必须 `installer` 到 `/Applications`） |
+| **正确流程** | 见下方 **「Sparkle 本地 pkg 升级（标准）」** · build **≥1.26.40** 含 `afterSign` deep sign（BUG-007） |
 | **验证** | ① `PlistBuddy … CFBundleShortVersionString` = 目标版本 ② `open -a Sparkle` 不崩溃 ③ app-log 出现 `mihomo API ready` ④ `ls /tmp/sparkle-mihomo-api.sock` |
 
 #### Sparkle 本地 pkg 升级（标准）
 
 ```bash
 # 1. 构建（勿 SKIP_PREPARE，pkg 应 ~186MB+，见 BUG-2026-07-09-003）
+#    ≥1.26.40：electron-builder afterSign 自动 deep adhoc 重签（BUG-007）
 cd /path/to/sparkle
-pnpm run build:mac pkg
+pnpm run build:mac
 PKG="dist/sparkle-macos-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' dist/mac-arm64/Sparkle.app/Contents/Info.plist)-arm64.pkg"
 
 # 2. 退出旧进程
