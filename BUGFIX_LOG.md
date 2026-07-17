@@ -63,7 +63,7 @@
 | **关联产品** | Sparkle 本地 dev 构建 ≤1.26.39 |
 | **根因** | ① **双击 `dist/mac-arm64/Sparkle.app` 直接运行**（非 `/Applications`）· ② electron-builder adhoc 分签名，主二进制与 Electron Framework **Team ID 不一致** · ③ `sudo installer` 未完整覆盖时 `/Applications` 仍为旧版（如 1.26.36）而用户从 dist 启动 |
 | **修复** | `scripts/deepSignMac.cjs` + electron-builder 根级 `afterSign`：`codesign --deep --force --sign -` 整包重签后再打 pkg |
-| **禁止** | ❌ `open dist/mac-arm64/Sparkle.app` 作为日常使用 · ❌ ditto/cp 覆盖（见 BUG-003）· ❌ 只更新 Info.plist 不替换 Framework |
+| **禁止** | ❌ `open dist/mac-arm64/Sparkle.app` 作为日常使用 · ❌ ditto/cp 覆盖（见 BUG-003）· ❌ 只更新 Info.plist 不替换 Framework · ❌ 复制到 `~/Applications/Sparkle.app`（与 `/Applications` 并存 → Dock 双图标） |
 | **正确流程** | 仍用 **BUG-003「Sparkle 本地 pkg 升级（标准）」**：`rm -rf` 旧 app → `sudo installer -pkg … -target /` → `open /Applications/Sparkle.app` |
 | **dev 自测** | 1.26.40+ build 后 dist app 可短暂启动验证；**生产环境只用 `/Applications`** |
 | **回归** | build log 出现 `replacing existing signature`；`open dist/.../Sparkle.app` 不 DYLD 崩溃 |
