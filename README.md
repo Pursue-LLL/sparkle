@@ -195,11 +195,17 @@ pnpm build:linux deb --x64
 
 #### macOS 本地升级（必读）
 
-本地 dev 构建后安装到 `/Applications/Sparkle.app` 时，**禁止** `ditto` / `cp -R` 覆盖旧 app（会导致 Electron Framework 签名 Team ID 不一致、启动 DYLD 崩溃）。
+本地 dev 构建后安装到 `/Applications/Sparkle.app` 时：
 
-标准流程见 [BUGFIX_LOG.md — BUG-2026-07-17-003](BUGFIX_LOG.md)（`rm -rf` 旧 app → `installer -pkg dist/sparkle-macos-*-arm64.pkg -target /` → 验证版本 → 重启 Sparkle UI + sparkle-service）。
+1. **禁止** `ditto` / `cp -R` 覆盖旧 app（Electron Framework 签名 Team ID 不一致 → DYLD 崩溃，见 [BUG-003](BUGFIX_LOG.md)）
+2. **禁止** 从 `dist/mac-arm64/Sparkle.app` **直接 `open` 作为日常使用**（≤1.26.39 必崩；≥1.26.40 build 虽可 dev 自测，生产仍只用 `/Applications`）
+3. **必须** `sudo rm -rf /Applications/Sparkle.app` → `sudo installer -pkg dist/sparkle-macos-*-arm64.pkg -target /` → 验证版本 → `open /Applications/Sparkle.app`
 
-构建注意：勿 `SKIP_PREPARE=1`（空 sidecar pkg 见 BUG-2026-07-09-003）；完整 pkg 约 **186MB+**。
+标准命令见 [BUGFIX_LOG.md — BUG-003 / BUG-007](BUGFIX_LOG.md)。
+
+**Agent 稳定性修复**：安装 **≥1.26.40**（含 1.26.39 CTHC Agent-stability-first + deep sign 启动修复）。
+
+构建注意：勿 `SKIP_PREPARE=1`（空 sidecar pkg 见 BUG-2026-07-09-003）；完整 pkg 约 **186MB+**。build log 应出现 `replacing existing signature`（deep sign）。
 
 ### 常见问题
 
