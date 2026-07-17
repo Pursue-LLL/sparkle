@@ -193,6 +193,14 @@ pnpm build:linux deb --x64
 - **macOS**: `.pkg` 安装包
 - **Linux**: `.deb`、`.rpm`、`.pkg.tar.zst(pacman)` 等格式
 
+#### macOS 本地升级（必读）
+
+本地 dev 构建后安装到 `/Applications/Sparkle.app` 时，**禁止** `ditto` / `cp -R` 覆盖旧 app（会导致 Electron Framework 签名 Team ID 不一致、启动 DYLD 崩溃）。
+
+标准流程见 [BUGFIX_LOG.md — BUG-2026-07-17-003](BUGFIX_LOG.md)（`rm -rf` 旧 app → `installer -pkg dist/sparkle-macos-*-arm64.pkg -target /` → 验证版本 → 重启 Sparkle UI + sparkle-service）。
+
+构建注意：勿 `SKIP_PREPARE=1`（空 sidecar pkg 见 BUG-2026-07-09-003）；完整 pkg 约 **186MB+**。
+
 ### 常见问题
 
 #### 包管理器要求

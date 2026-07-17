@@ -2,6 +2,8 @@
 
 > **Public repo note**: Real IPs, SSH ports, and hostnames are redacted below. Keep production values in a private ops doc or local override — not in git.
 
+> **连接与交接**：SSH / Sparkle 客户端 / VPS 互连 / 完整运维交接清单见 [VPS-CONNECT.md](./VPS-CONNECT.md)。
+
 ## 服务器列表
 
 ### KR-VPS (韩国首尔)

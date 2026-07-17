@@ -259,6 +259,14 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('mihomoGroupDelay', (_e, group, url) =>
     ipcErrorWrapper(mihomoGroupDelay)(group, url)
   )
+  ipcMain.handle('runNetworkTriangulationDiagnostic', () =>
+    ipcErrorWrapper(async () => {
+      const { runNetworkTriangulationDiagnostic } = await import(
+        '../core/networkTriangulationDiagnostic'
+      )
+      return runNetworkTriangulationDiagnostic()
+    })()
+  )
   ipcMain.handle('mihomoRulesDisable', (_e, rules) => ipcErrorWrapper(mihomoRulesDisable)(rules))
   ipcMain.handle('patchMihomoConfig', (_e, patch) => ipcErrorWrapper(patchMihomoConfig)(patch))
   ipcMain.handle('restartMihomoLogs', ipcErrorWrapper(restartMihomoLogs))

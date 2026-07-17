@@ -3,6 +3,7 @@ import { net } from 'electron'
 import os from 'os'
 import { promisify } from 'util'
 import { getAppConfig, getControledMihomoConfig, patchAppConfig } from '../config'
+import { PUBLIC_DNS_SERVERS, shouldPersistOriginDns } from './networkPublicDnsCore'
 import { setSysDns } from '../service/api'
 import { triggerSysProxy } from '../sys/sysproxy'
 
@@ -76,10 +77,10 @@ export async function setPublicDNS(): Promise<void> {
   if (process.platform !== 'darwin') return
   if (net.isOnline()) {
     const { originDNS, autoSetDNSMode = 'none' } = await getAppConfig()
-    if (!originDNS) {
+    if (shouldPersistOriginDns(originDNS)) {
       await getOriginDNS()
-      await setDNS('223.5.5.5', autoSetDNSMode)
     }
+    await setDNS(PUBLIC_DNS_SERVERS, autoSetDNSMode)
   } else {
     if (setPublicDNSTimer) clearTimeout(setPublicDNSTimer)
     setPublicDNSTimer = setTimeout(() => setPublicDNS(), 5000)

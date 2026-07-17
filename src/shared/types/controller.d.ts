@@ -252,3 +252,35 @@ interface ControllerRuleProviderDetail {
   updatedAt: string
   vehicleType: string
 }
+
+interface TriangulationProbeSnapshot {
+  proxy: string
+  target: string
+  ok: boolean
+  delayMs: number
+  message?: string
+  skipped?: boolean
+  skipReason?: string
+}
+
+interface TriangulationVerdict {
+  layer: string
+  probeAttribution: string
+  confidence: 'definitive' | 'partial'
+  summaryZh: string
+  summaryEn: string
+  limitationZh: string
+  limitationEn: string
+}
+
+interface NetworkTriangulationReport {
+  ts: string
+  probes: {
+    kr: TriangulationProbeSnapshot
+    jp: TriangulationProbeSnapshot
+    marketplace: TriangulationProbeSnapshot
+    active: TriangulationProbeSnapshot
+  }
+  verdict: TriangulationVerdict
+  logExcerpt: string[]
+}

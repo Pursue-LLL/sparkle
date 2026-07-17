@@ -26,6 +26,94 @@
 
 ---
 
+## 2026-07-17
+
+### BUG-2026-07-17-002 · v1.26.36 · CTHC L0 误杀 Agent Connect 流
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | Agent 仅跑 ~1min 即 `WritableIterable is closed`；events `hung=7` + L0 杀连接；IFM 误标 marathon |
+| **关联产品** | Sparkle 1.26.33 + Cursor Usage Guard |
+| **根因** | `HUNG_CONNECTION_MIN_AGE_MS=60s` 过短；tool/thinking 间隙 Connect 流零 mihomo 吞吐仍存活；L0 无 newest 保护 |
+| **修复** | hung 阈值 **60s→12min**；`selectHungCursorConnectionsToClose` 每 host **保留最新 6 条** 不 L0 杀（并行 Agent 保护） |
+| **回归** | `cursorTransportHealthCore.test.ts`（newest 保护 + 12min 阈值） |
+| **用户动作** | 安装 Sparkle **1.26.36** pkg 并重启 Sparkle core（**禁止 ditto/cp 覆盖**，见 BUG-2026-07-17-003） |
+
+---
+
+### BUG-2026-07-17-003 · v1.26.35 · ditto/cp 覆盖安装导致 DYLD 崩溃
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（流程文档化） |
+| **症状** | Sparkle **1.26.35** 启动即崩溃：`DYLD Library missing` · Electron Framework **Team ID 与主二进制不一致**（`mapping process and mapped file have different Team IDs`） |
+| **关联产品** | Sparkle 本地 dev 构建 → `/Applications/Sparkle.app` |
+| **根因** | 用 **`ditto` / `cp -R`** 把 `dist/mac-arm64/Sparkle.app` **覆盖**到已安装的 `/Applications/Sparkle.app`，只替换了部分文件；旧版 **Electron Framework** 签名残留，与新 `Sparkle` 主二进制不匹配 |
+| **禁止** | ❌ `ditto dist/mac-arm64/Sparkle.app /Applications/Sparkle.app` · ❌ `cp -R` 覆盖 · ❌ 在旧 app 上「增量复制」 |
+| **正确流程** | 见下方 **「Sparkle 本地 pkg 升级（标准）」** |
+| **验证** | ① `PlistBuddy … CFBundleShortVersionString` = 目标版本 ② `open -a Sparkle` 不崩溃 ③ app-log 出现 `mihomo API ready` ④ `ls /tmp/sparkle-mihomo-api.sock` |
+
+#### Sparkle 本地 pkg 升级（标准）
+
+```bash
+# 1. 构建（勿 SKIP_PREPARE，pkg 应 ~186MB+，见 BUG-2026-07-09-003）
+cd /path/to/sparkle
+pnpm run build:mac pkg
+PKG="dist/sparkle-macos-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' dist/mac-arm64/Sparkle.app/Contents/Info.plist)-arm64.pkg"
+
+# 2. 退出旧进程
+osascript -e 'tell application "Sparkle" to quit' 2>/dev/null || true
+pkill -f 'sparkle-service service run' 2>/dev/null || true
+
+# 3. 整包替换（必须 rm 旧 app 再 installer，不可 ditto 覆盖）
+sudo rm -rf /Applications/Sparkle.app
+sudo installer -pkg "$PKG" -target /
+
+# 4. 验证并启动
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Sparkle.app/Contents/Info.plist
+open -a /Applications/Sparkle.app
+# 等 ~10s 后：tail ~/Library/Application\ Support/sparkle/logs/app-*.log | rg 'mihomo API ready'
+```
+
+无交互 sudo 时可用（会弹 macOS 授权框）：
+
+```bash
+osascript -e "do shell script \"pkill -9 -x Sparkle 2>/dev/null; pkill -9 -f 'sparkle-service service run' 2>/dev/null; rm -rf /Applications/Sparkle.app; installer -pkg '$PKG' -target /\" with administrator privileges"
+```
+
+**CTHC 逻辑变更**（如 1.26.34→1.26.35 hung keep 4）需 **Sparkle UI + sparkle-service 都重启** 后进内存；仅替换二进制不重启 service 仍跑旧逻辑。
+
+---
+
+### BUG-2026-07-17-001 · v1.26.33 · CTHC hung scan 不触发 L0
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | Marathon 46min + 2 路 Agent 断连；events 显示 `hung_connection_count` 12–17 但 `recovery_action=none`；短 probe 全绿 |
+| **根因** | `cursorTransportHealthCore.ts` `decideRecoveryAction` 在 `attribution==='healthy'` 时直接 `return 'none'`，hung scan 固定 healthy + 假 probe，L0 分支永不可达 |
+| **修复** | hung>0 且 L0 冷却就绪时优先返回 L0；`describeRecoveryBlockReason` 对 healthy+hung 报告 `L0_cooldown` |
+| **回归** | `cursorTransportHealthCore.test.ts`（healthy+hung→L0） |
+| **用户动作** | 重启 Sparkle core；**保持并行 Agent**（排查手册禁止建议减并行） |
+
+---
+
+## 2026-07-14
+
+### BUG-2026-07-14-001 · v1.26.23 · VPS 稳定性 / provider leaf 测速误报
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（**1.26.23**） |
+| **症状** | ① UI 显示全部 VPS 节点「超时」② 默认回 `KR-VPS-TUIC`（UDP 最不稳）③ HY2/TUIC health 抖动时用户误以为 VPS 挂了并手动切走，掐断 marathon SSE |
+| **根因** | ① provider leaf `/proxies/{name}/delay` 固定 404，fallback 读最后一条 health 历史，delay=0 即 UI 全红（Reality 实际可用）② `cursorDedicatedDefault.ts:8` 默认 `KR-VPS-TUIC` 与 2026-07-14 实测证据相反（TUIC auth timeout 17 次/12 天）③ provider health-check 用 `http://generate_204` 与 Cursor api2 流量不一致 |
+| **修复** | ① 默认节点 → `JP-VPS-Reality`，TUIC/HY2 标 suboptimal ② VPS provider health-check → `https://api2.cursor.sh` ③ `mihomoProxyDelay` provider fallback 先 trigger healthcheck，取最近成功 delay（跳过尾部 delay=0） |
+| **回归** | `cursorDedicatedDefault.test.ts` · `providerHealthCheck.test.ts` · `mihomoProviderDelay.test.ts` |
+| **用户动作** | 升级 **1.26.23** 并 **重启 Sparkle 一次**（非 VPS）；专用组可固定 `JP-VPS-Reality` |
+
+---
+
 ## 2026-07-09
 
 ### BUG-2026-07-09-001 · v1.26.15 · mihomo TUN 出站池僵死 + 自愈闭环缺陷
@@ -123,7 +211,7 @@
 **1.26.16 未改 / 遗留：**
 
 - `store-fake-ip` 仍为 `true`（P2 暂缓）
-- 35min marathon idle 清理阈值 **不变**（与 CTHC 60s 挂死扫描并存）
+- 35min marathon idle 清理阈值 **不变**（与 CTHC **30s hung 扫描 + 12min 零吞吐判定** 并存；1.26.35+ L0 保留每 host 最新 4 条）
 - **专用组 VPS UI 不可见** → 见 **BUG-2026-07-09-002**（1.26.17 修复）
 
 #### 为何此前「翻来覆去修不好」（反思）
@@ -250,6 +338,8 @@
 
 | Sparkle 版本 | 本文件条目 | 说明 |
 | --- | --- | --- |
+| **1.26.36** | BUG-2026-07-17-002 | CTHC L0 hung 12min + keep 6 + DedicatedDefault defer 不误导日志 |
+| **1.26.35** | BUG-2026-07-17-003 | ditto 覆盖安装 DYLD 崩溃 + **pkg 升级标准流程** |
 | **1.26.15** | BUG-2026-07-09-001 | 僵死 + 自愈闭环缺陷（存在） |
 | **1.26.16** | BUG-2026-07-09-001 | CTHC 传输健康控制器 + 探针归因（**FIXED**） |
 | **1.26.16** | BUG-2026-07-09-003 | 空 sidecar 打包导致内核失败（流程 **FIXED**） |

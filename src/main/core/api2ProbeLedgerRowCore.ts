@@ -4,6 +4,7 @@ export type Api2ProbeScope = 'active' | 'vps'
 export type Api2ProbeMethod =
   | 'transport_pair'
   | 'mihomo_delay'
+  | 'ssh_curl'
   | 'deferred'
   | 'on_demand'
   | 'defer_check'

@@ -1,3 +1,5 @@
+import { CORPORATE_FAKE_IP_FILTER } from './corporateDirectRules'
+
 const RULE_BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'DNS', 'NOOP'])
 const RULE_MODIFIERS = new Set(['no-resolve'])
 
@@ -177,7 +179,7 @@ export function buildTieredFakeIpFilter(options: {
   rules?: string[]
   includeTier1?: boolean
 }): string[] {
-  const tier0 = [...TIER0_FAKE_IP_FILTER]
+  const tier0 = [...TIER0_FAKE_IP_FILTER, ...CORPORATE_FAKE_IP_FILTER]
   const tier1 = options.includeTier1 === false ? [] : collectTier1FakeIpFilterEntries(options.rules)
   return mergeFakeIpFilterEntries(mergeFakeIpFilterEntries(options.existing, tier0), tier1)
 }

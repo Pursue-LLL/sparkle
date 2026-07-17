@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { CURSOR_DEDICATED_GROUP_NAME, LEGACY_CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { CURSOR_DEDICATED_GROUP_NAME, HONG_KONG_DELAY_TEST_URL, LEGACY_CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME, ensureCustomProxyGroups, resolveFailoverProxyGroup } from './customProxyGroups'
 
 function groupNames(profile: MihomoConfig): string[] {
@@ -104,10 +104,11 @@ describe('customProxyGroups', () => {
 
     ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
 
-    const hkGroup = ((profile['proxy-groups'] as { name: string; type?: string; filter?: string }[]) ?? []).find(
+    const hkGroup = ((profile['proxy-groups'] as { name: string; type?: string; url?: string; filter?: string }[]) ?? []).find(
       (group) => group.name === HONG_KONG_FILTER_GROUP_NAME
     )
     assert.equal(hkGroup?.type, 'url-test')
+    assert.equal(hkGroup?.url, HONG_KONG_DELAY_TEST_URL)
     assert.equal(hkGroup?.filter, '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong')
   })
 
@@ -163,7 +164,7 @@ describe('customProxyGroups', () => {
     assert.ok(!groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME).includes('香港专用'))
   })
 
-  it('rewrites broad GEOIP/google rules away from Cursor 3.1.15 专用', () => {
+  it('rewrites broad GEOIP/google rules away from Cursor 专用', () => {
     const profile = {
       'proxy-groups': [{ name: '默认', type: 'select', proxies: [] }],
       rules: [

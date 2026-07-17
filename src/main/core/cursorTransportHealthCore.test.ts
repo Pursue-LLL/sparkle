@@ -40,9 +40,35 @@ describe('cursorTransportHealthCore', () => {
   it('detects hung api2 connections without touching active SSE', () => {
     const hung = row({ id: 'hung' })
     const active = row({ id: 'active', startMs: NOW - 30_000, downloadSpeed: 900 })
+    const older1 = row({ id: 'older1', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 300_000 })
+    const older2 = row({ id: 'older2', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 240_000 })
+    const older3 = row({ id: 'older3', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 180_000 })
+    const older4 = row({ id: 'older4', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 120_000 })
+    const older5 = row({ id: 'older5', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 360_000 })
+    const older6 = row({ id: 'older6', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 420_000 })
     assert.equal(isHungCursorConnection(hung, NOW), true)
     assert.equal(isHungCursorConnection(active, NOW), false)
-    assert.deepEqual(selectHungCursorConnectionsToClose([hung, active], NOW), ['hung'])
+    assert.deepEqual(
+      selectHungCursorConnectionsToClose(
+        [hung, active, older1, older2, older3, older4, older5, older6],
+        NOW,
+      ),
+      ['older6'],
+    )
+  })
+
+  it('protects newest hung connections per host from L0 close list', () => {
+    const oldest = row({ id: 'oldest', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 300_000 })
+    const mid = row({ id: 'mid', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 180_000 })
+    const newer = row({ id: 'newer', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 120_000 })
+    const newest = row({ id: 'newest', startMs: NOW - HUNG_CONNECTION_MIN_AGE_MS - 5_000 })
+    assert.deepEqual(selectHungCursorConnectionsToClose([oldest, mid, newer, newest], NOW), [])
+  })
+
+  it('ignores hung connections younger than 12 minutes', () => {
+    const young = row({ id: 'young', startMs: NOW - 5 * 60_000 })
+    assert.equal(isHungCursorConnection(young, NOW), false)
+    assert.deepEqual(selectHungCursorConnectionsToClose([young], NOW), [])
   })
 
   it('forces real probe when tun latched or hung connections exist', () => {
@@ -140,6 +166,40 @@ describe('cursorTransportHealthCore', () => {
       }),
       'L0'
     )
+  })
+
+  it('closes hung connections on hung scan even when short probe is healthy', () => {
+    const cooldowns = { lastL0AtMs: 0, lastL1AtMs: 0, lastL2AtMs: 0, lastL3AtMs: 0 }
+    assert.equal(
+      decideRecoveryAction({
+        probe: { api2Ok: true, marketplaceOk: true, api2LatencyMs: 0, marketplaceLatencyMs: 0 },
+        attribution: 'healthy',
+        hungConnectionIds: ['conn-hung-1'],
+        tunInterfaceLostConfirmed: false,
+        priorRecoveryFailed: false,
+        cooldowns,
+        nowMs: NOW
+      }),
+      'L0'
+    )
+  })
+
+  it('reports L0 cooldown for healthy hung scan when throttled', () => {
+    const reason = describeRecoveryBlockReason({
+      probe: { api2Ok: true, marketplaceOk: true, api2LatencyMs: 0, marketplaceLatencyMs: 0 },
+      attribution: 'healthy',
+      hungConnectionIds: ['conn-hung-1'],
+      tunInterfaceLostConfirmed: false,
+      priorRecoveryFailed: false,
+      cooldowns: {
+        lastL0AtMs: NOW - 5_000,
+        lastL1AtMs: 0,
+        lastL2AtMs: 0,
+        lastL3AtMs: 0
+      },
+      nowMs: NOW
+    })
+    assert.equal(reason, 'L0_cooldown')
   })
 
   it('applies independent recovery cooldowns', () => {

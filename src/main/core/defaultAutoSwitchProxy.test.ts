@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { AUTO_SELECT_DELAY_TEST_URL, CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import {
   applyDefaultAutoSwitchSelections,
   ensureSelectGroupsDefaultToAutoSwitch,
@@ -50,6 +50,28 @@ describe('defaultAutoSwitchProxy', () => {
       'SG-01',
       '自动选择'
     ])
+  })
+
+  it('uses chatgpt.com as probe URL for all regional auto-select url-test groups', () => {
+    const profile = {
+      'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }]
+    } as unknown as MihomoConfig
+
+    ensureSelectGroupsDefaultToAutoSwitch(profile, 'test-profile', {
+      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01']
+    })
+
+    const groups = profile['proxy-groups'] as { name: string; url?: string; type?: string }[]
+    const regionalGroups = groups.filter((group) => group.name.startsWith('Sparkle-自动-'))
+    assert.equal(regionalGroups.length, 5)
+    for (const group of regionalGroups) {
+      assert.equal(group.type, 'url-test')
+      assert.equal(group.url, AUTO_SELECT_DELAY_TEST_URL)
+    }
+
+    const autoSelect = groups.find((group) => group.name === '自动选择')
+    assert.equal(autoSelect?.type, 'fallback')
+    assert.equal(autoSelect?.url, AUTO_SELECT_DELAY_TEST_URL)
   })
 
   it('rewrites subscription 自动选择 url-test into regional fallback chain', () => {

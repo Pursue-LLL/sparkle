@@ -6,7 +6,7 @@ import { FaMapPin } from 'react-icons/fa6'
 import {
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
-  latestProxyDelayHistoryEntry
+  latestSuccessfulProxyDelayHistoryEntry
 } from '@renderer/utils/proxy-delay-sample-age'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
 
@@ -120,7 +120,10 @@ const ProxyItem: React.FC<Props> = (props) => {
   const shouldShowGroupSelectedProxy =
     showGroupSelectedProxy && isGroup(proxy) && Boolean(proxy.now)
 
-  const delaySample = useMemo(() => latestProxyDelayHistoryEntry(proxy.history), [proxy.history])
+  const delaySample = useMemo(
+    () => latestSuccessfulProxyDelayHistoryEntry(proxy.history),
+    [proxy.history]
+  )
   const delay = delaySample?.delay ?? -1
   const delaySampleTime = delaySample?.time
 

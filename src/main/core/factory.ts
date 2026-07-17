@@ -33,8 +33,7 @@ import {
 } from './profileGroupNormalize'
 import { showNotification } from '../utils/notification'
 import {
-  CURSOR_DEDICATED_GROUP_NAME,
-  LEGACY_CURSOR_DEDICATED_GROUP_NAME
+  CURSOR_DEDICATED_GROUP_NAME
 } from './cursorProxyGroup'
 import { appendAppLog } from '../utils/log'
 
@@ -101,8 +100,8 @@ export async function generateProfile(): Promise<void> {
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
     cursorDedicatedGroupRenameNotified = true
     const detail =
-      `代理组「${LEGACY_CURSOR_DEDICATED_GROUP_NAME}」已重命名为「${CURSOR_DEDICATED_GROUP_NAME}」。` +
-      '请在 Sparkle 代理页为 Guard 专用组重新选择 VPS 节点；非 3.1.15 的 Cursor 现走 🚀 节点选择。'
+      `Cursor 代理组已统一为「${CURSOR_DEDICATED_GROUP_NAME}」，所有 Cursor 流量走专用组。` +
+      '请在 Sparkle 代理页重新确认 VPS 节点（建议 JP-VPS-HY2）。'
     await appendAppLog(`[Factory]: ${detail}\n`)
     void showNotification({
       title: 'Cursor 代理组已更新',
@@ -123,18 +122,16 @@ export async function generateProfile(): Promise<void> {
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   const { cursorBidiOptimize = true, cursorProxyAppPathPrefixes } = await getAppConfig()
   if (cursorBidiOptimize !== false) {
-    const { DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES, injectCursorDomainRules } = await import(
-      './cursorRuleInjection'
-    )
-    injectCursorDomainRules(
-      profile,
-      cursorProxyAppPathPrefixes ?? [...DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES]
-    )
+    const { injectCursorDomainRules } = await import('./cursorRuleInjection')
+    injectCursorDomainRules(profile, cursorProxyAppPathPrefixes ?? [])
   }
   const { ensureCorporateDirectRules } = await import('./corporateDirectRules')
   ensureCorporateDirectRules(profile)
   const { ensureFakeIpRoutingIntegrity } = await import('./fakeIpRoutingIntegrity')
   ensureFakeIpRoutingIntegrity(profile)
+  const { ensureDnsFallbackIntegrity, ensureTunStrictRoute } = await import('./dnsFallbackIntegrity')
+  ensureDnsFallbackIntegrity(profile)
+  ensureTunStrictRoute(profile)
 
   runtimeConfig = profile
   runtimeConfigStr = stringifyYaml(profile)
@@ -361,8 +358,6 @@ function cleanDnsConfig(profile: MihomoConfig, controlDns: boolean): void {
     delete dnsConfig['proxy-server-nameserver-policy']
   }
 
-  delete dnsConfig.fallback
-  delete dnsConfig['fallback-filter']
 }
 
 function cleanSnifferConfig(profile: MihomoConfig, controlSniff: boolean): void {

@@ -12,6 +12,10 @@ import { createSignedServiceAxios, getServiceAuthHeaders } from '../service/api'
 import { DEFAULT_GENERAL_DELAY_TEST_URL } from './cursorProxyGroup'
 import { withMihomoDelayProbeSlot } from './mihomoProbeCoordinator'
 import {
+  pickFreshSuccessfulProviderDelay,
+  pickLatestSuccessfulProviderDelay
+} from './mihomoProviderDelayCore'
+import {
   buildProviderProxyLookup,
   resolveGroupMemberProxies
 } from './mihomoGroupMembersCore'
@@ -207,6 +211,27 @@ export const mihomoUpdateProxyProviders = async (name: string): Promise<void> =>
   return await instance.put(`/providers/proxies/${encodeURIComponent(name)}`)
 }
 
+const PROVIDER_HEALTHCHECK_SETTLE_MS = 2000
+const providerHealthcheckInflight = new Map<string, Promise<void>>()
+
+async function mihomoProviderHealthcheck(providerName: string): Promise<void> {
+  const instance = await getAxios()
+  await instance.get(`/providers/proxies/${encodeURIComponent(providerName)}/healthcheck`)
+  await new Promise((resolve) => setTimeout(resolve, PROVIDER_HEALTHCHECK_SETTLE_MS))
+}
+
+async function mihomoProviderHealthcheckDeduped(providerName: string): Promise<void> {
+  const inflight = providerHealthcheckInflight.get(providerName)
+  if (inflight) {
+    return inflight
+  }
+  const run = mihomoProviderHealthcheck(providerName).finally(() => {
+    providerHealthcheckInflight.delete(providerName)
+  })
+  providerHealthcheckInflight.set(providerName, run)
+  return run
+}
+
 export const mihomoRuleProviders = async (): Promise<ControllerRuleProviders> => {
   const instance = await getAxios()
   return await instance.get('/providers/rules')
@@ -257,9 +282,12 @@ async function mihomoProxyDelayFromProvider(
 ): Promise<ControllerProxiesDelay> {
   const providers = await mihomoProxyProviders()
   let providerName: string | undefined
+  let proxyDetail: ControllerProxiesDetail | undefined
   for (const [name, detail] of Object.entries(providers.providers)) {
-    if (detail.proxies?.some((item) => item.name === proxy)) {
+    const found = detail.proxies?.find((item) => item.name === proxy)
+    if (found) {
       providerName = name
+      proxyDetail = found
       break
     }
   }
@@ -267,18 +295,29 @@ async function mihomoProxyDelayFromProvider(
     return { delay: 0, message: `provider leaf not found: ${proxy}` }
   }
 
+  const cached = pickFreshSuccessfulProviderDelay(proxyDetail?.history ?? [])
+  if (cached) {
+    return { delay: cached.delay }
+  }
+
   try {
-    await mihomoUpdateProxyProviders(providerName)
+    await mihomoProviderHealthcheckDeduped(providerName)
   } catch {
-    // Fall back to cached provider history when healthcheck fails.
+    try {
+      await mihomoUpdateProxyProviders(providerName)
+    } catch {
+      // Fall back to cached provider history when healthcheck fails.
+    }
   }
 
   const refreshed = await mihomoProxyProviders()
-  const proxyDetail = refreshed.providers[providerName]?.proxies?.find((item) => item.name === proxy)
-  const history = proxyDetail?.history ?? []
-  const last = history[history.length - 1]
-  if (last && last.delay > 0) {
-    return { delay: last.delay }
+  const refreshedProxy = refreshed.providers[providerName]?.proxies?.find(
+    (item) => item.name === proxy
+  )
+  const history = refreshedProxy?.history ?? []
+  const latestSuccessful = pickLatestSuccessfulProviderDelay(history)
+  if (latestSuccessful) {
+    return { delay: latestSuccessful.delay }
   }
   return { delay: 0, message: `no provider delay history for ${proxy}` }
 }

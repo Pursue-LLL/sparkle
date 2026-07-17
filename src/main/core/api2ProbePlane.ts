@@ -4,31 +4,18 @@ import {
   ensureApi2ProbeLedgerDir,
   pruneApi2ProbeLedger
 } from './api2ProbeLedgerCore'
-import {
-  tryAcquireApi2ProbePlaneLock,
-  releaseApi2ProbePlaneLock,
-  withApi2ProbePlaneLock
-} from './api2ProbePlaneCore'
+import { withApi2ProbePlaneLock, releaseApi2ProbePlaneLock } from './api2ProbePlaneCore'
 import {
   getNetworkMonitorNextProbeDelayMs,
   runNetworkMonitorCycle,
   startNetworkStabilityMonitor,
   stopNetworkStabilityMonitor
 } from './networkStabilityMonitor'
-import {
-  resolveCommercialBenchmarkConfig,
-  runVpsCanonicalProbeCycle,
-  startCommercialNodeBenchmark,
-  stopCommercialNodeBenchmark
-} from './commercialNodeBenchmark'
 
 const PLANE_STARTUP_DELAY_MS = 5_000
-const VPS_CANONICAL_PROBE_PHASE_OFFSET_MS = 15_000
 
 let planeTimer: NodeJS.Timeout | null = null
 let isPlaneRunning = false
-let planeStartedAtMs = 0
-let lastVpsRunAtMs = 0
 
 function clearPlaneTimer(): void {
   if (planeTimer) {
@@ -47,30 +34,6 @@ function schedulePlaneTick(delayMs: number): void {
   }, delayMs)
 }
 
-async function maybeRunVpsBatch(): Promise<void> {
-  const config = await resolveCommercialBenchmarkConfig()
-  if (!config.enabled || !config.includeVps) {
-    return
-  }
-  const nowMs = Date.now()
-  if (nowMs - planeStartedAtMs < VPS_CANONICAL_PROBE_PHASE_OFFSET_MS) {
-    return
-  }
-  const intervalMs = Math.max(30, config.intervalSec) * 1000
-  if (nowMs - lastVpsRunAtMs < intervalMs) {
-    return
-  }
-  if (!tryAcquireApi2ProbePlaneLock()) {
-    return
-  }
-  try {
-    lastVpsRunAtMs = nowMs
-    await runVpsCanonicalProbeCycle()
-  } finally {
-    releaseApi2ProbePlaneLock()
-  }
-}
-
 async function runPlaneTick(): Promise<void> {
   if (!isPlaneRunning) {
     return
@@ -79,11 +42,16 @@ async function runPlaneTick(): Promise<void> {
   await withApi2ProbePlaneLock('monitor', async () => {
     nextDelayMs = await runNetworkMonitorCycle()
   })
-  await maybeRunVpsBatch()
+  const { maybeRunVpsL4ProbeCycle, shouldRunVpsL4ProbeCycle } = await import('./vpsL4Probe')
+  if (shouldRunVpsL4ProbeCycle()) {
+    await withApi2ProbePlaneLock('vps_l4', async () => {
+      await maybeRunVpsL4ProbeCycle()
+    })
+  }
   schedulePlaneTick(nextDelayMs)
 }
 
-/** Single bootstrap + scheduler for api2 active probe + VPS ranking batch. */
+/** Bootstrap scheduler for active api2 transport probes (current Cursor node). */
 export async function startApi2ProbePlane(): Promise<void> {
   if (isPlaneRunning) {
     return
@@ -92,14 +60,11 @@ export async function startApi2ProbePlane(): Promise<void> {
   await pruneApi2ProbeLedger()
 
   await startNetworkStabilityMonitor()
-  await startCommercialNodeBenchmark()
 
   isPlaneRunning = true
-  planeStartedAtMs = Date.now()
-  lastVpsRunAtMs = 0
 
   await appendAppLog(
-    `[Api2ProbePlane]: ON — unified tick (active→${API2_PROBE_LEDGER_PATH} scope=active; VPS→scope=vps; mutex=global)\n`
+    `[Api2ProbePlane]: ON — active transport probe every 60s + VPS L4 ssh_curl every 300s → ${API2_PROBE_LEDGER_PATH}\n`
   )
 
   schedulePlaneTick(PLANE_STARTUP_DELAY_MS)
@@ -109,7 +74,6 @@ export async function stopApi2ProbePlane(): Promise<void> {
   isPlaneRunning = false
   clearPlaneTimer()
   stopNetworkStabilityMonitor()
-  stopCommercialNodeBenchmark()
   releaseApi2ProbePlaneLock()
   await appendAppLog('[Api2ProbePlane]: stopped\n')
 }

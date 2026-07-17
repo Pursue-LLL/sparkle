@@ -4,7 +4,7 @@ import { showNotification } from '../utils/notification'
 import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
 import { getLastCoreReadyAtMs } from './manager'
 import { listCursorConnectionRows } from './cursorConnectionHygiene'
-import { mihomoCloseConnection, mihomoCloseConnections } from './mihomoApi'
+import { mihomoCloseConnection, mihomoCloseConnections, mihomoProxyDelay } from './mihomoApi'
 import {
   decideRecoveryAction,
   describeRecoveryBlockReason,
@@ -45,6 +45,7 @@ async function logTransportRecoveryDecision(options: {
   hungIds: string[]
   action: RecoveryAction
   proxyNode?: string
+  probeVia?: string
 }): Promise<void> {
   const blockReason =
     options.action === 'none'
@@ -70,12 +71,21 @@ async function logTransportRecoveryDecision(options: {
     `tun_lost=${tunInterfaceLostConfirmed}`,
     `prior_failed=${priorRecoveryFailed}`,
     options.proxyNode ? `proxy=${options.proxyNode}` : '',
+    options.probeVia ? `probe_via=${options.probeVia}` : '',
     blockReason ? `blocked=${blockReason}` : ''
   ]
     .filter(Boolean)
     .join(' ')
 
   await appendAppLog(`[CursorTransportHealth]: ${summary}\n`)
+
+  const shouldAttachSnapshots = options.source === 'hung_scan' || options.action !== 'none'
+  const vpsNodeSnapshots = shouldAttachSnapshots
+    ? await (async () => {
+        const { collectCanonicalVpsNodeSnapshots } = await import('./canonicalVpsNodeSnapshot')
+        return collectCanonicalVpsNodeSnapshots()
+      })()
+    : undefined
 
   await appendTransportObservabilityEvent({
     kind: options.source === 'hung_scan' ? 'transport_hung_scan' : 'transport_recovery',
@@ -91,7 +101,11 @@ async function logTransportRecoveryDecision(options: {
     tun_interface_lost_confirmed: tunInterfaceLostConfirmed,
     prior_recovery_failed: priorRecoveryFailed,
     recovery_block_reason: blockReason,
-    error_detail: summary
+    probe_via: options.probeVia,
+    error_detail: summary,
+    ...(vpsNodeSnapshots && vpsNodeSnapshots.length > 0
+      ? { vps_node_snapshots: vpsNodeSnapshots }
+      : {})
   })
 }
 
@@ -184,6 +198,63 @@ export async function runTransportProbePair(options: {
     marketplaceLatencyMs: marketplace.latencyMs,
     api2Status: api2.status,
     marketplaceStatus: marketplace.status
+  }
+}
+
+/**
+ * Probe api2 through a specific mihomo proxy node (bypasses TUN rule matching).
+ * Returns api2 reachability as seen from the given node — use when TUN routing
+ * would send the probe through a different node than Cursor actually uses.
+ */
+export async function probeApi2ViaMihomoNode(
+  proxyNode: string
+): Promise<{ ok: boolean; latencyMs: number; errorDetail?: string }> {
+  const startedAt = Date.now()
+  try {
+    const result = await mihomoProxyDelay(proxyNode, API2_PROBE_TARGET)
+    const latencyMs = Date.now() - startedAt
+    const delayOk = typeof result.delay === 'number' && result.delay > 0
+    return {
+      ok: delayOk,
+      latencyMs: delayOk ? result.delay : latencyMs,
+      errorDetail: delayOk ? undefined : (result as { message?: string }).message
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      errorDetail: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+/**
+ * Run transport probe pair with api2 routed through a specific Cursor proxy node
+ * instead of the default TUN/mixed-port path. Marketplace probe still goes via
+ * the normal path (split-brain control).
+ */
+export async function runTransportProbePairViaCursorNode(
+  cursorProxyNode: string,
+  fallbackOptions: {
+    proxyHost: string
+    proxyPort: number
+    viaDirectTun?: boolean
+  }
+): Promise<ProbePairResult & { api2Status?: number; marketplaceStatus?: number; api2ViaNode: true }> {
+  const marketplaceProxy = fallbackOptions.viaDirectTun
+    ? undefined
+    : { host: fallbackOptions.proxyHost, port: fallbackOptions.proxyPort }
+  const [api2, marketplace] = await Promise.all([
+    probeApi2ViaMihomoNode(cursorProxyNode),
+    probeHttpTarget(SPLIT_BRAIN_CONTROL_TARGET, marketplaceProxy)
+  ])
+  return {
+    api2Ok: api2.ok,
+    marketplaceOk: marketplace.ok,
+    api2LatencyMs: api2.latencyMs,
+    marketplaceLatencyMs: marketplace.latencyMs,
+    marketplaceStatus: marketplace.status,
+    api2ViaNode: true
   }
 }
 
@@ -287,7 +358,7 @@ export async function executeTransportRecovery(action: RecoveryAction): Promise<
 export async function evaluateAndRecoverTransport(
   probe: ProbePairResult,
   attribution: ProbeAttribution,
-  options: { source?: 'probe_cycle' | 'tun_lost'; proxyNode?: string } = {}
+  options: { source?: 'probe_cycle' | 'tun_lost'; proxyNode?: string; probeVia?: string } = {}
 ): Promise<RecoveryAction> {
   const rows = await listCursorConnectionRows()
   const hungIds = selectHungCursorConnectionsToClose(rows)
@@ -307,7 +378,8 @@ export async function evaluateAndRecoverTransport(
       attribution,
       hungIds,
       action,
-      proxyNode: options.proxyNode
+      proxyNode: options.proxyNode,
+      probeVia: options.probeVia
     })
   }
 

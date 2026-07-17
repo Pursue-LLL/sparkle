@@ -3,7 +3,8 @@ import { describe, it } from 'node:test'
 import {
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
-  latestProxyDelayHistoryEntry
+  latestProxyDelayHistoryEntry,
+  latestSuccessfulProxyDelayHistoryEntry
 } from './proxy-delay-sample-age'
 
 describe('proxyDelaySampleAgeCore', () => {
@@ -14,6 +15,22 @@ describe('proxyDelaySampleAgeCore', () => {
     ])
     assert.equal(latest?.delay, 0)
     assert.equal(latest?.time, '2026-07-01T09:00:00.000Z')
+  })
+
+  it('skips trailing timeout samples for list display', () => {
+    const latest = latestSuccessfulProxyDelayHistoryEntry([
+      { time: '2026-07-01T08:00:00.000Z', delay: 446 },
+      { time: '2026-07-01T09:00:00.000Z', delay: 0 }
+    ])
+    assert.equal(latest?.delay, 446)
+    assert.equal(latest?.time, '2026-07-01T08:00:00.000Z')
+  })
+
+  it('returns trailing zero when entire history failed', () => {
+    const latest = latestSuccessfulProxyDelayHistoryEntry([
+      { time: '2026-07-01T09:00:00.000Z', delay: 0 }
+    ])
+    assert.equal(latest?.delay, 0)
   })
 
   it('formats relative age buckets', () => {

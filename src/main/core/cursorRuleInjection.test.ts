@@ -6,8 +6,8 @@ import {
 } from './cursorProxyGroup'
 import {
   CURSOR_PROCESS_NAMES,
-  DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES,
-  injectCursorDomainRules
+  injectCursorDomainRules,
+  stripUnscopedCursorDedicatedRules
 } from './cursorRuleInjection'
 
 function ruleLines(profile: MihomoConfig): string[] {
@@ -55,7 +55,7 @@ describe('injectCursorDomainRules', () => {
     assert.ok(geoipIndex > dedicatedPathIndex)
   })
 
-  it('uses default 3.1.15 bundle prefix when no explicit paths are passed', () => {
+  it('uses PROCESS-NAME rules by default when no explicit paths are passed', () => {
     const profile = {
       'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['KR-VPS-TUIC'] }],
       rules: ['GEOIP,us,🚀 节点选择']
@@ -64,13 +64,11 @@ describe('injectCursorDomainRules', () => {
     injectCursorDomainRules(profile)
 
     const rules = ruleLines(profile)
-    assert.ok(
-      rules.some((rule) =>
-        rule.startsWith(
-          `PROCESS-PATH-REGEX,^${DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES[0].replace(/\./g, '\\.')}/`
-        )
-      )
-    )
+    assert.ok(rules.some((rule) => rule === `DOMAIN,cursor-cdn.com,${CURSOR_DEDICATED_GROUP_NAME}`))
+    for (const processName of CURSOR_PROCESS_NAMES) {
+      assert.ok(rules.some((rule) => rule === `PROCESS-NAME,${processName},${CURSOR_DEDICATED_GROUP_NAME}`))
+    }
+    assert.ok(!rules.some((rule) => rule.includes('PROCESS-PATH-REGEX')))
   })
 
   it('falls back to legacy PROCESS-NAME rules when app path prefixes are empty', () => {
@@ -111,5 +109,47 @@ describe('injectCursorDomainRules', () => {
     const afterSecond = ruleLines(profile)
 
     assert.deepEqual(afterSecond, afterFirst)
+  })
+
+  it('strips naked override Cursor rules and injects path-scoped gcpp domains', () => {
+    const profile = {
+      'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['JP-VPS-Reality'] }],
+      rules: [
+        `DOMAIN,us-only.gcpp.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
+        `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
+        `DOMAIN-SUFFIX,cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
+        'GEOIP,us,🚀 节点选择'
+      ]
+    } as unknown as MihomoConfig
+
+    injectCursorDomainRules(profile, ['/Applications/Cursor-3.1.15.app'])
+
+    const rules = ruleLines(profile)
+    const pathRegex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/'
+    assert.ok(
+      rules.some(
+        (rule) =>
+          rule ===
+          `AND,((DOMAIN,us-only.gcpp.cursor.sh),(${pathRegex})),${CURSOR_DEDICATED_GROUP_NAME}`
+      )
+    )
+    assert.ok(!rules.some((rule) => rule === `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`))
+    assert.ok(!rules.some((rule) => rule === `DOMAIN-SUFFIX,cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`))
+    assert.ok(rules.includes('GEOIP,us,🚀 节点选择'))
+  })
+
+  it('stripUnscopedCursorDedicatedRules keeps path-scoped AND rules', () => {
+    const profile = {
+      rules: [
+        `AND,((DOMAIN,api2.cursor.sh),(PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/)),${CURSOR_DEDICATED_GROUP_NAME}`,
+        `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`
+      ]
+    } as unknown as MihomoConfig
+
+    stripUnscopedCursorDedicatedRules(profile)
+
+    assert.deepEqual(ruleLines(profile), [
+      `AND,((DOMAIN,api2.cursor.sh),(PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/)),${CURSOR_DEDICATED_GROUP_NAME}`
+    ])
   })
 })

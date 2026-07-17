@@ -26,6 +26,7 @@ import {
   markTunInterfaceLostConfirmed,
   resetCursorTransportHealthState,
   runTransportProbePair,
+  runTransportProbePairViaCursorNode,
   resolveTransportProbeAttribution,
   startCursorTransportHealth,
   stopCursorTransportHealth
@@ -38,6 +39,23 @@ import { watchTunStartupLogLine } from './tunStartupGuard'
 const PROBE_TARGET = 'https://api2.cursor.sh'
 const PROBE_INTERVAL_MS = 60_000
 const BURST_PROBE_INTERVAL_MS = 30_000
+
+type MihomoGroupsFn = () => Promise<ControllerMixedGroup[]>
+let injectedMihomoGroups: MihomoGroupsFn | undefined
+
+/** Main bundle must register before stability monitor resolves proxy groups. */
+export function registerMihomoGroupsAccessor(fn: MihomoGroupsFn): void {
+  injectedMihomoGroups = fn
+}
+
+async function callMihomoGroups(): Promise<ControllerMixedGroup[]> {
+  if (!injectedMihomoGroups) {
+    throw new Error(
+      'mihomoGroups accessor not registered — postCoreBootstrap must call registerMihomoGroupsAccessor'
+    )
+  }
+  return injectedMihomoGroups()
+}
 const BURST_DURATION_MS = 5 * 60_000
 const BURST_FAILURE_THRESHOLD = 2
 const DEFER_PROBE_LOG_COOLDOWN_MS = 5 * 60_000
@@ -83,6 +101,12 @@ export interface NetworkStabilityEvent {
   error_detail?: string
   from_proxy?: string
   to_proxy?: string
+  vps_node_snapshots?: Array<{
+    name: string
+    delay: number
+    time: string
+    alive?: boolean
+  }>
 }
 
 export async function appendNetworkStabilityEvent(event: NetworkStabilityEvent): Promise<void> {
@@ -223,8 +247,7 @@ async function shouldProbeViaDirectTun(): Promise<boolean> {
 }
 
 async function resolveCurrentProxyNode(): Promise<string | undefined> {
-  const { mihomoGroups } = await import('./mihomoApi')
-  const groups = await mihomoGroups()
+  const groups = await callMihomoGroups()
   if (!groups || groups.length === 0) return undefined
   const primaryGroup = getPrimaryProxyGroup(groups)
   return primaryGroup?.now
@@ -282,7 +305,8 @@ async function shouldDeferTunCoreRestart(): Promise<boolean> {
   if (!proxyNode) {
     return false
   }
-  const probe = await runTransportProbePair(await resolveProbeTransportOptions())
+  const transport = await resolveProbeTransportOptions()
+  const probe = await runTransportProbePairViaCursorNode(proxyNode, transport)
   lastRealProbeAtMs = Date.now()
   lastCursorProbe = {
     ok: probe.api2Ok,
@@ -382,10 +406,12 @@ async function handleTunInterfaceLost(): Promise<void> {
   }
 
   const transport = await resolveProbeTransportOptions()
-  const probe = await runTransportProbePair(transport)
+  const proxyNode = await resolveCurrentProxyNode()
+  const probe = proxyNode
+    ? await runTransportProbePairViaCursorNode(proxyNode, transport)
+    : await runTransportProbePair(transport)
   lastRealProbeAtMs = Date.now()
   const attribution = resolveTransportProbeAttribution(probe)
-  const proxyNode = await resolveCurrentProxyNode()
   lastCursorProbe = {
     ok: probe.api2Ok,
     atMs: lastRealProbeAtMs,
@@ -412,9 +438,11 @@ async function handleTunInterfaceLost(): Promise<void> {
 
   tunRecoverInFlight = true
   try {
+    const probeVia = proxyNode ? `mihomo_node:${proxyNode}` : 'tun'
     const recoveryAction = await evaluateAndRecoverTransport(probe, attribution, {
       source: 'tun_lost',
-      proxyNode: await resolveCurrentProxyNode()
+      proxyNode,
+      probeVia
     })
     await appendEvent({
       ts: new Date().toISOString(),
@@ -604,7 +632,9 @@ async function runCursorTransportConnectivityCheck(
 ): Promise<boolean> {
   const transport = await resolveProbeTransportOptions()
   const proxyNode = await resolveCurrentProxyNode()
-  const probe = await runTransportProbePair(transport)
+  const probe = proxyNode
+    ? await runTransportProbePairViaCursorNode(proxyNode, transport)
+    : await runTransportProbePair(transport)
   const attribution = resolveTransportProbeAttribution(probe)
   lastTransportAttribution = attribution
   lastRealProbeAtMs = Date.now()
@@ -618,19 +648,22 @@ async function runCursorTransportConnectivityCheck(
 
   let recoveryAction = 'none'
   if (attribution === 'transport_partition_stale' || attribution === 'node_degraded') {
+    const probeViaLabel = proxyNode ? `mihomo_node:${proxyNode}` : transport.viaDirectTun ? 'tun' : 'mixed_port'
     recoveryAction = await evaluateAndRecoverTransport(probe, attribution, {
       source: 'probe_cycle',
-      proxyNode
+      proxyNode,
+      probeVia: probeViaLabel
     })
   }
 
+  const probeVia = proxyNode ? `mihomo_node:${proxyNode}` : transport.viaDirectTun ? 'tun' : 'mixed_port'
   await recordActiveApi2ProbeToLedger({
     method: 'transport_pair',
     authoritative: true,
     probe,
     proxyNode: proxyNode ?? '',
     attribution,
-    probeVia: transport.viaDirectTun ? 'tun' : 'mixed_port',
+    probeVia,
     proxyDelayMs,
     recoveryAction,
     errorDetail: `target=${PROBE_TARGET} marketplace_ok=${probe.marketplaceOk} marketplace_latency_ms=${probe.marketplaceLatencyMs} recovery=${recoveryAction}`
@@ -670,17 +703,20 @@ export function getRecentCursorProbe(
 /** Defer failover only when a live api2 probe succeeds on the current node. */
 export async function shouldDeferCursorFailover(currentProxy: string): Promise<boolean> {
   const transport = await resolveProbeTransportOptions()
-  const probe = await runTransportProbePair(transport)
-  lastRealProbeAtMs = Date.now()
   const proxyNode = await resolveCurrentProxyNode()
+  const probe = proxyNode
+    ? await runTransportProbePairViaCursorNode(proxyNode, transport)
+    : await runTransportProbePair(transport)
+  lastRealProbeAtMs = Date.now()
   lastCursorProbe = {
     ok: probe.api2Ok,
     atMs: lastRealProbeAtMs,
     proxyNode,
     latencyMs: probe.api2LatencyMs > 0 ? probe.api2LatencyMs : undefined
   }
+  const probeVia = proxyNode ? `mihomo_node:${proxyNode}` : transport.viaDirectTun ? 'tun' : 'mixed_port'
   await appendLiveTransportProbeToLedger(probe, 'defer_check', {
-    probeVia: transport.viaDirectTun ? 'tun' : 'mixed_port',
+    probeVia,
     errorDetail: 'defer_check: cursor_failover'
   })
   return shouldDeferDestructiveRecoveryAfterLiveProbe(probe.api2Ok, currentProxy, proxyNode)

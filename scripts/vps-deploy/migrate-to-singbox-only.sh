@@ -93,7 +93,11 @@ INBOUNDS="${INBOUNDS}
 
 cat >/etc/sing-box/config.json <<EOF
 {
-  "log": {"level": "warn", "timestamp": true},
+  "log": {
+    "level": "info",
+    "output": "/var/log/sing-box/sing-box.log",
+    "timestamp": true
+  },
   "inbounds": ${INBOUNDS},
   "outbounds": [{"type": "direct", "tag": "direct"}]
 }
