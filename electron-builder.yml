@@ -1,5 +1,6 @@
 appId: sparkle.app
 productName: Sparkle
+afterSign: scripts/deepSignMac.cjs
 directories:
   buildResources: build
 files:
