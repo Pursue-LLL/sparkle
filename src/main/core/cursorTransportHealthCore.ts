@@ -3,18 +3,9 @@ import {
   isCursorConnection,
   type ConnectionHygieneRow
 } from './cursorConnectionHygieneCore'
+import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 
-/** Cursor Agent / Chat transport hosts — hung detection scope. */
-export const CRITICAL_CURSOR_HOST_SUFFIXES = [
-  'api2.cursor.sh',
-  'api2geo.cursor.sh',
-  'api2direct.cursor.sh',
-  'api3.cursor.sh',
-  'api5.cursor.sh',
-  'agent.api5.cursor.sh',
-  'agentn.global.api5.cursor.sh',
-  'agentn.global.api5lat.cursor.sh'
-] as const
+export { CRITICAL_CURSOR_HOST_SUFFIXES, isCriticalCursorHost } from './cursorCriticalTransportCore'
 
 export const HUNG_CONNECTION_MIN_AGE_MS = 12 * 60_000
 export const HUNG_SCAN_INTERVAL_MS = 30_000
@@ -76,21 +67,6 @@ export interface RecoveryDecisionContext {
   priorRecoveryFailed: boolean
   cooldowns: RecoveryCooldownState
   nowMs?: number
-}
-
-function normalizeHost(host: string): string {
-  return host.trim().toLowerCase()
-}
-
-export function isCriticalCursorHost(host: string): boolean {
-  const normalized = normalizeHost(host)
-  if (!normalized || normalized === 'unknown') {
-    return false
-  }
-  if (CRITICAL_CURSOR_HOST_SUFFIXES.some((suffix) => normalized === suffix || normalized.endsWith(`.${suffix}`))) {
-    return true
-  }
-  return normalized.endsWith('.cursor.sh') || normalized.endsWith('.cursor.com')
 }
 
 export function isHungCursorConnection(row: ConnectionHygieneRow, nowMs: number = Date.now()): boolean {
@@ -236,13 +212,9 @@ export function decideRecoveryAction(context: RecoveryDecisionContext): Recovery
     return 'none'
   }
 
-  // Never L0-close Agent SSE from zero mihomo throughput (tool/thinking idle is normal).
-
-  if (
-    context.attribution === 'transport_partition_stale' &&
-    canExecuteRecoveryLevel('L1', context.cooldowns, nowMs)
-  ) {
-    return 'L1'
+  // Agent-stability-first: never close Agent SSE on short-probe split-brain or zero mihomo throughput.
+  if (context.probe.marketplaceOk) {
+    return 'none'
   }
 
   if (context.tunInterfaceLostConfirmed && canExecuteRecoveryLevel('L2', context.cooldowns, nowMs)) {
@@ -250,16 +222,8 @@ export function decideRecoveryAction(context: RecoveryDecisionContext): Recovery
   }
 
   if (
-    context.priorRecoveryFailed &&
     !context.probe.api2Ok &&
-    canExecuteRecoveryLevel('L3', context.cooldowns, nowMs)
-  ) {
-    return 'L3'
-  }
-
-  if (
-    context.attribution === 'node_degraded' &&
-    !context.probe.api2Ok &&
+    !context.probe.marketplaceOk &&
     context.priorRecoveryFailed &&
     canExecuteRecoveryLevel('L3', context.cooldowns, nowMs)
   ) {
@@ -277,14 +241,15 @@ export function describeRecoveryBlockReason(context: RecoveryDecisionContext): s
     return undefined
   }
 
-  const intended: RecoveryLevel[] = []
-  if (context.attribution === 'transport_partition_stale') {
-    intended.push('L1')
+  if (context.probe.marketplaceOk) {
+    return 'agent_stability_hold'
   }
+
+  const intended: RecoveryLevel[] = []
   if (context.tunInterfaceLostConfirmed) {
     intended.push('L2')
   }
-  if (context.priorRecoveryFailed && !context.probe.api2Ok) {
+  if (context.priorRecoveryFailed && !context.probe.api2Ok && !context.probe.marketplaceOk) {
     intended.push('L3')
   }
 

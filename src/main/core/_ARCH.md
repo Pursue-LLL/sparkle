@@ -17,7 +17,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `nodeProbeStats.ts` | ledger vps 样本聚合 → DerivedStats |
 | `commercialNodeBenchmark.ts` | 24h VPS 报告（ledger scope=vps SSH + active）、UI snapshot IPC |
 | `networkStabilityMonitor.ts` | 当前节点 short probe、TUN 恢复（委托 CTHC）；非 probe 事件 jsonl |
-| `cursorTransportHealthCore.ts` | 纯函数：挂死检测（**≥12min** 零吞吐）、split-brain 归因、恢复阶梯；L0 每 (process,host) **保留最新 6 条** hung 连接 |
+| `cursorTransportHealthCore.ts` | 纯函数：挂死检测（**≥12min** 零吞吐）、**Agent-stability-first 恢复**（禁 L0/L1 杀 SSE；仅 offline+TUN 灾难 L2/L3）；L0 每 host **保留最新 6 条** hung 连接（仅观测） |
+| `cursorCriticalTransportCore.ts` | critical Cursor transport host SSOT（CTHC + Hygiene 共享） |
 | `cursorTransportHealth.ts` | CTHC 执行器：30s 挂死扫描、L0–L3 恢复动作 |
 | `mihomoProbeCoordinator.ts` | 全局 mihomo delay 槽（max 2）与商业 batch 并发 cap |
 | `cursorRuleInjection.ts` | 全量 Cursor PROCESS-NAME + DOMAIN → 🎯 Cursor 专用；可选 path-scoped AND 规则 |
@@ -26,7 +27,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `proxyHealthMonitor.ts` | SG/TW/JP failover（🎯 Cursor 专用，api2 测速） |
 | `mihomoApi.ts` | mihomo REST 封装（delay 经 mihomoProbeCoordinator gate；provider leaf 走 healthcheck fallback） |
 | `cursorDedicatedDefault.ts` | 启动回 VPS Reality 默认（JP 优先）；TUIC/HY2 标 suboptimal |
-| `providerHealthCheckCore.ts` | VPS provider health-check URL → api2.cursor.sh |
+| `providerHealthCheckCore.ts` | 商用 provider health-check URL（generate_204） |
+| `vpsProviderSplitCore.ts` | VPS/commercial partition；`{profileId}-vps` provider；api2 health-check |
 | `mihomoProviderDelayCore.ts` | provider leaf delay 历史：取最近成功样本，跳过尾部 timeout |
 
 ## 节点质量数据流
@@ -40,7 +42,7 @@ api2ProbePlane (PostCoreBootstrap 单一入口)
       scope=vps    → SSH L4 KR/JP（method=ssh_curl）+ nodeProbeStats
 
 cursorTransportHealth (hung_scan 30s / hung≥12min / keep-newest-6 / transport_recovery)
-  → network-stability-events.jsonl + vps_node_snapshots（6 节点 provider history）
+  → network-stability-events.jsonl + vps_node_snapshots（CTHC 单点：latest-success delay，≠ UI 测速记录 history[-8]）
 ```
 
 ## Badge 规则

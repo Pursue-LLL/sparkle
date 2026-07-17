@@ -28,6 +28,32 @@
 
 ## 2026-07-17
 
+### BUG-2026-07-17-006 · v1.26.38 · VPS 与商用混 provider 导致 76 节点 batch api2 测速尖峰
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | 6 自建 VPS UI 测速频繁 >500ms / 尖峰 2000–4481ms；商用节点也被迫 api2 health-check |
+| **关联产品** | Sparkle ≤1.26.37 |
+| **根因** | `resolveProviderHealthCheckUrl` 见任意 VPS leaf 即整 provider 改 api2；76 leaf 每 300s 批量探测竞争 TUN |
+| **修复** | `vpsProviderSplitCore` + `setupProfileProviders`：商用 `{profileId}`（generate_204）+ VPS `{profileId}-vps`（api2）；Cursor 专用组 `use: [profileId-vps]` |
+| **回归** | `vpsProviderSplitCore.test.ts` · `providerVpsSplit.test.ts` · `customProxyGroups.test.ts` |
+| **用户动作** | 安装 Sparkle **1.26.38** 并重启 core（自动重写 provider 文件） |
+
+---
+
+### BUG-2026-07-17-006 · v1.26.39 · Agent-stability-first（禁 L1 + Hygiene 保护 api2）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | 1.26.38 后 partition_stale 仍可能 L1 关 critical-host；Hygiene 可能清 api2 长 idle |
+| **修复** | `marketplaceOk → none`（禁 L1 split-brain 杀流）；Hygiene 跳过 critical transport host；`cursorCriticalTransportCore.ts` 共享 SSOT |
+| **防回归** | `agent-stability-first regression guard` 单测（healthy + partition_stale + hung → none） |
+| **用户动作** | 安装 Sparkle **1.26.39** pkg |
+
+---
+
 ### BUG-2026-07-17-005 · v1.26.38 · CTHC L0 误杀 Agent SSE（1.26.36 回归）
 
 | 字段 | 内容 |
