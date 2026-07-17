@@ -9,7 +9,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | 文件 | 职责 |
 | --- | --- |
 | `api2ProbePlane.ts` | 单一 bootstrap：active 60s + VPS L4 SSH 300s → api2-probe-ledger.jsonl |
-| `vpsL4ProbeCore.ts` / `vpsL4Probe.ts` | VPS SSH curl（kr-vps/jp-vps）→ ledger scope=vps |
+| `vpsL4ProbeCore.ts` / `vpsL4Probe.ts` | VPS SSH curl（kr-vps/jp-vps，`ProxyCommand=none` + 公网 HostName 回退）→ ledger scope=vps |
 | `canonicalVpsNodeSnapshotCore.ts` | 从 provider history 采集 6 节点 snapshot（CTHC events） |
 | `networkTriangulationDiagnosticCore.ts` | 定责探测：KR/JP Reality + active Cursor 节点 + marketplace |
 | `api2ProbeLedgerCore.ts` | api2 探针统一 ledger 读写（scope=active/vps/marathon） |

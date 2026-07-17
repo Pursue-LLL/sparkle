@@ -28,6 +28,20 @@
 
 ## 2026-07-17
 
+### BUG-2026-07-17-004 · v1.26.37 · vpsL4Probe fake-ip 假阴性
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | ledger `scope=vps` 周期性失败（`Connection closed by 198.18.x.x`），与 `scope=active` JP/KR 同时 OK 矛盾；定责误判 L4 |
+| **关联产品** | Sparkle 1.26.36 |
+| **根因** | `ssh kr-vps`/`jp-vps` 无 `HostName` 时经 TUN fake-ip 匹配「漏网之鱼」；`ensureVpsDirectBypass` 仅有 IP-CIDR 无 SSH 别名 DOMAIN DIRECT |
+| **修复** | `vpsDirectBypass` 注入 `DOMAIN,kr-vps/jp-vps,DIRECT`；`vpsL4ProbeCore` 用 `ssh -G` + leaf 公网 IP 回退 + `ProxyCommand=none`；path 错误写 `authoritative=false` + `probe_attribution` |
+| **回归** | `vpsL4ProbeCore.test.ts` · `vpsDirectBypass.test.ts` |
+| **用户动作** | 安装 Sparkle **1.26.37** pkg 并重启 core |
+
+---
+
 ### BUG-2026-07-17-002 · v1.26.36 · CTHC L0 误杀 Agent Connect 流
 
 | 字段 | 内容 |
