@@ -9,7 +9,7 @@ function resolveVpsRegion(nodeName: string): string {
   return 'VPS'
 }
 
-/** VPS batch probing is handled by CommercialNodeBenchmark when includeVps is enabled. */
+/** Canonical VPS nodes for triangulation diagnostics (KR/JP × Reality/HY2/TUIC). */
 export function isVpsCursorProbeRunning(): boolean {
   return false
 }

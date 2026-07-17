@@ -1,10 +1,13 @@
 import {
+  AUTO_SELECT_DELAY_TEST_URL,
   CURSOR_DEDICATED_GROUP_NAME,
   DEFAULT_GENERAL_DELAY_TEST_URL,
+  HONG_KONG_DELAY_TEST_URL,
   isAutoSwitchingGroupType,
   isAutoSwitchingProxyName,
   isCursorDedicatedGroupName,
-  isNestedAutoSwitchSelection
+  isNestedAutoSwitchSelection,
+  isSparkleRegionalAutoSelectGroup
 } from './cursorProxyGroup'
 import {
   buildRegionProviderFilter,
@@ -22,20 +25,6 @@ export interface MihomoAutoSwitchApi {
     options?: MihomoChangeProxyOptions
   ) => Promise<ControllerProxiesDetail | null>
   mihomoGroupDelay: (group: string, url?: string) => Promise<ControllerGroupDelay>
-}
-
-async function resolveMihomoAutoSwitchApi(
-  api?: MihomoAutoSwitchApi
-): Promise<MihomoAutoSwitchApi> {
-  if (api) {
-    return api
-  }
-  const mod = await import('./mihomoApi')
-  return {
-    mihomoGroups: mod.mihomoGroups,
-    mihomoChangeProxy: mod.mihomoChangeProxy,
-    mihomoGroupDelay: mod.mihomoGroupDelay
-  }
 }
 
 const PREFERRED_AUTO_SWITCH_NAMES = ['自动选择', '故障转移'] as const
@@ -77,15 +66,11 @@ function buildRegionalAutoSelectGroupName(region: string): string {
   return `${REGION_AUTO_SELECT_PREFIX}${region}`
 }
 
-export function isSparkleRegionalAutoSelectGroup(name: string): boolean {
-  return name.startsWith(REGION_AUTO_SELECT_PREFIX)
-}
-
 function buildRegionalUrlTestGroup(
   region: string,
   profileId: string | undefined,
   leafNames: string[] | undefined,
-  defaults: ReturnType<typeof buildUrlTestGroupDefaults>
+  defaults: ReturnType<typeof buildRegionalAutoSelectUrlTestDefaults>
 ): ProxyGroupConfig | null {
   if (profileId) {
     const filter = buildRegionProviderFilter(region)
@@ -133,7 +118,7 @@ function ensureRegionPriorityAutoSelect(
   regionPriority: readonly string[],
   leafProxyNames: string[] | undefined
 ): void {
-  const defaults = buildUrlTestGroupDefaults()
+  const defaults = buildRegionalAutoSelectUrlTestDefaults()
   const leafNames = resolveAutoSelectLeafNames(groups, leafProxyNames)
 
   const regionalGroups: ProxyGroupConfig[] = []
@@ -311,37 +296,6 @@ export async function applyDefaultAutoSwitchSelections(
   return 0
 }
 
-export async function warmupRegionalUrlTestGroups(api?: MihomoAutoSwitchApi): Promise<number> {
-  const { mihomoGroups, mihomoGroupDelay } = await resolveMihomoAutoSwitchApi(api)
-  const { appendAppLog } = await import('../utils/log')
-
-  const groups = await mihomoGroups()
-  if (!groups?.length) {
-    return 0
-  }
-
-  let warmed = 0
-  for (const group of groups) {
-    if (!group.name.startsWith(REGION_AUTO_SELECT_PREFIX)) {
-      continue
-    }
-    if (group.type !== 'URLTest') {
-      continue
-    }
-    try {
-      await mihomoGroupDelay(group.name, DEFAULT_GENERAL_DELAY_TEST_URL)
-      warmed += 1
-    } catch (error) {
-      await appendAppLog(`[RegionalUrlTestWarmup]: ${group.name} failed, ${error}\n`)
-    }
-  }
-
-  if (warmed > 0) {
-    await appendAppLog(`[RegionalUrlTestWarmup]: warmed ${warmed} regional url-test groups\n`)
-  }
-  return warmed
-}
-
 export const DEFAULT_URL_TEST_INTERVAL = 60
 
 export function buildUrlTestGroupDefaults(): {
@@ -352,6 +306,32 @@ export function buildUrlTestGroupDefaults(): {
   return {
     type: 'url-test',
     url: DEFAULT_GENERAL_DELAY_TEST_URL,
+    interval: DEFAULT_URL_TEST_INTERVAL
+  }
+}
+
+/** Sparkle-自动-* regional groups: only nodes that can reach ChatGPT are eligible. */
+export function buildRegionalAutoSelectUrlTestDefaults(): {
+  type: 'url-test'
+  url: string
+  interval: number
+} {
+  return {
+    type: 'url-test',
+    url: AUTO_SELECT_DELAY_TEST_URL,
+    interval: DEFAULT_URL_TEST_INTERVAL
+  }
+}
+
+/** 🇭🇰 香港节点: only nodes that can reach Grok are eligible. */
+export function buildHongKongUrlTestDefaults(): {
+  type: 'url-test'
+  url: string
+  interval: number
+} {
+  return {
+    type: 'url-test',
+    url: HONG_KONG_DELAY_TEST_URL,
     interval: DEFAULT_URL_TEST_INTERVAL
   }
 }

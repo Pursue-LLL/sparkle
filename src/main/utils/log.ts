@@ -366,7 +366,13 @@ export function setMihomoLogSource(source: MihomoLogSource): void {
 }
 
 export async function appendAppLog(content: string): Promise<void> {
-  await appendLog('app', content)
+  const ts = new Date().toISOString()
+  const stamped = content
+    .split('\n')
+    .filter((l) => l.length > 0)
+    .map((l) => `${ts} ${l}\n`)
+    .join('')
+  await appendLog('app', stamped || content)
 }
 
 export function publishMihomoLog(log: ControllerLog): void {

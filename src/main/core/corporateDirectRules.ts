@@ -1,7 +1,11 @@
 const CORPORATE_DIRECT_RULES = [
   'DOMAIN,gitlab.staff.xdf.cn,DIRECT',
-  'DOMAIN-SUFFIX,staff.xdf.cn,DIRECT'
+  'DOMAIN-SUFFIX,staff.xdf.cn,DIRECT',
+  'DOMAIN-SUFFIX,neibu.koolearn.com,DIRECT'
 ] as const
+
+/** Real DNS for neibu hosts — fake-ip breaks SSO/API TLS on *.neibu.koolearn.com. */
+export const CORPORATE_FAKE_IP_FILTER = ['+.neibu.koolearn.com'] as const
 
 function hasRule(rules: string[], candidate: string): boolean {
   return rules.some((entry) => {

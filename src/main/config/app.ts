@@ -70,6 +70,7 @@ function migrateLegacyEncryptedConfig(config: AppConfig): { config: AppConfig; m
 function migrateLegacyCursorDefaults(config: AppConfig): { config: AppConfig; migrated: boolean } {
   const result = { ...config }
   let migrated = false
+  const legacyCursorAppPathPrefix = '/Applications/Cursor-3.1.15.app'
 
   if (result.autoProxySwitch === undefined) {
     result.autoProxySwitch = true
@@ -88,7 +89,13 @@ function migrateLegacyCursorDefaults(config: AppConfig): { config: AppConfig; mi
     migrated = true
   }
   if (result.cursorProxyAppPathPrefixes === undefined) {
-    result.cursorProxyAppPathPrefixes = [...defaultConfig.cursorProxyAppPathPrefixes!]
+    result.cursorProxyAppPathPrefixes = []
+    migrated = true
+  } else if (
+    result.cursorProxyAppPathPrefixes.length === 1 &&
+    result.cursorProxyAppPathPrefixes[0] === legacyCursorAppPathPrefix
+  ) {
+    result.cursorProxyAppPathPrefixes = []
     migrated = true
   }
   if (result.cursorSysProxyLock === undefined && result.cursorBidiOptimize !== false) {

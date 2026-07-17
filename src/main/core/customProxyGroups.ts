@@ -1,17 +1,17 @@
 import {
   CURSOR_DEDICATED_GROUP_NAME,
-  LEGACY_CURSOR_DEDICATED_GROUP_NAME,
+  LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName
 } from './cursorProxyGroup'
-import { buildUrlTestGroupDefaults } from './defaultAutoSwitchProxy'
+import { buildHongKongUrlTestDefaults } from './defaultAutoSwitchProxy'
 
 /** Sparkle-injected HK filter group — members rebuilt on every generateProfile(). */
 export const HONG_KONG_FILTER_GROUP_NAME = '🇭🇰 香港节点' as const
 
 const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
   CURSOR_DEDICATED_GROUP_NAME,
-  LEGACY_CURSOR_DEDICATED_GROUP_NAME,
+  ...LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   HONG_KONG_FILTER_GROUP_NAME
 ])
 
@@ -81,16 +81,24 @@ export function migrateLegacyCursorDedicatedGroupReferences(profile: MihomoConfi
   }
   let migrated = false
   profile.rules = rules.map((rule) => {
-    if (!rule.includes(LEGACY_CURSOR_DEDICATED_GROUP_NAME)) {
-      return rule
+    let nextRule = rule
+    let ruleMigrated = false
+    for (const legacyName of LEGACY_CURSOR_DEDICATED_GROUP_NAMES) {
+      if (!nextRule.includes(legacyName)) {
+        continue
+      }
+      ruleMigrated = true
+      nextRule = nextRule.split(legacyName).join(CURSOR_DEDICATED_GROUP_NAME)
     }
-    migrated = true
-    return rule.split(LEGACY_CURSOR_DEDICATED_GROUP_NAME).join(CURSOR_DEDICATED_GROUP_NAME)
+    if (ruleMigrated) {
+      migrated = true
+    }
+    return nextRule
   }) as MihomoConfig['rules']
   return migrated
 }
 
-/** Rewrite non-Cursor subscription rules that hijack general traffic into Cursor 3.1.15 专用. */
+/** Rewrite non-Cursor subscription rules that hijack general traffic into Cursor 专用. */
 export function rewriteBroadCursorDedicatedRules(profile: MihomoConfig): void {
   const rules = profile.rules as string[] | undefined
   if (!rules?.length) {
@@ -249,7 +257,7 @@ function buildHongKongGroupConfig(
   leafNames: string[],
   profileId: string | undefined
 ): ProxyGroupConfig | null {
-  const urlTestDefaults = buildUrlTestGroupDefaults()
+  const urlTestDefaults = buildHongKongUrlTestDefaults()
 
   if (profileId) {
     return {

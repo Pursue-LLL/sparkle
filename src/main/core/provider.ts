@@ -64,6 +64,7 @@ function validateProxies(proxies: unknown[]): boolean {
 }
 
 import { applyHysteria2ProxiesQuicStability } from './hysteria2QuicStability'
+import { resolveProviderHealthCheckUrl } from './providerHealthCheckCore'
 
 /**
  * 从订阅配置中提取 proxies，并对 Hysteria 2 节点注入 QUIC/TUN 稳定性参数
@@ -120,12 +121,13 @@ export function generateBaseConfigWithProvider(
   if (!baseConfig['proxy-providers']) {
     baseConfig['proxy-providers'] = {}
   }
+  const leafProxies = (originalConfig.proxies as unknown[]) || []
   baseConfig['proxy-providers'][profileId] = {
     type: 'file',
     path: getProviderConfigPath(profileId),
     'health-check': {
       enable: healthCheck?.enable ?? true,
-      url: healthCheck?.url || 'http://www.gstatic.com/generate_204',
+      url: healthCheck?.url || resolveProviderHealthCheckUrl(leafProxies),
       interval: healthCheck?.interval || 300
     }
   }

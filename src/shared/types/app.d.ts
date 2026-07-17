@@ -102,7 +102,7 @@ interface AppConfig {
   autoCheckUpdate: boolean
   autoProxySwitch?: boolean
   cursorBidiOptimize?: boolean
-  /** macOS Cursor .app bundle path prefixes routed to Cursor 3.1.15 专用; other installs use 🚀 节点选择 via PROCESS-NAME rules. */
+  /** Optional macOS Cursor .app bundle path prefixes for path-scoped rules; empty = all Cursor traffic → 🎯 Cursor 专用. */
   cursorProxyAppPathPrefixes?: string[]
   /** When true, block re-enabling system HTTP proxy (breaks Cursor Agent bidi). */
   cursorSysProxyLock?: boolean
@@ -119,14 +119,17 @@ interface AppConfig {
   networkAlertCooldownMs?: number
   /** Probe commercial subscription nodes every N seconds; 24h rolling report. */
   commercialNodeBenchmarkEnabled?: boolean
-  commercialNodeBenchmarkIntervalSec?: number
   commercialNodeBenchmarkReportIntervalSec?: number
-  commercialNodeBenchmarkConcurrency?: number
-  commercialNodeBenchmarkRegions?: string[]
   commercialNodeBenchmarkNotifyOnReport?: boolean
   /** Directory for cursor-node-quality-report.md (default: ~/.sparkle). */
   commercialNodeBenchmarkReportDir?: string
-  /** Include JP/KR VPS leaf nodes in Cursor benchmark alongside commercial nodes. */
+  /** @deprecated Legacy — periodic VPS batch probe removed. */
+  commercialNodeBenchmarkIntervalSec?: number
+  /** @deprecated Legacy — periodic VPS batch probe removed. */
+  commercialNodeBenchmarkConcurrency?: number
+  /** @deprecated Legacy — periodic VPS batch probe removed. */
+  commercialNodeBenchmarkRegions?: string[]
+  /** @deprecated Legacy — periodic VPS batch probe removed. */
   commercialNodeBenchmarkIncludeVps?: boolean
   silentStart: boolean
   autoCloseConnection: boolean

@@ -16,9 +16,12 @@ export const CRITICAL_CURSOR_HOST_SUFFIXES = [
   'agentn.global.api5lat.cursor.sh'
 ] as const
 
-export const HUNG_CONNECTION_MIN_AGE_MS = 60_000
+export const HUNG_CONNECTION_MIN_AGE_MS = 12 * 60_000
 export const HUNG_SCAN_INTERVAL_MS = 30_000
 export const MANDATORY_REAL_PROBE_MAX_AGE_MS = 30_000
+
+/** Never L0-close the N newest zero-throughput sockets per process+host (active Agent Connect streams). */
+export const HUNG_CONNECTION_KEEP_NEWEST_PER_HOST = 6
 
 export const RECOVERY_L0_COOLDOWN_MS = 30_000
 export const RECOVERY_L1_COOLDOWN_MS = 60_000
@@ -105,7 +108,32 @@ export function selectHungCursorConnectionsToClose(
   rows: ConnectionHygieneRow[],
   nowMs: number = Date.now()
 ): string[] {
-  return rows.filter((row) => isHungCursorConnection(row, nowMs)).map((row) => row.id)
+  const hungRows = rows.filter((row) => isHungCursorConnection(row, nowMs))
+  if (hungRows.length === 0) {
+    return []
+  }
+
+  const protectedIds = new Set<string>()
+  const byKey = new Map<string, ConnectionHygieneRow[]>()
+
+  for (const row of hungRows) {
+    const host = row.host.trim() || 'unknown'
+    const proc = row.processPath.trim() || row.process.trim()
+    const key = `${proc}::${host}`
+    const bucket = byKey.get(key) ?? []
+    bucket.push(row)
+    byKey.set(key, bucket)
+  }
+
+  for (const bucket of byKey.values()) {
+    const sorted = [...bucket].sort((a, b) => b.startMs - a.startMs)
+    const keepCount = Math.min(HUNG_CONNECTION_KEEP_NEWEST_PER_HOST, sorted.length)
+    for (let index = 0; index < keepCount; index += 1) {
+      protectedIds.add(sorted[index].id)
+    }
+  }
+
+  return hungRows.filter((row) => !protectedIds.has(row.id)).map((row) => row.id)
 }
 
 export function selectCriticalHostConnectionsToClose(
@@ -200,12 +228,12 @@ export function canExecuteRecoveryLevel(
 export function decideRecoveryAction(context: RecoveryDecisionContext): RecoveryAction {
   const nowMs = context.nowMs ?? Date.now()
 
-  if (context.attribution === 'healthy') {
-    return 'none'
-  }
-
   if (context.hungConnectionIds.length > 0 && canExecuteRecoveryLevel('L0', context.cooldowns, nowMs)) {
     return 'L0'
+  }
+
+  if (context.attribution === 'healthy') {
+    return 'none'
   }
 
   if (
@@ -242,6 +270,14 @@ export function decideRecoveryAction(context: RecoveryDecisionContext): Recovery
 /** Human-readable reason when unhealthy but {@link decideRecoveryAction} returns `none` (cooldown / ladder not ready). */
 export function describeRecoveryBlockReason(context: RecoveryDecisionContext): string | undefined {
   const nowMs = context.nowMs ?? Date.now()
+
+  if (
+    context.hungConnectionIds.length > 0 &&
+    !canExecuteRecoveryLevel('L0', context.cooldowns, nowMs)
+  ) {
+    return 'L0_cooldown'
+  }
+
   if (context.attribution === 'healthy') {
     return undefined
   }

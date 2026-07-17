@@ -10,7 +10,8 @@ import {
   startNetworkDetection,
   stopNetworkDetection,
   restartCommercialNodeBenchmark,
-  stopCommercialNodeBenchmark
+  stopCommercialNodeBenchmark,
+  runNetworkTriangulationDiagnostic
 } from '@renderer/utils/ipc'
 import { platform } from '@renderer/utils/init'
 import { IoIosHelpCircle } from 'react-icons/io'
@@ -22,6 +23,7 @@ const emptyArray: string[] = []
 
 const AdvancedSettings: React.FC = () => {
   const { appConfig, patchAppConfig } = useAppConfig()
+  const [triangulationRunning, setTriangulationRunning] = useState(false)
   const {
     controlDns = true,
     controlSniff = true,
@@ -35,7 +37,6 @@ const AdvancedSettings: React.FC = () => {
     networkDetectionInterval = 10,
     networkAlertEnabled = true,
     commercialNodeBenchmarkEnabled = false,
-    commercialNodeBenchmarkIntervalSec = 60,
     commercialNodeBenchmarkReportIntervalSec = 3600
   } = appConfig || {}
 
@@ -202,10 +203,58 @@ const AdvancedSettings: React.FC = () => {
       </SettingItem>
       <SettingItem
         compatKey="legacy"
+        title="Cursor 网络定责探测"
+        actions={
+          <Tooltip content="KR/JP Reality→api2 + 当前 Cursor 专用 active 节点 + marketplace 对照；不含 VPS SSH（L4 见 ledger scope=vps）">
+            <Button isIconOnly size="sm" variant="light">
+              <IoIosHelpCircle className="text-lg" />
+            </Button>
+          </Tooltip>
+        }
+        divider
+      >
+        <Button
+          size="sm"
+          color="primary"
+          variant="flat"
+          isLoading={triangulationRunning}
+          onPress={async () => {
+            setTriangulationRunning(true)
+            try {
+              const report = await runNetworkTriangulationDiagnostic()
+              const { verdict, probes } = report
+              const krLine = probes.kr.skipped
+                ? `KR: SKIP`
+                : `KR→api2: ${probes.kr.ok ? 'OK' : 'FAIL'} ${probes.kr.delayMs}ms`
+              const jpLine = probes.jp.skipped
+                ? `JP: SKIP`
+                : `JP→api2: ${probes.jp.ok ? 'OK' : 'FAIL'} ${probes.jp.delayMs}ms`
+              const mpLine = probes.marketplace.skipped
+                ? `marketplace: SKIP`
+                : `marketplace: ${probes.marketplace.ok ? 'OK' : 'FAIL'} ${probes.marketplace.delayMs}ms`
+              const activeLine = probes.active.skipped
+                ? `active: SKIP`
+                : `active ${probes.active.proxy}: ${probes.active.ok ? 'OK' : 'FAIL'} ${probes.active.delayMs}ms`
+              notify(
+                `${verdict.summaryZh}\n[${verdict.confidence}] ${verdict.layer}\n${krLine} | ${jpLine} | ${mpLine} | ${activeLine}\n${verdict.limitationZh}`,
+                { variant: verdict.layer === 'paths_healthy' ? 'success' : 'warning' }
+              )
+            } catch (e) {
+              notify(e, { variant: 'danger' })
+            } finally {
+              setTriangulationRunning(false)
+            }
+          }}
+        >
+          运行定责探测
+        </Button>
+      </SettingItem>
+      <SettingItem
+        compatKey="legacy"
         title="Cursor 节点 24h 质量报告"
         actions={
           <Tooltip
-            content={`仅探韩日 6 个 canonical VPS（间隔=配置 intervalSec；有效并发=min(配置,3,2)=2 对齐 delay 槽）。商业 batch 已关闭。Cursor 连接≥20 或短探针进行时自动跳过 VPS batch；60s 探针在马拉松时写缓存 probe 行。core 就绪后 45s grace 再 warmup/monitor。TUN 丢失有 grace/debounce，api2 仍通时不 restartCore。报告每 ${Math.round(commercialNodeBenchmarkReportIntervalSec / 60)}min → cursor-node-quality-report.md。`}
+            content={`从 api2-probe-ledger 汇总 24h VPS 质量报告（含 scope=vps SSH L4 探针 + scope=active 传输探针）。core 就绪后 45s grace 启动 active 60s + VPS L4 300s 探针。报告每 ${Math.round(commercialNodeBenchmarkReportIntervalSec / 60)}min → cursor-node-quality-report.md。`}
           >
             <Button isIconOnly size="sm" variant="light">
               <IoIosHelpCircle className="text-lg" />

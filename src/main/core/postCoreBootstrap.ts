@@ -39,20 +39,30 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
 
   await appendAppLog('[PostCoreBootstrap]: mihomo API ready — scheduling post-core services\n')
 
+  const { mihomoGroups, mihomoChangeProxy, mihomoGroupDelay } = await import('./mihomoApi')
+  const { registerMihomoGroupsAccessor } = await import('./networkStabilityMonitor')
+  registerMihomoGroupsAccessor(mihomoGroups)
+
   const { initProfileUpdater } = await import('./profileUpdater')
   await initProfileUpdater()
 
-  const { applyCursorDedicatedVpsSelection } = await import('./cursorDedicatedDefault')
-  const switched = await applyCursorDedicatedVpsSelection()
-  if (!switched) {
-    await appendAppLog('[PostCoreBootstrap]: Cursor dedicated VPS default unchanged or skipped\n')
+  try {
+    const { applyCursorDedicatedVpsSelection } = await import('./cursorDedicatedDefault')
+    const switched = await applyCursorDedicatedVpsSelection({ mihomoGroups, mihomoChangeProxy })
+    if (!switched) {
+      await appendAppLog('[PostCoreBootstrap]: Cursor dedicated VPS default unchanged or skipped\n')
+    }
+  } catch (error) {
+    await appendAppLog(
+      `[PostCoreBootstrap]: Cursor dedicated VPS default failed: ${error instanceof Error ? error.message : String(error)}\n`
+    )
   }
 
   setTimeout(() => {
     void (async () => {
       try {
-        const { warmupRegionalUrlTestGroups } = await import('./defaultAutoSwitchProxy')
-        const warmed = await warmupRegionalUrlTestGroups()
+        const { warmupRegionalUrlTestGroups } = await import('./regionalUrlTestWarmup')
+        const warmed = await warmupRegionalUrlTestGroups({ mihomoGroups, mihomoGroupDelay })
         if (warmed > 0) {
           await appendAppLog(
             `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`
@@ -68,7 +78,7 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
       await startApi2ProbePlane()
 
       await appendAppLog(
-        `[PostCoreBootstrap]: Api2ProbePlane ON after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace (60s active + VPS batch → api2-probe-ledger.jsonl)\n`
+        `[PostCoreBootstrap]: Api2ProbePlane ON after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace (60s active transport probe)\n`
       )
     })()
   }, NETWORK_MONITOR_STARTUP_GRACE_MS)

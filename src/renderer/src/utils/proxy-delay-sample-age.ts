@@ -12,6 +12,23 @@ export function latestProxyDelayHistoryEntry(
   return history[history.length - 1]
 }
 
+/** Skip trailing health-check timeouts (delay=0) — matches mihomoApi provider delay fallback. */
+export function latestSuccessfulProxyDelayHistoryEntry(
+  history: ProxyDelayHistoryEntry[] | undefined,
+): ProxyDelayHistoryEntry | undefined {
+  if (!history?.length) {
+    return undefined
+  }
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index]
+    if (entry && entry.delay > 0) {
+      return entry
+    }
+  }
+  const latest = history[history.length - 1]
+  return latest?.delay === 0 ? latest : undefined
+}
+
 /** Compact relative age for proxy delay sample timestamp (UI beside delay button). */
 export function formatProxyDelaySampleAge(
   sampledAtIso: string | undefined,

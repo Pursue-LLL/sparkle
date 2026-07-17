@@ -44,7 +44,26 @@ module.exports = [
   },
 
   {
-    files: ['**/*.cjs', '**/*.mjs', '**/tailwind.config.js', '**/postcss.config.js'],
+    files: ['src/main/core/**/*.ts'],
+    ignores: [
+      'src/main/core/postCoreBootstrap.ts',
+      'src/main/core/mihomoApi.ts',
+      'src/main/core/manager.ts',
+      'src/main/core/mihomoApi*.ts'
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression[source.value="./mihomoApi"]',
+          message:
+            'Do not dynamic-import mihomoApi from core modules — register/inject API from postCoreBootstrap instead.'
+        }
+      ]
+    }
+  },
+
+  {
     rules: {
       '@typescript-eslint/no-require-imports': 'off'
     }

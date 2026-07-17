@@ -1,4 +1,5 @@
 import { Chip, Separator, Surface } from '@heroui-v3/react'
+import { latestSuccessfulProxyDelayHistoryEntry } from '@renderer/utils/proxy-delay-sample-age'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -107,7 +108,8 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
   const tooltipH = panelRef.current?.offsetHeight ?? 120
   const arrowTop = Math.max(10, Math.min(anchorMidRelative - 6, tooltipH - 22))
 
-  const delay = proxy.history.length > 0 ? proxy.history[proxy.history.length - 1].delay : -1
+  const delaySample = latestSuccessfulProxyDelayHistoryEntry(proxy.history)
+  const delay = delaySample?.delay ?? -1
 
   const history = proxy.history.slice(-8)
   const validDelays = history.filter((h) => h.delay > 0).map((h) => h.delay)
