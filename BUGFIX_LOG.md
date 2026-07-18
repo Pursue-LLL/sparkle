@@ -26,6 +26,22 @@
 
 ---
 
+## 2026-07-18
+
+### BUG-2026-07-18-001 · v1.26.42 · Cursor 专用组手动切换被 bootstrap 覆盖
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | 代理组页点选 Cursor 专用节点后，重启 Sparkle/core 又变回 KR-Reality；体感「无法切换」 |
+| **bug 存在版本** | Sparkle **1.26.38–1.26.41** |
+| **修复目标版本** | Sparkle **1.26.42** |
+| **根因** | `shouldUpgradeCursorDedicatedNode` 强制 JP-Reality→KR-Reality；无 manual 选择持久化；bootstrap 覆盖用户确认后的节点 |
+| **修复** | `cursorDedicatedSelectionCore.ts` 持久化 manual 选择；`mihomoChangeProxy(source:manual)` 写入；bootstrap 优先 restore manual；移除跨区 Reality 强制 upgrade |
+| **回归** | `cursorDedicatedDefault.test.ts` · `cursorDedicatedSelectionCore.test.ts` · test:node-quality **126/126** |
+| **用户动作** | 升级 1.26.42 后代理组页切换（仍有 ConfirmModal 确认） |
+| **代码位置** | `cursorDedicatedDefault.ts` · `cursorDedicatedSelectionCore.ts` · `mihomoApi.ts` |
+
 ## 2026-07-17
 
 ### BUG-2026-07-17-006 · v1.26.38 · VPS 与商用混 provider 导致 76 节点 batch api2 测速尖峰

@@ -269,7 +269,17 @@ export const mihomoChangeProxy = async (
   }
 
   const instance = await getAxios()
-  return await instance.put(`/proxies/${encodeURIComponent(group)}`, { name: proxy })
+  const detail = await instance.put(`/proxies/${encodeURIComponent(group)}`, { name: proxy })
+
+  if (source === 'manual') {
+    const { isCursorSelectorGroupName } = await import('./cursorProxyGroup')
+    if (isCursorSelectorGroupName(group)) {
+      const { writeCursorDedicatedManualSelection } = await import('./cursorDedicatedSelectionCore')
+      await writeCursorDedicatedManualSelection(proxy)
+    }
+  }
+
+  return detail
 }
 
 export const mihomoUnfixedProxy = async (group: string): Promise<ControllerProxiesDetail> => {

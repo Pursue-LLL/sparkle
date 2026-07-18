@@ -1,4 +1,5 @@
 import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { readCursorDedicatedManualSelection } from './cursorDedicatedSelectionCore'
 import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'
 
 export const CURSOR_DEFAULT_VPS_NODE = 'KR-VPS-Reality' as const
@@ -13,6 +14,11 @@ export function isCursorSuboptimalNode(name: string): boolean {
   return /-VPS-(TUIC|HY2)$/i.test(name)
 }
 
+/** Allow auto switch off HY2/TUIC even when short api2 probe is green. */
+export function isCursorProtocolUpgrade(from: string, to: string): boolean {
+  return isCursorSuboptimalNode(from) && !isCursorSuboptimalNode(to)
+}
+
 /** Only seed the default when the Cursor group has no real selection yet. */
 export function shouldApplyCursorDedicatedDefault(current: string | undefined): boolean {
   return !current || current === 'SDK DNS'
@@ -21,15 +27,19 @@ export function shouldApplyCursorDedicatedDefault(current: string | undefined): 
 /** Upgrade dedicated group selection to the marathon-stable Reality default when needed. */
 export function shouldUpgradeCursorDedicatedNode(
   current: string | undefined,
-  targetNode: string
+  targetNode: string,
+  manualSelection?: string
 ): boolean {
+  if (manualSelection && manualSelection === current) {
+    return false
+  }
   if (shouldApplyCursorDedicatedDefault(current)) {
     return true
   }
   if (current && isCursorSuboptimalNode(current)) {
-    return true
-  }
-  if (current === 'JP-VPS-Reality' && targetNode === CURSOR_DEFAULT_VPS_NODE) {
+    if (manualSelection === current) {
+      return false
+    }
     return true
   }
   return false
@@ -67,6 +77,25 @@ export async function applyCursorDedicatedVpsSelection(
     .map((proxy) => proxy?.name)
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
   const available = new Set(memberNames)
+  const current = cursorGroup.now
+  const manualSelection = await readCursorDedicatedManualSelection()
+
+  if (manualSelection && available.has(manualSelection)) {
+    if (current === manualSelection) {
+      return false
+    }
+    const restored = await changeProxyApi(CURSOR_DEDICATED_GROUP_NAME, manualSelection, {
+      source: 'bootstrap',
+    })
+    if (restored) {
+      await appendAppLog(
+        `[CursorDedicatedDefault]: restore manual selection → ${manualSelection}\n`
+      )
+      return true
+    }
+    return false
+  }
+
   const targetNode = resolveCursorDefaultVpsNode(available)
   if (!targetNode) {
     await appendAppLog(
@@ -75,17 +104,16 @@ export async function applyCursorDedicatedVpsSelection(
     return false
   }
 
-  const current = cursorGroup.now
   if (current === targetNode) {
     return false
   }
 
-  if (!shouldUpgradeCursorDedicatedNode(current, targetNode)) {
+  if (!shouldUpgradeCursorDedicatedNode(current, targetNode, manualSelection)) {
     return false
   }
 
   const result = await changeProxyApi(CURSOR_DEDICATED_GROUP_NAME, targetNode, {
-    source: 'auto'
+    source: 'bootstrap'
   })
   if (!result) {
     return false
