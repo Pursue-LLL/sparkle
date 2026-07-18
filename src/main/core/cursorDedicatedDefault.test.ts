@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   CURSOR_DEFAULT_VPS_NODE,
+  isCursorProtocolUpgrade,
   isCursorSuboptimalNode,
   resolveCursorDefaultVpsNode,
   shouldApplyCursorDedicatedDefault,
@@ -32,6 +33,13 @@ describe('cursorDedicatedDefault', () => {
     assert.equal(isCursorSuboptimalNode('KR-VPS-Reality'), false)
   })
 
+  it('treats HY2/TUIC → Reality as protocol upgrade (bypass defer)', () => {
+    assert.equal(isCursorProtocolUpgrade('JP-VPS-HY2', 'KR-VPS-Reality'), true)
+    assert.equal(isCursorProtocolUpgrade('KR-VPS-TUIC', 'JP-VPS-Reality'), true)
+    assert.equal(isCursorProtocolUpgrade('KR-VPS-Reality', 'JP-VPS-Reality'), false)
+    assert.equal(isCursorProtocolUpgrade('JP-VPS-HY2', 'KR-VPS-HY2'), false)
+  })
+
   it('does not override an existing Cursor dedicated selection on bootstrap', () => {
     assert.equal(shouldApplyCursorDedicatedDefault(undefined), true)
     assert.equal(shouldApplyCursorDedicatedDefault('SDK DNS'), true)
@@ -44,7 +52,9 @@ describe('cursorDedicatedDefault', () => {
     assert.equal(shouldUpgradeCursorDedicatedNode(undefined, CURSOR_DEFAULT_VPS_NODE), true)
     assert.equal(shouldUpgradeCursorDedicatedNode('SDK DNS', CURSOR_DEFAULT_VPS_NODE), true)
     assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-TUIC', CURSOR_DEFAULT_VPS_NODE), true)
-    assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-Reality', CURSOR_DEFAULT_VPS_NODE), true)
+    assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-Reality', CURSOR_DEFAULT_VPS_NODE), false)
+    assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-Reality', CURSOR_DEFAULT_VPS_NODE, 'JP-VPS-Reality'), false)
+    assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-HY2', CURSOR_DEFAULT_VPS_NODE, 'JP-VPS-HY2'), false)
     assert.equal(shouldUpgradeCursorDedicatedNode('KR-VPS-Reality', CURSOR_DEFAULT_VPS_NODE), false)
     assert.equal(shouldUpgradeCursorDedicatedNode('Sparkle-自动-新加坡', CURSOR_DEFAULT_VPS_NODE), false)
   })
