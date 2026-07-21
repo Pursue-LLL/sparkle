@@ -1,6 +1,6 @@
 {
   "name": "sparkle",
-  "version": "1.26.42",
+  "version": "1.26.49",
   "description": "Sparkle",
   "main": "./out/main/index.js",
   "author": {
@@ -14,7 +14,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
-    "test:node-quality": "tsx --test src/main/core/cursorNodeStability.test.ts src/main/core/regionPriority.test.ts src/main/core/nodeQualityScore.test.ts src/main/core/customProxyGroups.test.ts src/main/core/profileGroupNormalize.test.ts src/main/core/defaultAutoSwitchProxy.test.ts src/main/core/networkBurstGateCore.test.ts src/main/core/networkStartupGraceCore.test.ts src/main/core/networkPublicDnsCore.test.ts src/main/core/dnsFallbackIntegrity.test.ts src/main/core/cursorConnectionHygieneCore.test.ts src/main/core/cursorTransportHealthCore.test.ts src/main/core/cursorRuleInjection.test.ts src/main/core/coreHookWaiter.test.ts src/main/core/cursorDedicatedDefault.test.ts src/main/core/cursorDedicatedSelectionCore.test.ts src/main/core/providerHealthCheck.test.ts src/main/core/provider.split.test.ts src/main/core/mihomoProviderDelay.test.ts src/main/core/vpsProviderSplitCore.test.ts src/main/core/regionalUrlTestWarmupCore.test.ts src/renderer/src/utils/proxy-delay-sample-age.test.ts",
+    "test:node-quality": "tsx --test src/main/core/cursorNodeStability.test.ts src/main/core/regionPriority.test.ts src/main/core/nodeQualityScore.test.ts src/main/core/customProxyGroups.test.ts src/main/core/profileGroupNormalize.test.ts src/main/core/defaultAutoSwitchProxy.test.ts src/main/core/networkBurstGateCore.test.ts src/main/core/networkStartupGraceCore.test.ts src/main/core/networkPublicDnsCore.test.ts src/main/core/dnsFallbackIntegrity.test.ts src/main/core/cursorConnectionHygieneCore.test.ts src/main/core/cursorTransportHealthCore.test.ts src/main/core/connectPartitionDetectCore.test.ts src/main/core/connectPartitionReader.test.ts src/main/core/marathonDialToleranceCore.test.ts src/main/core/cursorHy2MarathonKeepaliveCore.test.ts src/main/core/cursorRuleInjection.test.ts src/main/core/coreHookWaiter.test.ts src/main/core/cursorDedicatedDefault.test.ts src/main/core/cursorDedicatedSelectionCore.test.ts src/main/core/providerHealthCheck.test.ts src/main/core/provider.split.test.ts src/main/core/mihomoProviderDelay.test.ts src/main/core/vpsProviderSplitCore.test.ts src/main/core/vlessVisionMuxGuardCore.test.ts src/main/core/regionalUrlTestWarmupCore.test.ts src/renderer/src/utils/proxy-delay-sample-age.test.ts",
     "ensure:electron": "node scripts/install-electron.ts",
     "prepare": "node scripts/prepare.ts",
     "updater": "node scripts/updater.ts",
