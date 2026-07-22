@@ -128,32 +128,26 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(sgGroup?.proxies, undefined)
   })
 
-  it('prepends regional auto groups to Cursor dedicated selector', () => {
+  it('keeps Cursor dedicated selector VPS-only when using provider mode', () => {
     const profile = {
       'proxy-groups': [
-        { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', use: ['test-profile'], filter: '(?i)vps' },
+        { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', use: ['test-profile-vps'] },
         { name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }
       ]
     } as unknown as MihomoConfig
 
     ensureSelectGroupsDefaultToAutoSwitch(profile, 'test-profile', {
-      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01']
+      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01', 'KR-VPS-HY2']
     })
 
     const cursorGroup = (profile['proxy-groups'] as { name: string; proxies?: string[]; use?: string[] }[]).find(
       (group) => group.name === CURSOR_DEDICATED_GROUP_NAME
     )
-    assert.deepEqual(cursorGroup?.proxies, [
-      'Sparkle-自动-新加坡',
-      'Sparkle-自动-日本',
-      'Sparkle-自动-台湾',
-      'Sparkle-自动-韩国',
-      'Sparkle-自动-美国'
-    ])
-    assert.deepEqual(cursorGroup?.use, ['test-profile'])
+    assert.equal(cursorGroup?.proxies, undefined)
+    assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
   })
 
-  it('appends 自动选择 to non-Cursor select groups and keeps Cursor regional refs', () => {
+  it('appends 自动选择 to non-Cursor select groups and keeps Cursor VPS-only', () => {
     const profile = {
       'proxy-groups': [
         { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['KR-VPS-HY2'] },
@@ -170,8 +164,8 @@ describe('defaultAutoSwitchProxy', () => {
 
     const groups = profile['proxy-groups'] as { name: string; proxies?: string[] }[]
     const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
-    assert.ok(cursorGroup?.proxies?.includes('Sparkle-自动-新加坡'))
-    assert.ok(cursorGroup?.proxies?.includes('KR-VPS-HY2'))
+    assert.equal(cursorGroup?.proxies?.includes('Sparkle-自动-新加坡'), false)
+    assert.deepEqual(cursorGroup?.proxies, ['KR-VPS-HY2'])
     assert.deepEqual(groups.find((group) => group.name === '🚀 节点选择')?.proxies, [
       'SG-01',
       'TW-01',

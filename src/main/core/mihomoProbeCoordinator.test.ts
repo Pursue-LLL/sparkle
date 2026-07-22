@@ -23,7 +23,9 @@ describe('mihomoProbeCoordinator', () => {
     const tasks = Array.from({ length: 4 }, () =>
       withMihomoDelayProbeSlot(async () => {
         peak = Math.max(peak, getActiveMihomoDelayProbes())
-        await new Promise((resolve) => setTimeout(resolve, 30))
+        await new Promise((resolve) => {
+          setTimeout(resolve, 30)
+        })
       })
     )
     await Promise.all(tasks)

@@ -7,7 +7,9 @@ import {
   mihomoChangeProxy,
   mihomoCloseConnections,
   mihomoGroupDelay,
-  mihomoProxyDelay
+  mihomoProxyDelay,
+  runManagedVpsDelayTestSingle,
+  runManagedVpsDelayTests
 } from '@renderer/utils/ipc'
 import { FaLocationCrosshairs } from 'react-icons/fa6'
 import { memo, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
@@ -21,12 +23,19 @@ import { useCommercialNodeStabilityMarkers } from '@renderer/hooks/use-commercia
 import CollapseInput from '@renderer/components/base/collapse-input'
 import { includesIgnoreCase } from '@renderer/utils/includes'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
-import { runDelayTestsWithConcurrency } from '@renderer/utils/delay-test'
+import {
+  isVpsCursorLeafBatch,
+  isVpsCursorLeafNode,
+  resolveDelayTestConcurrencyForProxies,
+  runDelayTestsWithConcurrency
+} from '@renderer/utils/delay-test'
 import ConfirmModal from '@renderer/components/base/base-confirm'
 import {
   cursorProxySwitchConfirmDescription,
+  formatDelayTestUrlDisplay,
   isCursorSelectorGroupName,
-  resolveDelayTestUrl
+  resolveDelayTestUrl,
+  resolveEffectiveDelayTestUrl
 } from '@renderer/utils/cursor-proxy-groups'
 
 type ProxyLike = ControllerProxiesDetail | ControllerGroupDetail
@@ -50,6 +59,7 @@ function compareProxyDelay(a: ProxyLike, b: ProxyLike): number {
 interface GroupHeaderProps {
   index: number
   group: ControllerMixedGroup
+  probeUrl: string
   isOpen: boolean
   isLast: boolean
   groupDisplayLayout: 'hidden' | 'single' | 'double'
@@ -64,6 +74,7 @@ interface GroupHeaderProps {
 const GroupHeader = memo(function GroupHeader({
   index,
   group,
+  probeUrl,
   isOpen,
   isLast,
   groupDisplayLayout,
@@ -74,10 +85,11 @@ const GroupHeader = memo(function GroupHeader({
   onScrollToProxy,
   onGroupDelay
 }: GroupHeaderProps) {
+  const probeLabel = formatDelayTestUrlDisplay(probeUrl)
   return (
     <div className={`w-full pt-2 ${isLast && !isOpen ? 'pb-2' : ''} px-2`}>
       <Card as="div" isPressable fullWidth onPress={() => onToggle(index, isOpen)}>
-        <CardBody className="w-full h-14">
+        <CardBody className="w-full min-h-14 h-auto py-2">
           <div className="flex justify-between h-full">
             <div className="flex text-ellipsis overflow-hidden whitespace-nowrap h-full">
               {group.icon ? (
@@ -115,10 +127,20 @@ const GroupHeader = memo(function GroupHeader({
                     </>
                   )}
                 </div>
-                {groupDisplayLayout === 'double' && (
-                  <div className="text-ellipsis whitespace-nowrap text-[10px] text-foreground-500 leading-tight flex-3 flex items-center">
-                    <span>{group.type}</span>
-                    <span className="flag-emoji ml-1 inline-block">{group.now}</span>
+                {(groupDisplayLayout === 'double' || groupDisplayLayout === 'single') && (
+                  <div className="text-ellipsis whitespace-nowrap text-[10px] text-foreground-500 leading-tight flex-3 flex items-center gap-x-1.5 min-w-0">
+                    {groupDisplayLayout === 'double' && (
+                      <>
+                        <span>{group.type}</span>
+                        <span className="flag-emoji inline-block">{group.now}</span>
+                      </>
+                    )}
+                    <span
+                      className="truncate min-w-0"
+                      title={`探针地址: ${probeUrl}`}
+                    >
+                      探针 {probeLabel}
+                    </span>
                   </div>
                 )}
               </div>
@@ -192,6 +214,7 @@ const Proxies: React.FC = () => {
     delayTestUrlScope = 'group',
     delayTestUseGroupApi = false,
     delayTestConcurrency,
+    delayTestUrl,
     rememberProxyGroupOpenState = false
   } = appConfig || {}
   const stabilitySnapshot = useCommercialNodeStabilityMarkers()
@@ -348,8 +371,22 @@ const Proxies: React.FC = () => {
     [delayTestUrlScope]
   )
 
+  const getGroupProbeUrl = useCallback(
+    (group: ControllerMixedGroup): string =>
+      resolveEffectiveDelayTestUrl({
+        groupName: group.name,
+        groupTestUrl: group.testUrl,
+        delayTestUrlScope,
+        globalDelayTestUrl: delayTestUrl
+      }),
+    [delayTestUrl, delayTestUrlScope]
+  )
+
   const onProxyDelay = useCallback(
     async (proxy: string, group?: ControllerMixedGroup): Promise<ControllerProxiesDelay> => {
+      if (isVpsCursorLeafNode(proxy)) {
+        return runManagedVpsDelayTestSingle(proxy, getDelayTestUrl(group))
+      }
       return await mihomoProxyDelay(proxy, getDelayTestUrl(group))
     },
     [getDelayTestUrl]
@@ -394,12 +431,19 @@ const Proxies: React.FC = () => {
       setGroupDelaying(index, true)
 
       try {
+        const proxyNames = proxies.map((proxy) => proxy.name)
+        if (isVpsCursorLeafBatch(proxyNames)) {
+          await runManagedVpsDelayTests(proxyNames, testUrl)
+          return
+        }
+
         if (delayTestUseGroupApi) {
           await mihomoGroupDelay(group.name, testUrl)
           return
         }
 
-        await runDelayTestsWithConcurrency(proxies, delayTestConcurrency, async (proxy) => {
+        const delayConcurrency = resolveDelayTestConcurrencyForProxies(proxyNames, delayTestConcurrency)
+        await runDelayTestsWithConcurrency(proxies, delayConcurrency, async (proxy) => {
           try {
             await mihomoProxyDelay(proxy.name, testUrl)
           } catch {
@@ -585,6 +629,8 @@ const Proxies: React.FC = () => {
   showProxyDetailTooltipRef.current = showProxyDetailTooltip
   const proxyCols2Ref = useRef(proxyCols)
   proxyCols2Ref.current = proxyCols
+  const getGroupProbeUrlRef = useRef(getGroupProbeUrl)
+  getGroupProbeUrlRef.current = getGroupProbeUrl
   const toggleOpenRef = useRef(toggleOpen)
   toggleOpenRef.current = toggleOpen
   const updateSearchValueRef = useRef(updateSearchValue)
@@ -627,6 +673,7 @@ const Proxies: React.FC = () => {
         <GroupHeader
           index={index}
           group={g[index]}
+          probeUrl={getGroupProbeUrlRef.current(g[index])}
           isOpen={isOpen[index]}
           isLast={index === g.length - 1}
           groupDisplayLayout={groupDisplayLayoutRef.current}

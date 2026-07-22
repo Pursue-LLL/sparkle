@@ -87,13 +87,40 @@ export async function mihomoUpgrade(channel: string): Promise<void> {
 
 export async function mihomoProxyDelay(
   proxy: string,
-  url?: string
+  url?: string,
+  options?: MihomoDelayOptions
 ): Promise<ControllerProxiesDelay> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('mihomoProxyDelay', proxy, url))
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke('mihomoProxyDelay', proxy, url, options)
+  )
 }
 
-export async function mihomoGroupDelay(group: string, url?: string): Promise<ControllerGroupDelay> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('mihomoGroupDelay', group, url))
+export async function mihomoGroupDelay(
+  group: string,
+  url?: string,
+  options?: MihomoDelayOptions
+): Promise<ControllerGroupDelay> {
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke('mihomoGroupDelay', group, url, options)
+  )
+}
+
+export async function runManagedVpsDelayTests(
+  proxyNames: string[],
+  testUrl?: string
+): Promise<ManagedVpsDelayTestResult> {
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke('runManagedVpsDelayTests', proxyNames, testUrl)
+  )
+}
+
+export async function runManagedVpsDelayTestSingle(
+  proxyName: string,
+  testUrl?: string
+): Promise<ControllerProxiesDelay> {
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke('runManagedVpsDelayTestSingle', proxyName, testUrl)
+  )
 }
 
 export async function runNetworkTriangulationDiagnostic(): Promise<NetworkTriangulationReport> {

@@ -321,10 +321,13 @@ export async function setProfileStr(id: string, content: string): Promise<void> 
     // Rebuild merged profile (subscription + global override VPS) then hot-reload provider.
     // Raw updateProvider() alone drops override leaf nodes on scheduled subscription refresh.
     try {
-      const { generateProfile } = await import('../core/factory')
-      const { mihomoUpdateProxyProviders } = await import('../core/mihomoApi')
+      const { generateProfile, getRuntimeConfig } = await import('../core/factory')
+      const { reloadMihomoProfileProviders, resolveVpsProviderId } = await import('../core/provider')
       await generateProfile()
-      await mihomoUpdateProxyProviders(id)
+      const runtime = await getRuntimeConfig()
+      const proxyProviders = runtime['proxy-providers'] as Record<string, unknown> | undefined
+      const hasVpsProvider = Boolean(proxyProviders?.[resolveVpsProviderId(id)])
+      await reloadMihomoProfileProviders(id, hasVpsProvider)
     } catch {
       await restartCore()
     }

@@ -253,11 +253,23 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('mihomoUpgradeGeo', ipcErrorWrapper(mihomoUpgradeGeo))
   ipcMain.handle('mihomoUpgradeUI', ipcErrorWrapper(mihomoUpgradeUI))
   ipcMain.handle('mihomoUpgrade', (_e, channel) => ipcErrorWrapper(mihomoUpgrade)(channel))
-  ipcMain.handle('mihomoProxyDelay', (_e, proxy, url) =>
-    ipcErrorWrapper(mihomoProxyDelay)(proxy, url)
+  ipcMain.handle('mihomoProxyDelay', (_e, proxy, url, options) =>
+    ipcErrorWrapper(mihomoProxyDelay)(proxy, url, options)
   )
-  ipcMain.handle('mihomoGroupDelay', (_e, group, url) =>
-    ipcErrorWrapper(mihomoGroupDelay)(group, url)
+  ipcMain.handle('mihomoGroupDelay', (_e, group, url, options) =>
+    ipcErrorWrapper(mihomoGroupDelay)(group, url, options)
+  )
+  ipcMain.handle('runManagedVpsDelayTests', (_e, proxyNames, testUrl) =>
+    ipcErrorWrapper(async () => {
+      const { runManagedVpsDelayTests } = await import('../core/managedVpsDelayTest')
+      return runManagedVpsDelayTests(proxyNames, testUrl)
+    })()
+  )
+  ipcMain.handle('runManagedVpsDelayTestSingle', (_e, proxyName, testUrl) =>
+    ipcErrorWrapper(async () => {
+      const { runManagedVpsDelayTestSingle } = await import('../core/managedVpsDelayTest')
+      return runManagedVpsDelayTestSingle(proxyName, testUrl)
+    })()
   )
   ipcMain.handle('runNetworkTriangulationDiagnostic', () =>
     ipcErrorWrapper(async () => {

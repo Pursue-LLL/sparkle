@@ -2,8 +2,6 @@ import { mkdir, rm } from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import { dataDir } from '../utils/dirs'
-import { createCoreHookWaiter, type CoreHookWaiter } from './coreHookWaiter'
-
 export type { CoreHookWaiter } from './coreHookWaiter'
 export { createCoreHookWaiter } from './coreHookWaiter'
 

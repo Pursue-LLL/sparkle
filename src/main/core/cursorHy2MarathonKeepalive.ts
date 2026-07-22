@@ -3,7 +3,10 @@ import { mihomoGroups, mihomoProxyDelay } from './mihomoApi'
 import { resolveCursorStableSelectorGroup } from './cursorProxyGroup'
 import { API2_PROBE_TARGET, API2GEO_PROBE_TARGET } from './cursorTransportHealthCore'
 import {
+  CURSOR_HY2_HIGH_LATENCY_FORCE_MIN_INTERVAL_MS,
+  CURSOR_HY2_TOKEN_GAP_MIN_INTERVAL_MS,
   isMarathonQuIcInboundCursorNode,
+  shouldDeferHy2MarathonSessionNudgeForCursorLoad,
   shouldRunHy2MarathonSessionKeepalive
 } from './cursorHy2MarathonKeepaliveCore'
 
@@ -17,7 +20,12 @@ export async function resolveCursorDedicatedActiveNode(): Promise<string | undef
 
 export async function runHy2MarathonSessionKeepaliveIfDue(
   cursorConnectionCount: number,
-  options: { force?: boolean; nowMs?: number } = {}
+  options: {
+    force?: boolean
+    highLatencyForce?: boolean
+    tokenGapForce?: boolean
+    nowMs?: number
+  } = {}
 ): Promise<boolean> {
   if (hy2SessionKeepaliveInFlight) {
     return false
@@ -31,6 +39,8 @@ export async function runHy2MarathonSessionKeepaliveIfDue(
 
   if (
     !options.force &&
+    !options.highLatencyForce &&
+    !options.tokenGapForce &&
     !shouldRunHy2MarathonSessionKeepalive({
       activeNode,
       cursorConnectionCount,
@@ -38,6 +48,38 @@ export async function runHy2MarathonSessionKeepaliveIfDue(
       nowMs
     })
   ) {
+    return false
+  }
+
+  if (
+    options.highLatencyForce &&
+    !options.force &&
+    lastHy2SessionKeepaliveAtMs > 0 &&
+    nowMs - lastHy2SessionKeepaliveAtMs < CURSOR_HY2_HIGH_LATENCY_FORCE_MIN_INTERVAL_MS
+  ) {
+    return false
+  }
+
+  if (
+    options.tokenGapForce &&
+    !options.force &&
+    lastHy2SessionKeepaliveAtMs > 0 &&
+    nowMs - lastHy2SessionKeepaliveAtMs < CURSOR_HY2_TOKEN_GAP_MIN_INTERVAL_MS
+  ) {
+    return false
+  }
+
+  if (shouldDeferHy2MarathonSessionNudgeForCursorLoad(cursorConnectionCount)) {
+    const trigger = options.force
+      ? 'force'
+      : options.tokenGapForce
+        ? 'token_gap'
+        : options.highLatencyForce
+          ? 'high_latency'
+          : 'periodic'
+    await appendAppLog(
+      `[CursorHy2MarathonKeepalive]: session_transport_nudge_deferred_cursor_load node=${activeNode} cursor_conn=${cursorConnectionCount} trigger=${trigger}\n`
+    )
     return false
   }
 
@@ -65,6 +107,8 @@ export async function runHy2MarathonSessionKeepaliveIfDue(
     await appendAppLog(
       `[CursorHy2MarathonKeepalive]: session_transport_nudge_failed node=${activeNode} cursor_conn=${cursorConnectionCount} err=${error instanceof Error ? error.message : String(error)}\n`
     )
+    const { recoverMihomoApiAfterNudgeFailure } = await import('./mihomoApiSocketWatchdog')
+    await recoverMihomoApiAfterNudgeFailure(error)
     return false
   } finally {
     hy2SessionKeepaliveInFlight = false

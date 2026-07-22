@@ -2,19 +2,16 @@ import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { readCursorDedicatedManualSelection } from './cursorDedicatedSelectionCore'
 import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'
 
-export const CURSOR_DEFAULT_VPS_NODE = 'KR-VPS-Reality' as const
+export const CURSOR_DEFAULT_VPS_NODE = 'JP-VPS-TLS' as const
 
-const CURSOR_PREFERRED_VPS_NODES = [
-  CURSOR_DEFAULT_VPS_NODE,
-  'JP-VPS-Reality'
-] as const
+const CURSOR_PREFERRED_VPS_NODES = [CURSOR_DEFAULT_VPS_NODE] as const
 
-/** UDP leaf nodes are unstable for marathon SSE; prefer TCP Reality. */
+/** Never auto-select transports that can reintroduce QUIC or Reality handshake failure modes. */
 export function isCursorSuboptimalNode(name: string): boolean {
-  return /-VPS-(TUIC|HY2)$/i.test(name)
+  return /-VPS-(Reality|TUIC|HY2)$/i.test(name)
 }
 
-/** Allow auto switch off HY2/TUIC even when short api2 probe is green. */
+/** Allow a one-way upgrade to trusted standard TLS even when the short api2 probe is green. */
 export function isCursorProtocolUpgrade(from: string, to: string): boolean {
   return isCursorSuboptimalNode(from) && !isCursorSuboptimalNode(to)
 }
@@ -24,24 +21,12 @@ export function shouldApplyCursorDedicatedDefault(current: string | undefined): 
   return !current || current === 'SDK DNS'
 }
 
-/** Upgrade dedicated group selection to the marathon-stable Reality default when needed. */
+/** Never auto-upgrade Dedicated protocol (HY2/TUIC/Reality → TLS) on bootstrap — avoids implicit tunnel rebuild. */
 export function shouldUpgradeCursorDedicatedNode(
-  current: string | undefined,
-  targetNode: string,
-  manualSelection?: string
+  _current: string | undefined,
+  _targetNode: string,
+  _manualSelection?: string
 ): boolean {
-  if (manualSelection && manualSelection === current) {
-    return false
-  }
-  if (shouldApplyCursorDedicatedDefault(current)) {
-    return true
-  }
-  if (current && isCursorSuboptimalNode(current)) {
-    if (manualSelection === current) {
-      return false
-    }
-    return true
-  }
   return false
 }
 
@@ -85,7 +70,7 @@ export async function applyCursorDedicatedVpsSelection(
       return false
     }
     const restored = await changeProxyApi(CURSOR_DEDICATED_GROUP_NAME, manualSelection, {
-      source: 'bootstrap',
+      source: 'bootstrap'
     })
     if (restored) {
       await appendAppLog(
@@ -99,7 +84,7 @@ export async function applyCursorDedicatedVpsSelection(
   const targetNode = resolveCursorDefaultVpsNode(available)
   if (!targetNode) {
     await appendAppLog(
-      `[CursorDedicatedDefault]: skip — no preferred VPS Reality node in group.all (${memberNames.length} members: ${memberNames.join(', ')})\n`
+      `[CursorDedicatedDefault]: skip — no trusted standard TLS VPS node in group.all (${memberNames.length} members: ${memberNames.join(', ')})\n`
     )
     return false
   }
@@ -118,8 +103,6 @@ export async function applyCursorDedicatedVpsSelection(
   if (!result) {
     return false
   }
-  await appendAppLog(
-    `[CursorDedicatedDefault]: ${CURSOR_DEDICATED_GROUP_NAME} → ${targetNode}\n`
-  )
+  await appendAppLog(`[CursorDedicatedDefault]: ${CURSOR_DEDICATED_GROUP_NAME} → ${targetNode}\n`)
   return true
 }

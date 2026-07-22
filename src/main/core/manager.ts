@@ -434,10 +434,19 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   await ensureTunCorePermissionBeforeStart()
   setMihomoLogSource('out')
   if (tun?.enable && autoSetDNSMode !== 'none') {
-    try {
-      await setPublicDNS()
-    } catch (error) {
-      await appendAppLog(`[Manager]: set dns failed, ${error}\n`)
+    const tunDnsHijack = tun['dns-hijack']
+    const hasTunDnsHijack = Array.isArray(tunDnsHijack) && tunDnsHijack.length > 0
+    const { controlDns = true } = await getAppConfig()
+    if (hasTunDnsHijack && controlDns) {
+      await appendAppLog(
+        '[Manager]: skip networksetup DNS — TUN dns-hijack handles resolver (avoids EPERM on GUI)\n'
+      )
+    } else {
+      try {
+        await setPublicDNS()
+      } catch (error) {
+        await appendAppLog(`[Manager]: set dns failed, ${error}\n`)
+      }
     }
   }
   // 自动将 profiles 目录添加到安全路径中，供 proxy-provider 文件访问

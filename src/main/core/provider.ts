@@ -64,23 +64,33 @@ function validateProxies(proxies: unknown[]): boolean {
 }
 
 import { applyHysteria2ProxiesQuicStability } from './hysteria2QuicStability'
-import { resolveProviderHealthCheckUrl } from './providerHealthCheckCore'
+import {
+  applyVlessVisionMuxGuard,
+  summarizeVlessVisionMuxGuard
+} from './vlessVisionMuxGuardCore'
+import { partitionLeafProxies, resolveVpsProviderId } from './vpsProviderSplitCore'
+import { buildBaseConfigWithProviders } from './providerConfigCore'
+import { appendAppLog } from '../utils/log'
+
+export { resolveVpsProviderId, partitionLeafProxies } from './vpsProviderSplitCore'
 
 /**
  * 从订阅配置中提取 proxies，并对 Hysteria 2 节点注入 QUIC/TUN 稳定性参数
  */
 export function extractProxies(config: MihomoConfig): unknown[] {
   const proxies = config.proxies || []
-  return applyHysteria2ProxiesQuicStability(proxies)
+  return applyVlessVisionMuxGuard(applyHysteria2ProxiesQuicStability(proxies))
 }
 
-/** Merge profile provider into group.use without duplicate provider IDs. */
-function normalizeGroupUse(existing: string[] | undefined, profileId: string): string[] {
-  const merged = existing ? [...existing] : []
-  if (!merged.includes(profileId)) {
-    merged.push(profileId)
+async function logVlessVisionMuxGuard(proxies: unknown[]): Promise<void> {
+  const summary = summarizeVlessVisionMuxGuard(proxies)
+  if (summary.visionNodeCount === 0) {
+    return
   }
-  return [...new Set(merged)]
+  const nodeList = summary.visionNodeNames.join(',')
+  await appendAppLog(
+    `[Provider]: vless_vision_mux_guard vision=${summary.visionNodeCount} stripped_multiplex=${summary.strippedMultiplexCount} ensured_smux_off=${summary.ensuredSmuxOffCount} nodes=[${nodeList}]\n`
+  )
 }
 
 /**
@@ -90,13 +100,53 @@ export async function generateProxyProvider(
   profileId: string,
   proxies: unknown[]
 ): Promise<string> {
+  const guardedProxies = applyVlessVisionMuxGuard(proxies)
   const providerConfig = {
-    proxies
+    proxies: guardedProxies
   }
 
   const filePath = getProviderFilePath(profileId)
   await writeFile(filePath, stringifyYaml(providerConfig), 'utf-8')
   return filePath
+}
+
+async function removeProviderFile(profileId: string): Promise<void> {
+  const filePath = getProviderFilePath(profileId)
+  if (existsSync(filePath)) {
+    await rm(filePath)
+  }
+  await cleanupBackup(profileId)
+}
+
+/**
+ * Write commercial + optional VPS provider files for a profile.
+ */
+export async function setupProfileProviders(
+  profileId: string,
+  proxies: unknown[]
+): Promise<{ commercial: unknown[]; vps: unknown[] }> {
+  const { commercial, vps } = partitionLeafProxies(proxies)
+  if (vps.length === 0) {
+    await generateProxyProvider(profileId, proxies)
+    await removeProviderFile(resolveVpsProviderId(profileId))
+    return { commercial: proxies, vps: [] }
+  }
+
+  await generateProxyProvider(profileId, commercial)
+  await generateProxyProvider(resolveVpsProviderId(profileId), vps)
+  await logVlessVisionMuxGuard(vps)
+  return { commercial, vps }
+}
+
+/** Hot-reload mihomo proxy-provider files after disk write (commercial + optional VPS split). */
+export async function reloadMihomoProfileProviders(
+  profileId: string,
+  hasVpsProvider: boolean
+): Promise<void> {
+  await mihomoUpdateProxyProviders(profileId)
+  if (hasVpsProvider) {
+    await mihomoUpdateProxyProviders(resolveVpsProviderId(profileId))
+  }
 }
 
 /**
@@ -112,71 +162,12 @@ export function generateBaseConfigWithProvider(
     interval?: number
   }
 ): MihomoConfig {
-  const baseConfig = { ...originalConfig }
-
-  // 仅移除 proxies（通过 proxy-provider 提供），rules 保持原样
-  delete baseConfig.proxies
-
-  // 添加 proxy-providers
-  if (!baseConfig['proxy-providers']) {
-    baseConfig['proxy-providers'] = {}
-  }
-  const leafProxies = (originalConfig.proxies as unknown[]) || []
-  baseConfig['proxy-providers'][profileId] = {
-    type: 'file',
-    path: getProviderConfigPath(profileId),
-    'health-check': {
-      enable: healthCheck?.enable ?? true,
-      url: healthCheck?.url || resolveProviderHealthCheckUrl(leafProxies),
-      interval: healthCheck?.interval || 300
-    }
-  }
-
-  // 修改 proxy-groups，使用 proxy-provider
-  if (baseConfig['proxy-groups']) {
-    const proxyGroups = baseConfig['proxy-groups'] as any[]
-    const allGroupNames = new Set(proxyGroups.map((g: any) => g.name))
-    // 收集所有代理节点名，用于判断 proxies 列表中哪些是节点引用
-    const proxyNames = new Set((originalConfig.proxies as any[])?.map((p: any) => p.name) || [])
-
-    baseConfig['proxy-groups'] = proxyGroups.map((group: any) => {
-      const newGroup = { ...group }
-
-      // 判断该组是否引用了实际代理节点（而非仅引用其他组）
-      const hasProxyRefs =
-        newGroup.proxies &&
-        Array.isArray(newGroup.proxies) &&
-        newGroup.proxies.some((name: string) => proxyNames.has(name))
-
-      if (hasProxyRefs) {
-        // 引用了代理节点，需要 provider
-        if (group.use && Array.isArray(group.use)) {
-          newGroup.use = normalizeGroupUse(group.use, profileId)
-          // 组已显式配置 use（如 override 自建节点 + 订阅 filter）：保留 leaf 节点引用
-          // mihomo 支持 proxies 与 use/filter 并存
-        } else {
-          newGroup.use = normalizeGroupUse(undefined, profileId)
-          // 纯订阅节点列表：迁移至 provider，移除 leaf 引用
-          const groupRefs = newGroup.proxies.filter(
-            (name: string) => allGroupNames.has(name) || !proxyNames.has(name)
-          )
-          if (groupRefs.length > 0) {
-            newGroup.proxies = groupRefs
-          } else {
-            delete newGroup.proxies
-          }
-        }
-      } else if (group.use && Array.isArray(group.use)) {
-        // 已有 use 字段的组，追加 provider（去重）
-        newGroup.use = normalizeGroupUse(group.use, profileId)
-      }
-      // 仅引用其他组的组：不添加 use，保持原样
-
-      return newGroup
-    }) as any
-  }
-
-  return baseConfig
+  return buildBaseConfigWithProviders(
+    originalConfig,
+    profileId,
+    getProviderConfigPath,
+    healthCheck
+  )
 }
 
 /**
@@ -193,14 +184,32 @@ export async function updateProvider(
       return { success: false, error: 'Invalid proxies format' }
     }
 
+    const { vps } = partitionLeafProxies(proxies)
+    const vpsProviderId = resolveVpsProviderId(profileId)
+    const backupVps =
+      vps.length > 0 || existsSync(getProviderFilePath(vpsProviderId))
+
     await backupProvider(profileId)
-    await generateProxyProvider(profileId, proxies)
-    await mihomoUpdateProxyProviders(profileId)
+    if (backupVps) {
+      await backupProvider(vpsProviderId)
+    }
+
+    await setupProfileProviders(profileId, proxies)
+    await reloadMihomoProfileProviders(profileId, vps.length > 0)
+
     await cleanupBackup(profileId)
+    if (backupVps) {
+      await cleanupBackup(vpsProviderId)
+    }
 
     return { success: true }
   } catch (error) {
+    const vpsProviderId = resolveVpsProviderId(profileId)
+    const backupVps = existsSync(`${getProviderFilePath(vpsProviderId)}.bak`)
     await restoreProvider(profileId)
+    if (backupVps) {
+      await restoreProvider(vpsProviderId)
+    }
 
     return {
       success: false,
@@ -214,10 +223,15 @@ export async function updateProvider(
  */
 export async function deleteProvider(profileId: string): Promise<void> {
   const proxiesPath = getProviderFilePath(profileId)
+  const vpsProxiesPath = getProviderFilePath(resolveVpsProviderId(profileId))
 
   if (existsSync(proxiesPath)) {
     await rm(proxiesPath)
   }
+  if (existsSync(vpsProxiesPath)) {
+    await rm(vpsProxiesPath)
+  }
 
   await cleanupBackup(profileId)
+  await cleanupBackup(resolveVpsProviderId(profileId))
 }

@@ -6,30 +6,37 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 
 ## 文件清单
 
-| 文件 | 职责 |
-| --- | --- |
-| `api2ProbePlane.ts` | 单一 bootstrap：active 60s + VPS L4 SSH 300s → api2-probe-ledger.jsonl |
-| `vpsL4ProbeCore.ts` / `vpsL4Probe.ts` | VPS SSH curl（kr-vps/jp-vps，`ProxyCommand=none` + 公网 HostName 回退）→ ledger scope=vps |
-| `canonicalVpsNodeSnapshotCore.ts` | 从 provider history 采集 6 节点 snapshot（CTHC events） |
-| `networkTriangulationDiagnosticCore.ts` | 定责探测：KR/JP Reality + active Cursor 节点 + marketplace |
-| `api2ProbeLedgerCore.ts` | api2 探针统一 ledger 读写（scope=active/vps/marathon） |
-| `nodeQualityScore.ts` | 纯函数：Probe/Session 分层评分、badge 门槛常量 |
-| `nodeProbeStats.ts` | ledger vps 样本聚合 → DerivedStats |
-| `commercialNodeBenchmark.ts` | 24h VPS 报告（ledger scope=vps SSH + active）、UI snapshot IPC |
-| `networkStabilityMonitor.ts` | 当前节点 short probe、TUN 恢复（委托 CTHC）；非 probe 事件 jsonl |
-| `cursorTransportHealthCore.ts` | 纯函数：挂死检测（**≥12min** 零吞吐）、**Agent-stability-first 恢复**（禁 L0/L1 杀 SSE；仅 offline+TUN 灾难 L2/L3）；L0 每 host **保留最新 6 条** hung 连接（仅观测） |
-| `cursorCriticalTransportCore.ts` | critical Cursor transport host SSOT（CTHC + Hygiene 共享） |
-| `cursorTransportHealth.ts` | CTHC 执行器：30s 挂死扫描、L0–L3 恢复动作 |
-| `mihomoProbeCoordinator.ts` | 全局 mihomo delay 槽（max 2）与商业 batch 并发 cap |
-| `cursorRuleInjection.ts` | 全量 Cursor PROCESS-NAME + DOMAIN → 🎯 Cursor 专用；可选 path-scoped AND 规则 |
-| `cursorNetworkOptimize.ts` | Cursor DNS/TUN/keepalive 优化 |
-| `fakeIpRoutingIntegrity.ts` | fake-ip 路由一致性：剥离 198.18 CIDR 陷阱、Tier0/Tier1 filter、sniffer 完整性 |
-| `proxyHealthMonitor.ts` | SG/TW/JP failover（🎯 Cursor 专用，api2 测速） |
-| `mihomoApi.ts` | mihomo REST 封装（delay 经 mihomoProbeCoordinator gate；provider leaf 走 healthcheck fallback） |
-| `cursorDedicatedDefault.ts` | 启动回 VPS Reality 默认（JP 优先）；TUIC/HY2 标 suboptimal |
-| `providerHealthCheckCore.ts` | 商用 provider health-check URL（generate_204） |
-| `vpsProviderSplitCore.ts` | VPS/commercial partition；`{profileId}-vps` provider；api2 health-check |
-| `mihomoProviderDelayCore.ts` | provider leaf delay 历史：取最近成功样本，跳过尾部 timeout |
+| 文件                                                                    | 职责                                                                                                                                                                  |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api2ProbePlane.ts`                                                     | 单一 bootstrap：active 60s + VPS L4 SSH 300s → api2-probe-ledger.jsonl                                                                                                |
+| `vpsL4ProbeCore.ts` / `vpsL4Probe.ts`                                   | VPS SSH curl（kr-vps/jp-vps，`ProxyCommand=none` + 公网 HostName 回退）→ ledger scope=vps                                                                             |
+| `canonicalVpsNodeSnapshotCore.ts`                                       | 从 provider history 采集 6 节点 snapshot（CTHC events）                                                                                                               |
+| `networkTriangulationDiagnosticCore.ts`                                 | 定责探测：KR/JP Reality + active Cursor 节点 + marketplace                                                                                                            |
+| `api2ProbeLedgerCore.ts`                                                | api2 探针统一 ledger 读写（scope=active/vps/marathon）                                                                                                                |
+| `nodeQualityScore.ts`                                                   | 纯函数：Probe/Session 分层评分、badge 门槛常量                                                                                                                        |
+| `nodeProbeStats.ts`                                                     | ledger vps 样本聚合 → DerivedStats                                                                                                                                    |
+| `commercialNodeBenchmark.ts`                                            | 24h VPS 报告（ledger scope=vps SSH + active）、UI snapshot IPC                                                                                                        |
+| `networkStabilityMonitor.ts`                                            | 当前节点 short probe、TUN 恢复（委托 CTHC）；非 probe 事件 jsonl                                                                                                      |
+| `cursorTransportHealthCore.ts`                                          | 纯函数：挂死检测（**≥12min** 零吞吐）、**Agent-stability-first 恢复**（禁 L0/L1 杀 SSE；仅 offline+TUN 灾难 L2/L3）；L0 每 host **保留最新 6 条** hung 连接（仅观测）；Connect split-brain 归因 |
+| `connectPartitionDetectCore.ts` / `connectPartitionReader.ts`           | Connect mass-PING 检测 + 读 sparkle/guard/profiles `agent-transport-failures.jsonl`                                                                                  |
+| `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost 同步 + proxyNode 回填）                                                             |
+| `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts`             | 高并行时 VPS leaf dial-timeout 5s→45s 热更新                                                                                                                         |
+| `cursorHy2MarathonKeepaliveCore.ts` / `cursorHy2MarathonKeepalive.ts`   | HY2 marathon SSOT（40s nudge · VPS hy2-in `udp_timeout` 3600s · conntrack 3600s；idle/keepalive 仅 sing-box ≥1.14）+ `session_transport_nudge`；**conn≥80 时 defer 新 dial**（`session_transport_nudge_deferred_cursor_load`，防 token_gap/auth refresh 连接风暴）                                                                                |
+| `cursorStreamTokenGapCore.ts` / `cursorStreamTokenGapReader.ts`        | Marathon token 静默检测（≥20s 无 meaningful SSE → `token_gap_force_nudge`）；**冷 resume 32s 零首 token → `cold_resume_no_token_nudge`**；补 40s 周期与 ~33s server EOF 窗口之间的盲区 |
+| `cursorConnectStreamKeepaliveCore.ts` / `cursorConnectStreamKeepalive.ts` | **P8** Connect 长流保活：≥15s meaningful SSE 静默 + conn≥12 → `api2direct`+`api2` 双探针（`connect_stream_keepalive`）；非破坏性 · 不关现有连接 |
+| `mihomoApiSocketWatchdog.ts`                                            | mihomo-api.sock ECONNREFUSED 时自动 `restartCore`（60s cooldown，startup grace 内跳过） |
+| `cursorCriticalTransportCore.ts`                                        | critical Cursor transport host SSOT（CTHC + Hygiene 共享）                                                                                                            |
+| `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描、L0–L3 恢复动作                                                                                                                             |
+| `mihomoProbeCoordinator.ts`                                             | 全局 mihomo delay 槽（max 2）与商业 batch 并发 cap                                                                                                                    |
+| `cursorRuleInjection.ts`                                                | 全量 Cursor PROCESS-NAME + DOMAIN → 🎯 Cursor 专用；可选 path-scoped AND 规则                                                                                         |
+| `cursorNetworkOptimize.ts`                                              | Cursor DNS/TUN/keepalive 优化                                                                                                                                         |
+| `fakeIpRoutingIntegrity.ts`                                             | fake-ip 路由一致性：剥离 198.18 CIDR 陷阱、Tier0/Tier1 filter、sniffer 完整性                                                                                         |
+| `proxyHealthMonitor.ts`                                                 | SG/TW/JP failover（🎯 Cursor 专用，api2 测速）                                                                                                                        |
+| `mihomoApi.ts`                                                          | mihomo REST 封装（delay 经 mihomoProbeCoordinator gate；provider leaf 走 healthcheck fallback）                                                                       |
+| `cursorDedicatedDefault.ts`                                             | 启动恢复手选；无手选时仅默认 `JP-VPS-TLS`，禁止自动回落 Reality/HY2/TUIC                                                                                              |
+| `providerHealthCheckCore.ts`                                            | 商用 provider health-check URL（generate_204）                                                                                                                        |
+| `vpsProviderSplitCore.ts`                                               | VPS/commercial partition；`{profileId}-vps` provider；api2 health-check                                                                                               |
+| `mihomoProviderDelayCore.ts`                                            | provider leaf delay 历史：取最近成功样本，跳过尾部 timeout                                                                                                            |
 
 ## 节点质量数据流
 

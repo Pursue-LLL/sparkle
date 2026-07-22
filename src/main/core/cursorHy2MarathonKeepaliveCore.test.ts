@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+  CURSOR_HY2_NUDGE_DEFER_THRESHOLD,
   CURSOR_HY2_SESSION_KEEPALIVE_INTERVAL_MS,
   HY2_QUIC_IDLE_TIMEOUT,
   HY2_QUIC_KEEPALIVE_PERIOD,
@@ -9,6 +10,7 @@ import {
   hy2InQuicMarathonFields,
   isHy2CursorNode,
   isMarathonQuIcInboundCursorNode,
+  shouldDeferHy2MarathonSessionNudgeForCursorLoad,
   shouldRunHy2MarathonSessionKeepalive,
   tuicInQuicMarathonFields
 } from './cursorHy2MarathonKeepaliveCore'
@@ -25,6 +27,18 @@ test('isMarathonQuIcInboundCursorNode matches HY2 and TUIC marathon nodes', () =
   assert.equal(isMarathonQuIcInboundCursorNode('JP-VPS-TUIC'), true)
   assert.equal(isMarathonQuIcInboundCursorNode('KR-VPS-TUIC'), true)
   assert.equal(isMarathonQuIcInboundCursorNode('JP-VPS-Reality'), false)
+})
+
+test('shouldDeferHy2MarathonSessionNudgeForCursorLoad avoids dial storms under extreme cursor_conn', () => {
+  assert.equal(
+    shouldDeferHy2MarathonSessionNudgeForCursorLoad(CURSOR_HY2_NUDGE_DEFER_THRESHOLD - 1),
+    false,
+  )
+  assert.equal(
+    shouldDeferHy2MarathonSessionNudgeForCursorLoad(CURSOR_HY2_NUDGE_DEFER_THRESHOLD),
+    true,
+  )
+  assert.equal(shouldDeferHy2MarathonSessionNudgeForCursorLoad(268), true)
 })
 
 test('shouldRunHy2MarathonSessionKeepalive requires HY2/TUIC active and marathon load', () => {
@@ -90,6 +104,61 @@ test('shouldRunHy2MarathonSessionKeepalive rejects blank node names', () => {
       nowMs: 1
     }),
     false
+  )
+})
+
+test('shouldForceHy2MarathonSessionKeepaliveForHighLatency under marathon load', async () => {
+  const { shouldForceHy2MarathonSessionKeepaliveForHighLatency, CURSOR_HY2_HIGH_LATENCY_FORCE_NUDGE_MS, CURSOR_HY2_MARATHON_CONN_THRESHOLD } =
+    await import('./cursorHy2MarathonKeepaliveCore')
+  assert.equal(
+    shouldForceHy2MarathonSessionKeepaliveForHighLatency(
+      CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      CURSOR_HY2_HIGH_LATENCY_FORCE_NUDGE_MS,
+    ),
+    true,
+  )
+  assert.equal(
+    shouldForceHy2MarathonSessionKeepaliveForHighLatency(
+      CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      CURSOR_HY2_HIGH_LATENCY_FORCE_NUDGE_MS - 1,
+    ),
+    false,
+  )
+  assert.equal(
+    shouldForceHy2MarathonSessionKeepaliveForHighLatency(
+      CURSOR_HY2_MARATHON_CONN_THRESHOLD - 1,
+      CURSOR_HY2_HIGH_LATENCY_FORCE_NUDGE_MS + 100,
+    ),
+    false,
+  )
+})
+
+test('shouldForceHy2MarathonSessionKeepaliveForTokenGap under marathon load', async () => {
+  const {
+    shouldForceHy2MarathonSessionKeepaliveForTokenGap,
+    CURSOR_HY2_TOKEN_GAP_FORCE_MS,
+    CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+  } = await import('./cursorHy2MarathonKeepaliveCore')
+  assert.equal(
+    shouldForceHy2MarathonSessionKeepaliveForTokenGap(
+      CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      CURSOR_HY2_TOKEN_GAP_FORCE_MS,
+    ),
+    true,
+  )
+  assert.equal(
+    shouldForceHy2MarathonSessionKeepaliveForTokenGap(
+      CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      CURSOR_HY2_TOKEN_GAP_FORCE_MS - 1,
+    ),
+    false,
+  )
+  assert.equal(
+    shouldForceHy2MarathonSessionKeepaliveForTokenGap(
+      CURSOR_HY2_MARATHON_CONN_THRESHOLD - 1,
+      CURSOR_HY2_TOKEN_GAP_FORCE_MS + 100,
+    ),
+    false,
   )
 })
 

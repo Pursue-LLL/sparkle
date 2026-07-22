@@ -233,7 +233,9 @@ async function measureProxyDelay(
     }
 
     if (attempt === 0) {
-      await new Promise((resolve) => setTimeout(resolve, DELAY_RECHECK_WAIT_MS))
+      await new Promise((resolve) => {
+        setTimeout(resolve, DELAY_RECHECK_WAIT_MS)
+      })
     }
   }
 

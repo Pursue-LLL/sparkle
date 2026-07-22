@@ -31,7 +31,7 @@ export function isMihomoDelayProbeCongested(): boolean {
 
 export async function withMihomoDelayProbeSlot<T>(fn: () => Promise<T>): Promise<T> {
   const startedAt = Date.now()
-  while (activeDelayProbes >= MIHOMO_DELAY_PROBE_MAX_CONCURRENT) {
+  while (isMihomoDelayProbeCongested()) {
     if (Date.now() - startedAt >= SLOT_WAIT_MAX_MS) {
       throw new Error('mihomo delay probe slot wait timeout')
     }

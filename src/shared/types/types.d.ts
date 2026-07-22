@@ -63,3 +63,14 @@ type Fingerprints =
   | 'edge'
   | '360'
   | 'qq'
+
+interface MihomoDelayOptions {
+  timeoutMs?: number
+}
+
+interface ManagedVpsDelayTestResult {
+  deferredMs: number
+  proxyNames: string[]
+  testUrl?: string
+  delays: Record<string, ControllerProxiesDelay>
+}
