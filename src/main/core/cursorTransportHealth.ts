@@ -4,25 +4,39 @@ import { showNotification } from '../utils/notification'
 import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
 import { getLastCoreReadyAtMs } from './manager'
 import { listCursorConnectionRows } from './cursorConnectionHygiene'
+import { runHy2MarathonSessionKeepaliveIfDue } from './cursorHy2MarathonKeepalive'
+import { readConnectPartitionSignal } from './connectPartitionReader'
+import { ensureCursorMarathonKeepAlive } from './cursorNetworkOptimize'
+import { getRecentCursorProbe } from './networkStabilityMonitor'
+import { syncMarathonDialToleranceIfNeeded } from './marathonDialTolerance'
 import { mihomoCloseConnection, mihomoCloseConnections, mihomoProxyDelay } from './mihomoApi'
 import {
   decideRecoveryAction,
   describeRecoveryBlockReason,
   HUNG_SCAN_INTERVAL_MS,
+  MANDATORY_REAL_PROBE_MAX_AGE_MS,
   RECOVERY_L0_COOLDOWN_MS,
   RECOVERY_L1_COOLDOWN_MS,
   RECOVERY_L2_COOLDOWN_MS,
   RECOVERY_L3_COOLDOWN_MS,
-  resolveProbeAttribution,
+  resolveProbeAttributionWithConnectPartition,
   selectCriticalHostConnectionsToClose,
   selectHungCursorConnectionsToClose,
   SPLIT_BRAIN_CONTROL_TARGET,
   API2_PROBE_TARGET,
+  API2GEO_PROBE_TARGET,
   type ProbeAttribution,
   type ProbePairResult,
   type RecoveryAction,
   type RecoveryCooldownState
 } from './cursorTransportHealthCore'
+import { shouldForceHy2MarathonSessionKeepaliveForHighLatency } from './cursorHy2MarathonKeepaliveCore'
+import {
+  readConnectStreamKeepaliveGapSignal,
+  readMarathonColdResumeNoTokenSignal,
+  readMarathonStreamTokenGapSignal,
+} from './cursorStreamTokenGapReader'
+import { runConnectStreamKeepaliveIfDue } from './cursorConnectStreamKeepalive'
 
 const PROBE_TIMEOUT_MS = 15_000
 
@@ -65,6 +79,8 @@ async function logTransportRecoveryDecision(options: {
     `action=${options.action}`,
     `api2_ok=${options.probe.api2Ok}`,
     `api2_latency_ms=${options.probe.api2LatencyMs}`,
+    `api2geo_ok=${options.probe.api2geoOk}`,
+    `api2geo_latency_ms=${options.probe.api2geoLatencyMs}`,
     `marketplace_ok=${options.probe.marketplaceOk}`,
     `marketplace_latency_ms=${options.probe.marketplaceLatencyMs}`,
     `hung=${options.hungIds.length}`,
@@ -110,6 +126,9 @@ async function logTransportRecoveryDecision(options: {
 }
 
 let hungScanTimer: NodeJS.Timeout | null = null
+let lastHungScanHeartbeatAtMs = 0
+
+const HUNG_SCAN_HEARTBEAT_MS = 5 * 60_000
 let isHungScanInFlight = false
 let priorRecoveryFailed = false
 let tunInterfaceLostConfirmed = false
@@ -124,6 +143,7 @@ const cooldowns: RecoveryCooldownState = {
 export function resetCursorTransportHealthState(): void {
   priorRecoveryFailed = false
   tunInterfaceLostConfirmed = false
+  lastHungScanHeartbeatAtMs = 0
   cooldowns.lastL0AtMs = 0
   cooldowns.lastL1AtMs = 0
   cooldowns.lastL2AtMs = 0
@@ -187,14 +207,17 @@ export async function runTransportProbePair(options: {
   const proxy = options.viaDirectTun
     ? undefined
     : { host: options.proxyHost, port: options.proxyPort }
-  const [api2, marketplace] = await Promise.all([
+  const [api2, api2geo, marketplace] = await Promise.all([
     probeHttpTarget(API2_PROBE_TARGET, proxy),
+    probeHttpTarget(API2GEO_PROBE_TARGET, proxy),
     probeHttpTarget(SPLIT_BRAIN_CONTROL_TARGET, proxy)
   ])
   return {
     api2Ok: api2.ok,
+    api2geoOk: api2geo.ok,
     marketplaceOk: marketplace.ok,
     api2LatencyMs: api2.latencyMs,
+    api2geoLatencyMs: api2geo.latencyMs,
     marketplaceLatencyMs: marketplace.latencyMs,
     api2Status: api2.status,
     marketplaceStatus: marketplace.status
@@ -209,15 +232,30 @@ export async function runTransportProbePair(options: {
 export async function probeApi2ViaMihomoNode(
   proxyNode: string
 ): Promise<{ ok: boolean; latencyMs: number; errorDetail?: string }> {
+  return probeCursorHostViaMihomoNode(proxyNode, API2_PROBE_TARGET)
+}
+
+export async function probeApi2geoViaMihomoNode(
+  proxyNode: string
+): Promise<{ ok: boolean; latencyMs: number; errorDetail?: string }> {
+  return probeCursorHostViaMihomoNode(proxyNode, API2GEO_PROBE_TARGET)
+}
+
+async function probeCursorHostViaMihomoNode(
+  proxyNode: string,
+  target: string
+): Promise<{ ok: boolean; latencyMs: number; errorDetail?: string }> {
   const startedAt = Date.now()
   try {
-    const result = await mihomoProxyDelay(proxyNode, API2_PROBE_TARGET)
+    const result = await mihomoProxyDelay(proxyNode, target)
     const latencyMs = Date.now() - startedAt
-    const delayOk = typeof result.delay === 'number' && result.delay > 0
+    if (typeof result.delay === 'number' && result.delay > 0) {
+      return { ok: true, latencyMs: result.delay }
+    }
     return {
-      ok: delayOk,
-      latencyMs: delayOk ? result.delay : latencyMs,
-      errorDetail: delayOk ? undefined : (result as { message?: string }).message
+      ok: false,
+      latencyMs,
+      errorDetail: (result as { message?: string }).message
     }
   } catch (error) {
     return {
@@ -244,22 +282,28 @@ export async function runTransportProbePairViaCursorNode(
   const marketplaceProxy = fallbackOptions.viaDirectTun
     ? undefined
     : { host: fallbackOptions.proxyHost, port: fallbackOptions.proxyPort }
-  const [api2, marketplace] = await Promise.all([
+  const [api2, api2geo, marketplace] = await Promise.all([
     probeApi2ViaMihomoNode(cursorProxyNode),
+    probeApi2geoViaMihomoNode(cursorProxyNode),
     probeHttpTarget(SPLIT_BRAIN_CONTROL_TARGET, marketplaceProxy)
   ])
   return {
     api2Ok: api2.ok,
+    api2geoOk: api2geo.ok,
     marketplaceOk: marketplace.ok,
     api2LatencyMs: api2.latencyMs,
+    api2geoLatencyMs: api2geo.latencyMs,
     marketplaceLatencyMs: marketplace.latencyMs,
     marketplaceStatus: marketplace.status,
     api2ViaNode: true
   }
 }
 
-export function resolveTransportProbeAttribution(probe: ProbePairResult): ProbeAttribution {
-  return resolveProbeAttribution(probe)
+export function resolveTransportProbeAttribution(
+  probe: ProbePairResult,
+  connectPartition?: import('./connectPartitionDetectCore').ConnectPartitionSignal,
+): ProbeAttribution {
+  return resolveProbeAttributionWithConnectPartition(probe, connectPartition)
 }
 
 async function executeRecoveryL0(hungIds: string[]): Promise<number> {
@@ -393,6 +437,61 @@ export async function evaluateAndRecoverTransport(
   return action
 }
 
+/** Proactive HY2/TUIC warmth: connect-partition · cold-resume · token-gap · high-latency · periodic nudge. */
+export async function runMarathonSessionWarmthIfDue(cursorConnectionCount: number): Promise<void> {
+  const { ensureMihomoApiReachableForMarathon } = await import('./mihomoApiSocketWatchdog')
+  await ensureMihomoApiReachableForMarathon('warmth_precheck')
+
+  const connectPartition = readConnectPartitionSignal(cursorConnectionCount)
+  const coldResumeSignal = await readMarathonColdResumeNoTokenSignal(cursorConnectionCount)
+  const connectStreamGapSignal = await readConnectStreamKeepaliveGapSignal(cursorConnectionCount)
+  const tokenGapSignal = await readMarathonStreamTokenGapSignal(cursorConnectionCount)
+  void runConnectStreamKeepaliveIfDue(cursorConnectionCount, connectStreamGapSignal)
+  const recentProbe = getRecentCursorProbe()
+  const highLatencyMs = recentProbe?.latencyMs ?? 0
+  const forceHighLatencyNudge = shouldForceHy2MarathonSessionKeepaliveForHighLatency(
+    cursorConnectionCount,
+    highLatencyMs,
+  )
+  if (connectPartition) {
+    await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, { force: true })
+    void ensureCursorMarathonKeepAlive()
+    await appendTransportObservabilityEvent({
+      kind: 'transport_partition_stale_connect',
+      probe_ok: true,
+      recovery_action: 'none',
+      hung_connection_count: cursorConnectionCount,
+      error_detail: `connect_ping_failures=${connectPartition.pingFailureCount} window_ms=${connectPartition.windowMs} sample_rids=${connectPartition.sampleRequestIds.join(',')}`,
+    })
+    return
+  }
+  if (coldResumeSignal) {
+    await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, { tokenGapForce: true })
+    void ensureCursorMarathonKeepAlive()
+    await appendAppLog(
+      `[CursorHy2MarathonKeepalive]: cold_resume_no_token_nudge cursor_conn=${cursorConnectionCount} max_gap_ms=${coldResumeSignal.maxGapMs} stale_rids=${coldResumeSignal.staleRequestIds.slice(0, 3).join(',')}\n`,
+    )
+    return
+  }
+  if (tokenGapSignal) {
+    await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, { tokenGapForce: true })
+    void ensureCursorMarathonKeepAlive()
+    await appendAppLog(
+      `[CursorHy2MarathonKeepalive]: token_gap_force_nudge cursor_conn=${cursorConnectionCount} max_gap_ms=${tokenGapSignal.maxGapMs} stale_rids=${tokenGapSignal.staleRequestIds.slice(0, 3).join(',')}\n`,
+    )
+    return
+  }
+  if (forceHighLatencyNudge) {
+    await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, { highLatencyForce: true })
+    void ensureCursorMarathonKeepAlive()
+    await appendAppLog(
+      `[CursorHy2MarathonKeepalive]: high_latency_force_nudge cursor_conn=${cursorConnectionCount} api2_delay_ms=${highLatencyMs}\n`,
+    )
+    return
+  }
+  void runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount)
+}
+
 async function runHungConnectionScanCycle(): Promise<void> {
   if (isHungScanInFlight) {
     return
@@ -400,19 +499,55 @@ async function runHungConnectionScanCycle(): Promise<void> {
   isHungScanInFlight = true
   try {
     const rows = await listCursorConnectionRows()
+    void syncMarathonDialToleranceIfNeeded(rows.length)
+    const { syncAgentTransportFailuresFromCursorLogs } = await import('./agentTransportFailureSync')
+    const { resolveCursorDedicatedActiveNode } = await import('./cursorHy2MarathonKeepalive')
+    const activeNode = await resolveCursorDedicatedActiveNode()
+    await syncAgentTransportFailuresFromCursorLogs({ proxyNodeFallback: activeNode })
+    await runMarathonSessionWarmthIfDue(rows.length)
     const hungIds = selectHungCursorConnectionsToClose(rows)
     if (hungIds.length === 0) {
+      const nowMs = Date.now()
+      if (
+        rows.length > 0 &&
+        nowMs - lastHungScanHeartbeatAtMs >= HUNG_SCAN_HEARTBEAT_MS
+      ) {
+        lastHungScanHeartbeatAtMs = nowMs
+        await appendAppLog(
+          `[CursorTransportHealth]: hung_scan_heartbeat cursor_connections=${rows.length} hung=0\n`
+        )
+        await appendTransportObservabilityEvent({
+          kind: 'transport_hung_scan',
+          probe_ok: true,
+          recovery_action: 'none',
+          hung_connection_count: 0,
+          error_detail: `heartbeat cursor_connections=${rows.length}`
+        })
+      }
       return
     }
-    const probe: ProbePairResult = {
-      api2Ok: true,
-      marketplaceOk: true,
-      api2LatencyMs: 0,
-      marketplaceLatencyMs: 0
-    }
+    const recentProbeForHung = getRecentCursorProbe(MANDATORY_REAL_PROBE_MAX_AGE_MS)
+    const probe: ProbePairResult = recentProbeForHung
+      ? {
+          api2Ok: recentProbeForHung.ok,
+          api2geoOk: recentProbeForHung.ok,
+          marketplaceOk: true,
+          api2LatencyMs: recentProbeForHung.latencyMs ?? 0,
+          api2geoLatencyMs: recentProbeForHung.latencyMs ?? 0,
+          marketplaceLatencyMs: 0
+        }
+      : {
+          api2Ok: false,
+          api2geoOk: false,
+          marketplaceOk: false,
+          api2LatencyMs: 0,
+          api2geoLatencyMs: 0,
+          marketplaceLatencyMs: 0
+        }
+    const attribution = resolveTransportProbeAttribution(probe, connectPartition)
     const action = decideRecoveryAction({
       probe,
-      attribution: 'healthy',
+      attribution,
       hungConnectionIds: hungIds,
       tunInterfaceLostConfirmed,
       priorRecoveryFailed,
@@ -421,9 +556,10 @@ async function runHungConnectionScanCycle(): Promise<void> {
     await logTransportRecoveryDecision({
       source: 'hung_scan',
       probe,
-      attribution: 'healthy',
+      attribution,
       hungIds,
-      action
+      action,
+      proxyNode: recentProbe?.proxyNode
     })
     if (action === 'L0') {
       await executeTransportRecovery('L0')

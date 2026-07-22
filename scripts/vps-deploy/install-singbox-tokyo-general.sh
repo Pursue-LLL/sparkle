@@ -65,7 +65,9 @@ cat >/etc/sing-box/config.json <<EOF
         "enabled": true,
         "certificate_path": "/etc/sing-box/fullchain.pem",
         "key_path": "/etc/sing-box/privkey.pem"
-      }
+      },
+      "ignore_client_bandwidth": true,
+      "udp_timeout": "3600s"
     },
     {
       "type": "tuic",

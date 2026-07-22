@@ -14,6 +14,8 @@ import { shouldSkipCommercialBenchmarkDuringBurst } from './networkBurstGateCore
 import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
 import { getLastCoreReadyAtMs } from './manager'
 import { countCursorConnections, startCursorConnectionHygiene, stopCursorConnectionHygiene } from './cursorConnectionHygiene'
+import { runMarathonSessionWarmthIfDue } from './cursorTransportHealth'
+import { isTransportPairHealthy } from './cursorTransportHealthCore'
 import {
   shouldDeferProbeForCursorLoad,
   shouldDeferDestructiveRecoveryAfterLiveProbe,
@@ -37,6 +39,7 @@ import { isApi2ProbePlaneActive } from './api2ProbePlaneCore'
 import { watchTunStartupLogLine } from './tunStartupGuard'
 
 const PROBE_TARGET = 'https://api2.cursor.sh'
+const PROBE_GEO_TARGET = 'https://api2geo.cursor.sh'
 const PROBE_INTERVAL_MS = 60_000
 const BURST_PROBE_INTERVAL_MS = 30_000
 
@@ -533,6 +536,7 @@ async function runProbeCycle(): Promise<number> {
     const hungCount = await countHungCursorConnections().catch(() => 0)
     const mandatoryContext = buildMandatoryProbeContext(cursorConnCount, hungCount)
     if (shouldDeferProbeForCursorLoad(cursorConnCount, mandatoryContext)) {
+      void runMarathonSessionWarmthIfDue(cursorConnCount)
       await appendDeferredProbeCacheEvent(cursorConnCount)
       await logDeferredProbeIfDue(cursorConnCount)
       return getNextProbeDelayMs()
@@ -666,7 +670,7 @@ async function runCursorTransportConnectivityCheck(
     probeVia,
     proxyDelayMs,
     recoveryAction,
-    errorDetail: `target=${PROBE_TARGET} marketplace_ok=${probe.marketplaceOk} marketplace_latency_ms=${probe.marketplaceLatencyMs} recovery=${recoveryAction}`
+    errorDetail: `target=${PROBE_TARGET} api2geo_target=${PROBE_GEO_TARGET} api2_ok=${probe.api2Ok} api2geo_ok=${probe.api2geoOk} api2geo_latency_ms=${probe.api2geoLatencyMs} marketplace_ok=${probe.marketplaceOk} marketplace_latency_ms=${probe.marketplaceLatencyMs} recovery=${recoveryAction}`
   })
 
   if (options.notify) {
@@ -678,7 +682,7 @@ async function runCursorTransportConnectivityCheck(
       errorDetail: attribution
     })
   }
-  return probe.api2Ok
+  return isTransportPairHealthy(probe)
 }
 
 /** @deprecated Use runCursorTransportConnectivityCheck — kept for internal probe-only callers. */

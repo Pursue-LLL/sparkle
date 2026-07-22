@@ -10,13 +10,34 @@
 
 ### 用户目标（500 Included 套餐 — 排查与修复的北极星）
 
+> **铁律**：一切以最不浪费 Included 次数为核心；单次 userMessage 物尽其用。
+
 | 目标 | 含义 |
 |------|------|
 | **最省次数** | 每个 Included Request 物尽其用；拦截仅 ghost/自动计次；不误拦 Continue |
-| **最持久** | 单次 userMessage 内 Marathon 尽量不断；客户端不主动限时/断流 |
-| **一次做最多事** | 保持并行 Agent；禁止建议减并行、拆多轮、新开会话、failover 换节点 |
+| **最持久** | 单次 userMessage 内 Marathon 尽量不断；**客户端不主动限时/断流**（可加长超时，禁止缩短） |
+| **一次做最多事** | **保持并行 Agent**；禁止建议减并行、拆多轮 userMessage、新开会话、failover 换节点 |
 | **真实定责** | IFM 标签不可盲信；以 ledger/events/agent-transport-failures @ A 时刻为准 |
 | **Guard ON** | 拦 100% 会计次的 auto-retry；OFF 时只通知 ghost 不计次拦截 |
+
+**500 套餐禁止项（修复 Sparkle/Guard 时不得违反）**
+
+1. **禁止限并行** — 不得用「并发 dial 预算 / 限连接数」牺牲单次请求吞吐。
+2. **禁止拆轮** — 不得建议拆成多轮 userMessage 或新开会话减步骤（直接浪费次数）。
+3. **禁止 failover** — 不得建议切换节点「自愈」（换节点 = 断连 + 浪费）。
+4. **禁止客户端主动限时** — 除非 Cursor 服务端断流；客户端应尽可能物尽其用（马拉松可 **加长** dial/connect timeout，不可缩短）。
+5. **禁止误杀健康连接** — 不得清理/关闭仍在服务 Marathon SSE 的连接；api2geo 等 critical host 受 hygiene 保护。
+
+**Sparkle 马拉松加固（≥1.26.45 方向；EOF 家族见 ≥1.26.48）**
+
+| 机制 | 作用 |
+|------|------|
+| `MarathonDialTolerance` | Cursor 连接 ≥12 时 VPS Reality/HY2 leaf **dial timeout 5s→45s**（热更新 provider，不切节点、不关连接） |
+| `transport_pair + api2geo` | ledger 同时探 `api2.cursor.sh` + `api2geo.cursor.sh`；api2 绿但 api2geo 红 → `transport_partition_stale`（**只观测，不 failover**） |
+| `session_transport_nudge` | HY2 且 cursor_conn≥12 时每 **40s** api2+api2geo 短探针（**保活，非 failover**） |
+| `token_gap_force_nudge` | hung_scan 读 renderer tail：任一 RID **≥20s** 无 meaningful token/tool SSE → 立即 session nudge（15s cooldown）；覆盖 ~33s server EOF 窗口（≥**1.26.50**） |
+| `Connect partition` | mass PING/code-14 → 强制 nudge + marathon keepalive（**5d03320f 类**） |
+| **VPS hy2-in QUIC** | conntrack 3600s + hy2-in **`udp_timeout: 3600s`**（sing-box **1.13.14+ 必做**）；`idle_timeout`/`keep_alive_period` 仅 **≥1.14**（`patch-hy2-in-quic-marathon.sh`）— **23bb8c85/a9722f2 EOF 类 L3 修复** |
 
 修复 Sparkle/Guard 时以上目标优先于「看起来干净」的 transport 清理。
 
@@ -28,14 +49,78 @@
 6. **Sparkle L0 @ 60s hung 会误杀 Agent tool 暂停中的 Connect 流**（v1.26.33）；**v1.26.34+** 改为 **12min** 阈值 + 每 host 保留最新 **6** 条（v1.26.36，并行 Agent 保护）。若 A 时刻 app-log 有 `L0 closed N hung` 且运行 <12min → 定责 **Sparkle L0 误杀/过度清理**，非 Cursor Marathon cap。
 7. **`客户端 · resumeAction` / `resumeAction HTTP` 是断流后的恢复动作，不是根因。** 必须继续查 renderer `agent-error` + VPS @ A。
 8. **非 `max-steps-cap` 断连，未完成 VPS @ A 证据矩阵（§V5）前，禁止输出 definitive 根因。**
-9. **Sparkle 必须用 pkg 安装到 `/Applications`**（≥**1.26.40** 含 Agent-stability-first + deep sign）。❌ 禁止 `ditto`/`cp -R` 覆盖 · ❌ 禁止从 `dist/mac-arm64/Sparkle.app` 日常使用 · 见 [BUGFIX_LOG BUG-003/007](./BUGFIX_LOG.md)。
+9. **Sparkle 必须用 pkg 安装到 `/Applications`**（≥**1.26.44** 含 vision mux guard + triage V5.4 修复；≥**1.26.40** 含 Agent-stability-first + deep sign）。❌ 禁止 `ditto`/`cp -R` 覆盖 · ❌ 禁止从 `dist/mac-arm64/Sparkle.app` 日常使用 · 见 [BUGFIX_LOG BUG-003/007/2026-07-18-003](./BUGFIX_LOG.md)。
+
+---
+
+## 排查硬性要求（Anti-shallow — 每次必遵守）
+
+**终极目的只有一个：找到【断连罪魁祸首】（哪一层、哪条链路、什么机制）。** 禁止浅尝辄止、禁止用 B 时刻数据否定 A 时刻、禁止把 Guard/拦截/Continue 建议当作根因结论。
+
+### 必须做到的 5 条
+
+1. **逐步执行 SOP §Step 0→8**，每一步输出固定三行：**步骤名 · 结论 · 证据**（文件路径 + 行/字段 + 原文片段）。
+2. **A 时刻优先**：以 renderer `agent-error` 行时间戳为 A；所有 ledger/core/app 必须按 **A±60s** 过滤，禁止只读 `tail`。
+3. **每步要么 PASS（排除）要么 FAIL（指向某层）**，不允许「可能 / 大概 / 应该」无证据结论。
+4. **完成 §V5 矩阵或标注哪一格缺失**；缺 V5.4 时 confidence 最高 **partial**，不得写 definitive。
+5. **最终必须单独输出【断连罪魁祸首】**（见 §6），并列出 **NOT**（已排除项 + 证据）。
+
+### 禁止作为排查结论的内容
+
+- Guard ON/OFF、是否拦截、如何 Continue — 这些与**根因定责无关**（除非 Guard 本身改写了 transport，需有 renderer 证据）。
+- 「节点延迟高所以断连」— 必须对比 **A 时刻** 6 节点 history + 是否 split-brain。
+- 「VPS 正常」— 仅 B 时刻 SSH/UI 测速 **不能** 否定 A 断连。
+- 未跑 `triage-cursor-disconnect.sh` 就下结论。
+- V5.4 文件 **0 行** 但未排查 UTC 对齐 / active 主机 / SSH 引号问题就标「sing-box 无 error」。
+
+### 每一步输出格式（复制填空）
+
+```markdown
+### Step N — <名称>
+- **结论**：<PASS 排除 X | FAIL 指向 Y | INCONCLUSIVE 缺 Z>
+- **证据**：`<path>:<line或ts>` — `<原文关键字段>`
+```
 
 ---
 
 ## SOP v2 — 逐步执行清单（主流程）
 
-> 一键采集（Mac 侧）：`./scripts/triage-cursor-disconnect.sh <REQUEST_ID> [INCIDENT_UTC]`  
-> 输出 `~/Desktop/cursor-triage-<RID>-<ts>/` 目录 + `REPORT.md` 骨架。**VPS @ A 仍须 SSH 手工或见 §V5.2。**
+> 一键采集：`./scripts/triage-cursor-disconnect.sh <REQUEST_ID> ["YYYY-MM-DD HH:MM"]`
+> 输出 `~/Desktop/cursor-triage-<RID>-<ts>/`（含 `REPORT.md` 骨架、`LOG-MATRIX-A.md`、`disconnect-facts.txt`）。
+> **v3.2+** 自动：renderer 轮转扫描、A 时刻检测、ledger/core @ A、**V5.4 active VPS sing-box @ A±2min**（见下 §5.1）。
+> **V5.2 @ A** 仍建议 SSH 手工对照（triage 采的是 **B 时刻** L4 快检 + ledger @ A 短探针）。
+
+### §5.1 V5.4 sing-box @ A 采集（triage v3.2+ — 必读）
+
+**目的：** 入站协议 error（HY2 EOF / Reality mux / TLS）是 L3 definitive 的关键一格；**禁止** V5.4 空采仍写 definitive。
+
+| 项 | 规则 |
+|----|------|
+| **采哪台 VPS** | **active @ A**（ledger `node` 或 core `Cursor 专用[…]`），**禁止**硬编码只 grep JP |
+| **时间窗口** | **A±2min**（UTC，与 `incident-utc-prefix.txt` 对齐） |
+| **日志文件** | `/var/log/sing-box/sing-box.log` **+** `sing-box.log.1`（跨 midnight 轮转） |
+| **bundle 输出** | `vps-active-ssh-host.txt` · `vps-active-singbox-A-window.log` · 同步复制 `vps-kr-*` 或 `vps-jp-*` |
+| **验收** | 首行应为 **>0** 行数；`---mux-sample---` / `---errors---` 段非空或有明确「该窗口无 error」说明 |
+
+**triage 实现要点（防回归）：**
+
+- grep pattern 经 **base64** 传入远端 `bash -s`，**禁止**在 SSH 双引号内拼接含 `|` 的 ERE（远端 shell 会拆命令 → **wc -l 恒 0**，2026-07-18 已踩坑）。
+- log 行格式：`+0000 YYYY-MM-DD HH:MM:SS`（UTC）；pattern 为 `^\+0000 <date> <HH:MM>:`。
+
+**手工复现（active=kr-vps，A=11:37 UTC 示例）：**
+
+```bash
+ssh kr-vps "grep -E '^\\+0000 2026-07-18 11:3[567]:' /var/log/sing-box/sing-box.log \
+  | grep -iE 'error|mux|tls|reality' | head -30"
+```
+
+**V5.4 空采时：**
+
+| 现象 | 动作 |
+|------|------|
+| `0` 行 + SSH OK | 查 UTC 对齐、active 主机是否选错、是否只查了 `.log` 未查 `.log.1` |
+| SSH 失败 | 标 V5.4 **缺失**，confidence ≤ partial |
+| 有行但无 error | 记录行数 + reality/hy2 sample；仍可与 Mac BAD_DECRYPT 时间链交叉 |
 
 ### §0 输入清单（缺一则标 inconclusive）
 
@@ -55,6 +140,7 @@
 | **`max-steps-cap`** | ✅ 唯一可 **停止** 网络/VPS 排查 |
 | **`resumeAction` / 客户端 · resumeAction** | ⚠️ 恢复路径标签 → **继续 §2–§8** |
 | **`marathon-stream-closed` / WritableIterable** | ⚠️ 常误标 → **继续 §2–§8** |
+| **`BAD_DECRYPT` / connectCode=13 / tls-bad-decrypt** | ⚠️ 查 Reality + **V5.4 mux**（§Vision+Mux BAD_DECRYPT） |
 | **`post-lifecycle-stall` 且无同期 agent-error** | ℹ️ 仅 watchdog 告警，**不是断流** |
 
 ### §2 Cursor 客户端（A 时刻，权威）
@@ -71,7 +157,8 @@ rg "$RID" "$RENDERER_LOG" | rg "agent-error|disconnect|stream-transport|resumeAc
 
 | 字段 | 定责用途 |
 |------|----------|
-| `errMsg` | mid-stream-eof / WritableIterable / ECONNRESET … |
+| `errMsg` | mid-stream-eof / WritableIterable / ECONNRESET / **BAD_DECRYPT** … |
+| `streamPrimarySub` | **tls-bad-decrypt** → Reality vision+mux 路径 |
 | `lastSseCase` | heartbeat 静默断 vs turnEnded 正常结束 |
 | `durationMs` | 排除/支持 Marathon |
 | `activeAgents` | ≥2 → 倾向 L3 批量 |
@@ -106,7 +193,7 @@ rg "$RID" "$RENDERER_LOG" | rg "agent-error|disconnect|stream-transport|resumeAc
 | V5.1 | sing-box 存活 | `systemctl is-active sing-box` | L4 进程挂 |
 | V5.2 | VPS api2 curl | SSH（见 VPS-CONNECT.md） | L4 出口断 |
 | V5.3 | VPS marketplace | SSH curl marketplace | partition 对照 |
-| V5.4 | sing-box log @ A | `grep` A±2min `/var/log/sing-box/sing-box.log` | 入站 QUIC/Reality 异常 |
+| V5.4 | sing-box log @ A | triage `vps-active-singbox-A-window.log` 或 SSH grep A±2min（§5.1） | 入站 Reality/HY2/mux/TLS 异常 |
 | V5.5 | sing-box restart | `journalctl -u sing-box --since A-10min` | 全协议瞬断 |
 | V5.6 | 6 节点 history @ A | mihomo provider API `history[].time` | L3 协议 / KR-JP |
 | V5.7 | active 协议 | ledger `probe_via` | HY2/TUIC 长流风险 |
@@ -119,6 +206,7 @@ rg "$RID" "$RENDERER_LOG" | rg "agent-error|disconnect|stream-transport|resumeAc
 4. V5.2 双 OK + V5.6 全绿 + mid-stream-eof + HY2/TUIC + activeAgents≥2 → **L3 QUIC 长流静默断 partial**
 5. app-log L0 @ A → **Sparkle 自伤 definitive**
 6. ledger vps 失败但 V5.2 手工 OK → **忽略 ledger vps 行**（fake-ip）
+7. **V5.4 `mux connection closed` / Reality inbound error @ A−1~2min + Mac `turnEnded` 后 `BAD_DECRYPT`（connectCode=13, streamPrimarySub=tls-bad-decrypt）→ **L3 VLESS vision+client multiplex 不兼容 definitive**（见 §Vision+Mux BAD_DECRYPT）
 
 ### §6 输出模板（每次必填）
 
@@ -126,16 +214,37 @@ rg "$RID" "$RENDERER_LOG" | rg "agent-error|disconnect|stream-transport|resumeAc
 Request: <RID>
 A: <local> / <UTC>
 
-[Cursor] errMsg=… lastSse=… duration=… activeAgents=… fault_class=…
-[Guard] mode=… decision=… attempt=…
-[Sparkle] L0/L1=… active=… probe_ok=… hung=… recovery=…
-[VPS @ A] V5.1=… V5.2-KR=… V5.2-JP=… V5.4=… V5.5=…
+## 逐步证据链（Step 0→8，每步 结论+证据）
 
-ROOT CAUSE: <layer> · <mechanism>   CONFIDENCE: definitive|partial|inconclusive
-NOT: <排除项>
-USER ACTION: <一条>
-PRODUCT FIX: <若有，一条>
+### Step 0 — 输入清单
+...
+
+### Step 1 — 第一层分流
+...
+
+（Step 2–8 同上格式）
+
+## 定责摘要
+
+[Cursor] errMsg=… lastSse=… duration=… activeAgents=… fault_class=…
+[Sparkle] L0/L1=… active=… probe_ok@A=… hung=…
+[VPS @ A] V5.1=… V5.2-KR=… V5.2-JP=… V5.4=… V5.5=… V5.6=…
+
+NOT: <已排除项，每条带证据>
+
+## 【断连罪魁祸首】（必填，单独一段）
+
+**层级**：L0 Sparkle | L1 split-brain | L2 mihomo/TUN | L3 QUIC/HY2/TUIC | L4 VPS sing-box | Cursor 硬限
+**链路**：Mac → … → api2.cursor.sh
+**机制**：<一句话，可复述给第三方>
+**节点/协议**：<如 JP-VPS-HY2 / Hysteria2>
+**CONFIDENCE**：definitive | partial | inconclusive
+**缺失证据**（若 partial/inconclusive）：<如 V5.4 sing-box @ A>
+
+PRODUCT FIX（若有，一条，与根因直接相关）: …
 ```
+
+> **USER ACTION 不再写入根因报告正文**（与定责无关的操作建议移到产品/运维修复项）。
 
 ### §7 根因 → 动作（最佳单路径）
 
@@ -146,6 +255,7 @@ PRODUCT FIX: <若有，一条>
 | L4 @ A | Continue；等 VPS | 修 sing-box / 机房 |
 | L3 restart @ A | Continue | 查 sing-box restart 根因 |
 | L3 QUIC 长流 @ A | **Continue**（不换节点、不减并行） | 监控 HY2/TUIC；CTHC 12min+keep6 |
+| L3 vision+mux BAD_DECRYPT @ A | **Continue** | Sparkle **≥1.26.44** mux guard；确认 `/Applications` 版本 |
 | Guard OFF + auto-retry | 开 Guard ON | 查 gate165 同步 |
 | post_lifecycle_stall 仅告警 | 忽略，继续等 | — |
 
@@ -166,7 +276,7 @@ PRODUCT FIX: <若有，一条>
 | T-S-05 | mihomo 6-node history | provider API / Sparkle UI | ✅ | L3 协议差异 | **已有** | 须按 A 过滤 history.time |
 | T-S-06 | 三点定责 v2 | Sparkle 高级设置 UI | B | KR/JP/active 对照 | **已有** | 仅 B 瞬间 |
 | T-VPS-01 | vpsL4Probe ledger | `scope=vps` + app-log `[VpsL4Probe]` | △ | L4 | **已修复 1.26.37** | `ProxyCommand=none` + DOMAIN DIRECT + leaf IP 回退；path 错误 `authoritative=false` |
-| T-VPS-02 | sing-box log @ A | VPS SSH | ✅ | 入站协议 error | **手工** | **待产品化：VPS 侧 JSONL 回传 Mac** |
+| T-VPS-02 | sing-box log @ A | triage `vps-active-singbox-A-window.log` + VPS SSH | ✅ | 入站协议 error | **triage v3.2+** | active 主机解析；SSH grep 引号防回归 §5.1 |
 | T-VPS-03 | sing-box restart @ A | VPS journalctl | ✅ | 批量断流 | **手工** | 同上 |
 | T-VPS-04 | Connect 长流逐跳 | — | — | 单 hop | **缺失** | **inconclusive 承认**；无 magic probe |
 | T-D-01 | 单页 incident 看板 | — | — | 全链路 | **缺失** | **Roadmap：Usage Watch「按 RID 定责页」** |
@@ -455,9 +565,35 @@ ssh -p <SSH_PORT> -i ~/.ssh/id_ed25519 root@<KR_VPS_IP> \
 | `inbound/hysteria2` | HY2 入站 |
 | `inbound/tuic` | TUIC 入站 |
 | `authentication failed` / 大量 EOF | 入站协议问题或 sing-box 被 restart（见 [VPS-INFRA.md](./VPS-INFRA.md)） |
+| **`mux connection closed`** / `read frame header: EOF` @ vless-reality-in | **vision + client multiplex 不兼容**（Mac 常表现为 turnEnded 后 BAD_DECRYPT） |
+| **`REALITY: processed invalid connection`** | 扫描/误连，通常非 Agent 断连根因 |
 | `journalctl` restart 次数突增 | 人为/异常 restart → 全协议断连 |
 
-**规律：** sing-box 单进程 restart 会同时打断 Reality/HY2/TUIC 三路入站；HY2 单独 error 而 L4 curl 正常 → 入站 QUIC 层问题，不是 VPS 出口。
+**规律：** sing-box 单进程 restart 会同时打断 Reality/HY2/TUIC 三路入站；HY2 单独 error 而 L4 curl 正常 → 入站 QUIC 层问题，不是 VPS 出口。**Reality mux EOF + Mac BAD_DECRYPT** → L3 client 出站 multiplex 问题，**修 Mac profile，不必改 VPS 入站**（sing-box #2415）。
+
+---
+
+## Vision+Mux BAD_DECRYPT（Reality 专用 — 2026-07-18 闭环）
+
+**典型 RID 特征：** `lastSseCase=turnEnded` → 数秒内 `connectCode=13` · `OPENSSL_internal:BAD_DECRYPT` · `streamPrimarySub=tls-bad-decrypt` · active=**KR/JP-VPS-Reality**。
+
+| 时刻 | 信号 | 证据路径 |
+|------|------|----------|
+| A−60~120s | KR/JP sing-box `mux connection closed: read frame header: EOF` | `vps-*-singbox-A-window.log` → `---mux-sample---` |
+| A | Mac turnEnded 成功（SSE N 很大） | renderer `lastSseCase=turnEnded` |
+| A+0~5s | Connect BAD_DECRYPT attempt=0 | renderer `agent-error` |
+| A±1min | ledger 短探针仍 OK（split-brain） | `sparkle-A-window-api2-probe-ledger.jsonl` |
+
+**根因机制：** sing-box [#1535](https://github.com/SagerNet/sing-box/issues/1535) — `xtls-rprx-vision` 与 multiplex/Mux.Cool **不兼容** → 长 marathon 后内层 TLS 解密失败。**客户端**必须 strip multiplex（[#2415](https://github.com/SagerNet/sing-box/issues/2415)：VPS 入站关 multiplex **无效**）。
+
+**PRODUCT FIX：** Sparkle **≥1.26.44** `vlessVisionMuxGuardCore` — profile 生成时 vision 节点 strip `multiplex` + `smux: false`（见 [BUGFIX_LOG BUG-2026-07-18-003](./BUGFIX_LOG.md)）。
+
+**定责注意：**
+
+- **NOT** Cursor 服务端随机关流（turnEnded 已成功）
+- **NOT** L4 VPS 宕机（V5.2 OK）
+- **NOT** 单纯延迟高（V5.6 + ledger OK @ A）
+- IFM `reasonSub=blob-not-found` 常为 **断后次生标签**，以 `streamPrimarySub=tls-bad-decrypt` + V5.4 mux 为准
 
 ### L4 与 Mac 路径报告的对照
 

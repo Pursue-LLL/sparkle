@@ -23,7 +23,7 @@ import { existsSync, writeFileSync } from 'fs'
 import path from 'path'
 import {
   extractProxies,
-  generateProxyProvider,
+  setupProfileProviders,
   generateBaseConfigWithProvider
 } from './provider'
 import {
@@ -71,7 +71,7 @@ export async function generateProfile(): Promise<void> {
     const proxies = extractProxies(currentProfile)
 
     if (proxies.length > 0) {
-      await generateProxyProvider(current, proxies)
+      await setupProfileProviders(current, proxies)
       const baseConfig = generateBaseConfigWithProvider(currentProfile, current)
       profile = deepMerge(JSON.parse(JSON.stringify(baseConfig)), configToMerge)
     } else {
@@ -83,9 +83,20 @@ export async function generateProfile(): Promise<void> {
 
   if (profile.proxies && Array.isArray(profile.proxies)) {
     const { applyHysteria2ProxiesQuicStability } = await import('./hysteria2QuicStability')
-    ;(profile as MihomoConfig).proxies = applyHysteria2ProxiesQuicStability(
-      profile.proxies as unknown[],
-    ) as MihomoConfig['proxies']
+    const { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } = await import(
+      './vlessVisionMuxGuardCore'
+    )
+    const guarded = applyVlessVisionMuxGuard(
+      applyHysteria2ProxiesQuicStability(profile.proxies as unknown[])
+    )
+    ;(profile as MihomoConfig).proxies = guarded as MihomoConfig['proxies']
+    const muxSummary = summarizeVlessVisionMuxGuard(guarded)
+    if (muxSummary.visionNodeCount > 0) {
+      const nodeList = muxSummary.visionNodeNames.join(',')
+      await appendAppLog(
+        `[Factory]: vless_vision_mux_guard vision=${muxSummary.visionNodeCount} stripped_multiplex=${muxSummary.strippedMultiplexCount} ensured_smux_off=${muxSummary.ensuredSmuxOffCount} nodes=[${nodeList}]\n`
+      )
+    }
   }
 
   await cleanProfile(profile, controlDns, controlSniff)

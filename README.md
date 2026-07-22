@@ -131,7 +131,8 @@ sparkle/
 #### 构建命令
 
 - `pnpm build:win` - 构建 Windows 版本
-- `pnpm build:mac` - 构建 macOS 版本
+- `pnpm build:mac` - 构建 macOS 版本（含 pkg）
+- `pnpm run upgrade:mac` - **本地 dev 一条龙**：编译 + 安装到 `/Applications`（推荐）
 - `pnpm build:linux` - 构建 Linux 版本
 
 #### 其他命令
@@ -195,17 +196,29 @@ pnpm build:linux deb --x64
 
 #### macOS 本地升级（必读）
 
-本地 dev 构建后安装到 `/Applications/Sparkle.app` 时：
+**推荐（一条命令）**：
 
-1. **禁止** `ditto` / `cp -R` 覆盖旧 app（Electron Framework 签名 Team ID 不一致 → DYLD 崩溃，见 [BUG-003](BUGFIX_LOG.md)）
-2. **禁止** 从 `dist/mac-arm64/Sparkle.app` **直接 `open` 作为日常使用**（≤1.26.39 必崩；≥1.26.40 build 虽可 dev 自测，生产仍只用 `/Applications`）
-3. **必须** `sudo rm -rf /Applications/Sparkle.app` → `sudo installer -pkg dist/sparkle-macos-*-arm64.pkg -target /` → 验证版本 → `open /Applications/Sparkle.app`
+```bash
+cd /path/to/sparkle
+pnpm run upgrade:mac
+```
 
-标准命令见 [BUGFIX_LOG.md — BUG-003 / BUG-007](BUGFIX_LOG.md)。
+等价 `bash scripts/upgrade-sparkle-local.sh`：vite 编译 → electron-builder dir（含 deepSign）→ asar 校验 → 安装到 `/Applications` → Finder 启动。
 
-**Agent 稳定性修复**：安装 **≥1.26.40**（含 1.26.39 CTHC Agent-stability-first + deep sign 启动修复）。
+**仅安装已构建 dist**：`bash scripts/install-sparkle-local.sh`
 
-构建注意：勿 `SKIP_PREPARE=1`（空 sidecar pkg 见 BUG-2026-07-09-003）；完整 pkg 约 **186MB+**。build log 应出现 `replacing existing signature`（deep sign）。
+**禁止**：
+
+1. **禁止** `ditto` / `cp -R` **覆盖**旧 app（DYLD Team ID 不一致，见 [BUG-003](BUGFIX_LOG.md)）
+2. **禁止** 跳过 `electron-vite build` 只跑 electron-builder（asar 缺新代码，见 [BUG-004](BUGFIX_LOG.md)）
+3. **禁止** install 后二次 `codesign`（CDHash 变 · Gatekeeper 批准作废，见 [BUG-002](BUGFIX_LOG.md)）
+4. **禁止** `~/Applications/Sparkle.app` 与 `/Applications` 并存（split-brain，见 [BUG-001](BUGFIX_LOG.md)）
+
+**pkg 流程**（可选）：`pnpm run build:mac` → `sudo rm -rf /Applications/Sparkle.app` → `sudo installer -pkg dist/sparkle-macos-*-arm64.pkg -target /`
+
+完整 SSOT 见 [BUGFIX_LOG.md — Sparkle 本地安装](BUGFIX_LOG.md)。
+
+**Agent 稳定性**：安装 **≥1.26.50**（含 token gap nudge · 覆盖 ~33s server EOF 窗口）。
 
 ### 常见问题
 

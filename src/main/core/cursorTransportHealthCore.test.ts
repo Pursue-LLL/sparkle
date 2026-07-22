@@ -111,8 +111,21 @@ describe('cursorTransportHealthCore', () => {
     assert.equal(
       resolveProbeAttribution({
         api2Ok: false,
+        api2geoOk: false,
         marketplaceOk: true,
         api2LatencyMs: 77_000,
+        api2geoLatencyMs: 77_000,
+        marketplaceLatencyMs: 515
+      }),
+      'transport_partition_stale'
+    )
+    assert.equal(
+      resolveProbeAttribution({
+        api2Ok: true,
+        api2geoOk: false,
+        marketplaceOk: true,
+        api2LatencyMs: 349,
+        api2geoLatencyMs: 4_600,
         marketplaceLatencyMs: 515
       }),
       'transport_partition_stale'
@@ -136,8 +149,10 @@ describe('cursorTransportHealthCore', () => {
       decideRecoveryAction({
         probe: {
           api2Ok: false,
+          api2geoOk: false,
           marketplaceOk: true,
           api2LatencyMs: 77_000,
+          api2geoLatencyMs: 77_000,
           marketplaceLatencyMs: 515
         },
         attribution: 'transport_partition_stale',
@@ -153,8 +168,10 @@ describe('cursorTransportHealthCore', () => {
       decideRecoveryAction({
         probe: {
           api2Ok: false,
+          api2geoOk: false,
           marketplaceOk: true,
           api2LatencyMs: 77_000,
+          api2geoLatencyMs: 77_000,
           marketplaceLatencyMs: 515
         },
         attribution: 'transport_partition_stale',
@@ -172,12 +189,12 @@ describe('cursorTransportHealthCore', () => {
     const cooldowns = { lastL0AtMs: 0, lastL1AtMs: 0, lastL2AtMs: 0, lastL3AtMs: 0 }
     const cases = [
       {
-        probe: { api2Ok: true, marketplaceOk: true, api2LatencyMs: 0, marketplaceLatencyMs: 0 },
+        probe: { api2Ok: true, api2geoOk: true, marketplaceOk: true, api2LatencyMs: 0, api2geoLatencyMs: 0, marketplaceLatencyMs: 0 },
         attribution: 'healthy' as const,
         hungConnectionIds: ['conn-hung-1', 'conn-hung-2']
       },
       {
-        probe: { api2Ok: false, marketplaceOk: true, api2LatencyMs: 46, marketplaceLatencyMs: 733 },
+        probe: { api2Ok: false, api2geoOk: false, marketplaceOk: true, api2LatencyMs: 46, api2geoLatencyMs: 46, marketplaceLatencyMs: 733 },
         attribution: 'transport_partition_stale' as const,
         hungConnectionIds: ['conn-hung-19']
       }
@@ -204,8 +221,10 @@ describe('cursorTransportHealthCore', () => {
       decideRecoveryAction({
         probe: {
           api2Ok: false,
+          api2geoOk: false,
           marketplaceOk: false,
           api2LatencyMs: -1,
+          api2geoLatencyMs: -1,
           marketplaceLatencyMs: -1
         },
         attribution: 'offline',
@@ -223,7 +242,7 @@ describe('cursorTransportHealthCore', () => {
     const cooldowns = { lastL0AtMs: 0, lastL1AtMs: 0, lastL2AtMs: 0, lastL3AtMs: 0 }
     assert.equal(
       decideRecoveryAction({
-        probe: { api2Ok: true, marketplaceOk: true, api2LatencyMs: 0, marketplaceLatencyMs: 0 },
+        probe: { api2Ok: true, api2geoOk: true, marketplaceOk: true, api2LatencyMs: 0, api2geoLatencyMs: 0, marketplaceLatencyMs: 0 },
         attribution: 'healthy',
         hungConnectionIds: ['conn-hung-1'],
         tunInterfaceLostConfirmed: false,
@@ -237,7 +256,7 @@ describe('cursorTransportHealthCore', () => {
 
   it('does not report L0 cooldown for healthy hung scan', () => {
     const reason = describeRecoveryBlockReason({
-      probe: { api2Ok: true, marketplaceOk: true, api2LatencyMs: 0, marketplaceLatencyMs: 0 },
+      probe: { api2Ok: true, api2geoOk: true, marketplaceOk: true, api2LatencyMs: 0, api2geoLatencyMs: 0, marketplaceLatencyMs: 0 },
       attribution: 'healthy',
       hungConnectionIds: ['conn-hung-1'],
       tunInterfaceLostConfirmed: false,
@@ -266,7 +285,7 @@ describe('cursorTransportHealthCore', () => {
 
   it('reports agent_stability_hold for split-brain partition stale', () => {
     const reason = describeRecoveryBlockReason({
-      probe: { api2Ok: false, marketplaceOk: true, api2LatencyMs: 77_000, marketplaceLatencyMs: 400 },
+      probe: { api2Ok: false, api2geoOk: false, marketplaceOk: true, api2LatencyMs: 77_000, api2geoLatencyMs: 77_000, marketplaceLatencyMs: 400 },
       attribution: 'transport_partition_stale',
       hungConnectionIds: ['conn-1'],
       tunInterfaceLostConfirmed: false,

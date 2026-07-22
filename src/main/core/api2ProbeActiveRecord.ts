@@ -1,5 +1,6 @@
 import type { ProbeAttribution } from './cursorTransportHealthCore'
 import type { ProbePairResult } from './cursorTransportHealthCore'
+import { isTransportPairHealthy } from './cursorTransportHealthCore'
 import { appendApi2ProbeLedgerRow } from './api2ProbeLedgerCore'
 import type { Api2ProbeMethod } from './api2ProbeLedgerRowCore'
 
@@ -23,7 +24,7 @@ export async function recordActiveApi2ProbeToLedger(
     scope: 'active',
     node: input.proxyNode,
     latency_ms: input.probe.api2LatencyMs,
-    ok: input.probe.api2Ok,
+    ok: isTransportPairHealthy(input.probe),
     authoritative: input.authoritative,
     method: input.method,
     ...(input.attribution ? { probe_attribution: input.attribution } : {}),

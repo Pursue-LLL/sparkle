@@ -75,6 +75,33 @@ ssh -p <SSH_PORT> root@<JP_VPS_IP>
 - 迁移脚本: `scripts/vps-deploy/migrate-to-singbox-only.sh`
 - 内核调优: `/etc/sysctl.d/99-cursor-hy2.conf`（UDP buffer + conntrack）
 
+### HY2 marathon QUIC keepalive（Cursor Connect 长流）
+
+Marathon Connect 长流 EOF（RID 23bb8c85 / a9722f2 类）需 **三层** 对齐（脚本 `scripts/vps-deploy/patch-hy2-in-quic-marathon.sh` 幂等处理）：
+
+| 层 | 配置 | 值 | 说明 |
+|---|---|---|---|
+| **内核 conntrack** | `/etc/sysctl.d/99-cursor-hy2.conf` → `sysctl -p` | `nf_conntrack_udp_timeout=3600` · `udp_timeout_stream=3600` | **运行时须验** `sysctl -n net.netfilter.nf_conntrack_udp_timeout`（默认 30/120 会先于 sing-box 掐流） |
+| **sing-box hy2-in** | `udp_timeout` | `3600s` | Listen 字段 · sing-box **1.13+** · **`sing-box check` 可验证的唯一 stable 字段** |
+| **sing-box hy2-in** | `idle_timeout` · `keep_alive_period` | `3600s` · `30s` | 仅 sing-box **≥1.14**；**1.13.14 stable 写入会 check 失败** — 脚本默认不升级时只打 `udp_timeout` |
+
+JP/KR 当前部署（2026-07-21）：sing-box **1.13.14** + hy2-in **`udp_timeout: 3600s`** + conntrack **3600**。可选：`patch-hy2-in-quic-marathon.sh` 在 `<1.14` 时升级至 **1.14.0-alpha.48** 后再写 idle/keepalive 三字段。
+
+Mac 侧 TUN `udp-timeout` / `keep-alive-idle` 亦为 3600s（`factory.ts` · `hysteria2QuicStability.ts`）；Sparkle `session_transport_nudge` 周期 **40s**。
+
+**已有 VPS（会 RST 所有入站 — 确认无 marathon Agent）：**
+
+```bash
+# 从 Sparkle 仓库根目录
+ssh jp-vps 'bash -s' < scripts/vps-deploy/patch-hy2-in-quic-marathon.sh
+ssh kr-vps 'bash -s' < scripts/vps-deploy/patch-hy2-in-quic-marathon.sh
+# 预检：加 --dry-run
+```
+
+脚本顺序：`sysctl -p` → **若 sing-box &lt;1.14**：仅 jq 写入 `udp_timeout`；**若需三字段**：先 `install.sh --version ${SING_BOX_ALPHA_VERSION:-1.14.0-alpha.48}` → `sing-box check` → 单次 `systemctl restart sing-box`。
+
+SSOT 常量：`src/main/core/cursorHy2MarathonKeepaliveCore.ts`（`hy2InQuicMarathonFields()`）。**1.13.14 生产最小集** = conntrack 3600 + `udp_timeout` 3600s；idle/keepalive 为 ≥1.14 增强项。新装 VPS 见 `migrate-to-singbox-only.sh` / `install-singbox-*.sh` 模板。
+
 ### 运维规范：禁止频繁 restart
 
 KR/JP 均为 **sing-box 单进程**（Reality :443 · HY2 :8443 · TUIC :8444 同进程）。  

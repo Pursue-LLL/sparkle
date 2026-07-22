@@ -66,7 +66,8 @@ INBOUNDS='[
       "certificate_path": "/etc/sing-box/cert.pem",
       "key_path": "/etc/sing-box/key.pem"
     },
-    "ignore_client_bandwidth": true
+    "ignore_client_bandwidth": true,
+    "udp_timeout": "3600s"
   }'
 
 if [[ "$ROLE" == "general" ]]; then

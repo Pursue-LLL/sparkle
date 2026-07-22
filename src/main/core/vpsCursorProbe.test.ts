@@ -1,17 +1,15 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import {
-  CANONICAL_VPS_NODE_PATTERN,
-  isCanonicalVpsNodeName
-} from './vpsCanonicalNodes'
+import { CANONICAL_VPS_NODE_PATTERN, isCanonicalVpsNodeName } from './vpsCanonicalNodes'
 
 describe('vpsCursorProbe', () => {
-  it('matches canonical 6 VPS node names', () => {
+  it('matches managed VPS transport node names', () => {
     const canonical = [
       'KR-VPS-Reality',
       'KR-VPS-HY2',
       'KR-VPS-TUIC',
       'JP-VPS-Reality',
+      'JP-VPS-TLS',
       'JP-VPS-HY2',
       'JP-VPS-TUIC',
       'KR-VPS-Reality-backup'

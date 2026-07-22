@@ -1,5 +1,7 @@
 # Sparkle Bugfix Log
 
+> **2026-07-22 最新**：① **BUG-2026-07-22-002** — marathon read ETIMEDOUT（0946940c）· P8 `connect_stream_keepalive` @ **1.26.51** ② **BUG-2026-07-22-001** — nudge dial 风暴（4950032b）· defer @ conn≥80 @ **1.26.51**
+
 每次修复用户可感知 bug 后 **必须追加一条**。架构教训与 Cursor 代理操作手册见 [reports/cursor-marathon-playbook.md](reports/cursor-marathon-playbook.md)、[src/main/core/_ARCH.md](src/main/core/_ARCH.md)；本文件只做 **修复台账**（症状 → 根因 → 计划/实际修复 → 版本 → 证据）。
 
 ## 记录模板（复制追加）
@@ -27,6 +29,57 @@
 ---
 
 ## 2026-07-18
+
+### BUG-2026-07-18-005 · v1.26.46 · provider 写入路径二次 guard + 审计日志
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | provider 模式下 `199e64b94e8-vps-proxies.yaml` 重写后仍无 `smux: false`；Factory 审计日志不触发 |
+| **修复** | `generateProxyProvider` 写入前二次 `applyVlessVisionMuxGuard`；`setupProfileProviders` 写 VPS 后 `[Provider]: vless_vision_mux_guard` 日志 |
+| **回归** | test:node-quality |
+
+### BUG-2026-07-18-004 · v1.26.45 · vision mux guard unconditional smux:false
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | 1.26.44 guard 仅在 `smux===true` 时关闭；mihomo 对未显式配置的 vless 可能隐式 sing-mux → 长 marathon 仍 tls-reset/BAD_DECRYPT |
+| **bug 存在版本** | Sparkle **1.26.44** |
+| **修复目标版本** | Sparkle **1.26.45** |
+| **根因** | guard 未对「无 smux 字段」的 vision 节点写入 `smux: false`，隐式 mux 仍可启用 |
+| **修复** | `normalizeVlessVisionProxy` **无条件** `smux: false`；启动日志输出 guarded 节点名列表 |
+| **回归** | `vlessVisionMuxGuardCore.test.ts` · test:node-quality **131/131** |
+| **用户动作** | 安装 **1.26.45** pkg 并重启 Sparkle（触发 generateProfile） |
+| **代码位置** | `vlessVisionMuxGuardCore.ts` · `factory.ts` |
+
+### BUG-2026-07-18-003 · v1.26.44 · Reality vision+multiplex → post-turn TLS BAD_DECRYPT
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | RID `b6f815d1` 7min marathon turnEnded 后 Connect BAD_DECRYPT；KR sing-box @ A-69s mux EOF；短 probe 全绿 |
+| **bug 存在版本** | Sparkle **≤1.26.43** |
+| **修复目标版本** | Sparkle **1.26.44** |
+| **根因** | sing-box [#1535](https://github.com/SagerNet/sing-box/issues/1535)：**xtls-rprx-vision 与 multiplex 不兼容**，内层 api2 TLS 解密失败；triage 仅 grep JP VPS 漏采 active KR |
+| **修复** | `vlessVisionMuxGuardCore.ts` 生成 profile 时强制 vision 节点 strip multiplex + smux=false；triage 按 ledger/core @ A 解析 active VPS（KR/JP）grep sing-box；**triage SSH grep 引号 bug 修复**（base64 传 pattern + ±2min + log.1 轮转） |
+| **回归** | `vlessVisionMuxGuardCore.test.ts` |
+| **用户动作** | 安装 **1.26.44** pkg 并重启 core（触发 `generateProfile` 重写 provider）；**不杀连接、不切节点、不限制并行** |
+| **代码位置** | `vlessVisionMuxGuardCore.ts` · `provider.ts` · `factory.ts` · `triage-cursor-disconnect.sh` |
+
+### BUG-2026-07-18-002 · v1.26.43 · triage V5.4 空采 + HY2 Marathon 定责
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | triage 脚本 V5.4 恒空；RID `1a4bfbe0` HY2 Marathon 断连无法 definitive |
+| **bug 存在版本** | Sparkle triage **≤1.26.42** |
+| **修复目标版本** | Sparkle **1.26.43** |
+| **根因** | `journalctl --since 5 min ago` 取采集时刻非 A 时刻；真实日志在 `/var/log/sing-box/sing-box.log` UTC 前缀 |
+| **修复** | triage 按 `INCIDENT_UTC±1min` grep file log + V5.5 restart 窗口 |
+| **回归** | 手动补采 + triage 脚本 · test:node-quality **126/126** |
+| **用户动作** | 无锁定；KR-Reality 仅 bootstrap 默认，manual 切换才持久化 |
+| **代码位置** | `triage-cursor-disconnect.sh` |
 
 ### BUG-2026-07-18-001 · v1.26.42 · Cursor 专用组手动切换被 bootstrap 覆盖
 
@@ -80,7 +133,7 @@
 | **根因** | ① **双击 `dist/mac-arm64/Sparkle.app` 直接运行**（非 `/Applications`）· ② electron-builder adhoc 分签名，主二进制与 Electron Framework **Team ID 不一致** · ③ `sudo installer` 未完整覆盖时 `/Applications` 仍为旧版（如 1.26.36）而用户从 dist 启动 |
 | **修复** | `scripts/deepSignMac.cjs` + electron-builder 根级 `afterSign`：`codesign --deep --force --sign -` 整包重签后再打 pkg |
 | **禁止** | ❌ `open dist/mac-arm64/Sparkle.app` 作为日常使用 · ❌ ditto/cp 覆盖（见 BUG-003）· ❌ 只更新 Info.plist 不替换 Framework · ❌ 复制到 `~/Applications/Sparkle.app`（与 `/Applications` 并存 → Dock 双图标） |
-| **正确流程** | 仍用 **BUG-003「Sparkle 本地 pkg 升级（标准）」**：`rm -rf` 旧 app → `sudo installer -pkg … -target /` → `open /Applications/Sparkle.app` |
+| **正确流程** | `bash scripts/install-sparkle-local.sh`（见 **「Sparkle 本地安装（标准 · 唯一路径）」**）· 或 pkg + `chown` + `codesign` |
 | **dev 自测** | 1.26.40+ build 后 dist app 可短暂启动验证；**生产环境只用 `/Applications`** |
 | **回归** | build log 出现 `replacing existing signature`；`open dist/.../Sparkle.app` 不 DYLD 崩溃 |
 | **用户动作** | 安装 **1.26.40+** pkg，勿从 dist 启动 |
@@ -142,7 +195,54 @@
 | **正确流程** | 见下方 **「Sparkle 本地 pkg 升级（标准）」** · build **≥1.26.40** 含 `afterSign` deep sign（BUG-007） |
 | **验证** | ① `PlistBuddy … CFBundleShortVersionString` = 目标版本 ② `open -a Sparkle` 不崩溃 ③ app-log 出现 `mihomo API ready` ④ `ls /tmp/sparkle-mihomo-api.sock` |
 
-#### Sparkle 本地 pkg 升级（标准）
+#### Sparkle 本地安装（标准 · 唯一路径）
+
+**Canonical 路径**：仅 `/Applications/Sparkle.app`。禁止与 `~/Applications/Sparkle.app` 并存（service/GUI 分裂 · Gatekeeper 混乱 · `spawn …/sparkle-service ENOENT`）。
+
+**推荐（dev 构建 + 安装 · 一条命令）**：
+
+```bash
+cd /path/to/sparkle
+pnpm run upgrade:mac
+# 等价：bash scripts/upgrade-sparkle-local.sh
+```
+
+**仅安装已构建 dist（不重编）**：
+
+```bash
+bash scripts/install-sparkle-local.sh
+```
+
+**upgrade:mac 流程**：`electron-vite build` → `electron-builder --mac dir`（含 `afterSign` deepSignMac）→ 校验 asar 非 stale → `install-sparkle-local.sh`（`rm -rf` 后 **整包 ditto**，禁止覆盖）→ **Finder POSIX 启动**（绕过 adhoc Gatekeeper 闪退）→ 验证版本 + GUI + mihomo socket。
+
+**禁止**：
+
+- ❌ 只跑 `electron-builder` 不先 `electron-vite build`（asar 缺新代码，见 BUG-004）
+- ❌ `open -a` / 双击启动 adhoc 新 CDHash 包（`exit=1` 像闪退，见 BUG-004）
+- ❌ install 后二次 `codesign`（CDHash 变 · Gatekeeper 批准作废，BUG-002）
+- ❌ ditto/cp **覆盖**旧 `/Applications/Sparkle.app`（DYLD Team ID，BUG-003）
+- ❌ `~/Applications/Sparkle.app` 与 `/Applications` 并存（split-brain，BUG-001）
+
+脚本行为：quit GUI（graceful → `pkill -9`）→ 停 `sparkle-service` → **迁移/删除** `~/Applications/Sparkle.app` → `rm -rf` + `ditto` 到 `/Applications` → `xattr -cr` → **不重签** → Finder 启动 → 校验 GUI 运行。
+
+**长期最稳**：Apple Developer ID + notarize（免 Gatekeeper · 可恢复「输密码 pkg 即用」）。
+
+#### AI Agent 操作约束（防重复踩坑）
+
+> 供 Cursor Agent / 自动化脚本读取；**Sparkle 问题只写 sparkle 仓 `BUGFIX_LOG.md`**，勿改 `tools/cursor-usage-watch/docs/BUGFIX_LOG_315.md`（Guard 3.1.15 补丁专账）。
+
+| 必须 | 禁止 |
+| --- | --- |
+| `pnpm run upgrade:mac` 或 `bash scripts/upgrade-sparkle-local.sh` | 只跑 `electron-builder` 不先 `electron-vite build`（stale asar） |
+| 安装前 `rm -rf /Applications/Sparkle.app` 再 **整包 ditto** | ditto/cp **覆盖**旧 app（DYLD · BUG-003） |
+| 启动：`install-sparkle-local.sh` 内 Finder POSIX open | 双击 / `open -a` 作为 adhoc 新包首选（Gatekeeper exit=1 像闪退） |
+| 仅 `/Applications/Sparkle.app` 单路径 | `~/Applications/Sparkle.app` 并存（split-brain · BUG-001） |
+| install 后 **不重签** | install/pkg 后二次 `codesign`（CDHash 变 · BUG-002） |
+| 定责读 triage 证据包 + A 时刻三源 | 用 B 时刻探针否定 A 时刻断连 |
+
+**验证安装成功**：`defaults read … CFBundleShortVersionString` · `pgrep -x Sparkle` · `/tmp/sparkle-mihomo-api.sock` · asar 含预期符号（如 `token_gap_force_nudge` @≥1.26.50）。
+
+**等价 pkg 流程**（无 dev 构建时）：
 
 ```bash
 # 1. 构建（勿 SKIP_PREPARE，pkg 应 ~186MB+，见 BUG-2026-07-09-003）
@@ -154,14 +254,18 @@ PKG="dist/sparkle-macos-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersio
 # 2. 退出旧进程
 osascript -e 'tell application "Sparkle" to quit' 2>/dev/null || true
 pkill -f 'sparkle-service service run' 2>/dev/null || true
+rm -rf ~/Applications/Sparkle.app 2>/dev/null || true
 
 # 3. 整包替换（必须 rm 旧 app 再 installer，不可 ditto 覆盖）
 sudo rm -rf /Applications/Sparkle.app
 sudo installer -pkg "$PKG" -target /
+sudo chown -R "$(whoami):staff" /Applications/Sparkle.app
+xattr -cr /Applications/Sparkle.app
+# 勿二次 codesign — 会改 CDHash、作废 Gatekeeper 批准（见 BUG-2026-07-21-002）
 
-# 4. 验证并启动
+# 4. 验证并启动（install 脚本已自动 Finder 启动；pkg 手动时用下面两行）
 /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Sparkle.app/Contents/Info.plist
-open -a /Applications/Sparkle.app
+osascript -e 'tell application "Finder" to open POSIX file "/Applications/Sparkle.app"'
 # 等 ~10s 后：tail ~/Library/Application\ Support/sparkle/logs/app-*.log | rg 'mihomo API ready'
 ```
 
@@ -477,3 +581,148 @@ osascript -e "do shell script \"pkill -9 -x Sparkle 2>/dev/null; pkill -9 -f 'sp
 | **修复** | ① `cursorTransportHealth.ts` 每次恢复决策写 `app-*.log` 一行摘要 + `~/.sparkle/network-stability-events.jsonl` 事件 `transport_recovery` / `transport_hung_scan` ② `describeRecoveryBlockReason` 解释 `L0_cooldown` 等阻塞原因 ③ `probe` 事件补 `recovery_action` + marketplace 字段 |
 | **日志路径** | `~/Library/Application Support/sparkle/logs/app-*.log`（搜 `[CursorTransportHealth]:`）· `~/.sparkle/network-stability-events.jsonl`（`kind=transport_recovery`） |
 | **踩坑** | 复现时同时打包 **core log + events jsonl + 发生时刻**；单看 Usage Guard 无法判 CTHC 是否漏触发 |
+
+---
+
+## 2026-07-20
+
+### BUG-2026-07-20-001 · Connect split-brain P0–P3 · Sparkle main + Guard ext 0.15.75
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **DEPLOYED**（2026-07-21 · Sparkle 1.26.48 · Guard 0.15.77） |
+| **症状** | 探针全绿时 Connect mass PING timeout（RID 5d03320f 类）零恢复；`agent-transport-failures.jsonl` @ A 无行 |
+| **bug 存在版本** | Sparkle **1.26.47** · Guard ext **≤0.15.74** |
+| **修复目标版本** | Sparkle **1.26.48+** · Guard ext **0.15.75+** |
+| **根因** | ① CTHC `resolveProbeAttribution` 仅探针失败才 stale ② keepalive 仅 api2 HTTP delay ③ MarathonDialTolerance 仅文档 ④ daily Cursor 无 transport jsonl |
+| **修复** | P0 `agentTransportFailureSyncCore` · P1 `connectPartitionDetectCore`+reader（含 profiles glob）· P2 双探针 `session_transport_nudge` + partition 时 `ensureCursorMarathonKeepAlive` · P3 `marathonDialTolerance` 热更新 · hung_scan 用 recent probe 非假绿 · 5d03320f replay 单测 |
+| **回归** | Guard `agentTransportFailureSyncCore.test` 10/10 · Sparkle connectPartition+reader+marathonDialTolerance+CTHC tests **22/22** |
+| **用户动作** | Reload Guard ext · 安装 Sparkle 新 pkg · 并行 Agent 后查 app.log / jsonl |
+| **代码位置** | `sparkle/src/main/core/connectPartition*` · `marathonDialTolerance*` · `cursorHy2MarathonKeepalive.ts` · `tools/cursor-usage-watch/src/agentTransportFailureSyncCore.ts` |
+
+### BUG-2026-07-20-002 · v1.26.48 · HY2 marathon EOF（23bb8c85 + a9722f2）· VPS QUIC keepalive
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **PARTIAL → FIXED @1.26.51**（VPS QUIC + 40s nudge + token_gap @1.26.50；**20s read ETIMEDOUT / api2direct 盲区**见 BUG-2026-07-22-002 P8） |
+| **症状** | Marathon ~77–125min 后 Connect mid-stream EOF code 10；短 probe 全绿；案 B a9722f2 @18:23 僵尸无 agent-error |
+| **bug 存在版本** | Sparkle **≤1.26.47** · VPS hy2-in 无 marathon 三层 · conntrack 运行时 30/120s |
+| **修复目标版本** | Sparkle **1.26.48** · VPS `patch-hy2-in-quic-marathon.sh`（**1.13.14：`udp_timeout` only**；可选升级 **1.14.0-alpha.48** 三字段） |
+| **根因** | Mac→JP-VPS-HY2 QUIC 长流 split-brain（partial）；VPS sing-box hy2-in 默认 QUIC idle 过短；内核 conntrack UDP 30s；Sparkle 仅短 HTTP nudge |
+| **修复** | ① `cursorHy2MarathonKeepaliveCore.ts` 三字段 SSOT ② VPS 脚本：sysctl + 升级 + hy2-in ③ Guard patch-469–472 ④ triage REPORT（双案） |
+| **NOT** | max-steps · VPS outage @A · 18:41 批量断 · Guard cursor-server 自动标签 |
+| **回归** | `cursorHy2MarathonKeepaliveCore.test.ts` · connectPartition+CTHC **22/22** · VPS dry-run idempotent |
+| **用户动作** | 已完成：Sparkle 1.26.48 · Guard deploy · VPS patch（conntrack=3600 · hy2-in `udp_timeout=3600s` @ sing-box 1.13.14） |
+| **代码位置** | `cursorHy2MarathonKeepaliveCore.ts` · `scripts/vps-deploy/patch-hy2-in-quic-marathon.sh` · triage bundle `REPORT.md` |
+
+---
+
+## 2026-07-22
+
+### BUG-2026-07-22-001 · v1.26.51 · HY2 marathon token_gap nudge 连接风暴（4950032b）· nudge defer @ cursor_conn≥80
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（**1.26.51** 已部署 `/Applications` · `upgrade-sparkle-local.sh`） |
+| **症状** | RID `4950032b-c843-4411-b6d3-3c3e78b6a65c` @ **2026-07-22 11:55:30 CST**：61min 马拉松 · `pendingTool=2` · `generation-ended-without-turnEnded` · cursor_conn **33→268** · `session_transport_nudge_failed` · renderer `ECONNRESET api2.cursor.sh` ×4 |
+| **关联产品** | Sparkle **1.26.50**（断连时）· Cursor **3.1.15** · JP-VPS-HY2 |
+| **bug 存在版本** | Sparkle **1.26.50**（token_gap nudge 无高 conn 保护） |
+| **修复目标版本** | Sparkle **1.26.51** |
+| **根因** | **L3 HY2 QUIC 长流静默 + nudge 叠加 dial 风暴（definitive）**：token_gap 已标 stale（max_gap 93s）但 `session_transport_nudge` 仍每 15s 开 **2× mihomoProxyDelay** 新 HY2 流；与 Cursor auth refresh TLS 风暴叠加 → conn 268 → QUIC 中途断 → ECONNRESET。**NOT** VPS 宕 · NOT L0 hung · NOT patch 破坏 retry |
+| **修复** | `CURSOR_HY2_NUDGE_DEFER_THRESHOLD=80` · `shouldDeferHy2MarathonSessionNudgeForCursorLoad` · `session_transport_nudge_deferred_cursor_load` 日志 · conn≥80 时 **禁止** 新开 api2/api2geo dial，依赖 VPS keep_alive 30s |
+| **NOT** | 切节点 · 杀健康 conn · 减并行 · 客户端限时 |
+| **反复次数** | **同族 split-brain 第 6 次**（含 2026-07-21 d56b1442 33s EOF · 2026-07-22 0946940c 20s ETIMEDOUT）；**nudge defer 第 1 次实现** |
+| **为何反复** | 1.26.50 token_gap @ 20s 用 **短 HTTP 探针救长流**，高 conn 时探针本身变成 **dial 风暴**；短探针全绿 ≠ marathon SSE 正常 |
+| **踩坑** | ① conn 33→268 是 **新增 dial** 不是旧 conn 太多 — **禁止** 用 hygiene/prune 杀健康连接 ② `session_transport_nudge_failed` @ 高 conn = 风暴症状不是 VPS 宕 ③ 定责必须 ledger @ A + renderer ECONNRESET 时间线对齐 ④ P8 connect_stream_keepalive @ conn≥80 **尚未统一 defer**（见 BUG-2026-07-22-002 遗漏项） |
+| **回归** | `cursorHy2MarathonKeepaliveCore.test.ts` defer 3/3 · test:node-quality **176/176** |
+| **用户动作** | 已完成：`pnpm run upgrade:mac` → `/Applications` **1.26.51** 运行中 · app.log 搜 `session_transport_nudge_deferred_cursor_load` |
+| **证据包** | `~/Desktop/cursor-triage-4950032b-20260722T133014/` · renderer @ 11:55:30 ECONNRESET |
+| **代码位置** | `cursorHy2MarathonKeepaliveCore.ts` · `cursorHy2MarathonKeepalive.ts` |
+
+### BUG-2026-07-22-002 · v1.26.51 · HY2 marathon read ETIMEDOUT（0946940c）· P8 Connect 长流保活 · tokenGapReader 损坏
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（**1.26.51** 已部署 `/Applications` · **PARTIAL 待 soak 关门**） |
+| **症状** | RID `0946940c-c7b1-4c69-85a9-0fba7f4e7ae2` @ **2026-07-22 11:40:25 CST**：84min 马拉松 · `cursor_conn=28–30` · 最后 `toolCallDelta` **11:40:06** → **~20s 静默** → `[unavailable] read ETIMEDOUT` · 14s 内第二 RID `c033803b` 同 JP-VPS-HY2 同错 · Guard intercept-on 断后 `will-retry` **BLOCK**（配额浪费，正交） |
+| **关联产品** | Sparkle **1.26.50** @ `/Applications` · Cursor-2 **3.12.17** · JP-VPS-HY2 · Guard WB **1.0.9**（假阳性见 `BUGFIX_LOG_312` BUG-312-2026-07-22-003） |
+| **bug 存在版本** | Sparkle **1.26.50**（token_gap nudge 仅 api2/api2geo 短探针 · **无 api2direct Connect 路径保活**）· `cursorStreamTokenGapReader.ts` **函数损坏缺 export**（token gap 信号可能失效） |
+| **修复目标版本** | Sparkle **1.26.51** |
+| **根因** | **L3 HY2 QUIC Marathon split-brain（definitive）**：ledger @ A+4s **291ms 全绿** · VPS sing-box @ A±2min **零 ERROR**（SSH 实查 hy2-in 3600s 三字段已部署）· 断前仍有 toolCallDelta → **NOT Cursor 服务端** · **NOT max-steps-cap**。机制：`session_transport_nudge` + `token_gap_force_nudge` 在 11:40:10~40 **已在打**，但仅 `mihomoProxyDelay(api2+api2geo)` **新开短 HTTP**，不保活 **api2direct.cursor.sh** 上 AgentService Run 长流 → socket read ETIMEDOUT @ ~20s（= `TOKEN_GAP_FORCE_MS` 窗口） |
+| **修复** | ① **P8** `cursorConnectStreamKeepaliveCore.ts` / `cursorConnectStreamKeepalive.ts` — ≥15s meaningful SSE 静默 + conn≥12 → **api2direct + api2** 双探针 · 日志 `connect_stream_keepalive` · ≥12s 冷却 · **非破坏性** ② `readConnectStreamKeepaliveGapSignal` @ 15s 阈值（早于 20s ETIMEDOUT）③ **修复** `cursorStreamTokenGapReader.ts`（恢复 `readMarathonStreamTokenGapSignal` / cold-resume 收集）④ roadmap §14 SSOT |
+| **1.26.50 已做但未够** | token_gap @ 20s ✅ · VPS/Mac QUIC 3600s ✅ · 40s session nudge ✅ — **不覆盖「探针全绿 + api2direct 长流 ~20s read timeout」** |
+| **反复次数** | **同族 split-brain 第 5 次**（2026-07-18 Reality mux · 2026-07-20 partition · 2026-07-20 VPS QUIC · 2026-07-21 33s server_eof d56b1442 · **本次 20s read ETIMEDOUT**）；P8 **第 1 次实现** |
+| **为何反复** | 每层修复只解决 **一个时间尺度 + 一个 host**：VPS 小时级 idle · 40s nudge 分钟级 · 20s token_gap 仍只探 **api2/api2geo**，未触 **Connect 实际 host api2direct**；短探针全绿 → 「网络正常」错觉 |
+| **踩坑** | ① `HTTP api2 291ms 全绿 ≠ AgentService Run 长流正常` ② token_gap nudge **连续打仍 ETIMEDOUT** = 探针 **类型** 错，不是 **频率** 不够 ③ 定责必须 SSH VPS @ A + renderer 精确时间线（toolCallDelta→ETIMEDOUT 间隔）④ **勿** 用 GUI 批量 VPS delay 测速判活（见 BUG-2026-07-22-001）⑤ P8 与 BUG-001 defer（conn≥80）**尚未统一** — 极高 conn 时 P8 仍可能加探针，待 soak 后评估是否复用 defer |
+| **遗漏 / 待验证** | ① P5 soak：并行 ≥30 conn · ≥60min · app.log `connect_stream_keepalive` ② P8 @ conn≥80 是否需 defer（4950032b 风暴族）③ Guard transport 断后 will-retry BLOCK → P7c 正交 |
+| **回归** | `cursorConnectStreamKeepaliveCore.test.ts` 3/3 · test:node-quality **176/176** |
+| **用户动作** | 已完成：`pnpm run upgrade:mac` → app.log 搜 `connect_stream_keepalive` · ⌘Q Cursor-2（Guard WB 1.0.9） |
+| **证据包** | `~/Desktop/cursor-triage-0946940c-20260722T114605/` · `Cursor-2-data/.../renderer.log` @ 11:40:06 toolCallDelta · `app-2026-7-22.log` token_gap @ 03:40 |
+| **代码位置** | `cursorConnectStreamKeepalive*.ts` · `cursorStreamTokenGapReader.ts` · `cursorTransportHealth.ts` · `temp-docs/repair/CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md` §14 |
+
+---
+
+## 2026-07-21
+
+### BUG-2026-07-21-003 · v1.26.50 · HY2 Marathon 33s token 静默 → server_eof（d56b1442）· token gap nudge
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（**1.26.50** 已部署 `/Applications` · `upgrade-sparkle-local.sh`） |
+| **症状** | RID `d56b1442-dd91-404e-90c7-6bb49aa57d49` @ **2026-07-21 18:54:20 CST**：3 Agent 并行 · JP-VPS-HY2 · Connect SSE **33s 无 token** → `server_eof` / `ConnectError code=10 aborted` → auto resume → Included×2 幽灵计次；UI 后续 resume 假卡死（stock 状态机 desync，非补丁） |
+| **关联产品** | Sparkle **1.26.49**（运行中 pkg）· Cursor **3.1.15** 官方（补丁已删） |
+| **bug 存在版本** | Sparkle **1.26.48–1.26.49**（含 P0–P3 + VPS QUIC 3600s + 40s nudge，**无 token gap**） |
+| **修复目标版本** | Sparkle **1.26.50** |
+| **根因** | **L3 HY2 QUIC Marathon split-brain（definitive）**：`gapSinceActivityMs=32796` · `terminalKind=server_eof` · ledger @ A **api2+api2geo 303ms 全绿** · VPS sing-box @ A±2min **error 段空** · 单 RID 断、其他 Agent 同秒仍收 token。P6 **40s** `session_transport_nudge` 周期 **盖不住 ~33s** 服务端 idle：`10:53:37 nudge` → `10:54:20 EOF` → `10:54:37 nudge`（晚 17s）。**NOT** max-steps · NOT Guard block · NOT patch · NOT L0 hung |
+| **修复** | ① `cursorStreamTokenGapCore.ts` — 解析 renderer `[ifm-event-v1] stream_activity` / SSE audit（**忽略 heartbeat**）② `cursorStreamTokenGapReader.ts` — renderer tail ③ `cursorTransportHealth.ts` hung_scan：`gap≥20s` + conn≥12 → `tokenGapForce` nudge（15s cooldown）④ 常量 SSOT：`CURSOR_HY2_TOKEN_GAP_FORCE_MS=20000` |
+| **1.26.48–49 已做但未够** | VPS hy2-in QUIC 3600s ✅ · MarathonDialTolerance dial 45s ✅ · partition detect ✅ · high_latency nudge (>600ms) ✅ — 均 **不覆盖「探针全绿 + 33s token 静默」** |
+| **反复次数** | **同族 split-brain 第 4 次**（2026-07-18 Reality mux · 2026-07-20 P0–P3 partition · 2026-07-20 HY2 VPS QUIC · **本次 33s gap**）；**token gap 机制第 1 次实现** |
+| **为何反复** | 每层修复只解决 split-brain **一个时间尺度**：VPS idle（小时级）· 40s nudge（分钟级）· 缺 **20–30s token 级** 自适应触发；短探针全绿造成「已修好」错觉 |
+| **踩坑** | ① `HTTP api2 303ms 全绿 ≠ Connect 长流正常` ② 40s nudge **不是** 33s EOF 充分条件 ③ UI 批量测速 Marathon 下 defer → **误报超时**，非 VPS 宕 ④ 定责必须 A 时刻 ledger + VPS sing-box + renderer `gapSinceActivityMs`，禁止 B 时刻否定 A ⑤ 删除 IFM 补丁 **不消除** stock `ConnectError aborted` |
+| **回归** | `cursorStreamTokenGapCore.test.ts` 4/4 · `cursorHy2MarathonKeepaliveCore.test.ts` token gap 3/3 · test:node-quality 含新文件 |
+| **用户动作** | `pnpm run upgrade:mac`（或 `bash scripts/upgrade-sparkle-local.sh`）→ app.log 搜 `token_gap_force_nudge` |
+| **证据包** | `~/Desktop/cursor-triage-d56b1442-20260721T190949/` · `app-2026-7-21.log:885-891` · `renderer-A-full-disconnect.txt:42` |
+| **代码位置** | `cursorStreamTokenGapCore.ts` · `cursorStreamTokenGapReader.ts` · `cursorTransportHealth.ts` · `cursorHy2MarathonKeepaliveCore.ts` · `cursorHy2MarathonKeepalive.ts` |
+
+### BUG-2026-07-21-004 · v1.26.50 · 本地安装闪退 / stale asar / Gatekeeper 启动
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（`scripts/upgrade-sparkle-local.sh` · `install-sparkle-local.sh` Finder 启动） |
+| **症状** | `install-sparkle-local.sh` 成功但 GUI **闪退/打不开**；`spctl: rejected`；直接运行 `Sparkle` **exit=1**；或安装后 asar **无新功能**（token_gap 字符串缺失） |
+| **根因** | ① adhoc 新 CDHash → Gatekeeper rejected；`open -a` / 双击 **不弹批准** → 瞬间 exit（像闪退，非 DYLD）② 只跑 `electron-builder --mac dir` **未先** `electron-vite build` → dist asar 为旧构建 ③ 曾用手动 `codesign` + 损坏 backup → `sealed resource invalid` |
+| **修复** | ① `upgrade-sparkle-local.sh`：vite → dir → asar 校验 → install ② `install-sparkle-local.sh`：Finder `open POSIX file` 启动；graceful quit 失败 → `pkill -9` ③ `pnpm run upgrade:mac` SSOT |
+| **禁止** | ❌ 跳过 vite 直接 electron-builder · ❌ install 后二次 codesign · ❌ `open -a` 作为 adhoc 首选启动 |
+| **正确流程** | `pnpm run upgrade:mac` |
+| **长期** | Apple Developer ID + notarize |
+| **代码位置** | `scripts/upgrade-sparkle-local.sh` · `scripts/install-sparkle-local.sh` · BUGFIX「Sparkle 本地安装」 |
+
+### BUG-2026-07-21-001 · v1.26.48 · 双份 Sparkle（/Applications + ~/Applications）· GUI/service 分裂
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（`scripts/install-sparkle-local.sh` · BUGFIX「Sparkle 本地安装」SSOT） |
+| **症状** | 设置页版本与 `defaults read` 不一致；删 `~/Applications` 副本后 GUI 无法启动；app.log `spawn …/Users/…/sparkle-service ENOENT` |
+| **bug 存在版本** | 任意同时存在 **`/Applications/Sparkle.app`** 与 **`~/Applications/Sparkle.app`** 的安装方式 |
+| **根因** | pkg/root 装系统目录 + dev 手动复制用户目录 → **service 绑 `/Applications`、GUI 从 `~/Applications` 启动**；Gatekeeper 对新 ditto 拒启（`spctl: rejected`）；root 所有 `/Applications` 无 sudo 无法 `chown`/codesign |
+| **修复** | `install-sparkle-local.sh`：quit → 停 service → **删除/备份用户副本** → 仅 `ditto` 到 `/Applications` → `chown` + `xattr -cr` → **不重签**（见 BUG-002）→ 单路径启动校验 |
+| **禁止** | ❌ 手动 `cp`/`ditto` 到 `~/Applications` · ❌ `open dist/mac-arm64/Sparkle.app` 日常用 · ❌ 只改 Info.plist |
+| **正确流程** | `pnpm run upgrade:mac` |
+| **踩坑** | 验证必须 **`pgrep -lf Sparkle.app/Contents/MacOS`** 与 **`sparkle-service`** 路径同属 `/Applications` |
+| **代码位置** | `scripts/install-sparkle-local.sh` · BUGFIX「Sparkle 本地安装（标准 · 唯一路径）」 |
+
+---
+
+### BUG-2026-07-21-002 · v1.26.48 · install 二次 codesign 作废 Gatekeeper 批准
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** |
+| **症状** | `sudo install-sparkle-local.sh` 成功但 GUI **闪退/打不开**；`spctl: rejected`；直接运行 `Sparkle` **exit=1**；以前 `~/Applications` 旧副本可开、换 `/Applications` 新包后不行 |
+| **bug 存在版本** | `install-sparkle-local.sh` 在 `ditto` 后 **`codesign --deep --sign -`**（与 pkg 流程末尾二次 sign 同理） |
+| **根因** | `build:mac` 已由 `deepSignMac.cjs` deep sign；install **再次 adhoc 重签 → CDHash 变化** → macOS 视为全新未信任 app；同时删除已批准的 `~/Applications` GUI 副本 |
+| **修复** | install 脚本：**仅 ditto + xattr -cr**，比对 CDHash；**Finder POSIX 启动**（BUG-004）；状态写入 `~/.sparkle/last-sparkle-cdhash` |
+| **禁止** | ❌ install/pkg 后二次 `codesign`（除非 rebuild 失败验签）· ❌ 恢复 `~/Applications` 双路径 |
+| **正确流程** | `pnpm run upgrade:mac`；Gatekeeper fallback：Finder Control+打开 **一次** |
+| **长期** | Apple Developer ID + notarize 可彻底免 Gatekeeper；无账号时上述流程已是最稳 adhoc 方案 |
+| **代码位置** | `scripts/install-sparkle-local.sh` · BUGFIX「Sparkle 本地安装（标准 · 唯一路径）」 |

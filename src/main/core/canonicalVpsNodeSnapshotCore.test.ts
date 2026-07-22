@@ -25,16 +25,21 @@ describe('canonicalVpsNodeSnapshotCore', () => {
               name: 'JP-VPS-Reality',
               alive: true,
               history: [{ time: '2026-07-17T08:05:01Z', delay: 834 }]
+            },
+            {
+              name: 'JP-VPS-TLS',
+              alive: true,
+              history: [{ time: '2026-07-17T08:05:02Z', delay: 255 }]
             }
           ]
         }
       }
     })
-    assert.equal(snapshots.length, 2)
+    assert.equal(snapshots.length, 3)
     assert.deepEqual(
       snapshots.map((item) => item.name),
-      ['JP-VPS-Reality', 'KR-VPS-HY2']
+      ['JP-VPS-Reality', 'JP-VPS-TLS', 'KR-VPS-HY2']
     )
-    assert.equal(snapshots[1]?.delay, 366)
+    assert.equal(snapshots[1]?.delay, 255)
   })
 })

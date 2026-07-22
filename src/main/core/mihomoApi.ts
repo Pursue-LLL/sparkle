@@ -217,7 +217,9 @@ const providerHealthcheckInflight = new Map<string, Promise<void>>()
 async function mihomoProviderHealthcheck(providerName: string): Promise<void> {
   const instance = await getAxios()
   await instance.get(`/providers/proxies/${encodeURIComponent(providerName)}/healthcheck`)
-  await new Promise((resolve) => setTimeout(resolve, PROVIDER_HEALTHCHECK_SETTLE_MS))
+  await new Promise((resolve) => {
+    setTimeout(resolve, PROVIDER_HEALTHCHECK_SETTLE_MS)
+  })
 }
 
 async function mihomoProviderHealthcheckDeduped(providerName: string): Promise<void> {
@@ -246,7 +248,7 @@ export const mihomoChangeProxy = async (
   group: string,
   proxy: string,
   options: MihomoChangeProxyOptions = {}
-): Promise<ControllerProxiesDetail | null> => {
+): Promise<boolean> => {
   const source = options.source ?? 'auto'
 
   if (source === 'auto') {
@@ -262,14 +264,14 @@ export const mihomoChangeProxy = async (
           await appendAppLog(
             `[mihomoChangeProxy]: defer auto switch ${group} "${current}" → "${proxy}" — api2 reachable\n`
           )
-          return null
+          return false
         }
       }
     }
   }
 
   const instance = await getAxios()
-  const detail = await instance.put(`/proxies/${encodeURIComponent(group)}`, { name: proxy })
+  await instance.put(`/proxies/${encodeURIComponent(group)}`, { name: proxy })
 
   if (source === 'manual') {
     const { isCursorSelectorGroupName } = await import('./cursorProxyGroup')
@@ -279,7 +281,7 @@ export const mihomoChangeProxy = async (
     }
   }
 
-  return detail
+  return true
 }
 
 export const mihomoUnfixedProxy = async (group: string): Promise<ControllerProxiesDetail> => {
@@ -332,18 +334,39 @@ async function mihomoProxyDelayFromProvider(
   return { delay: 0, message: `no provider delay history for ${proxy}` }
 }
 
+const DEFAULT_DELAY_TEST_TIMEOUT_MS = 10000
+
+export interface MihomoDelayOptions {
+  timeoutMs?: number
+}
+
+async function resolveDelayTestTimeoutMs(
+  appTimeoutMs: number | undefined,
+  overrideMs: number | undefined
+): Promise<number> {
+  if (Number.isFinite(overrideMs) && overrideMs! > 0) {
+    return Math.floor(overrideMs!)
+  }
+  if (Number.isFinite(appTimeoutMs) && appTimeoutMs! > 0) {
+    return Math.floor(appTimeoutMs!)
+  }
+  return DEFAULT_DELAY_TEST_TIMEOUT_MS
+}
+
 async function mihomoProxyDelayUnchecked(
   proxy: string,
-  url?: string
+  url?: string,
+  options?: MihomoDelayOptions
 ): Promise<ControllerProxiesDelay> {
   const appConfig = await getAppConfig()
   const { delayTestUrl, delayTestTimeout } = appConfig
+  const timeoutMs = await resolveDelayTestTimeoutMs(delayTestTimeout, options?.timeoutMs)
   const instance = await getAxios()
   try {
     return await instance.get(`/proxies/${encodeURIComponent(proxy)}/delay`, {
       params: {
         url: url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL,
-        timeout: delayTestTimeout || 5000
+        timeout: timeoutMs
       }
     })
   } catch (error) {
@@ -357,35 +380,40 @@ async function mihomoProxyDelayUnchecked(
     }
     throw error
   }
+
 }
 
 export const mihomoProxyDelay = async (
   proxy: string,
-  url?: string
+  url?: string,
+  options?: MihomoDelayOptions
 ): Promise<ControllerProxiesDelay> => {
-  return withMihomoDelayProbeSlot(() => mihomoProxyDelayUnchecked(proxy, url))
+  return withMihomoDelayProbeSlot(() => mihomoProxyDelayUnchecked(proxy, url, options))
 }
 
 async function mihomoGroupDelayUnchecked(
   group: string,
-  url?: string
+  url?: string,
+  options?: MihomoDelayOptions
 ): Promise<ControllerGroupDelay> {
   const appConfig = await getAppConfig()
   const { delayTestUrl, delayTestTimeout } = appConfig
+  const timeoutMs = await resolveDelayTestTimeoutMs(delayTestTimeout, options?.timeoutMs)
   const instance = await getAxios()
   return await instance.get(`/group/${encodeURIComponent(group)}/delay`, {
     params: {
       url: url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL,
-      timeout: delayTestTimeout || 5000
+      timeout: timeoutMs
     }
   })
 }
 
 export const mihomoGroupDelay = async (
   group: string,
-  url?: string
+  url?: string,
+  options?: MihomoDelayOptions
 ): Promise<ControllerGroupDelay> => {
-  return withMihomoDelayProbeSlot(() => mihomoGroupDelayUnchecked(group, url))
+  return withMihomoDelayProbeSlot(() => mihomoGroupDelayUnchecked(group, url, options))
 }
 
 export const mihomoRulesDisable = async (rules: Record<string, boolean>): Promise<void> => {

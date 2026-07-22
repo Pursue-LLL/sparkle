@@ -150,7 +150,7 @@ export async function ensureVpsDirectBypass(profile: MihomoConfig, leafProxies: 
   const ipAdditions = ips
     .filter((ip) => !hasDirectRuleForIp(existing, ip))
     .map(buildDirectRule)
-  ;(profile as any).rules = [...domainRules, ...ipAdditions, ...existing]
+  Reflect.set(profile, 'rules', [...domainRules, ...ipAdditions, ...existing])
 
   if (profile.tun?.enable) {
     const tun = profile.tun as MihomoTunConfig

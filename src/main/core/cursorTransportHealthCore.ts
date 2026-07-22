@@ -1,3 +1,5 @@
+import type { ConnectPartitionSignal } from './connectPartitionDetectCore'
+import { shouldTreatHealthyProbeAsConnectPartition } from './connectPartitionDetectCore'
 import {
   CURSOR_CONN_IDLE_MIN_AGE_MS,
   isCursorConnection,
@@ -8,7 +10,8 @@ import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 export { CRITICAL_CURSOR_HOST_SUFFIXES, isCriticalCursorHost } from './cursorCriticalTransportCore'
 
 export const HUNG_CONNECTION_MIN_AGE_MS = 12 * 60_000
-export const HUNG_SCAN_INTERVAL_MS = 30_000
+/** 15s — must be ≤ CURSOR_HY2_TOKEN_GAP_FORCE_MS window to catch ~33s SSE silence before EOF. */
+export const HUNG_SCAN_INTERVAL_MS = 15_000
 export const MANDATORY_REAL_PROBE_MAX_AGE_MS = 30_000
 
 /** Never L0-close the N newest zero-throughput sockets per process+host (active Agent Connect streams). */
@@ -21,6 +24,7 @@ export const RECOVERY_L3_COOLDOWN_MS = 10 * 60_000
 
 export const SPLIT_BRAIN_CONTROL_HOST = 'marketplace.cursorapi.com'
 export const API2_PROBE_TARGET = 'https://api2.cursor.sh'
+export const API2GEO_PROBE_TARGET = 'https://api2geo.cursor.sh'
 export const SPLIT_BRAIN_CONTROL_TARGET = `https://${SPLIT_BRAIN_CONTROL_HOST}`
 
 export type ProbeAttribution =
@@ -38,8 +42,10 @@ export type RecoveryAction = RecoveryLevel | 'none'
 
 export interface ProbePairResult {
   api2Ok: boolean
+  api2geoOk: boolean
   marketplaceOk: boolean
   api2LatencyMs: number
+  api2geoLatencyMs: number
   marketplaceLatencyMs: number
 }
 
@@ -150,16 +156,36 @@ export function shouldDeferProbeForCursorLoad(
 }
 
 export function resolveProbeAttribution(probe: ProbePairResult): ProbeAttribution {
+  return resolveProbeAttributionWithConnectPartition(probe, undefined)
+}
+
+/** Probe attribution with optional Connect mass-PING signal (split-brain when HTTP probes stay green). */
+export function resolveProbeAttributionWithConnectPartition(
+  probe: ProbePairResult,
+  connectPartition: ConnectPartitionSignal | undefined,
+): ProbeAttribution {
   if (!probe.api2Ok && !probe.marketplaceOk) {
     return 'offline'
   }
+  if (probe.api2Ok && !probe.api2geoOk && probe.marketplaceOk) {
+    return 'transport_partition_stale'
+  }
   if (!probe.api2Ok && probe.marketplaceOk) {
+    return 'transport_partition_stale'
+  }
+  if (
+    shouldTreatHealthyProbeAsConnectPartition(isTransportPairHealthy(probe), connectPartition)
+  ) {
     return 'transport_partition_stale'
   }
   if (!probe.api2Ok) {
     return 'node_degraded'
   }
   return 'healthy'
+}
+
+export function isTransportPairHealthy(probe: ProbePairResult): boolean {
+  return probe.api2Ok && probe.api2geoOk && probe.marketplaceOk
 }
 
 export function shouldExcludeProbeSampleFromNodeScoring(attribution: ProbeAttribution): boolean {

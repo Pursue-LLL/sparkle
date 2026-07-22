@@ -44,6 +44,30 @@ export function resolveDelayTestUrl(groupName?: string, groupTestUrl?: string): 
   return groupTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL
 }
 
+export function resolveEffectiveDelayTestUrl(options: {
+  groupName?: string
+  groupTestUrl?: string
+  delayTestUrlScope?: 'group' | 'global'
+  globalDelayTestUrl?: string
+}): string {
+  if (options.delayTestUrlScope === 'global') {
+    const trimmed = options.globalDelayTestUrl?.trim()
+    return trimmed || DEFAULT_GENERAL_DELAY_TEST_URL
+  }
+  return resolveDelayTestUrl(options.groupName, options.groupTestUrl)
+}
+
+/** Compact hostname/path label for group headers. */
+export function formatDelayTestUrlDisplay(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const path = parsed.pathname === '/' ? '' : parsed.pathname
+    return `${parsed.host}${path}`
+  } catch {
+    return url
+  }
+}
+
 export function isCursorSelectorGroupName(groupName: string): boolean {
   return isCursorDedicatedGroupName(groupName)
 }

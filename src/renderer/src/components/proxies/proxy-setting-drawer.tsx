@@ -324,7 +324,7 @@ const ProxySettingDrawer: React.FC<Props> = (props) => {
                     aria-label="延迟测试超时时间"
                     type="number"
                     value={delayTestTimeout?.toString()}
-                    placeholder="默认 5000"
+                    placeholder="默认 10000"
                     onChange={(event) => {
                       const v = event.target.value
                       patchAppConfig({ delayTestTimeout: parseInt(v) })

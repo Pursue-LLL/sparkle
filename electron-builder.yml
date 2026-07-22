@@ -4,6 +4,8 @@ afterSign: scripts/deepSignMac.cjs
 directories:
   buildResources: build
 files:
+  - '!dist/**'
+  - '!dist-*/**'
   - '!**/.vscode/*'
   - '!src/*'
   - '!aur/*'

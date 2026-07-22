@@ -23,7 +23,7 @@ export interface MihomoAutoSwitchApi {
     group: string,
     proxy: string,
     options?: MihomoChangeProxyOptions
-  ) => Promise<ControllerProxiesDetail | null>
+  ) => Promise<boolean>
   mihomoGroupDelay: (group: string, url?: string) => Promise<ControllerGroupDelay>
 }
 
@@ -222,10 +222,10 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
   appendRegionalAutoGroupsToCursorDedicated(profile, regionPriority)
 }
 
-/** Allow Cursor dedicated Selector to hop through regional Sparkle url-test groups. */
+/** Cursor 专用组仅保留自建 VPS leaf；不再注入 Sparkle-自动-* 区域组。 */
 export function appendRegionalAutoGroupsToCursorDedicated(
   profile: MihomoConfig,
-  regionPriority: readonly string[]
+  _regionPriority: readonly string[]
 ): void {
   const groups = (profile['proxy-groups'] as ProxyGroupConfig[] | undefined) ?? []
   const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
@@ -233,20 +233,15 @@ export function appendRegionalAutoGroupsToCursorDedicated(
     return
   }
 
-  const regionalRefs = regionPriority
-    .map((region) => buildRegionalAutoSelectGroupName(region))
-    .filter((name) => groups.some((group) => group.name === name))
-
-  if (regionalRefs.length === 0) {
+  // Provider-mode Cursor group: only VPS leaves via use (+ optional -vps suffix).
+  if (cursorGroup.use?.length) {
+    delete cursorGroup.proxies
     return
   }
 
+  // Legacy leaf-list mode: keep only VPS-named members.
   const existing = cursorGroup.proxies ?? []
-  const merged = [
-    ...regionalRefs,
-    ...existing.filter((ref) => !regionalRefs.includes(ref) && !isSparkleRegionalAutoSelectGroup(ref))
-  ]
-  cursorGroup.proxies = merged
+  cursorGroup.proxies = existing.filter((ref) => /vps/i.test(ref))
 }
 
 export function resolvePreferredAutoSwitchProxy(

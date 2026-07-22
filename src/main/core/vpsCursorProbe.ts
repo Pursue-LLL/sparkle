@@ -9,7 +9,7 @@ function resolveVpsRegion(nodeName: string): string {
   return 'VPS'
 }
 
-/** Canonical VPS nodes for triangulation diagnostics (KR/JP × Reality/HY2/TUIC). */
+/** Managed VPS nodes for transport diagnostics, including trusted standard TLS. */
 export function isVpsCursorProbeRunning(): boolean {
   return false
 }

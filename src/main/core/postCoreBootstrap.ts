@@ -6,7 +6,9 @@ const CORE_INIT_RACE_MS = 8_000
 const API_RETRY_INTERVAL_MS = 500
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
 export async function waitForMihomoControllerReady(
@@ -76,6 +78,9 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
 
       const { startApi2ProbePlane } = await import('./api2ProbePlane')
       await startApi2ProbePlane()
+
+      const { startAgentTransportFailureSync } = await import('./agentTransportFailureSync')
+      startAgentTransportFailureSync()
 
       await appendAppLog(
         `[PostCoreBootstrap]: Api2ProbePlane ON after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace (60s active transport probe)\n`

@@ -4,6 +4,7 @@ import {
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName
 } from './cursorProxyGroup'
+import { resolveVpsProviderId } from './vpsProviderSplitCore'
 import { buildHongKongUrlTestDefaults } from './defaultAutoSwitchProxy'
 
 /** Sparkle-injected HK filter group — members rebuilt on every generateProfile(). */
@@ -14,9 +15,6 @@ const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
   ...LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   HONG_KONG_FILTER_GROUP_NAME
 ])
-
-/** mihomo provider filter — VPS leaf nodes (provider mode). */
-const CURSOR_VPS_PROVIDER_FILTER = '(?i)vps'
 
 /** mihomo provider filter — Hong Kong leaf nodes (provider mode). */
 const HONG_KONG_PROVIDER_FILTER = '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong'
@@ -237,8 +235,7 @@ function buildCursorGroupConfig(
     return {
       name: CURSOR_DEDICATED_GROUP_NAME,
       type: 'select',
-      use: [profileId],
-      filter: CURSOR_VPS_PROVIDER_FILTER
+      use: [resolveVpsProviderId(profileId)]
     }
   }
 
@@ -295,7 +292,6 @@ export function ensureCustomProxyGroups(
   const subscriptionGroupNames = collectCursorEligibleGroupNames(existingGroups)
 
   const injected: ProxyGroupConfig[] = []
-  let legacyGroupMigrated = false
   const cursorGroup = buildCursorGroupConfig(
     leafProxyNames,
     subscriptionGroupNames,
@@ -319,13 +315,13 @@ export function ensureCustomProxyGroups(
 
   if (injected.length === 0) {
     profile['proxy-groups'] = subscriptionGroups as MihomoConfig['proxy-groups']
-    legacyGroupMigrated = migrateLegacyCursorDedicatedGroupReferences(profile)
+    const legacyGroupMigrated = migrateLegacyCursorDedicatedGroupReferences(profile)
     rewriteBroadCursorDedicatedRules(profile)
     return legacyGroupMigrated
   }
 
   profile['proxy-groups'] = [...injected, ...subscriptionGroups] as MihomoConfig['proxy-groups']
-  legacyGroupMigrated = migrateLegacyCursorDedicatedGroupReferences(profile)
+  const legacyGroupMigrated = migrateLegacyCursorDedicatedGroupReferences(profile)
   rewriteBroadCursorDedicatedRules(profile)
   return legacyGroupMigrated
 }
