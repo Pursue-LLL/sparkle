@@ -1,6 +1,7 @@
 import { Button, Card, CardBody, Chip, Tooltip } from '@heroui/react'
 import { formatStabilityMarkerTooltip } from '@renderer/hooks/use-commercial-node-stability'
-import { mihomoUnfixedProxy } from '@renderer/utils/ipc'
+import { notify } from '@renderer/utils/notification'
+import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FaMapPin } from 'react-icons/fa6'
 import {
@@ -82,14 +83,24 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
     </Button>
   )
 
+  const wrappedButton = (
+    <div
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {button}
+    </div>
+  )
+
   return (
     <div className="flex flex-col items-center shrink-0">
       {tooltip ? (
         <Tooltip content={tooltip} placement="left" delay={200}>
-          {button}
+          {wrappedButton}
         </Tooltip>
       ) : (
-        button
+        wrappedButton
       )}
       {ageLabel ? (
         <span
@@ -221,10 +232,19 @@ const ProxyItem: React.FC<Props> = (props) => {
 
   const onDelay = (): void => {
     setLoading(true)
-    onProxyDelay(proxy.name, group).finally(() => {
-      mutateProxies()
-      setLoading(false)
-    })
+    onProxyDelay(proxy.name, group)
+      .then((result) => {
+        if (result.delay === 0 && result.message) {
+          notify(`测速失败：${formatUnknownErrorForUi(result.message)}`, { forceToast: true, variant: 'warning', timeout: 5000 })
+        }
+      })
+      .catch((error: unknown) => {
+        notify(`测速失败：${formatUnknownErrorForUi(error)}`, { forceToast: true, variant: 'warning', timeout: 6000 })
+      })
+      .finally(() => {
+        mutateProxies()
+        setLoading(false)
+      })
   }
 
   const fixed = group.fixed && group.fixed === proxy.name
