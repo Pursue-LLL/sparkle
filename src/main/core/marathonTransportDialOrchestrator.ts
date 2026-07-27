@@ -1,0 +1,512 @@
+// [INPUT] MTDO core · stream registry · HY2 keepalive · connect keepalive probes
+// [OUTPUT] runMarathonTransportDialCycle · resetMarathonTransportDialOrchestratorForTests
+// [POS] MTDO executor: single in-flight hung_scan cycle · independent 60s connect_path pulse · cycle-local pulse reuse (P16).
+
+import { appendAppLog } from '../utils/log'
+import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
+import { mihomoProxyDelay } from './mihomoApi'
+import { readConnectPartitionSignalAsync } from './connectPartitionReader'
+import { ensureCursorMarathonKeepAlive } from './cursorNetworkOptimize'
+import { getRecentCursorProbe } from './networkStabilityMonitor'
+import {
+  API2DIRECT_PROBE_TARGET,
+  CONNECT_PATH_PROBE_TARGET,
+  detectConnectStreamPartitionStale,
+} from './cursorConnectStreamKeepaliveCore'
+import {
+  formatMarathonRescueNudgeLogLine,
+  shouldForceHy2MarathonSessionKeepaliveForHighLatency,
+  type MarathonSessionKeepaliveResult,
+} from './cursorHy2MarathonKeepaliveCore'
+import {
+  resolveCursorDedicatedActiveNode,
+  runHy2MarathonSessionKeepaliveIfDue,
+} from './cursorHy2MarathonKeepalive'
+import {
+  readConnectStreamKeepaliveGapSignal,
+  readMarathonColdResumeNoTokenSignal,
+  readMarathonSilentGenerationEndRescueSignal,
+  readMarathonStreamTokenGapSignal,
+} from './cursorStreamTokenGapReader'
+import { evaluateLatencyDeltaFromSummary } from './latencyDeltaGateCore'
+import {
+  buildSyntheticConnectPartitionSignal,
+  formatUltraConnObservabilityLine,
+  isLatencyDeltaRescueEligible,
+  mergeConnectPartitionSignals,
+  nextLatencyDeltaRescueStreak,
+  nextWarmthDeferStreak,
+  resolveRecentVpsL4OkForNode,
+  shouldCountWarmthDeferStreak,
+  shouldEmitSyntheticConnectPartition,
+  shouldEmitUltraConnObservability,
+  VPS_L4_OK_LOOKBACK_MS,
+  type ConnectPartitionSignalWithSource,
+} from './connectPingStormCore'
+import {
+  buildMarathonStreamRegistry,
+  hasActiveMarathonStream,
+  isTokenGapSuppressedForPendingTool,
+  type MarathonStreamRegistry,
+} from './marathonStreamRegistryCore'
+import {
+  MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+  MTDO_MARATHON_STREAM_MIN_AGE_MS,
+  selectMarathonTransportDialTrigger,
+  shouldCoalesceMarathonTransportDial,
+  shouldRunIndependentConnectPathPulse,
+  type MarathonTransportDialCandidate,
+  type MarathonTransportDialPlan,
+  type MarathonTransportDialSelectionContext,
+} from './marathonTransportDialOrchestratorCore'
+import { API2_PROBE_TARGET } from './cursorTransportHealthCore'
+import {
+  collectRendererActivitySamplesForMtdo,
+  collectRendererToolAuditLinesForMtdo,
+} from './marathonTransportDialReader'
+import { appendNetworkStabilityEvent } from './networkStabilityMonitor'
+import {
+  formatCursorLogPlaneLine,
+  formatPartitionBlindSpotLogLine,
+  partitionDetected,
+  shouldEmitPartitionBlindSpot,
+} from './partitionBlindSpotCore'
+
+export interface ConnectPathPulseResult {
+  connectPathDelayMs: number
+  api2DelayMs: number
+  api2directDelayMs: number
+  partitionStale: boolean
+}
+
+let lastMtdoDialAtMs = 0
+let lastConnectPathPulseAtMs = 0
+let lastConnectPathPartitionStale = false
+let mtdoInFlight = false
+let lastLatencyDeltaHigh = false
+let consecutiveLatencyDeltaHighCycles = 0
+let consecutiveWarmthDeferredCount = 0
+let cycleConnectPathPulse: ConnectPathPulseResult | undefined
+let lastPartitionBlindSpotAtMs = 0
+let lastCursorLogPlaneAtMs = 0
+
+const CURSOR_LOG_PLANE_HEARTBEAT_MS = 60_000
+
+export function resetMarathonTransportDialOrchestratorForTests(): void {
+  lastMtdoDialAtMs = 0
+  lastConnectPathPulseAtMs = 0
+  lastConnectPathPartitionStale = false
+  mtdoInFlight = false
+  lastLatencyDeltaHigh = false
+  consecutiveLatencyDeltaHighCycles = 0
+  consecutiveWarmthDeferredCount = 0
+  cycleConnectPathPulse = undefined
+  lastPartitionBlindSpotAtMs = 0
+  lastCursorLogPlaneAtMs = 0
+}
+
+export function isMarathonTransportDialInFlight(): boolean {
+  return mtdoInFlight
+}
+
+function formatMtdoLogLine(
+  trigger: string,
+  outcome: string,
+  fields: Record<string, string | number | undefined>,
+): string {
+  const parts = [`[MarathonTransportDial]: trigger=${trigger}`, `outcome=${outcome}`]
+  for (const [key, value] of Object.entries(fields)) {
+    if (value != null) {
+      parts.push(`${key}=${value}`)
+    }
+  }
+  return `${parts.join(' ')}\n`
+}
+
+async function executeConnectPathPulse(
+  activeNode: string,
+  cursorConnectionCount: number,
+): Promise<ConnectPathPulseResult> {
+  const rescueDelayOptions = { purpose: 'marathon_rescue' as const }
+  const [api2directResult, api2Result, connectPathResult] = await Promise.all([
+    mihomoProxyDelay(activeNode, API2DIRECT_PROBE_TARGET, rescueDelayOptions),
+    mihomoProxyDelay(activeNode, API2_PROBE_TARGET, rescueDelayOptions),
+    mihomoProxyDelay(activeNode, CONNECT_PATH_PROBE_TARGET, rescueDelayOptions),
+  ])
+  const api2directDelayMs = typeof api2directResult.delay === 'number' ? api2directResult.delay : 0
+  const api2DelayMs = typeof api2Result.delay === 'number' ? api2Result.delay : 0
+  const connectPathDelayMs = typeof connectPathResult.delay === 'number' ? connectPathResult.delay : 0
+  const partitionStale = detectConnectStreamPartitionStale(
+    api2directDelayMs,
+    api2DelayMs,
+    connectPathDelayMs,
+  )
+  await appendAppLog(
+    formatMtdoLogLine('marathon_connect_path_pulse', 'executed', {
+      cursor_conn: cursorConnectionCount,
+      node: activeNode,
+      api2direct_delay_ms: api2directDelayMs,
+      api2_delay_ms: api2DelayMs,
+      connect_path_delay_ms: connectPathDelayMs,
+      partition_stale: partitionStale ? 1 : 0,
+    }),
+  )
+  if (partitionStale) {
+    await appendNetworkStabilityEvent({
+      ts: new Date().toISOString(),
+      kind: 'transport_partition_stale_connect_path',
+      probe_ok: true,
+      recovery_action: 'none',
+      hung_connection_count: cursorConnectionCount,
+      error_detail: `pulse api2=${api2DelayMs} connect_path=${connectPathDelayMs}`,
+    })
+  }
+  return { connectPathDelayMs, api2DelayMs, api2directDelayMs, partitionStale }
+}
+
+async function ensureCycleConnectPathPulse(
+  activeNode: string,
+  cursorConnectionCount: number,
+  nowMs: number,
+): Promise<ConnectPathPulseResult> {
+  if (cycleConnectPathPulse) {
+    return cycleConnectPathPulse
+  }
+  const pulse = await executeConnectPathPulse(activeNode, cursorConnectionCount)
+  cycleConnectPathPulse = pulse
+  lastConnectPathPulseAtMs = nowMs
+  lastConnectPathPartitionStale = pulse.partitionStale
+  return pulse
+}
+
+async function runIndependentConnectPathPulseIfDue(
+  context: MarathonTransportDialSelectionContext,
+  activeNode: string,
+  cursorConnectionCount: number,
+  nowMs: number,
+): Promise<void> {
+  if (!shouldRunIndependentConnectPathPulse(context)) {
+    return
+  }
+  const pulse = await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
+  if (!pulse.partitionStale) {
+    return
+  }
+  const sessionResult = await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, {
+    trigger: 'connect_path_partition',
+    nowMs,
+  })
+  await appendAppLog(
+    formatMarathonRescueNudgeLogLine('connect_path_partition', sessionResult, {
+      cursorConnectionCount,
+    }),
+  )
+  lastMtdoDialAtMs = nowMs
+  lastConnectPathPartitionStale = false
+}
+
+async function executeDialPlan(
+  candidate: MarathonTransportDialCandidate,
+  cursorConnectionCount: number,
+  nowMs: number,
+  activeNode: string,
+): Promise<MarathonSessionKeepaliveResult | { outcome: 'executed' | 'skipped_weak_probe' }> {
+  const plan: MarathonTransportDialPlan = candidate.plan
+  if (plan === 'connect_rescue_bundle') {
+    await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
+    const sessionResult = await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, {
+      trigger: candidate.trigger,
+      maxGapMs: candidate.maxGapMs,
+      staleRequestIdCount: candidate.staleRequestIdCount,
+      nowMs,
+    })
+    await appendAppLog(
+      formatMarathonRescueNudgeLogLine(candidate.trigger, sessionResult, {
+        cursorConnectionCount,
+        maxGapMs: candidate.maxGapMs,
+        staleRids: candidate.staleRequestIds?.slice(0, 3).join(','),
+      }),
+    )
+    return sessionResult
+  }
+
+  const sessionResult = await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, {
+    trigger: candidate.trigger,
+    maxGapMs: candidate.maxGapMs,
+    staleRequestIdCount: candidate.staleRequestIdCount,
+    nowMs,
+  })
+  if (candidate.trigger !== 'periodic_session' && candidate.trigger !== 'high_latency_warmth') {
+    await appendAppLog(
+      formatMarathonRescueNudgeLogLine(candidate.trigger, sessionResult, {
+        cursorConnectionCount,
+        maxGapMs: candidate.maxGapMs,
+        staleRids: candidate.staleRequestIds?.slice(0, 3).join(','),
+      }),
+    )
+  }
+  return sessionResult
+}
+
+function updateWarmthDeferStreak(
+  cursorConnectionCount: number,
+  trigger: MarathonTransportDialCandidate['trigger'],
+  outcome: MarathonSessionKeepaliveResult['outcome'],
+): void {
+  const counted = shouldCountWarmthDeferStreak(cursorConnectionCount, outcome, trigger)
+  consecutiveWarmthDeferredCount = nextWarmthDeferStreak(consecutiveWarmthDeferredCount, counted)
+  if (outcome === 'executed' && trigger !== 'periodic_session' && trigger !== 'high_latency_warmth') {
+    consecutiveWarmthDeferredCount = 0
+  }
+}
+
+export async function runMarathonTransportDialCycle(cursorConnectionCount: number): Promise<void> {
+  if (mtdoInFlight) {
+    return
+  }
+  mtdoInFlight = true
+  try {
+    cycleConnectPathPulse = undefined
+    const nowMs = Date.now()
+    const activeNode = await resolveCursorDedicatedActiveNode()
+    if (activeNode) {
+      const { readLatencyTruthSummaryForNode } = await import('./api2ProbeLedgerCore')
+      const deltaGate = evaluateLatencyDeltaFromSummary(await readLatencyTruthSummaryForNode(activeNode))
+      lastLatencyDeltaHigh = deltaGate.high
+      consecutiveLatencyDeltaHighCycles = nextLatencyDeltaRescueStreak(
+        consecutiveLatencyDeltaHighCycles,
+        deltaGate.high,
+      )
+      if (deltaGate.high && deltaGate.deltaMs != null) {
+        await appendNetworkStabilityEvent({
+          ts: new Date().toISOString(),
+          kind: 'transport_mac_vps_delta_high',
+          probe_ok: true,
+          recovery_action: 'none',
+          hung_connection_count: cursorConnectionCount,
+          error_detail: `mac_p50=${deltaGate.summary.macFullPathP50} vps_p50=${deltaGate.summary.vpsBodyP50} delta_ms=${deltaGate.deltaMs}`,
+        })
+      }
+    } else {
+      consecutiveLatencyDeltaHighCycles = nextLatencyDeltaRescueStreak(consecutiveLatencyDeltaHighCycles, false)
+    }
+
+    const latencyDeltaRescueEligible = isLatencyDeltaRescueEligible(consecutiveLatencyDeltaHighCycles)
+
+    const partitionRead = await readConnectPartitionSignalAsync(cursorConnectionCount, nowMs)
+    const jsonlConnectPartition = partitionRead.signal
+
+    if (
+      cursorConnectionCount >= 12 &&
+      (nowMs - lastCursorLogPlaneAtMs >= CURSOR_LOG_PLANE_HEARTBEAT_MS ||
+        partitionRead.structuredPingCount >= 2)
+    ) {
+      lastCursorLogPlaneAtMs = nowMs
+      await appendAppLog(
+        formatCursorLogPlaneLine({
+          logRoots: partitionRead.logRoots,
+          structuredFiles: partitionRead.structuredFiles,
+          mergedRows: partitionRead.structuredRows.length + partitionRead.jsonlRows.length,
+          dedupedRows: partitionRead.mergedRows.length,
+          partitionDetected: partitionDetected(partitionRead.signal),
+          cursorConnectionCount,
+        }),
+      )
+    }
+
+    if (
+      shouldEmitPartitionBlindSpot({
+        cursorConnectionCount,
+        structuredPingCount: partitionRead.structuredPingCount,
+        jsonlPingCount: partitionRead.jsonlPingCount,
+        nowMs,
+        lastEmittedAtMs: lastPartitionBlindSpotAtMs,
+      })
+    ) {
+      lastPartitionBlindSpotAtMs = nowMs
+      await appendAppLog(
+        formatPartitionBlindSpotLogLine({
+          structuredPingCount: partitionRead.structuredPingCount,
+          jsonlPingCount: partitionRead.jsonlPingCount,
+          cursorConnectionCount,
+          logRoots: partitionRead.logRoots,
+          structuredFiles: partitionRead.structuredFiles,
+          mergedRows: partitionRead.structuredRows.length + partitionRead.jsonlRows.length,
+          dedupedRows: partitionRead.mergedRows.length,
+          partitionDetected: partitionDetected(partitionRead.signal),
+          sampleRequestIds: partitionRead.mergedRows
+            .map((row) => String(row.originalRequestId || row.requestId || '').trim())
+            .filter(Boolean),
+        }),
+      )
+      await appendNetworkStabilityEvent({
+        ts: new Date().toISOString(),
+        kind: 'transport_partition_blind_spot',
+        probe_ok: true,
+        recovery_action: 'none',
+        hung_connection_count: cursorConnectionCount,
+        error_detail:
+          `structured_ping=${partitionRead.structuredPingCount}` +
+          ` jsonl_ping=${partitionRead.jsonlPingCount}`,
+      })
+    }
+    let vpsL4Ok = false
+    if (activeNode) {
+      const { readApi2ProbeLedgerSince } = await import('./api2ProbeLedgerCore')
+      const vpsRows = await readApi2ProbeLedgerSince(nowMs - VPS_L4_OK_LOOKBACK_MS, 'vps')
+      vpsL4Ok = resolveRecentVpsL4OkForNode(vpsRows, activeNode, nowMs)
+    }
+
+    const syntheticConnectPartition = shouldEmitSyntheticConnectPartition(
+      cursorConnectionCount,
+      consecutiveWarmthDeferredCount,
+      vpsL4Ok,
+      jsonlConnectPartition != null,
+    )
+      ? buildSyntheticConnectPartitionSignal(cursorConnectionCount)
+      : undefined
+    const connectPartition: ConnectPartitionSignalWithSource | undefined = mergeConnectPartitionSignals(
+      jsonlConnectPartition,
+      syntheticConnectPartition,
+    )
+
+    if (shouldEmitUltraConnObservability(cursorConnectionCount)) {
+      await appendAppLog(
+        formatUltraConnObservabilityLine({
+          cursorConnectionCount,
+          deferredCount: consecutiveWarmthDeferredCount,
+          vpsL4Ok,
+        }),
+      )
+    }
+
+    const [
+      activitySamples,
+      toolLines,
+      silentGenerationEnd,
+      coldResumeSignal,
+      connectStreamGapSignal,
+      tokenGapSignal,
+    ] = await Promise.all([
+      collectRendererActivitySamplesForMtdo(nowMs),
+      collectRendererToolAuditLinesForMtdo(nowMs),
+      readMarathonSilentGenerationEndRescueSignal(cursorConnectionCount, nowMs),
+      readMarathonColdResumeNoTokenSignal(cursorConnectionCount, nowMs),
+      readConnectStreamKeepaliveGapSignal(cursorConnectionCount, nowMs),
+      readMarathonStreamTokenGapSignal(cursorConnectionCount, nowMs),
+    ])
+
+    const registry: MarathonStreamRegistry = buildMarathonStreamRegistry(
+      activitySamples,
+      toolLines,
+      nowMs,
+      MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+    )
+    const marathonStreamActive = hasActiveMarathonStream(registry, nowMs, {
+      minStreamAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS,
+      maxLastActivityGapMs: MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+    })
+    const tokenGapSuppressedPendingTool =
+      tokenGapSignal != null &&
+      isTokenGapSuppressedForPendingTool(registry, tokenGapSignal.staleRequestIds)
+
+    const recentProbe = getRecentCursorProbe()
+    const forceHighLatencyWarmth = shouldForceHy2MarathonSessionKeepaliveForHighLatency(
+      cursorConnectionCount,
+      recentProbe?.latencyMs ?? 0,
+    )
+
+    const selectionBase: MarathonTransportDialSelectionContext = {
+      nowMs,
+      cursorConnectionCount,
+      lastDialAtMs: lastMtdoDialAtMs,
+      lastConnectPathPulseAtMs,
+      latencyDeltaHigh: lastLatencyDeltaHigh,
+      latencyDeltaRescueEligible,
+      connectPartition,
+      silentGenerationEnd,
+      coldResume: coldResumeSignal,
+      tokenGap: tokenGapSignal,
+      connectStreamGap: connectStreamGapSignal,
+      connectPathPartitionDetected: lastConnectPathPartitionStale,
+      tokenGapSuppressedPendingTool,
+      marathonStreamActive,
+      forceHighLatencyWarmth,
+    }
+
+    if (activeNode && marathonStreamActive) {
+      await runIndependentConnectPathPulseIfDue(
+        selectionBase,
+        activeNode,
+        cursorConnectionCount,
+        nowMs,
+      )
+      selectionBase.lastConnectPathPulseAtMs = lastConnectPathPulseAtMs
+      selectionBase.connectPathPartitionDetected = lastConnectPathPartitionStale
+    }
+
+    const candidate = selectMarathonTransportDialTrigger(selectionBase)
+
+    if (!candidate) {
+      return
+    }
+
+    if (tokenGapSuppressedPendingTool && candidate.trigger === 'token_gap') {
+      await appendAppLog(
+        formatMtdoLogLine('token_gap', 'skipped_pending_tool', {
+          cursor_conn: cursorConnectionCount,
+        }),
+      )
+      return
+    }
+
+    if (shouldCoalesceMarathonTransportDial(selectionBase, candidate)) {
+      if (
+        candidate.trigger === 'periodic_session' ||
+        candidate.trigger === 'high_latency_warmth'
+      ) {
+        updateWarmthDeferStreak(cursorConnectionCount, candidate.trigger, 'skipped_deferred')
+      }
+      await appendAppLog(
+        formatMtdoLogLine(candidate.trigger, 'skipped_coalesced', {
+          cursor_conn: cursorConnectionCount,
+          coalesce_ms: nowMs - lastMtdoDialAtMs,
+        }),
+      )
+      return
+    }
+
+    if (!activeNode) {
+      await appendAppLog(
+        formatMtdoLogLine(candidate.trigger, 'skipped_no_active_node', {
+          cursor_conn: cursorConnectionCount,
+        }),
+      )
+      return
+    }
+
+    const dialResult = await executeDialPlan(candidate, cursorConnectionCount, nowMs, activeNode)
+    updateWarmthDeferStreak(cursorConnectionCount, candidate.trigger, dialResult.outcome)
+    if (candidate.trigger === 'connect_partition' && connectPartition) {
+      await appendNetworkStabilityEvent({
+        ts: new Date().toISOString(),
+        kind: 'transport_partition_stale_connect',
+        probe_ok: true,
+        recovery_action: 'none',
+        hung_connection_count: cursorConnectionCount,
+        error_detail:
+          `connect_ping_failures=${connectPartition.pingFailureCount}` +
+          ` window_ms=${connectPartition.windowMs}` +
+          ` source=${connectPartition.source}`,
+      })
+    }
+    lastMtdoDialAtMs = nowMs
+    void ensureCursorMarathonKeepAlive()
+  } catch (error) {
+    await appendAppLog(
+      `[MarathonTransportDial]: outcome=failed err=${formatUnknownErrorForLog(error)}\n`,
+    )
+  } finally {
+    mtdoInFlight = false
+  }
+}

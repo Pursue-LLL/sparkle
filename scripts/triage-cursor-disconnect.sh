@@ -101,6 +101,102 @@ collect_cursor_native_evidence() {
     || log "RID not found in Cursor Structured Logs; Guard retry/notification coverage is unproven"
 }
 
+detect_p17_log_plane_blind_spot() {
+  P17_BLIND_SPOT=0
+  local structured_file stock_hit=0 data_hit=0
+  while IFS= read -r structured_file; do
+    [[ -f "$structured_file" ]] || continue
+    [[ "$structured_file" == *'Cursor Structured Logs.log' ]] || continue
+    rg -q "$RID" "$structured_file" 2>/dev/null || continue
+    if [[ "$structured_file" == *'/Application Support/Cursor/logs/'* ]]; then
+      stock_hit=1
+    fi
+    if [[ "$structured_file" == *'-data/logs/'* ]]; then
+      data_hit=1
+    fi
+  done < <(find_cursor_native_logs)
+
+  if [[ "$stock_hit" -eq 1 && "$data_hit" -eq 0 ]]; then
+    P17_BLIND_SPOT=1
+    {
+      echo "P17_BLIND_SPOT=1"
+      echo "RID present in stock Cursor/logs Structured Logs but not in Cursor-*-data/logs."
+      echo "Pre-P17 Sparkle agentTransportFailureSync would miss this path."
+      echo "Post-P17/P18: discoverCursorLogRoots + Structured hot tail + partition_blind_spot alert."
+    } >"$OUT/p17-blind-spot.txt"
+    log "P17 blind spot detected — see p17-blind-spot.txt (retro 520a4a94 class)"
+  fi
+}
+
+collect_auth_lifecycle_evidence() {
+  : >"$OUT/auth-lifecycle-chain.txt"
+  AUTH_LIFECYCLE_DEFINITIVE=0
+  local structured_file logout_line cancel_line login_line auth_token_line shipit_count=0
+
+  while IFS= read -r structured_file; do
+    [[ -f "$structured_file" ]] || continue
+    [[ "$structured_file" == *'Cursor Structured Logs.log' ]] || continue
+    if ! rg -q "$RID" "$structured_file" 2>/dev/null; then
+      continue
+    fi
+    echo "$structured_file" >>"$OUT/auth-lifecycle-structured-paths.txt"
+    rg "$RID" "$structured_file" \
+      | rg 'AGENT_ERROR_DIAGNOSTICS|login_changed_logged_out|login_changed_logged_in|conversationAction|cancelAction|changeCursorAuthToken' \
+      >>"$OUT/auth-lifecycle-chain.txt" 2>/dev/null || true
+  done < <(find_cursor_native_logs)
+
+  logout_line="$(rg 'login_changed_logged_out' "$OUT/auth-lifecycle-chain.txt" 2>/dev/null | tail -1 || true)"
+  cancel_line="$(rg 'AGENT_ERROR_DIAGNOSTICS' "$OUT/auth-lifecycle-chain.txt" 2>/dev/null \
+    | rg 'CancelledError|conversation_action_abort' | tail -1 || true)"
+  login_line="$(rg 'login_changed_logged_in' "$OUT/auth-lifecycle-chain.txt" 2>/dev/null | tail -1 || true)"
+
+  find "$RENDERER_SEARCH_ROOT" -path '*/logs/*/main.log' 2>/dev/null | while IFS= read -r main_log; do
+    [[ -f "$main_log" ]] || continue
+    local shipit_lines
+    shipit_lines="$(rg -c 'ShipIt|Could not locate update bundle' "$main_log" 2>/dev/null || echo 0)"
+    if [[ "$shipit_lines" =~ ^[0-9]+$ ]] && [[ "$shipit_lines" -gt 0 ]]; then
+      echo "$main_log shipit_lines=$shipit_lines" >>"$OUT/auth-lifecycle-shipit-paths.txt"
+      rg 'ShipIt|Could not locate update bundle|Installation has been modified on disk' "$main_log" \
+        >>"$OUT/auth-lifecycle-shipit.txt" 2>/dev/null || true
+    fi
+  done
+
+  find "$RENDERER_SEARCH_ROOT" -path '*/logs/*/window*/exthost/exthost-rpc-*.jsonl' 2>/dev/null \
+    | while IFS= read -r rpc_file; do
+      [[ -f "$rpc_file" ]] || continue
+      if rg -q '\$changeCursorAuthToken' "$rpc_file" 2>/dev/null; then
+        echo "$rpc_file" >>"$OUT/auth-lifecycle-rpc-paths.txt"
+        rg '\$changeCursorAuthToken' "$rpc_file" >>"$OUT/auth-lifecycle-rpc-token.txt" 2>/dev/null || true
+      fi
+    done
+
+  {
+    echo "# auth-lifecycle triage @ A"
+    echo "logout_line=${logout_line:-<none>}"
+    echo "cancel_line=${cancel_line:-<none>}"
+    echo "login_line=${login_line:-<none>}"
+    if [[ -n "$logout_line" && -n "$cancel_line" ]]; then
+      echo "pattern=login_changed_logged_out → cancelAction/CancelledError"
+      if rg -q 'transportErrorRetries=0|transportErrorRetries":0' <<<"$cancel_line"; then
+        echo "transportErrorRetries=0 (not mid-stream transport retry abort)"
+      fi
+      if [[ -n "$login_line" ]]; then
+        echo "refresh_flip_flop=login_changed_logged_in within window"
+      fi
+    fi
+    if [[ -s "$OUT/auth-lifecycle-shipit.txt" ]]; then
+      echo "shipit_errors=see auth-lifecycle-shipit.txt (secondary amplifier, not primary)"
+    fi
+  } >"$OUT/auth-lifecycle-summary.txt"
+
+  if [[ -n "$logout_line" && -n "$cancel_line" ]] \
+    && rg -q 'conversation_action_abort|CancelledError' <<<"$cancel_line"; then
+    AUTH_LIFECYCLE_DEFINITIVE=1
+    log "AUTH LIFECYCLE DEFINITIVE: login_changed_logged_out → client cancelAction (skip VPS unless multi-path transport-error)"
+    echo "1" >"$OUT/auth-lifecycle-definitive.txt"
+  fi
+}
+
 collect_renderer_evidence() {
   local logs=()
   while IFS= read -r f; do
@@ -418,6 +514,21 @@ write_report_skeleton() {
     if [[ -s "$OUT/app-log-blindspot.txt" ]]; then
       echo "- app-log: \`$(cat "$OUT/app-log-blindspot.txt" | head -1)\`"
     fi
+    if [[ -f "$OUT/auth-lifecycle-definitive.txt" ]]; then
+      echo "- **AUTH LIFECYCLE DEFINITIVE**: client OAuth refresh → cancelAction (see \`auth-lifecycle-summary.txt\`, \`auth-lifecycle-chain.txt\`)"
+      echo "  - Layer: L7 client auth lifecycle"
+      echo "  - Mechanism: login_changed_logged_out → conversationAction:cancelAction"
+      echo "  - VPS/proxy triage: skip unless multi-path transport-error @ A"
+    elif [[ -s "$OUT/auth-lifecycle-chain.txt" ]]; then
+      echo "- auth lifecycle partial: see \`auth-lifecycle-summary.txt\`"
+    fi
+    if [[ -s "$OUT/sparkle-app-A-window.log" ]]; then
+      local max_conn
+      max_conn="$(rg -o 'cursor_conn=[0-9]+' "$OUT/sparkle-app-A-window.log" 2>/dev/null | sed 's/cursor_conn=//' | sort -n | tail -1 || true)"
+      if [[ -n "${max_conn:-}" ]] && [[ "$max_conn" -gt 500 ]]; then
+        echo "- **QUIC 饱和风险 @ A**：cursor_conn peak=${max_conn} — defer 预期 · 不等于 VPS 宕（见 P16 UltraConnObservability + VpsL4Probe）"
+      fi
+    fi
     echo ""
     echo "## 定责摘要"
     echo ""
@@ -434,6 +545,8 @@ write_report_skeleton() {
 # --- main ---
 collect_renderer_evidence || true
 collect_cursor_native_evidence
+detect_p17_log_plane_blind_spot
+collect_auth_lifecycle_evidence
 collect_guard_evidence
 
 INCIDENT_UTC=""
@@ -456,7 +569,9 @@ collect_app_core_at_a "$INCIDENT_LOCAL" "$INCIDENT_UTC"
 collect_agent_transport_by_ts
 write_disconnect_facts
 collect_mihomo_state
-if [[ "$SKIP_VPS" != "1" ]]; then
+if [[ "${AUTH_LIFECYCLE_DEFINITIVE:-0}" == "1" ]]; then
+  log "Skipping VPS collection — auth lifecycle definitive (set TRIAGE_SKIP_VPS=0 to force)"
+elif [[ "$SKIP_VPS" != "1" ]]; then
   run_vps_v52
 else
   log "Skipping VPS collection (TRIAGE_SKIP_VPS=1)"

@@ -12,31 +12,48 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `vpsL4ProbeCore.ts` / `vpsL4Probe.ts`                                   | VPS SSH curl（kr-vps/jp-vps，`ProxyCommand=none` + 公网 HostName 回退）→ ledger scope=vps                                                                             |
 | `canonicalVpsNodeSnapshotCore.ts`                                       | 从 provider history 采集 6 节点 snapshot（CTHC events）                                                                                                               |
 | `networkTriangulationDiagnosticCore.ts`                                 | 定责探测：KR/JP Reality + active Cursor 节点 + marketplace                                                                                                            |
-| `api2ProbeLedgerCore.ts`                                                | api2 探针统一 ledger 读写（scope=active/vps/marathon）                                                                                                                |
+| `api2ProbeLedgerCore.ts`                                                | api2 探针统一 ledger 读写（scope=active/vps/marathon）；**readRecentSessionNudgeAnchorsForNode**（P9n）；**readLatencyTruthSummaryForNode**（P13 Phase 2） |
+| `latencyTruthFromLedgerCore.ts`                                         | **P13 Phase 2** VPS 本体 vs Mac 全路径 P50 SSOT（scope=vps ssh_curl vs scope=active transport_pair） |
+| `vpsCanonicalNodes.ts`                                                  | **P13 Phase 2.1** `resolveVpsRegionFromLeafNode` · region→leaf fan-out SSOT |
 | `nodeQualityScore.ts`                                                   | 纯函数：Probe/Session 分层评分、badge 门槛常量                                                                                                                        |
 | `nodeProbeStats.ts`                                                     | ledger vps 样本聚合 → DerivedStats                                                                                                                                    |
 | `commercialNodeBenchmark.ts`                                            | 24h VPS 报告（ledger scope=vps SSH + active）、UI snapshot IPC                                                                                                        |
-| `networkStabilityMonitor.ts`                                            | 当前节点 short probe、TUN 恢复（委托 CTHC）；非 probe 事件 jsonl                                                                                                      |
-| `cursorTransportHealthCore.ts`                                          | 纯函数：挂死检测（**≥12min** 零吞吐）、**Agent-stability-first 恢复**（禁 L0/L1 杀 SSE；仅 offline+TUN 灾难 L2/L3）；L0 每 host **保留最新 6 条** hung 连接（仅观测）；Connect split-brain 归因 |
-| `connectPartitionDetectCore.ts` / `connectPartitionReader.ts`           | Connect mass-PING 检测 + 读 sparkle/guard/profiles `agent-transport-failures.jsonl`                                                                                  |
-| `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost 同步 + proxyNode 回填）                                                             |
+| `networkStabilityMonitor.ts`                                            | 当前节点 short probe、TUN 恢复（委托 CTHC）；**P9 `shouldDeferProbeForCursorLoadUnderMarathonQuiesce` + `syncMarathonQuiesceIfNeeded`**；非 probe 事件 jsonl         |
+| `cursorTransportHealthCore.ts`                                          | 纯函数：挂死检测（**≥12min** 零吞吐）、**Agent-stability-first 恢复**（禁 L0/L1 杀 SSE；仅 offline+TUN 灾难 L2/L3）；L2 后 **fake-ip flush**（`mihomoFlushFakeIpCache`）；L0 每 host **保留最新 6 条** hung 连接（仅观测）；Connect split-brain 归因 |
+| `connectPartitionDetectCore.ts` / `connectPartitionReader.ts`           | Connect mass-PING · **P16** `resolveConnectPartitionWindowMs`（conn≥200 → **60s** 窗，默认 8s）· **P18** `transportObservabilityMergeCore` dedupe · `partitionBlindSpotCore` · async merge SSOT |
+| `connectPingStormCore.ts`                                               | **P16** ultra-conn：Diagnostic ingest 合成 · synthetic partition · latency_delta rescue streak · ultra_conn 观测                                                      |
+| `cursorLogDiscoveryCore.ts` / `cursorStructuredTransportIngestCore.ts` / `cursorStructuredTailCacheCore.ts` | **P17/P18** log roots SSOT · Structured tail 热读 + mtime/size cache · merge 输入 |
+| `transportObservabilityMergeCore.ts` / `partitionBlindSpotCore.ts`     | **P18** hot+jsonl dedupe · jsonl=0∧structured≥2 blind_spot 告警 |
+| `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost/**Structured NAL** 同步 + proxyNode 回填）                                            |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts`             | 高并行时 VPS leaf dial-timeout 5s→45s 热更新                                                                                                                         |
-| `cursorHy2MarathonKeepaliveCore.ts` / `cursorHy2MarathonKeepalive.ts`   | HY2 marathon SSOT（40s nudge · VPS hy2-in `udp_timeout` 3600s · conntrack 3600s；idle/keepalive 仅 sing-box ≥1.14）+ `session_transport_nudge`；**conn≥80 时 defer 新 dial**（`session_transport_nudge_deferred_cursor_load`，防 token_gap/auth refresh 连接风暴）                                                                                |
-| `cursorStreamTokenGapCore.ts` / `cursorStreamTokenGapReader.ts`        | Marathon token 静默检测（≥20s 无 meaningful SSE → `token_gap_force_nudge`）；**冷 resume 32s 零首 token → `cold_resume_no_token_nudge`**；补 40s 周期与 ~33s server EOF 窗口之间的盲区 |
-| `cursorConnectStreamKeepaliveCore.ts` / `cursorConnectStreamKeepalive.ts` | **P8** Connect 长流保活：≥15s meaningful SSE 静默 + conn≥12 → `api2direct`+`api2` 双探针（`connect_stream_keepalive`）；非破坏性 · 不关现有连接 |
+| `marathonQuiesceCore.ts` / `marathonQuiesce.ts` / `marathonQuiesceProviderSync.ts` | P9 Marathon 静默：conn≥12 暂停 provider health-check + proxyHealthMonitor；**P9 Phase 2** `shouldAllowObservabilityDial` + quiesce 全 defer probe + block `/healthcheck` API + warmup/marketplace skip |
+| `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：quiesce active 或 conn≥12 时 block `stopCore`/`restartCore`；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate |
+| `cursorHy2MarathonKeepaliveCore.ts` / `cursorHy2MarathonKeepalive.ts`   | **MTCP/P13** Rescue vs Warmth（`MarathonWarmthTrigger` · `shouldDeferMarathonWarmth`）· **P14** `MarathonSessionKeepaliveResult` + `formatMarathonRescueNudgeLogLine`（`token_gap_nudge outcome=` SSOT）· **P14c** `silent_generation_end` rescue · HY2 marathon nudge · **conn≥80 warmth defer · rescue 永不 defer · rescue bypass P12 budget** |
+| `cursorStreamTokenGapCore.ts` / `cursorStreamTokenGapReader.ts`        | Marathon token 静默检测（≥20s 无 meaningful SSE → hung_scan 触发 token_gap rescue）；**P14c** `generation-ended-without-turnEnded` sudden-death rescue（gap<30s · duration≥30min）；**P14d** txReqId+originalRequestId alias；**冷 resume 32s 零首 token** |
+| `cursorConnectStreamKeepaliveCore.ts` | **P8+P14a** Connect-path 三探针纯函数 SSOT · partition 检测 · 15s gap 阈值；**执行统一由 MTDO** `marathonTransportDialOrchestrator.ts` |
+| `coreReadyTimestamp.ts`                                                 | 叶子模块：`markCoreReadyAtMs` / `safeGetLastCoreReadyAtMs`（CTHC startup grace）；`manager.ts` 须 **namespace import** |
 | `mihomoApiSocketWatchdog.ts`                                            | mihomo-api.sock ECONNREFUSED 时自动 `restartCore`（60s cooldown，startup grace 内跳过） |
 | `cursorCriticalTransportCore.ts`                                        | critical Cursor transport host SSOT（CTHC + Hygiene 共享）                                                                                                            |
-| `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描、L0–L3 恢复动作                                                                                                                             |
+| `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描、L0–L3 恢复；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan（单 in-flight · 非 destructive dial） |
+| `marathonStreamRegistryCore.ts` / `marathonTransportDialReader.ts`       | §22 active RID registry · pendingTool 门控 |
+| `marathonTransportDialOrchestratorCore.ts` / `marathonTransportDialOrchestrator.ts` | §22 MTDO · **P15/P16**：独立 60s pulse · synthetic partition · `latency_delta_rescue` · ultra_conn 观测 |
+| `latencyDeltaGateCore.ts`                                               | §22 Mac 全路径 vs VPS 本体 P50 delta 告警（defer warmth only） |
 | `mihomoProbeCoordinator.ts`                                             | 全局 mihomo delay 槽（max 2）与商业 batch 并发 cap                                                                                                                    |
+| `marathonObservabilityDialBudgetCore.ts` / `marathonObservabilityDialBudgetQueueCore.ts` / `marathonObservabilityDialBudget.ts` | **P12** conn≥12/quiesce observability dial 单槽串行（QueueCore 无 Electron 依赖） |
+| `providerDelayHistoryFromLedgerCore.ts`                                 | **P11** mihomo history 空时从 api2-probe-ledger 回填 tooltip 柱图（transport_pair/session_nudge）                                                                  |
+| `managedVpsDelayTest.ts` / `vpsDelayTestPolicyCore.ts`                    | VPS UI 测速 defer 策略；**P11** `explicitUserRequest` bypass conn defer + 15s cooldown                                                                              |
 | `cursorRuleInjection.ts`                                                | 全量 Cursor PROCESS-NAME + DOMAIN → 🎯 Cursor 专用；可选 path-scoped AND 规则                                                                                         |
 | `cursorNetworkOptimize.ts`                                              | Cursor DNS/TUN/keepalive 优化                                                                                                                                         |
 | `fakeIpRoutingIntegrity.ts`                                             | fake-ip 路由一致性：剥离 198.18 CIDR 陷阱、Tier0/Tier1 filter、sniffer 完整性                                                                                         |
-| `proxyHealthMonitor.ts`                                                 | SG/TW/JP failover（🎯 Cursor 专用，api2 测速）                                                                                                                        |
-| `mihomoApi.ts`                                                          | mihomo REST 封装（delay 经 mihomoProbeCoordinator gate；provider leaf 走 healthcheck fallback）                                                                       |
+| `proxyHealthMonitor.ts`                                                 | SG/TW/JP failover（🎯 Cursor 专用，api2 测速）；**Marathon quiesce active 全暂停**（含 exit hysteresis 60s）                                                         |
+| `mihomoApi.ts`                                                          | mihomo REST 封装（delay 经 mihomoProbeCoordinator gate **除 marathon_rescue** BUG-015；Resource not found → provider leaf BUG-012/014；L2 fake-ip flush BUG-013） |
+| `mihomoProxyDelayCore.ts`                                               | **BUG-012/014/015** isMihomoApiResourceNotFoundError · resolveProviderNameForLeaf · isMarathonRescueDelayPurpose · shouldBypassMihomoDelayProbeSlot |
 | `cursorDedicatedDefault.ts`                                             | 启动恢复手选；无手选时仅默认 `JP-VPS-TLS`，禁止自动回落 Reality/HY2/TUIC                                                                                              |
 | `providerHealthCheckCore.ts`                                            | 商用 provider health-check URL（generate_204）                                                                                                                        |
 | `vpsProviderSplitCore.ts`                                               | VPS/commercial partition；`{profileId}-vps` provider；api2 health-check                                                                                               |
-| `mihomoProviderDelayCore.ts`                                            | provider leaf delay 历史：取最近成功样本，跳过尾部 timeout                                                                                                            |
+| `mihomoProviderDelayCore.ts` / `providerDelayHistoryDisplayCore.ts`            | provider leaf delay 历史：取最近成功样本；**P9n** 柱图剔除 session_nudge（ledger SSOT）                                                                               |
+| `factory.ts`                                                            | runtime config 生成；**`patchRuntimeProxyProviderHealthCheckEnable`**（P9 health-check 热 patch）                                                                       |
+| `../utils/formatUnknownErrorForLog.ts`                                  | mihomo catch 值 JSON 序列化（nudge/keepalive failed 路径；**≥1.26.61**）                                                                                              |
 
 ## 节点质量数据流
 
@@ -52,6 +69,19 @@ cursorTransportHealth (hung_scan 30s / hung≥12min / keep-newest-6 / transport_
   → network-stability-events.jsonl + vps_node_snapshots（CTHC 单点：latest-success delay，≠ UI 测速记录 history[-8]）
 ```
 
+## Transport 观测数据流（P16–P18）
+
+```
+agentTransportFailureSync → ~/.sparkle/agent-transport-failures.jsonl
+  ↑ connectPingStormCore（Diagnostic defer×2 + VpsL4 ok → synthetic partition）
+cursorStructuredTransportIngestCore ← Cursor/logs Structured tail（P17）
+  → transportObservabilityMergeCore（P18 dedupe）
+  → connectPartitionReader.readConnectPartitionSignalAsync
+  → marathonTransportDialOrchestrator
+       ├ connect_partition / latency_delta_rescue（P16b · delta≥15s + 短 HTTP 绿）
+       └ UltraConnObservability @ conn>500（P16c 节流日志）
+```
+
 ## Badge 规则
 
 - VPS combined 第一 **且** 通过 gate：success≥95%、slow>500ms≤15%、jitter≤150ms
@@ -60,5 +90,18 @@ cursorTransportHealth (hung_scan 30s / hung≥12min / keep-newest-6 / transport_
 ## 测试
 
 ```bash
-pnpm run test:node-quality
+pnpm run test:node-quality   # 含 marathonQuiesceCore.test.ts 14/14 · marathonCoreRestartGuardCore.test.ts · coreReadyTimestamp.bundle.test.ts · upgradeSparkleAsarGateCore.test.ts
+pnpm run upgrade:mac         # 本地装 /Applications + PostCoreBootstrap 门控（网络失败：SKIP_PREPARE=1）
 ```
+
+## 构建标识（UI）
+
+| 路径 | 职责 |
+|------|------|
+| `scripts/writeBuildStampCore.ts` | `YYYY.MMDD.HHMM` 格式 SSOT |
+| `scripts/write-build-stamp.ts` | 写入 `src/shared/buildStamp.ts`（`dev` / `build:*` / upgrade 前） |
+| `src/shared/buildStamp.ts` | 生成物：`SPARKLE_BUILD_STAMP` + `SPARKLE_SEMVER` |
+| `src/main/utils/ipc.ts` | `getBuildStamp` IPC |
+| `src/renderer/src/pages/proxies.tsx` | 代理组标题旁 Chip 展示 build stamp |
+
+详见 [src/shared/_ARCH.md](../shared/_ARCH.md)。

@@ -61,8 +61,8 @@ describe('agentTransportFailureSync', () => {
     process.env.HOME = home
     const dailyDir = join(home, 'Library', 'Application Support', 'Cursor-3.1.15-data')
     const customDir = join(home, 'Library', 'Application Support', 'Cursor-custom-data')
-    await mkdir(dailyDir, { recursive: true })
-    await mkdir(customDir, { recursive: true })
+    await mkdir(join(dailyDir, 'logs'), { recursive: true })
+    await mkdir(join(customDir, 'logs'), { recursive: true })
 
     const dirs = await resolveCursorDataDirs({
       appPathPrefixes: ['/Applications/Cursor-custom.app'],
@@ -101,6 +101,80 @@ describe('agentTransportFailureSync', () => {
     assert.equal(row.reasonSub, 'read-timeout')
     assert.equal(row.connectCode, '14')
     assert.equal(row.source, 'sparkle-sync')
+
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('syncs network diagnostic ConnectError from structured log', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sparkle-transport-structured-'))
+    process.env.HOME = home
+    const cursorDataDir = join(home, 'Library', 'Application Support', 'Cursor-3.1.15-data')
+    const structuredPath = join(
+      cursorDataDir,
+      'logs',
+      '20260727T120000',
+      'window1',
+      'exthost',
+      'anysphere.cursor-always-local',
+      'Cursor Structured Logs.log',
+    )
+    await mkdir(dirname(structuredPath), { recursive: true })
+    const ts = Date.parse('2026-07-27T17:57:15.272')
+    await writeFile(
+      structuredPath,
+      `2026-07-27 17:57:15.272 [error] Cursor Network Diagnostic agent ping {"name":"ConnectError","rawMessage":"[unavailable] PING timed out","code":14}\n`,
+      'utf8',
+    )
+
+    const written = await syncAgentTransportFailuresFromCursorLogs({
+      sinceMs: ts - 60_000,
+      proxyNodeFallback: 'JP-VPS-HY2',
+      cursorDataDirs: [cursorDataDir],
+      logWrites: false,
+    })
+    assert.equal(written, 1)
+
+    const jsonlPath = join(home, '.sparkle', 'agent-transport-failures.jsonl')
+    const row = JSON.parse((await readFile(jsonlPath, 'utf8')).trim()) as Record<string, unknown>
+    assert.equal(row.kind, 'network_diagnostic_ping_storm')
+    assert.equal(row.connectCode, '14')
+
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('syncs NAL Stream error from stock Cursor/logs root (P17)', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sparkle-transport-stock-cursor-'))
+    process.env.HOME = home
+    const cursorDataDir = join(home, 'Library', 'Application Support', 'Cursor')
+    const structuredPath = join(
+      cursorDataDir,
+      'logs',
+      '20260727T094224',
+      'window1',
+      'exthost',
+      'anysphere.cursor-always-local',
+      'Cursor Structured Logs.log',
+    )
+    await mkdir(dirname(structuredPath), { recursive: true })
+    const ts = Date.parse('2026-07-27T17:42:12.698')
+    await writeFile(
+      structuredPath,
+      `2026-07-27 17:42:12.698 [error] {"level":"error","key":"transport","message":"Stream error reported from extension host","metadata":{"error.message":"PING timed out","errorCode":"14","requestId":"e67c9ec5-754c-46cd-834e-36eaebecdc40","originalRequestId":"520a4a94-3f18-4e42-a5dd-d7abbd25ed9d"}}\n`,
+      'utf8',
+    )
+
+    const written = await syncAgentTransportFailuresFromCursorLogs({
+      sinceMs: ts - 60_000,
+      proxyNodeFallback: 'JP-VPS-HY2',
+      cursorDataDirs: [cursorDataDir],
+      logWrites: false,
+    })
+    assert.equal(written, 1)
+
+    const jsonlPath = join(home, '.sparkle', 'agent-transport-failures.jsonl')
+    const row = JSON.parse((await readFile(jsonlPath, 'utf8')).trim()) as Record<string, unknown>
+    assert.equal(row.originalRequestId, '520a4a94-3f18-4e42-a5dd-d7abbd25ed9d')
+    assert.equal(row.connectCode, '14')
 
     await rm(home, { recursive: true, force: true })
   })

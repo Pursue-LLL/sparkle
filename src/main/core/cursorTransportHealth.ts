@@ -2,14 +2,18 @@ import axios from 'axios'
 import { appendAppLog } from '../utils/log'
 import { showNotification } from '../utils/notification'
 import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
-import { getLastCoreReadyAtMs } from './manager'
+import { safeGetLastCoreReadyAtMs } from './coreReadyTimestamp'
 import { listCursorConnectionRows } from './cursorConnectionHygiene'
-import { runHy2MarathonSessionKeepaliveIfDue } from './cursorHy2MarathonKeepalive'
-import { readConnectPartitionSignal } from './connectPartitionReader'
-import { ensureCursorMarathonKeepAlive } from './cursorNetworkOptimize'
+import { readConnectPartitionSignalAsync } from './connectPartitionReader'
 import { getRecentCursorProbe } from './networkStabilityMonitor'
 import { syncMarathonDialToleranceIfNeeded } from './marathonDialTolerance'
-import { mihomoCloseConnection, mihomoCloseConnections, mihomoProxyDelay } from './mihomoApi'
+import {
+  mihomoCloseConnection,
+  mihomoCloseConnections,
+  mihomoFlushFakeIpCache,
+  mihomoProxyDelay,
+} from './mihomoApi'
+import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import {
   decideRecoveryAction,
   describeRecoveryBlockReason,
@@ -30,13 +34,6 @@ import {
   type RecoveryAction,
   type RecoveryCooldownState
 } from './cursorTransportHealthCore'
-import { shouldForceHy2MarathonSessionKeepaliveForHighLatency } from './cursorHy2MarathonKeepaliveCore'
-import {
-  readConnectStreamKeepaliveGapSignal,
-  readMarathonColdResumeNoTokenSignal,
-  readMarathonStreamTokenGapSignal,
-} from './cursorStreamTokenGapReader'
-import { runConnectStreamKeepaliveIfDue } from './cursorConnectStreamKeepalive'
 
 const PROBE_TIMEOUT_MS = 15_000
 
@@ -102,6 +99,12 @@ async function logTransportRecoveryDecision(options: {
         return collectCanonicalVpsNodeSnapshots()
       })()
     : undefined
+  const mihomoVpsHistorySnapshot = shouldAttachSnapshots
+    ? await (async () => {
+        const { collectCanonicalVpsNodeHistorySnapshots } = await import('./canonicalVpsNodeSnapshot')
+        return collectCanonicalVpsNodeHistorySnapshots()
+      })()
+    : undefined
 
   await appendTransportObservabilityEvent({
     kind: options.source === 'hung_scan' ? 'transport_hung_scan' : 'transport_recovery',
@@ -121,6 +124,9 @@ async function logTransportRecoveryDecision(options: {
     error_detail: summary,
     ...(vpsNodeSnapshots && vpsNodeSnapshots.length > 0
       ? { vps_node_snapshots: vpsNodeSnapshots }
+      : {}),
+    ...(mihomoVpsHistorySnapshot && mihomoVpsHistorySnapshot.length > 0
+      ? { mihomo_vps_history_snapshot: mihomoVpsHistorySnapshot }
       : {})
   })
 }
@@ -203,14 +209,18 @@ export async function runTransportProbePair(options: {
   proxyHost: string
   proxyPort: number
   viaDirectTun?: boolean
+  skipMarketplace?: boolean
 }): Promise<ProbePairResult & { api2Status?: number; marketplaceStatus?: number }> {
   const proxy = options.viaDirectTun
     ? undefined
     : { host: options.proxyHost, port: options.proxyPort }
+  const marketplacePromise = options.skipMarketplace
+    ? Promise.resolve({ ok: true, latencyMs: 0, status: 0, errorDetail: 'skipped: marathon_quiesce' })
+    : probeHttpTarget(SPLIT_BRAIN_CONTROL_TARGET, proxy)
   const [api2, api2geo, marketplace] = await Promise.all([
     probeHttpTarget(API2_PROBE_TARGET, proxy),
     probeHttpTarget(API2GEO_PROBE_TARGET, proxy),
-    probeHttpTarget(SPLIT_BRAIN_CONTROL_TARGET, proxy)
+    marketplacePromise
   ])
   return {
     api2Ok: api2.ok,
@@ -277,15 +287,19 @@ export async function runTransportProbePairViaCursorNode(
     proxyHost: string
     proxyPort: number
     viaDirectTun?: boolean
+    skipMarketplace?: boolean
   }
 ): Promise<ProbePairResult & { api2Status?: number; marketplaceStatus?: number; api2ViaNode: true }> {
   const marketplaceProxy = fallbackOptions.viaDirectTun
     ? undefined
     : { host: fallbackOptions.proxyHost, port: fallbackOptions.proxyPort }
+  const marketplacePromise = fallbackOptions.skipMarketplace
+    ? Promise.resolve({ ok: true, latencyMs: 0, status: 0, errorDetail: 'skipped: marathon_quiesce' })
+    : probeHttpTarget(SPLIT_BRAIN_CONTROL_TARGET, marketplaceProxy)
   const [api2, api2geo, marketplace] = await Promise.all([
     probeApi2ViaMihomoNode(cursorProxyNode),
     probeApi2geoViaMihomoNode(cursorProxyNode),
-    probeHttpTarget(SPLIT_BRAIN_CONTROL_TARGET, marketplaceProxy)
+    marketplacePromise
   ])
   return {
     api2Ok: api2.ok,
@@ -345,12 +359,22 @@ async function executeRecoveryL1(rows: Awaited<ReturnType<typeof listCursorConne
 
 async function executeRecoveryL2(): Promise<void> {
   await mihomoCloseConnections()
+  try {
+    await mihomoFlushFakeIpCache()
+    await appendAppLog(
+      '[CursorTransportHealth]: L2 flushed fake-ip cache (store-fake-ip mapping)\n',
+    )
+  } catch (error) {
+    await appendAppLog(
+      `[CursorTransportHealth]: L2 fake-ip flush failed: ${formatUnknownErrorForLog(error)}\n`,
+    )
+  }
   cooldowns.lastL2AtMs = Date.now()
   await appendAppLog('[CursorTransportHealth]: L2 flushed all mihomo outbound connections\n')
 }
 
 async function executeRecoveryL3(): Promise<void> {
-  if (isCoreWithinStartupGrace(getLastCoreReadyAtMs())) {
+  if (isCoreWithinStartupGrace(safeGetLastCoreReadyAtMs())) {
     await appendAppLog('[CursorTransportHealth]: defer L3 restartCore — core startup grace\n')
     return
   }
@@ -437,59 +461,12 @@ export async function evaluateAndRecoverTransport(
   return action
 }
 
-/** Proactive HY2/TUIC warmth: connect-partition · cold-resume · token-gap · high-latency · periodic nudge. */
+/** Proactive HY2/TUIC warmth — §22 MTDO single entry (non-destructive dial only). */
 export async function runMarathonSessionWarmthIfDue(cursorConnectionCount: number): Promise<void> {
   const { ensureMihomoApiReachableForMarathon } = await import('./mihomoApiSocketWatchdog')
   await ensureMihomoApiReachableForMarathon('warmth_precheck')
-
-  const connectPartition = readConnectPartitionSignal(cursorConnectionCount)
-  const coldResumeSignal = await readMarathonColdResumeNoTokenSignal(cursorConnectionCount)
-  const connectStreamGapSignal = await readConnectStreamKeepaliveGapSignal(cursorConnectionCount)
-  const tokenGapSignal = await readMarathonStreamTokenGapSignal(cursorConnectionCount)
-  void runConnectStreamKeepaliveIfDue(cursorConnectionCount, connectStreamGapSignal)
-  const recentProbe = getRecentCursorProbe()
-  const highLatencyMs = recentProbe?.latencyMs ?? 0
-  const forceHighLatencyNudge = shouldForceHy2MarathonSessionKeepaliveForHighLatency(
-    cursorConnectionCount,
-    highLatencyMs,
-  )
-  if (connectPartition) {
-    await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, { force: true })
-    void ensureCursorMarathonKeepAlive()
-    await appendTransportObservabilityEvent({
-      kind: 'transport_partition_stale_connect',
-      probe_ok: true,
-      recovery_action: 'none',
-      hung_connection_count: cursorConnectionCount,
-      error_detail: `connect_ping_failures=${connectPartition.pingFailureCount} window_ms=${connectPartition.windowMs} sample_rids=${connectPartition.sampleRequestIds.join(',')}`,
-    })
-    return
-  }
-  if (coldResumeSignal) {
-    await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, { tokenGapForce: true })
-    void ensureCursorMarathonKeepAlive()
-    await appendAppLog(
-      `[CursorHy2MarathonKeepalive]: cold_resume_no_token_nudge cursor_conn=${cursorConnectionCount} max_gap_ms=${coldResumeSignal.maxGapMs} stale_rids=${coldResumeSignal.staleRequestIds.slice(0, 3).join(',')}\n`,
-    )
-    return
-  }
-  if (tokenGapSignal) {
-    await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, { tokenGapForce: true })
-    void ensureCursorMarathonKeepAlive()
-    await appendAppLog(
-      `[CursorHy2MarathonKeepalive]: token_gap_force_nudge cursor_conn=${cursorConnectionCount} max_gap_ms=${tokenGapSignal.maxGapMs} stale_rids=${tokenGapSignal.staleRequestIds.slice(0, 3).join(',')}\n`,
-    )
-    return
-  }
-  if (forceHighLatencyNudge) {
-    await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, { highLatencyForce: true })
-    void ensureCursorMarathonKeepAlive()
-    await appendAppLog(
-      `[CursorHy2MarathonKeepalive]: high_latency_force_nudge cursor_conn=${cursorConnectionCount} api2_delay_ms=${highLatencyMs}\n`,
-    )
-    return
-  }
-  void runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount)
+  const { runMarathonTransportDialCycle } = await import('./marathonTransportDialOrchestrator')
+  await runMarathonTransportDialCycle(cursorConnectionCount)
 }
 
 async function runHungConnectionScanCycle(): Promise<void> {
@@ -500,6 +477,8 @@ async function runHungConnectionScanCycle(): Promise<void> {
   try {
     const rows = await listCursorConnectionRows()
     void syncMarathonDialToleranceIfNeeded(rows.length)
+    const { syncMarathonQuiesceIfNeeded } = await import('./marathonQuiesce')
+    await syncMarathonQuiesceIfNeeded(rows.length)
     const { syncAgentTransportFailuresFromCursorLogs } = await import('./agentTransportFailureSync')
     const { resolveCursorDedicatedActiveNode } = await import('./cursorHy2MarathonKeepalive')
     const activeNode = await resolveCursorDedicatedActiveNode()
@@ -516,12 +495,17 @@ async function runHungConnectionScanCycle(): Promise<void> {
         await appendAppLog(
           `[CursorTransportHealth]: hung_scan_heartbeat cursor_connections=${rows.length} hung=0\n`
         )
+        const { collectCanonicalVpsNodeHistorySnapshots } = await import('./canonicalVpsNodeSnapshot')
+        const mihomoVpsHistorySnapshot = await collectCanonicalVpsNodeHistorySnapshots()
         await appendTransportObservabilityEvent({
           kind: 'transport_hung_scan',
           probe_ok: true,
           recovery_action: 'none',
           hung_connection_count: 0,
-          error_detail: `heartbeat cursor_connections=${rows.length}`
+          error_detail: `heartbeat cursor_connections=${rows.length}`,
+          ...(mihomoVpsHistorySnapshot.length > 0
+            ? { mihomo_vps_history_snapshot: mihomoVpsHistorySnapshot }
+            : {})
         })
       }
       return
@@ -544,6 +528,9 @@ async function runHungConnectionScanCycle(): Promise<void> {
           api2geoLatencyMs: 0,
           marketplaceLatencyMs: 0
         }
+    const connectPartition = (
+      await readConnectPartitionSignalAsync(rows.length)
+    ).signal
     const attribution = resolveTransportProbeAttribution(probe, connectPartition)
     const action = decideRecoveryAction({
       probe,
@@ -559,7 +546,7 @@ async function runHungConnectionScanCycle(): Promise<void> {
       attribution,
       hungIds,
       action,
-      proxyNode: recentProbe?.proxyNode
+      proxyNode: recentProbeForHung?.proxyNode
     })
     if (action === 'L0') {
       await executeTransportRecovery('L0')
