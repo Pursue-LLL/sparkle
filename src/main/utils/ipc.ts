@@ -1,4 +1,5 @@
 import { app, ipcMain } from 'electron'
+import { SPARKLE_BUILD_STAMP, SPARKLE_SEMVER } from '../../shared/buildStamp'
 import {
   mihomoChangeProxy,
   mihomoCloseConnections,
@@ -81,6 +82,7 @@ import {
   getCommercialNodeReportPath,
   getCommercialNodeStabilityMarkers
 } from '../core/commercialNodeBenchmark'
+import { readRecentSessionNudgeAnchorsForNode, readProviderDelayHistoryFromLedger, readLatencyTruthSummaryForNode } from '../core/api2ProbeLedgerCore'
 import {
   checkCorePermission,
   manualGrantCorePermition,
@@ -153,7 +155,7 @@ import { startMonitor } from '../resolve/trafficMonitor'
 import { closeFloatingWindow, showContextMenu, showFloatingWindow } from '../resolve/floatingWindow'
 import { getAppName } from '@uruhalushia/sparkle-native'
 import { showNotification } from './notification'
-import { getUserAgent } from './userAgent'
+import { formatUnknownErrorForUi } from './formatUnknownErrorForLog'
 import { appendAppLog, clearCachedMihomoLogs, getCachedMihomoLogs } from './log'
 
 function ipcErrorWrapper<T>( // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -164,17 +166,7 @@ function ipcErrorWrapper<T>( // eslint-disable-next-line @typescript-eslint/no-e
     try {
       return await fn(...args)
     } catch (e) {
-      if (e && typeof e === 'object') {
-        if ('message' in e) {
-          return { invokeError: e.message }
-        } else {
-          return { invokeError: JSON.stringify(e) }
-        }
-      }
-      if (e instanceof Error || typeof e === 'string') {
-        return { invokeError: e }
-      }
-      return { invokeError: 'Unknown Error' }
+      return { invokeError: formatUnknownErrorForUi(e) }
     }
   }
 }
@@ -259,16 +251,16 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('mihomoGroupDelay', (_e, group, url, options) =>
     ipcErrorWrapper(mihomoGroupDelay)(group, url, options)
   )
-  ipcMain.handle('runManagedVpsDelayTests', (_e, proxyNames, testUrl) =>
+  ipcMain.handle('runManagedVpsDelayTests', (_e, proxyNames, testUrl, options) =>
     ipcErrorWrapper(async () => {
       const { runManagedVpsDelayTests } = await import('../core/managedVpsDelayTest')
-      return runManagedVpsDelayTests(proxyNames, testUrl)
+      return runManagedVpsDelayTests(proxyNames, testUrl, options)
     })()
   )
-  ipcMain.handle('runManagedVpsDelayTestSingle', (_e, proxyName, testUrl) =>
+  ipcMain.handle('runManagedVpsDelayTestSingle', (_e, proxyName, testUrl, options) =>
     ipcErrorWrapper(async () => {
       const { runManagedVpsDelayTestSingle } = await import('../core/managedVpsDelayTest')
-      return runManagedVpsDelayTestSingle(proxyName, testUrl)
+      return runManagedVpsDelayTestSingle(proxyName, testUrl, options)
     })()
   )
   ipcMain.handle('runNetworkTriangulationDiagnostic', () =>
@@ -364,6 +356,10 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('checkUpdate', ipcErrorWrapper(checkUpdate))
   ipcMain.handle('cancelUpdate', ipcErrorWrapper(cancelUpdate))
   ipcMain.handle('getVersion', () => app.getVersion())
+  ipcMain.handle('getBuildStamp', () => ({
+    buildStamp: SPARKLE_BUILD_STAMP,
+    semver: SPARKLE_SEMVER || app.getVersion(),
+  }))
   ipcMain.handle('platform', () => process.platform)
   ipcMain.handle('openUWPTool', ipcErrorWrapper(openUWPTool))
   ipcMain.handle('setupFirewall', ipcErrorWrapper(setupFirewall))
@@ -454,6 +450,21 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('getCommercialNodeReportPath', async () => getCommercialNodeReportPath())
   ipcMain.handle('getCommercialNodeStabilityMarkers', async () =>
     getCommercialNodeStabilityMarkers()
+  )
+  ipcMain.handle(
+    'getRecentSessionNudgeAnchorsForNode',
+    (_event, nodeName: string, lookbackMs?: number) =>
+      ipcErrorWrapper(readRecentSessionNudgeAnchorsForNode)(nodeName, lookbackMs),
+  )
+  ipcMain.handle(
+    'getProviderDelayHistoryFromLedger',
+    (_event, nodeName: string, lookbackMs?: number) =>
+      ipcErrorWrapper(readProviderDelayHistoryFromLedger)(nodeName, lookbackMs),
+  )
+  ipcMain.handle(
+    'getLatencyTruthSummaryForNode',
+    (_event, nodeName: string, lookbackMs?: number) =>
+      ipcErrorWrapper(readLatencyTruthSummaryForNode)(nodeName, lookbackMs),
   )
   ipcMain.handle('quitApp', () => app.quit())
   ipcMain.handle('notDialogQuit', () => {
