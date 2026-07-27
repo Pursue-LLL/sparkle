@@ -49,11 +49,67 @@ describe('agentTransportFailureWriterCore', () => {
     assert.equal(shouldPersistTransportFailure(row!), true)
   })
 
+  it('parses NAL Structured Logs Stream error PING timeout (520a4a94)', () => {
+    const ts = Date.parse('2026-07-27T17:42:12.698')
+    const row = parseTransportFailureLine(
+      `2026-07-27 17:42:12.698 [error] {"level":"error","key":"transport","message":"Stream error reported from extension host","metadata":{"error.message":"PING timed out","errorCode":"14","requestId":"e67c9ec5-754c-46cd-834e-36eaebecdc40","originalRequestId":"520a4a94-3f18-4e42-a5dd-d7abbd25ed9d","composerId":"3671a22c-5638-4942-8c57-b06d9303e25e"}}`,
+    )
+    assert.ok(row)
+    assert.equal(row?.ts, ts)
+    assert.equal(row?.requestId, 'e67c9ec5-754c-46cd-834e-36eaebecdc40')
+    assert.equal(row?.originalRequestId, '520a4a94-3f18-4e42-a5dd-d7abbd25ed9d')
+    assert.equal(row?.connectCode, '14')
+    assert.equal(row?.reasonSub, 'dial-timeout')
+    assert.equal(shouldPersistTransportFailure(row!), true)
+  })
+
+  it('parses Structured RetriableError PING timeout (520a4a94 THROW chain)', () => {
+    const ts = Date.parse('2026-07-27T17:42:12.701')
+    const row = parseTransportFailureLine(
+      `2026-07-27 17:42:12.701 [error] {"level":"error","message":"RetriableError THROW","metadata":{"error.message":"PING timed out","errorCode":"14","requestId":"throw-rid","originalRequestId":"520a4a94-3f18-4e42-a5dd-d7abbd25ed9d","attempt":5}}`,
+    )
+    assert.ok(row)
+    assert.equal(row?.ts, ts)
+    assert.equal(row?.originalRequestId, '520a4a94-3f18-4e42-a5dd-d7abbd25ed9d')
+    assert.equal(row?.connectCode, '14')
+  })
+
+  it('parses network diagnostic ConnectError PING timeout with kind tag', () => {
+    const row = parseTransportFailureLine(
+      '2026-07-27 17:57:15.272 [error] Cursor Network Diagnostic ping failed {"name":"ConnectError","rawMessage":"[unavailable] PING timed out","code":14}',
+    )
+    assert.ok(row)
+    assert.equal(row?.kind, 'network_diagnostic_ping_storm')
+    assert.match(row?.errMsg ?? '', /PING timed out/)
+    assert.equal(shouldPersistTransportFailure(row!), true)
+  })
+
   it('dedupes rows in 5s buckets', () => {
     const keyA = rowDedupeKey({ ts: 1_000, requestId: 'rid-a' })
     const keyB = rowDedupeKey({ ts: 1_500, requestId: 'rid-a' })
     const keyC = rowDedupeKey({ ts: 6_000, requestId: 'rid-a' })
     assert.equal(keyA, keyB)
     assert.notEqual(keyA, keyC)
+  })
+
+  it('parses df1501ed generation-ended-without-turnEnded as connect-silent-eof', () => {
+    const line =
+      '2026-07-25 14:51:54.960 [info] [ifm-event-v1] {"schemaVersion":1,"eventId":"pid-1784946784063-9esseuuh:32983","eventKind":"stream_terminated","source":"workbench-renderer","processInstanceId":"pid-1784946784063-9esseuuh","sequence":32983,"occurredAtMs":1784962314581,"requestId":"dd06a733-8ac3-4dc4-80e1-dc2b89bd3e5f","originalRequestId":"df1501ed-a0ad-46ae-950c-2057366f88b3","composerId":"59ee8211-9a8e-4f92-986f-4babb6ec38db","attempt":0,"actionCase":"resumeAction","segmentId":"pid-1784946784063-9esseuuh:segment:11","payload":{"segmentId":"pid-1784946784063-9esseuuh:segment:11","terminalKind":"silent_generation_end","terminalMs":1784962314581,"reason":"generation-ended-without-turnEnded","lastSseCase":"tokenDelta","lastSseN":141569,"pendingTool":0,"lastActivityMs":1784962306959,"gapSinceActivityMs":7622,"durationMs":6435381}}'
+    const row = parseTransportFailureLine(line)
+    assert.ok(row)
+    assert.equal(row?.requestId, 'dd06a733-8ac3-4dc4-80e1-dc2b89bd3e5f')
+    assert.equal(row?.originalRequestId, 'df1501ed-a0ad-46ae-950c-2057366f88b3')
+    assert.equal(row?.reasonSub, 'connect-silent-eof')
+    assert.equal(shouldPersistTransportFailure(row!), true)
+  })
+
+  it('does not persist short generation-ended-without-turnEnded as connect-silent-eof', () => {
+    const line =
+      '[ifm-event-v1] {"schemaVersion":1,"eventKind":"stream_terminated","occurredAtMs":1784962314581,"requestId":"rid-short","originalRequestId":"rid-short","payload":{"reason":"generation-ended-without-turnEnded","durationMs":120000,"gapSinceActivityMs":5000}}'
+    const row = parseTransportFailureLine(line)
+    assert.ok(row)
+    assert.equal(row?.reasonSub, 'stream-end-without-turn')
+    assert.equal(row?.reasonType, 'cursor-server')
+    assert.equal(shouldPersistTransportFailure(row!), false)
   })
 })

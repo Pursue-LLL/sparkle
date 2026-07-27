@@ -4,8 +4,9 @@
 
 import { appendFile, mkdir, open, readFile, readdir, stat } from 'fs/promises'
 import { existsSync } from 'fs'
-import { basename, join } from 'path'
+import { join } from 'path'
 import { homedir } from 'os'
+import { discoverCursorLogRoots } from './cursorLogDiscoveryCore'
 import {
   parseTransportFailureLine,
   rowDedupeKey,
@@ -15,6 +16,7 @@ import {
 
 const RENDERER_TAIL_BYTES = 2_000_000
 const EXTHOST_TAIL_BYTES = 512_000
+const STRUCTURED_LOG_TAIL_BYTES = 512_000
 const SYNC_OVERLAP_MS = 120_000
 const MAX_LOG_SESSIONS = 6
 
@@ -25,30 +27,31 @@ function sparkleAgentTransportPath(): string {
 let lastSyncFinishedAtMs = 0
 let syncInFlight = false
 let syncBootstrapped = false
+let cachedCursorLogRoots: { atMs: number; roots: string[] } | undefined
 
-function cursorDataDirFromAppPrefix(appPrefix: string): string {
-  const appName = basename(appPrefix.trim())
-  const stem = appName.endsWith('.app') ? appName.slice(0, -4) : appName
-  return join(homedir(), 'Library', 'Application Support', `${stem}-data`)
-}
+const CURSOR_LOG_ROOTS_CACHE_MS = 60_000
 
 export async function resolveCursorDataDirs(options?: {
   appPathPrefixes?: string[]
+  bypassCache?: boolean
 }): Promise<string[]> {
   const cursorProxyAppPathPrefixes =
     options?.appPathPrefixes ??
     (await (await import('../config/app')).getAppConfig()).cursorProxyAppPathPrefixes ??
     []
-  const dirs = new Set<string>()
-  for (const prefix of cursorProxyAppPathPrefixes) {
-    if (prefix.trim()) {
-      dirs.add(cursorDataDirFromAppPrefix(prefix))
+  if (!options?.bypassCache && cachedCursorLogRoots) {
+    const ageMs = Date.now() - cachedCursorLogRoots.atMs
+    if (ageMs >= 0 && ageMs < CURSOR_LOG_ROOTS_CACHE_MS) {
+      return cachedCursorLogRoots.roots
     }
   }
-  dirs.add(join(homedir(), 'Library', 'Application Support', 'Cursor-3.1.15-data'))
-  dirs.add(join(homedir(), 'Library', 'Application Support', 'Cursor-data'))
-  dirs.add(join(homedir(), 'Library', 'Application Support', 'Cursor-2-data'))
-  return [...dirs].filter((dir) => existsSync(dir))
+  const roots = discoverCursorLogRoots({ appPathPrefixes: cursorProxyAppPathPrefixes })
+  cachedCursorLogRoots = { atMs: Date.now(), roots }
+  return roots
+}
+
+export function resetCursorLogRootsCacheForTests(): void {
+  cachedCursorLogRoots = undefined
 }
 
 export async function listRendererLogFiles(cursorDataDir: string): Promise<string[]> {
@@ -158,7 +161,7 @@ export async function appendAgentTransportFailureRow(
   proxyNodeFallback?: string,
 ): Promise<void> {
   const payload = {
-    kind: 'agent_transport_failure',
+    kind: row.kind?.trim() || 'agent_transport_failure',
     ts: row.ts,
     requestId: row.requestId ?? '',
     originalRequestId: row.originalRequestId ?? row.requestId ?? '',
@@ -194,10 +197,7 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
     let written = 0
     const cursorDataDirs = options?.cursorDataDirs ?? (await resolveCursorDataDirs())
     for (const cursorDataDir of cursorDataDirs) {
-      for (const filePath of await listRendererLogFiles(cursorDataDir)) {
-        const tailBytes = filePath.endsWith('exthost.log')
-          ? EXTHOST_TAIL_BYTES
-          : RENDERER_TAIL_BYTES
+      const ingestLogTail = async (filePath: string, tailBytes: number): Promise<void> => {
         const text = await readLogFileTail(filePath, tailBytes)
         for (const line of text.split('\n')) {
           const candidate = parseTransportFailureLine(line)
@@ -213,14 +213,27 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
           written += 1
         }
       }
+
+      for (const filePath of await listRendererLogFiles(cursorDataDir)) {
+        const tailBytes = filePath.endsWith('exthost.log')
+          ? EXTHOST_TAIL_BYTES
+          : RENDERER_TAIL_BYTES
+        await ingestLogTail(filePath, tailBytes)
+      }
+      for (const filePath of await listCursorStructuredLogFiles(cursorDataDir)) {
+        await ingestLogTail(filePath, STRUCTURED_LOG_TAIL_BYTES)
+      }
     }
     lastSyncFinishedAtMs = Date.now()
-    if (written > 0 && options?.logWrites !== false) {
+    if (options?.logWrites !== false) {
       try {
         const { appendAppLog } = await import('../utils/log')
-        await appendAppLog(
-          `[AgentTransportFailureSync]: wrote ${written} row(s) → ${sparkleAgentTransportPath()}\n`,
-        )
+        const roots = cursorDataDirs.length
+        if (written > 0) {
+          await appendAppLog(
+            `[AgentTransportFailureSync]: wrote ${written} row(s) roots=${roots} → ${sparkleAgentTransportPath()}\n`,
+          )
+        }
       } catch {
         // Logging is best-effort; jsonl write is authoritative.
       }
@@ -236,7 +249,7 @@ export function startAgentTransportFailureSync(): void {
     return
   }
   syncBootstrapped = true
-  // Periodic sync is driven by cursorTransportHealth hung_scan (same 30s cadence).
+  // Periodic sync is driven by cursorTransportHealth hung_scan (15s cadence).
   void (async () => {
     const { resolveCursorDedicatedActiveNode } = await import('./cursorHy2MarathonKeepalive')
     const proxyNode = await resolveCursorDedicatedActiveNode()
@@ -252,4 +265,5 @@ export function resetAgentTransportFailureSyncForTests(): void {
   stopAgentTransportFailureSync()
   lastSyncFinishedAtMs = 0
   syncInFlight = false
+  resetCursorLogRootsCacheForTests()
 }

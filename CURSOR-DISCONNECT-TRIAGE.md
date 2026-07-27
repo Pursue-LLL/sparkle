@@ -35,8 +35,22 @@
 | `MarathonDialTolerance` | Cursor 连接 ≥12 时 VPS Reality/HY2 leaf **dial timeout 5s→45s**（热更新 provider，不切节点、不关连接） |
 | `transport_pair + api2geo` | ledger 同时探 `api2.cursor.sh` + `api2geo.cursor.sh`；api2 绿但 api2geo 红 → `transport_partition_stale`（**只观测，不 failover**） |
 | `session_transport_nudge` | HY2 且 cursor_conn≥12 时每 **40s** api2+api2geo 短探针（**保活，非 failover**） |
-| `token_gap_force_nudge` | hung_scan 读 renderer tail：任一 RID **≥20s** 无 meaningful token/tool SSE → 立即 session nudge（15s cooldown）；覆盖 ~33s server EOF 窗口（≥**1.26.50**） |
-| `Connect partition` | mass PING/code-14 → 强制 nudge + marathon keepalive（**5d03320f 类**） |
+| **P9 Marathon Quiesce** | conn≥12：`health-check.enable=false` + 暂停 `proxyHealthMonitor`（**quiesce 全周期含 hysteresis**）+ UI 过滤 delay=0 + **Marathon 静默** badge（**1.26.53+** · **2.1 @1.26.56**） |
+| **P9 Phase 2 Dial Plane** | `shouldAllowObservabilityDial` · block `/healthcheck` API @ quiesce · probe_cycle defer · warmup/marketplace skip · Tray last-successful · nudge → ledger · **柱图剔除 nudge**（**1.26.56+**） |
+| **P10 MarathonCoreRestartGuard** | quiesce active 或 conn≥12：**block core cold shutdown** + install/upgrade PRE-gate · `[CoreLifecycle]` reason log · override `SPARKLE_FORCE_CORE_RESTART=1`（**1.26.58+**） |
+| **P13 MTCP Rescue/Warmth** | `MarathonWarmthTrigger` · conn≥80 **warmth defer · rescue 永不 defer** · rescue bypass P12 dial budget（**1.26.63+**） |
+| **`token_gap_nudge outcome=`** | hung_scan：≥20s token 静默 → rescue nudge；**单行 SSOT** `outcome=executed\|skipped_*\|failed`（**1.26.64+**）；**禁止**用旧 `token_gap_force_nudge` 定责 |
+| **`silent_generation_end_nudge outcome=`** | **P14 · 1.26.71+**：马拉松 `generation-ended-without-turnEnded`（duration≥30min · gap<30s）→ Connect-path 三探针 + HY2 rescue；**禁止**用 gap<20s 否定 rescue |
+| **`connect-silent-eof` jsonl** | **P14b**：仅 marathon silent EOF 写入 `agent-transport-failures.jsonl`（`durationMs≥1800000`）；短会话标 `stream-end-without-turn` **不 persist** |
+| **`connect_path_delay_ms` / `partition_stale=connect_path`** | **P14a**：api2 绿但 `agentn.global.api5` 探针失败 → split-brain 观测（不切节点） |
+| **`[MarathonTransportDial] marathon_connect_path_pulse outcome=executed`** | **§23 P15 · 1.26.73+**：马拉松 active≥30min 每 **60s 独立** 三探针（**不**被 token_gap trigger 饿死）；`partition_stale=1` → inline `connect_path_partition` rescue |
+| **`connect_path_partition` via `connectPathPartitionDetected`** | **P15b**：上次 pulse `partition_stale` 喂回 hung_scan trigger 选择（修复 1.26.72 hardcoded false） |
+| **`[UltraConnObservability]`** | **P16c · 1.26.76+**：conn>500 节流观测（defer 计数 · VpsL4 ok · synthetic defer streak）；**≠ VPS 宕** |
+| **`latency_delta_rescue_nudge outcome=`** | **P16b · 1.26.76+**：Mac 全路径 vs VPS 本体 P50 delta≥15s + 短 HTTP 绿 → MTDO rescue（与 `connect_partition` 同级） |
+| **`connect_partition`（synthetic）** | **P16a**：Diagnostic PING defer×2 + VpsL4 ok + conn≥200 窗 60s → 合成 partition（jsonl 无 Diagnostic 行时） |
+| **`partition_blind_spot`** | **P18 · 1.26.77+**：jsonl=0 且 Structured≥2 次 PING 失败 → app-log 告警（P17 日志根未 ingest 时） |
+| **P17 Structured ingest** | **1.26.77+**：`Cursor/logs` Structured tail + `originalRequestId` 归因；triage `p17-blind-spot.txt` |
+| `Connect partition` | mass PING/code-14 → `connect_partition` rescue nudge + outcome 日志（**5d03320f 类**） |
 | **VPS hy2-in QUIC** | conntrack 3600s + hy2-in **`udp_timeout: 3600s`**（sing-box **1.13.14+ 必做**）；`idle_timeout`/`keep_alive_period` 仅 **≥1.14**（`patch-hy2-in-quic-marathon.sh`）— **23bb8c85/a9722f2 EOF 类 L3 修复** |
 
 修复 Sparkle/Guard 时以上目标优先于「看起来干净」的 transport 清理。
@@ -67,7 +81,7 @@
 
 ### 禁止作为排查结论的内容
 
-- Guard ON/OFF、是否拦截、如何 Continue — 这些与**根因定责无关**（除非 Guard 本身改写了 transport，需有 renderer 证据）。
+- 「`token_gap_force_nudge` 出现 = nudge 已执行」— **≥1.26.64** 须读 `token_gap_nudge outcome=`；仅 `outcome=executed` 表示 dial 成功（BUG-2026-07-24-007）。
 - 「节点延迟高所以断连」— 必须对比 **A 时刻** 6 节点 history + 是否 split-brain。
 - 「VPS 正常」— 仅 B 时刻 SSH/UI 测速 **不能** 否定 A 断连。
 - 未跑 `triage-cursor-disconnect.sh` 就下结论。
@@ -145,7 +159,12 @@ ssh kr-vps "grep -E '^\\+0000 2026-07-18 11:3[567]:' /var/log/sing-box/sing-box.
 
 ### §2 Cursor 客户端（A 时刻，权威）
 
-**路径：** `~/Library/Application Support/Cursor-*-data/logs/*/window*/renderer.log`
+**路径（Cursor 3.x 双根 · P17/P18）：**
+
+- **Stock 日志根**：`~/Library/Application Support/Cursor/logs/*/window*/…`（Structured Logs · requestTraces · 本案 520a4a94 mass PING 在此）
+- **Legacy userData 根**：`~/Library/Application Support/Cursor-*-data/logs/*/window*/renderer.log`
+
+triage v3.4：若 RID 仅在 `Cursor/logs` Structured 命中、`*-data/logs` 未命中 → `p17-blind-spot.txt` 标注 **P17_BLIND_SPOT=1**。
 
 ```bash
 RID="<request-id>"
@@ -413,6 +432,12 @@ for px in d.get('providers',{}).get(pid,{}).get('proxies',[]):
 | 红字「超时」 | **0** | health-check **失败**（手动测速默认 timeout 5s；provider 失败亦记 0） |
 | Sparkle badge / 评分 | — | `CURSOR_PROBE_SLOW_MS=500`（`nodeQualityScore.ts`），**评分门槛**，不是 mihomo 超时 |
 
+**v1.26.53+ Marathon Quiesce（P9 Phase 1）：** conn≥12 时 Sparkle **暂停** provider scheduled health-check + `proxyHealthMonitor`；UI tooltip **隐藏** `delay=0` 红柱并显示 **Marathon 静默** badge。
+
+**v1.26.55+ Dial Plane（P9 Phase 2）：** quiesce active 期间（**含 conn 已降至 &lt;12 的 60s exit hysteresis**）block `/healthcheck` API cache-miss · defer probe_cycle / warmup / marketplace · Tray 读 **last successful** delay · nudge RTT 写 **ledger**（`scope=active` `kind=session_nudge`），**不**改变生产 nudge 仍走 `mihomoProxyDelay`。
+
+**Marathon 期间 delay=0 = 隧道拥塞/静默，非 VPS 宕**（仍可用 `scope=vps ssh_curl` 独立验收）。HY2 **300ms 基线 + 偶发 500–800ms** 常与 nudge 短探针排队成功 **1:1**，看中位数非尾部。
+
 **定责顺序：** 用户报「测速记录」→ 先 curl provider `{profileId}-vps` 的 `history[-8]` 对齐 UI → 再查 ledger @ A → `vps_node_snapshots` 仅作 A 时刻单点交叉，**不作** delay 分布统计。
 
 **v1.26.38+ provider 拆分：** 6 VPS 在独立 provider `{profileId}-vps`（仅 6 leaf，api2 health-check）；商用节点留在 `{profileId}`（generate_204）。UI 测速 batch 从 76 节点降为 6，尖峰显著减少。
@@ -467,6 +492,7 @@ L4  VPS sing-box → api2    SSH curl api2 ~500–620ms
 | 6 节点同时 >1000ms | L1 公司网或 Cursor 全球（罕见） |
 | VPS curl 失败 | **L4** sing-box / VPS 出口 |
 | A 时刻 probe 全绿但断连 | **L3 QUIC 静默断流**（split-brain） |
+| **cursor_conn > 500** @ Marathon | **QUIC 饱和风险** — defer 预期 · **≠ VPS 宕** · 查 `UltraConnObservability` + VpsL4Probe |
 
 ---
 
@@ -654,7 +680,24 @@ rg "L0|L1|transport_partition_stale|\[CursorTransportHealth\]" "$APP_LOG"
 |------|------|
 | `action=L0` / `L0 closed` 时间匹配 A | Sparkle 杀 hung 连接 |
 | `L1` / `transport_partition_stale` 时间匹配 A | split-brain 清池 |
-| 无 L0/L1，probe 全绿 | **QUIC 静默断流** → Step 4/5 |
+| 无 L0/L1，probe 全绿 | **QUIC 静默断流** → **Step 3c** → Step 4/5 |
+
+### Step 3a：PostCoreBootstrap / CTHC 是否存活（**A 之前**必查）
+
+Sparkle 若 PostCoreBootstrap 失败，**整个下午无** `token_gap` / `connect_stream_keepalive` / `transport_hung_scan` — 定责时 Mac 侧会假阴性。
+
+```bash
+rg "PostCoreBootstrap|markCoreReadyAtMs|Api2ProbePlane ON|token_gap_nudge outcome=|connect_stream_keepalive" \
+  ~/Library/Application\ Support/sparkle/logs/app-$(date +%Y-%-m-%-d).log
+```
+
+| 结果 | 含义 |
+|------|------|
+| `PostCoreBootstrap.*failed.*markCoreReadyAtMs` | Sparkle asar **断裂** → `pnpm run upgrade:mac`（含 `verify-sparkle-main-asar.mts` 门禁）→ ⌘Q Sparkle → 确认 `Api2ProbePlane ON` |
+| 有 `Api2ProbePlane ON`、A 窗口无 L0/L1 | CTHC 在跑；继续 Step 3c |
+| A 之前最后 hung_scan **>30min** 且无上述 ON 行 | **CTHC 全盲** — 先修 Sparkle，再定责 L3 |
+
+台账：**BUG-2026-07-23-004**（`BUGFIX_LOG.md`）。
 
 ---
 
@@ -670,6 +713,91 @@ rg "L0|L1|transport_partition_stale|\[CursorTransportHealth\]" "$APP_LOG"
 | `probe_attribution` | `transport_partition_stale` = api2 败 + marketplace 成 |
 | `ok` / `latency_ms` | 短探针（≠ 长流健康） |
 | `recovery_action` | L0–L3 / none |
+
+---
+
+## Step 3c：mihomo 6 节点 UI 测速记录 @ A ±5min（V5.6 · **强制**）
+
+**目的**：与用户 UI「测速记录（mihomo）」对齐，定责 **L3 协议 / KR-JP 路径**；排除「代理 ms 高 → 断连根因」误判。
+
+**何时必做（缺一不可即 V5.6=SKIP → 定责 incomplete）**
+
+| 触发 | 说明 |
+|------|------|
+| 用户报 ms / 超时 / >500 | 唯一与用户所见一致的数据源（见 §6 节点 delay 数据源对照） |
+| IFM **`resumeAction` / 客户端 · resumeAction`** | 须证 A 时刻 6 节点是否全绿，避免把 EH 误触发归因为代理 |
+| ledger @ A 全绿 + 仍断 | L3 QUIC 长流 / 协议差异排查 |
+| 定责输出 V5.6 | §6 模板 `[VPS @ A] … V5.6=…` **必填** |
+
+**数据源优先级（按顺序尝试，勿跳步）**
+
+| 优先级 | 来源 | 窗口 | 说明 |
+|--------|------|------|------|
+| **① live curl** | mihomo unix socket → `{profileId}-vps` leaf `history[]` | **A ±5min** | 与 UI 完全一致；Sparkle 运行中首选 |
+| **② CTHC 归档** | `network-stability-events.jsonl` · `type=hung_scan_heartbeat` · 字段 `mihomo_vps_history_snapshot` | **A ±30s** | Sparkle **≥1.26.52**；history 已滚出时的 fallback |
+| **③ ledger active** | `api2-probe-ledger.jsonl` · `scope=active` · `latency_ms` | A ±60s | **仅**当前选用节点单点；**不能**代替 6 节点 |
+
+**禁止**：用 `vps_node_snapshots` 统计「>500ms 占比」或复述用户测速记录（见 §6 节点 delay — `vps_node_snapshots` 行）。
+
+### 3c-1 · live curl（Sparkle / mihomo 在跑）
+
+```bash
+# A 时刻：本地 CST 转 UTC 写入 INCIDENT_UTC（例：CST 20:52:12 → 2026-07-22T12:52）
+INCIDENT_UTC="2026-07-22T12:52"
+SOCK=/tmp/sparkle-mihomo-api.sock
+PROVIDER_ID="199e64b94e8"          # curl providers 列表确认
+VPS_PROVIDER_ID="${PROVIDER_ID}-vps" # v1.26.38+：6 VPS 独立 provider
+
+# 列出 A±5min 内各 leaf 最近一条 history（与 UI 柱图同源）
+curl -s --unix-socket "$SOCK" http://localhost/providers/proxies \
+  | INCIDENT_UTC="$INCIDENT_UTC" VPS_PROVIDER_ID="$VPS_PROVIDER_ID" python3 -c "
+import sys,json,os
+from datetime import datetime, timedelta, timezone
+utc=os.environ['INCIDENT_UTC']
+a=datetime.fromisoformat(utc.replace('Z','+00:00')).replace(tzinfo=timezone.utc)
+lo,hi=a-timedelta(minutes=5),a+timedelta(minutes=5)
+pid=os.environ.get('VPS_PROVIDER_ID','199e64b94e8-vps')
+nodes={'JP-VPS-HY2','JP-VPS-Reality','JP-VPS-TUIC','KR-VPS-HY2','KR-VPS-Reality','KR-VPS-TUIC'}
+d=json.load(sys.stdin)
+proxies=d.get('providers',{}).get(pid,{}).get('proxies',[])
+for px in proxies:
+    if px.get('name') not in nodes: continue
+    hist=px.get('history',[])
+    in_win=[h for h in hist if h.get('time') and lo <= datetime.fromisoformat(h['time'].replace('Z','+00:00')) <= hi]
+    last8=[h.get('delay',0) for h in hist[-8:]]
+    if in_win:
+        best=max(in_win, key=lambda h: h.get('time',''))
+        print(px['name'], '@A±5m=', best.get('delay'), 'time=', best.get('time'), 'alive=', px.get('alive'))
+    else:
+        print(px['name'], '@A±5m=**滚出**', 'ui_last8=', last8, 'alive=', px.get('alive'))
+"
+```
+
+### 3c-2 · CTHC 归档 fallback（history 滚出 / Sparkle 已关）
+
+```bash
+# A 时刻 UTC 前缀过滤（勿 tail 整文件）
+INCIDENT_UTC="2026-07-22T12:52"
+rg "\"ts\":\"${INCIDENT_UTC:0:13}" ~/Library/Application\ Support/Sparkle/logs/../network-stability-events.jsonl 2>/dev/null \
+  || rg "\"ts\":\"${INCIDENT_UTC:0:13}" ~/.sparkle/network-stability-events.jsonl
+# 人工找 type=hung_scan_heartbeat 且 |ts−A|≤30s 的行 → 读 mihomo_vps_history_snapshot（6 leaf × history last8+time）
+```
+
+> **路径**：events 默认 `~/Library/Application Support/Sparkle/network-stability-events.jsonl`（与 `~/.sparkle/` 并存时以 **Application Support** 为准）。
+
+### 3c-3 · 解读表
+
+| @A±5m 结果 | 定责 | 置信度 |
+|------------|------|--------|
+| 6 节点 delay>0 且均 ≤500ms | **NOT L3 延迟/超时** @ A | definitive @ A |
+| 某 leaf delay=**0**（UI「超时」）@ A±5m | L3 该协议 health-check 失败 @ A | partial→definitive |
+| 某 leaf delay>**500** @ A±5m（仍 alive） | L3 偏慢尖峰 @ A；** alone 不足以定断连根因** | partial |
+| `@A±5m=**滚出**` 且 ② 无 snapshot | V5.6 **PARTIAL**；注明「history 容量 ~10 条 / UI 显 8」 | inconclusive @ A |
+| 6 节点全绿 @ A + resumeAction + renderer EH unresponsive @ A | **L1 EH 误触发**（非代理） | definitive（交叉 Step 2 renderer） |
+
+**history 滚出（常见）**：mihomo 每 leaf ~**10** 条 · UI **`history[-8]`** · 距 A **>~25–40min** 的旧柱常已滚出 → **必须**写 `V5.6=PARTIAL(rolled)` 并附 ledger active @ A 作交叉，**禁止**用当前 UI 柱图反推 A 时刻因果。
+
+**resumeAction 定责口诀**：V5.6 全绿 @ A + SSE tokenDelta/textDelta @ A−10s → **罪魁祸首 L1 EH**，不是 VPS/代理。
 
 ---
 
@@ -741,7 +869,7 @@ mihomo provider health-check 与 UI ms 测的是 **Mac→TUN→某入站协议�
 3. agent-transport-failures @ A → proxyNode 是否 *-HY2/*-TUIC
 4. ledger + events @ A ±60s → split-brain / recovery_action
 5. app-log @ A ±60s → L0/L1 是否为后果
-6. mihomo 6 节点 history @ A ±5min → L3 协议 / KR-JP pattern
+6. **Step 3c** · mihomo 6 节点 history @ A ±5min（V5.6）→ L3 协议 / KR-JP pattern；滚出则读 `mihomo_vps_history_snapshot`
 7. （可选 B）Sparkle 高级设置 →「Cursor 网络三点定责」→ Reality 三点
 8. （可选 B）VPS SSH L4 curl + sing-box log
 9. （可选）Mac L1 直连（见下）→ 排除公司网

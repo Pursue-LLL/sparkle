@@ -1,8 +1,22 @@
+// [INPUT] (pure — no external deps)
+// [OUTPUT] detectConnectPartitionSignal · resolveConnectPartitionWindowMs · ConnectPartitionSignal types
+// [POS] Connect split-brain partition 纯函数 SSOT；conn≥200 时分区窗 60s（P16 ultra-conn Diagnostic PING 23–39s）。
+
 /** Connect long-stream failures while short HTTP probes stay green (split-brain). */
 
 export const CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS = 12
 export const CONNECT_PARTITION_MIN_PING_FAILURES = 2
 export const CONNECT_PARTITION_WINDOW_MS = 8_000
+/** P16: ultra-conn sequential Diagnostic PING (23–39s timeout) needs wider window. */
+export const CONNECT_PARTITION_ULTRA_CONN_THRESHOLD = 200
+export const CONNECT_PARTITION_ULTRA_CONN_WINDOW_MS = 60_000
+
+export function resolveConnectPartitionWindowMs(cursorConnectionCount: number): number {
+  if (cursorConnectionCount >= CONNECT_PARTITION_ULTRA_CONN_THRESHOLD) {
+    return CONNECT_PARTITION_ULTRA_CONN_WINDOW_MS
+  }
+  return CONNECT_PARTITION_WINDOW_MS
+}
 
 export interface AgentTransportFailureRow {
   ts?: number | string

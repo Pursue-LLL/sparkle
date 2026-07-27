@@ -1,6 +1,62 @@
 # Sparkle Bugfix Log
 
-> **2026-07-22 最新**：① **BUG-2026-07-22-002** — marathon read ETIMEDOUT（0946940c）· P8 `connect_stream_keepalive` @ **1.26.51** ② **BUG-2026-07-22-001** — nudge dial 风暴（4950032b）· defer @ conn≥80 @ **1.26.51**
+> **2026-07-27 最新**：**BUG-2026-07-27-018** — hot+jsonl 双计数 + jsonl homedir 固化 + blind_spot 缺失 · **1.26.78**（P18）
+
+### BUG-2026-07-27-018 · v1.26.78 · transport_observability_hardening (P18)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | P17 ship 后 audit 发现：sync→MTDO 同事件双计数 · CTHC/测试 homedir 模块加载固化 · mass PING 时 jsonl=0 无 blind_spot 告警 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle ≤1.26.77 |
+| **修复目标版本** | Sparkle 1.26.78 |
+| **根因** | `readConnectPartitionSignalAsync` 未 dedupe · `connectPartitionReader` jsonl 路径 module-load homedir · §25.3.4 观测项未 implement |
+| **修复** | P18a `transportObservabilityMergeCore` · P18b `partitionBlindSpotCore` + MTDO 日志 · P18c Structured tail cache + roots 60s TTL · P18d triage v3.4 · RetriableError parser · homedir 动态化 |
+| **回归** | `transportObservabilityMergeCore.test.ts` · `partitionBlindSpotCore.test.ts` · `connectPartitionReader.test.ts` · 520a4a94 replay pingFailureCount=2 |
+| **用户动作** | `upgrade:mac` → soak @conn≥80 · mass PING 时验 `[CursorLogPlane]` + 可选 `[PartitionBlindSpot]` |
+
+> **2026-07-27**：**BUG-2026-07-27-017** — Cursor 3.x Structured Logs 失明 · **1.26.77**（P17）
+
+### BUG-2026-07-27-017 · v1.26.77 · cursor_log_plane_ssot + nal_transport_ingest (P17)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | RID `520a4a94` @ conn≈436 · `[unavailable] PING timed out` · MTDO `skipped_coalesced` · 零 `connect_partition_rescue_nudge` · jsonl 无该 RID |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle ≤1.26.76 |
+| **修复目标版本** | Sparkle 1.26.77 |
+| **根因** | `agentTransportFailureSync` 仅扫 `Cursor-*-data`；Cursor 3.x 主日志在 `Cursor/logs` · NAL `Stream error reported…` JSON 无 parser · hung_scan 只读 jsonl tail |
+| **修复** | P17a `discoverCursorLogRoots()` SSOT · P17b `parseCursorStructuredTransportLine`（含 originalRequestId）· P17c `readConnectPartitionSignalAsync` Structured hot tail |
+| **反复次数** | 第 1 次闭合此 observability blind spot |
+| **为何反复** | P16 假设 Diagnostic/renderer 已覆盖全部 PING 源；未读 Structured Logs |
+| **踩坑** | Structured 行 `requestId`≠马拉松 `originalRequestId`；partition 必须用后者 |
+| **回归** | `cursorLogDiscoveryCore.test.ts` · `agentTransportFailureSync.test.ts`（520a4a94 fixture）· `connectPartitionReader.test.ts` |
+| **用户动作** | `upgrade:mac` → 续跑当前 RID / 新 marathon soak @conn≥200 |
+| **代码位置** | `cursorLogDiscoveryCore.ts` · `cursorStructuredTransportIngestCore.ts` · `agentTransportFailureWriterCore.ts` · `connectPartitionReader.ts` |
+
+> **2026-07-27**：**BUG-2026-07-27-016** — ultra-conn QUIC 饱和 Rescue 失明 + latencyDelta dead path · **1.26.76**（P16）
+
+### BUG-2026-07-27-016 · v1.26.76 · connect_ping_storm + latency_delta_rescue (P16)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | @816 conn Network Diagnostic 四路 FAIL（PING/Chat/Agent/Downloads）；Sparkle 仅 `session_transport_nudge_deferred` · 零 `connect_partition_rescue_nudge` |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle ≤1.26.75 |
+| **修复目标版本** | Sparkle 1.26.76 |
+| **根因** | Diagnostic PING 未写入 jsonl；`high_latency_warmth` @conn≥80 defer；`latencyDeltaGate` 只观测不 dial |
+| **修复** | P16a Diagnostic/structured log ingest + synthetic partition @defer×2+VpsL4 ok + **conn≥200 分区窗 60s** + coalesce 虚拟 defer 计数；P16b `latency_delta_rescue`；P16c `UltraConnObservability` |
+| **反复次数** | 第 1 次闭合此 failure mode |
+| **为何反复** | P13 假设 jsonl 有 PING 行；Diagnostic 路径未收敛 |
+| **踩坑** | conn>500 defer ≠ VPS 宕；看 `UltraConnObservability` + VpsL4Probe |
+| **回归** | `connectPingStormCore.test.ts` · `marathonTransportDialOrchestratorCore.test.ts` · `agentTransportFailureSync.test.ts` |
+| **用户动作** | `upgrade:mac` → soak 30min @conn≥80 · 手动 Diagnostic 一次 |
+| **代码位置** | `connectPingStormCore.ts` · `marathonTransportDialOrchestrator.ts` · `agentTransportFailureSync.ts` |
+
+> **2026-07-24 最新**：① **BUG-2026-07-24-015** — rescue bypass delay probe slot · **1.26.70** ② **BUG-2026-07-24-014** — quiesce bypass · **1.26.69** ③ **BUG-2026-07-24-013** — L2 fake-ip flush · **1.26.69**
 
 每次修复用户可感知 bug 后 **必须追加一条**。架构教训与 Cursor 代理操作手册见 [reports/cursor-marathon-playbook.md](reports/cursor-marathon-playbook.md)、[src/main/core/_ARCH.md](src/main/core/_ARCH.md)；本文件只做 **修复台账**（症状 → 根因 → 计划/实际修复 → 版本 → 证据）。
 
@@ -25,6 +81,353 @@
 | **用户动作** | 临时 workaround |
 | **代码位置** | grep 锚点 |
 ```
+
+---
+
+## 2026-07-24
+
+### BUG-2026-07-24-010 · v1.26.66 · KR-VPS 关服（源码 + SSH L4 探针）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | KR 自建 VPS（141.164.43.229）关服后 app.log 每 300s 出现 `kr-vps` SSH L4 探针超时；用户配置已删 KR-VPS 节点 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.65** |
+| **修复目标版本** | Sparkle **1.26.66** |
+| **根因** | `vpsL4ProbeCore.ts` `VPS_SSH_HOSTS` 硬编码 kr-vps/jp-vps；`vpsDirectBypass` 注入 kr-vps DIRECT 规则；canonical 节点含 KR-VPS |
+| **修复** | 移除 kr-vps SSH 探针与 DIRECT 别名 · JP-only canonical/triangulation · 用户 profile 已清 KR-VPS |
+| **反复次数** | 第 1 次 |
+| **踩坑** | 用户数据与源码硬编码需同步清理；asar 热更不能替代正式装包 |
+| **回归** | `vpsL4ProbeCore.test.ts` · `vpsDirectBypass.test.ts` · `vpsCanonicalNodes.test.ts` · `networkTriangulationDiagnosticCore.test.ts` |
+| **用户动作** | 升级 **1.26.66** 并重启 Sparkle |
+| **代码位置** | `vpsL4ProbeCore.ts` · `vpsDirectBypass.ts` · `vpsCanonicalNodes.ts` · `networkTriangulationDiagnosticCore.ts` |
+
+### BUG-2026-07-24-011 · v1.26.67 · hung_scan appendAppLog ReferenceError（P13d connect_partition 失明）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | app.log **5021×** `hung scan failed: appendAppLog is not defined`；全仓 **零** `connect_partition_nudge`；PING cluster 存在但 rescue 永不落 log |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.66** |
+| **修复目标版本** | Sparkle **1.26.67** |
+| **根因** | `cursorHy2MarathonKeepalive.ts` 调用 `appendAppLog` 但未 import → hung_scan @15s 抛 ReferenceError → `runMarathonSessionWarmthIfDue` 中断 |
+| **修复** | 补 `import { appendAppLog } from '../utils/log'` |
+| **反复次数** | P13d soak 第 1 轮日志实锤 |
+| **为何反复** | 单测 mock 未覆盖 executor 层 import 完整性 |
+| **踩坑** | outcome 日志在 TransportHealth 层，executor 内 appendAppLog 缺 import 仍让 hung_scan 整体 fail |
+| **回归** | 装包后 app.log 无 `hung scan failed: appendAppLog`；conn≥12 + PING cluster 应见 `connect_partition_nudge outcome=` |
+| **用户动作** | 升级 ≥1.26.67 |
+| **代码位置** | `cursorHy2MarathonKeepalive.ts:4` |
+
+### BUG-2026-07-24-015 · v1.26.70 · marathon_rescue bypass mihomo delay probe slot
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED（待装包） |
+| **症状** | ledger transport_pair P50=300ms 但 P90/outlier 5001–41919ms；Marathon conn 高时 rescue dial 排队等 2-slot |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.69** |
+| **修复目标版本** | Sparkle **1.26.70** |
+| **根因** | `mihomoProxyDelay` 一律 `withMihomoDelayProbeSlot`（max=2）；rescue 虽 bypass P12 budget + quiesce(014) 仍进 slot 队列 |
+| **修复** | `shouldBypassMihomoDelayProbeSlot` → `purpose=marathon_rescue` 直调 `mihomoProxyDelayUnchecked` |
+| **反复次数** | Latency Truth 误判链第 3 环（TUN 税 → 实探 probe 排队税） |
+| **踩坑** | 5001ms=5s probe timeout 不是 HY2 RTT；badge 须 dual-track + outlier aware |
+| **回归** | `mihomoProxyDelayCore.test.ts` |
+| **用户动作** | 一次性升 **≥1.26.70**（含 014+013+015） |
+| **代码位置** | `mihomoProxyDelayCore.ts` · `mihomoApi.ts` |
+
+### BUG-2026-07-24-014 · v1.26.69 · rescue dial bypass quiesce healthcheck（BUG-012 补完）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED（待装包 log 验收） |
+| **症状** | **1.26.68 已装**仍 **422×** `Resource not found` @ conn 14–15；与 `marathon_quiesce ON` + `provider health-check OFF` 同窗口（10:05–10:19） |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.68**（012 只 refresh provider，fallback 仍被 quiesce 掐 healthcheck） |
+| **修复目标版本** | Sparkle **1.26.69** |
+| **根因** | MTCP rescue bypass P12 budget，但 `mihomoProxyDelayFromProvider` 仍 `shouldAllowObservabilityDial('provider_healthcheck_api')=false` → delay=0 → rethrow Resource not found |
+| **修复** | `MihomoDelayOptions.purpose='marathon_rescue'` · rescue keepalive/stream 传入 · bypass quiesce + `refreshProviderLeafBeforeDelay` 强制 healthcheck |
+| **反复次数** | 012 标 FIXED 误判 1 次（未做装包后 log grep） |
+| **为何反复** | 验收用「代码合入」代替「quiesce × dial fallback 交叉实测」 |
+| **踩坑** | `token_gap_nudge outcome=failed err=Resource not found` 在 quiesce ON 时应先查 provider health-check OFF |
+| **回归** | `mihomoProxyDelayCore.test.ts` · `upgrade-sparkle-local.sh` BUG-014 tail-120 grep 门禁 |
+| **用户动作** | **一次性**升 **1.26.69** · 不应再见 failed Resource not found |
+| **代码位置** | `mihomoProxyDelayCore.ts` · `mihomoApi.ts` · `cursorHy2MarathonKeepalive.ts` · `cursorConnectStreamKeepalive.ts` |
+
+### BUG-2026-07-24-013 · v1.26.69 · TUN L2 store-fake-ip flush（Phase 4）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | TUN lost → L2 只清 outbound 连接，**不**清 `store-fake-ip` 映射；198.18 过期 fake-ip 加剧 TLS 挂死 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.68** |
+| **修复目标版本** | Sparkle **1.26.69** |
+| **根因** | `cursorTransportHealth.ts:366` `executeRecoveryL2` 仅 `mihomoCloseConnections()`；roadmap Phase 4 未落地 |
+| **修复** | `mihomoFlushFakeIpCache()` → POST `/cache/fakeip/flush`；L2 清池后 flush + 失败可定责日志 |
+| **反复次数** | 1（与 BUG-009–012 同批交付，**不再逐 bug 装包**） |
+| **为何反复** | 此前每修一个 bug 就 `upgrade:mac` 一次，用户感知为「反复装」 |
+| **踩坑** | fake-ip flush 须在 close connections **之后**；失败不阻断 L2 cooldown |
+| **回归** | 手动：TUN lost → app.log 见 `L2 flushed fake-ip cache` |
+| **用户动作** | 一次性升级 **≥1.26.69**（含 012 Resource not found + 011 hung_scan + Phase 4） |
+| **代码位置** | `mihomoApi.ts` · `cursorTransportHealth.ts` |
+
+### BUG-2026-07-24-012 · v1.26.68 · marathon rescue mihomo Resource not found（token_gap/connect_stream 空转）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **PARTIAL @1.26.68** → **FIXED @1.26.69**（见 BUG-2026-07-24-014 quiesce bypass） |
+| **症状** | app.log **167×** `token_gap_nudge outcome=failed err={"message":"Resource not found"}` + `connect_stream_keepalive_failed` 同 err @conn 43–63；rescue dial 空转 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.67** |
+| **修复目标版本** | Sparkle **1.26.68** |
+| **根因** | `mihomoApi.ts:401` provider leaf 在 `/proxies` 有 stub 但 `/delay` 404 → 直接 rethrow；quiesce 停 healthcheck 后 leaf 未 re-register |
+| **修复** | `mihomoProxyDelayCore.ts` + `mihomoProxyDelayViaProviderLeaf`：Resource not found → `mihomoUpdateProxyProviders` + retry delay（保留 custom url） |
+| **反复次数** | P13d 监控 09:42–09:44 实锤 |
+| **为何反复** | 旧 fallback 仅在 proxy 不在 `/proxies` 时触发，与 provider leaf 实际语义不符 |
+| **踩坑** | mihomo axios reject plain `{message}` 非 Error；须显式识别 Resource not found |
+| **回归** | `mihomoProxyDelayCore.test.ts` · 装包后 token_gap outcome=executed 或 skipped_*（非 failed Resource not found） |
+| **用户动作** | 升级 ≥1.26.68 |
+| **代码位置** | `mihomoProxyDelayCore.ts` · `mihomoApi.ts` |
+
+### BUG-2026-07-24-009 · v1.26.66 · P13 Phase 2.1 region↔leaf 桥接 + 柱图 Mac SSOT
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | Phase 2 装包后 tooltip「VPS 本体 P50」对 JP-VPS-HY2 显示 `—`；leaf 节点 badge 消失（scoresByNode key=JP-VPS 与 proxy.name 不匹配）；非 quiesce 时柱图仍走 mihomo 非 transport_pair |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.65** |
+| **修复目标版本** | Sparkle **1.26.66** |
+| **根因** | `vpsL4Probe.ts:38` ledger node=region（JP-VPS）· UI 查 leaf（JP-VPS-HY2）无桥接；柱图优先 mihomo history |
+| **修复** | `resolveVpsRegionFromLeafNode` + latency truth region 匹配 · `assignStabilityScoreTargets` fan-out · 柱图优先 ledger transport_pair · chip 标「Mac 路径」 |
+| **反复次数** | Phase 2 审计第 2 轮 |
+| **为何反复** | Phase 2 只做了 method/scope 过滤，未验证 node key 维度 |
+| **踩坑** | VPS L4 天然 region 级 · Mac 探针 leaf 级 · 必须显式桥接 |
+| **回归** | `vpsCanonicalNodes.test.ts` · `latencyTruthFromLedgerCore.test.ts` |
+| **用户动作** | 升级 ≥1.26.66 |
+| **代码位置** | `vpsCanonicalNodes.ts` · `commercialNodeBenchmark.ts` · `proxy-detail-tooltip.tsx` |
+
+### BUG-2026-07-24-008 · v1.26.65 · P13 Phase 2 Latency Truth（badge gate + 双轨 tooltip）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | badge P50/slow500 可能混入 scope=vps 非 ssh_curl 样本；tooltip「24h api2 短探测」与 Mac 全路径柱图（含 session_nudge 尖峰）语义混淆，用户无法区分 VPS 本体 vs Mac→TUN→HY2 全路径 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.64** |
+| **修复目标版本** | Sparkle **1.26.65** |
+| **根因** | `buildRankingBundle` 未过滤 `method=ssh_curl`；柱图 ledger 回填含 `session_nudge`（Marathon 探针尖峰 §17.4）；无 vps/active 双轨 P50 SSOT |
+| **修复** | `latencyTruthFromLedgerCore.ts` 双轨 P50 · badge 仅 `scope=vps ssh_curl` · 柱图仅 `transport_pair` · tooltip 双轨展示 + IPC `getLatencyTruthSummaryForNode` |
+| **反复次数** | 第 1 次 |
+| **为何反复** | — |
+| **踩坑** | session_nudge 780ms 尖峰 ≠ VPS 劣化；badge 与 Mac 柱图必须分 scope/method |
+| **回归** | `latencyTruthFromLedgerCore.test.ts` · `providerDelayHistoryFromLedgerCore.test.ts` |
+| **用户动作** | 升级 ≥1.26.65 · tooltip 看「VPS 本体 P50」vs「Mac 全路径 P50」 |
+| **代码位置** | `latencyTruthFromLedgerCore.ts` · `commercialNodeBenchmark.ts` · `proxy-detail-tooltip.tsx` |
+
+### BUG-2026-07-25-019 · v1.26.75 · 删除 dead `cursorConnectStreamKeepalive.ts` · MTDO 唯一执行 SSOT
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | `runConnectStreamKeepaliveIfDue` 在 `src/` 零调用 · 与 MTDO 三探针重复 · dead feature path |
+| **修复** | 删 `cursorConnectStreamKeepalive.ts` · HY2 nudge 改查 `isMarathonTransportDialInFlight()` · 保留 `cursorConnectStreamKeepaliveCore.ts` 纯函数 |
+| **代码位置** | `marathonTransportDialOrchestrator.ts` · `cursorHy2MarathonKeepalive.ts` · `_ARCH.md` |
+
+### BUG-2026-07-25-018 · v1.26.74 · P16-lite cycle connect_path pulse reuse + parallel probes
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | 同 MTDO cycle：独立 pulse（`ensureCycleConnectPathPulse`）+ `connect_rescue_bundle` 各调 `executeConnectPathPulse` → 6 HEAD |
+| **修复** | `cycleConnectPathPulse` cycle-local SSOT · rescue bundle 复用 · 三探针 `Promise.all` · 删 dead plan `connect_path_pulse` |
+| **代码位置** | `marathonTransportDialOrchestrator.ts` · `marathonTransportDialOrchestratorCore.ts` |
+
+### BUG-2026-07-25-017 · v1.26.73 · P15 MTDO independent connect_path pulse + partition feed-forward（df1501ed audit）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | df1501ed audit：@ A 06:51:10 `token_gap_rescue_nudge` 已执行但 06:51:54 仍 silent EOF；1.26.72 MTDO `connectPathPartitionDetected` 硬编码 false · pulse 被 token_gap trigger 优先级饿死 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.72** |
+| **修复目标版本** | Sparkle **1.26.73** |
+| **根因** | connect_path pulse 与 rescue trigger 共用 hung_scan 单选槽 → 有 token_gap 时 60s 三探针不跑；`connect_path_partition` selection dead code |
+| **修复** | **P15a** `shouldRunIndependentConnectPathPulse` @ 60s 独立于 trigger 选择 · **P15b** `lastConnectPathPartitionStale` 喂回 selection + inline partition rescue · pulse 不再参与 trigger priority |
+| **反复次数** | df1501ed audit 闭环 |
+| **为何反复** | pulse 与 rescue 共用 hung_scan 单选槽 |
+| **踩坑** | HY2 nudge 保隧道不能复活已 silent EOF 的 Connect 流 — P15 价值在 **流死之前** 发现 split-brain |
+| **回归** | `marathonTransportDialOrchestratorCore.test.ts` P15 cases |
+| **用户动作** | 升级 **1.26.73** · marathon 见 `[MarathonTransportDial] marathon_connect_path_pulse outcome=executed` 每 ~60s |
+| **代码位置** | `marathonTransportDialOrchestratorCore.ts` · `marathonTransportDialOrchestrator.ts` · `_ARCH.md` · `CURSOR-DISCONNECT-TRIAGE.md` |
+
+### BUG-2026-07-25-016 · v1.26.71 · P14 Connect silent EOF split-brain（df1501ed 107min marathon）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | df1501ed @14:51:54：`generation-ended-without-turnEnded` · durationMs=6435381 · gapSinceActivityMs=7622 · HTTP api2 green · Connect stream silent EOF · `agent-transport-failures.jsonl` 缺 RID · token_gap rescue 未触发（gap<20s） |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.70** |
+| **修复目标版本** | Sparkle **1.26.71** |
+| **根因** | L3 HY2/QUIC Connect 长流 split-brain：HTTP 探针绿但 Connect gRPC 静默 EOF；`TRANSPORT_ERR_RE` 未匹配 IFM `generation-ended-without-turnEnded`；rescue 仅看 ≥20s token gap，7.6s sudden death 漏检；Connect keepalive 缺 agentn 路径探针 |
+| **修复** | **P14a** `CONNECT_PATH_PROBE_TARGET` 三探针 + `transport_partition_stale_connect_path` · **P14b** `connect-silent-eof` 持久化（**仅 durationMs≥30min**）· **P14c** `silent_generation_end` rescue（duration≥30min + gap<30s）· **P14d** stale_rid 覆盖 txReqId+originalRequestId |
+| **反复次数** | split-brain silent EOF 第 1 次完整闭环 |
+| **为何反复** | — |
+| **踩坑** | 15:32 `/jx` 报错是 dead stream 重试，非新断连；定责看 A=14:51 stream_terminated |
+| **回归** | `agentTransportFailureWriterCore.test.ts` df1501ed · `cursorStreamTokenGapCore.test.ts` · `cursorConnectStreamKeepaliveCore.test.ts` · `cursorHy2MarathonKeepaliveCore.test.ts` |
+| **用户动作** | 升级 **1.26.71** · marathon 断连后见 `silent_generation_end_nudge outcome=executed` 或 `connect_stream_keepalive ... connect_path_delay_ms=` |
+| **代码位置** | `agentTransportFailureWriterCore.ts` · `cursorStreamTokenGapCore.ts` · `cursorStreamTokenGapReader.ts` · `cursorConnectStreamKeepaliveCore.ts` · `cursorConnectStreamKeepalive.ts` · `cursorHy2MarathonKeepaliveCore.ts` · `cursorTransportHealth.ts` · `_ARCH.md` |
+
+### BUG-2026-07-24-007 · v1.26.64 · P14 token_gap/cold_resume nudge outcome SSOT（fcdf8644 triage 陷阱）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | fcdf8644：`token_gap_force_nudge` 无条件日志 → triage 误判 nudge 已执行；实际 `deferred_cursor_load` / in_flight / cooldown / weak 无 outcome |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.63** |
+| **修复目标版本** | Sparkle **1.26.64** |
+| **根因** | `cursorTransportHealth.ts` 在 `await runHy2...` 后无条件打 `token_gap_force_nudge`；`runHy2...` 返回 boolean 无 skip reason |
+| **修复** | `MarathonSessionKeepaliveResult` + `formatMarathonRescueNudgeLogLine` → `token_gap_nudge outcome=executed\|skipped_* \|failed` 单行 SSOT；rescue defer 不再重复 `deferred_cursor_load` |
+| **反复次数** | observability 陷阱第 2 次（006 踩坑仍不足） |
+| **为何反复** | 检测日志（force_nudge）与执行日志（rescue_nudge/defer/failed）分离 |
+| **踩坑** | triage 定责：`token_gap_nudge outcome=executed` 才表示 dial 成功；`skipped_*` / `failed` 均非成功 · 旧版 `token_gap_force_nudge` 已废弃 |
+| **遗漏** | `formatUnknownErrorForLog` 仅 nudge/keepalive 两处；CTHC/hung_scan 等 ~18 处仍可能 `[object Object]`（BUG-003 partial） |
+| **回归** | `cursorHy2MarathonKeepaliveCore.test.ts` formatMarathonRescueNudgeLogLine |
+| **用户动作** | 升级 **1.26.64** · marathon 见 `token_gap_nudge outcome=executed` 而非旧 `token_gap_force_nudge` |
+| **代码位置** | `cursorHy2MarathonKeepaliveCore.ts` · `cursorHy2MarathonKeepalive.ts` · `cursorTransportHealth.ts` · `_ARCH.md` · `CURSOR-DISCONNECT-TRIAGE.md` |
+
+### BUG-2026-07-24-006 · v1.26.63 · P13 MTCP Marathon Transport Control Plane（connect_partition dead rescue path）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | connect_partition 检测触发 `force:true` nudge · conn≥80 仍 `session_transport_nudge_deferred_cursor_load trigger=force` · mass PING split-brain 救场到不了 · P8 @ conn≥80 仅 ≥20s gap 才 bypass（15–19s 窗口暴露） |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.59–1.26.62**（P10a 只修 token_gap/cold_resume · `force:true` 语义污染 · P12 dial budget 可 skip rescue dial） |
+| **修复目标版本** | Sparkle **1.26.63** |
+| **根因** | **架构债**：`tokenGapRescue = tokenGapForce && !force` → connect_partition 走 `force:true` **退出 rescue** · boolean 组合（force/tokenGapForce/highLatencyForce）无 SSOT · P8 defer 用 20s 阈值而非 15s keepalive 阈值 |
+| **修复** | ① **MTCP** `MarathonWarmthTrigger` 枚举 + `shouldDeferMarathonWarmth`（Rescue 永不 defer · Warmth conn≥80 defer）② 删 force/tokenGapForce boolean API ③ `connect_partition_rescue_nudge` / `cold_resume_rescue_nudge` 日志 ④ Rescue dial **绕过** P12 observability budget ⑤ P8 `isConnectStreamRescueEligible` @15s gap ⑥ **1.26.64** connect_partition 接入 `formatMarathonRescueNudgeLogLine` outcome SSOT（P14 延伸） |
+| **反复次数** | defer/rescue 分裂 **第 4 次**（BUG-2026-07-22-001 defer · 001 token_gap · 004 dial budget · 006 connect_partition） |
+| **为何反复** | 每次只 patch 单 trigger · `force` 语义承载 connect_partition 与 periodic 两种含义 · P12 budget 未区分 rescue/warmth |
+| **踩坑** | `token_gap_force_nudge` / connect_partition event **≠** nudge 已执行 · 须看下一行 defer/skip/budget · trigger=force 日志应消失改为 connect_partition |
+| **遗漏** | Phase 2 Latency Truth badge→vps scope only · Phase 3 VPS runtime · Phase 4 fake-ip flush · Phase 5 NGHTTP2 · P9o soak |
+| **回归** | `cursorHy2MarathonKeepaliveCore.test.ts` · `cursorConnectStreamKeepaliveCore.test.ts` MTCP cases |
+| **用户动作** | `pnpm run upgrade:mac` → **1.26.63** · Marathon conn≥80 mass PING 窗口应见 `connect_partition_rescue_nudge` 且无 `deferred trigger=connect_partition` |
+| **代码位置** | `cursorHy2MarathonKeepaliveCore.ts` · `cursorHy2MarathonKeepalive.ts` · `cursorTransportHealth.ts` · `cursorConnectStreamKeepaliveCore.ts` · `cursorConnectStreamKeepalive.ts` |
+
+### BUG-2026-07-24-005 · v1.26.61 · P11b 显式测速仍无反应（follow-up）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | 1.26.60：tooltip api2 探针柱图有数据，但点击 VPS「测试」仍无 loading/结果；app.log 无新 `ManagedVpsDelayTest` 行 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.60** |
+| **修复目标版本** | Sparkle **1.26.61** |
+| **根因** | ① `explicitUserRequest` 在 probe congested 时仍进 120s defer ② UI 吞错 ③ Card/Button 事件冲突 ④ P11 首版未跳过 `waitForUiVpsDelaySlot` |
+| **修复** | 显式测速跳过 defer 循环；入口/cooldown 日志；proxy-item stopPropagation + toast；标签「测速记录（api2 探针）」 |
+| **反复次数** | P11 第 2 次（002→005） |
+| **为何反复** | 002 只改 policy 未改 wait 循环与 UI 反馈 |
+| **踩坑** | Marathon 升级需 `SPARKLE_FORCE_CORE_RESTART=1` |
+| **回归** | `vpsDelayTestPolicyCore.test.ts` |
+| **代码位置** | `managedVpsDelayTest.ts` · `proxy-item.tsx` · `proxy-detail-tooltip.tsx` |
+
+### BUG-2026-07-24-004 · v1.26.62 · P12 Marathon 探针预算 SSOT
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | Marathon conn≥12 ledger/UI 偶发 500–5001ms；L4 ssh_curl 仍 ~540ms 绿；探针与 Connect 争 HY2 QUIC |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.53–1.26.61** |
+| **修复目标版本** | Sparkle **1.26.62** |
+| **根因** | JP-HY2 24h ledger p50=283ms 但 >500ms 占 5.2%；nudge/keepalive Promise.all×2 + transport_pair 无全局单槽 |
+| **修复** | `marathonObservabilityDialBudget*` 单槽串行 + 优先级；nudge/keepalive busy skip + 串行 api2；接入 NSM/Hy2/P8/managedVps |
+| **反复次数** | 1 |
+| **踩坑** | 5001ms≠TUN 税，是探针 5s timeout/排队 |
+| **回归** | `marathonObservabilityDialBudget*.test.ts` |
+| **代码位置** | `marathonObservabilityDialBudget*.ts` · `networkStabilityMonitor.ts` · `cursorHy2MarathonKeepalive.ts` |
+
+### BUG-2026-07-24-003 · v1.26.61 · nudge/keepalive err=[object Object] 定责盲区
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | fcdf8644 断连后 app-log `session_transport_nudge_failed` / `connect_stream_keepalive_failed` 仅 `err=[object Object]`，无法定责 mihomo 返回体 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.60** |
+| **修复目标版本** | Sparkle **1.26.61** |
+| **根因** | `mihomoApi.ts:92` axios interceptor `reject(error.response.data)` 抛 plain object；catch 用 `String(error)` → `[object Object]` |
+| **修复** | `formatUnknownErrorForLog`（Error + JSON.stringify plain object）→ `cursorHy2MarathonKeepalive.ts` · `cursorConnectStreamKeepalive.ts` |
+| **反复次数** | 1 |
+| **为何反复** | 仅 `instanceof Error` 分支，未覆盖 mihomo REST reject 形态 |
+| **踩坑** | triage 看到 `token_gap_force_nudge` 后须读下一行 err 原文，不能 assume nudge 成功 |
+| **回归** | `formatUnknownErrorForLog.test.ts` |
+| **用户动作** | 升级 **1.26.61** · 断连后 app-log err 应见 JSON 如 `{"message":"timeout: ..."}` |
+| **代码位置** | `formatUnknownErrorForLog.ts` · `cursorHy2MarathonKeepalive.ts` · `cursorConnectStreamKeepalive.ts` |
+
+### BUG-2026-07-24-002 · v1.26.60 · P11 Marathon delay visibility（UI 暂无记录 + 手动测速无反应）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | Marathon 期间 tooltip 柱图「暂无记录」· 用户点击 VPS 手动测速无反馈（conn≥12 defer 最长 120s · P9 quiesce 停 health-check） |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.53–1.26.59**（P9 quiesce + conn≥12 defer 未区分用户显式请求） |
+| **修复目标版本** | Sparkle **1.26.60** |
+| **根因** | 柱图只读 mihomo provider memory history · quiesce @ conn≥12 不写 history · `managedVpsDelayTest` defer 静默至 120s · ledger 仍有 transport_pair/session_nudge 样本 |
+| **修复** | ① `providerDelayHistoryFromLedgerCore` + IPC `getProviderDelayHistoryFromLedger` → tooltip ledger 回填 ② `explicitUserRequest` bypass conn defer（仍 respect probe congested · 15s cooldown · 串行）③ proxies 手动测速传 `explicitUserRequest:true` |
+| **反复次数** | 1 |
+| **为何反复** | P9n 只分离 nudge 柱图污染 · 未解决 quiesce 期间 history 空窗 |
+| **踩坑** | ledger 回填含 session_nudge（有意）· mihomo history 仍剔除 nudge |
+| **回归** | `providerDelayHistoryFromLedgerCore.test.ts` · `vpsDelayTestPolicyCore.test.ts` explicit bypass |
+| **用户动作** | 升级 **1.26.60** · Marathon 中 hover tooltip 应见 ledger 柱图 · 点击测速应立即执行 |
+| **代码位置** | `providerDelayHistoryFromLedgerCore.ts` · `managedVpsDelayTest.ts` · `proxy-detail-tooltip.tsx` |
+
+### BUG-2026-07-24-001 · v1.26.59 · P10 token_gap Rescue Bypass defer（fcdf8644）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | Marathon conn=97 · token_gap max_gap=148s · `session_transport_nudge_deferred_cursor_load trigger=token_gap` → 10s 后批量 ECONNRESET · ≥5 Agent 同秒断连（RID fcdf8644 @ 2026-07-24 11:38:44 CST） |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **1.26.51–1.26.58**（BUG-2026-07-22-001 defer + BUG-2026-07-22-002 P8 未统一） |
+| **修复目标版本** | Sparkle **1.26.59** |
+| **根因** | `shouldDeferHy2MarathonSessionNudgeForCursorLoad` @ conn≥80 **无区分** periodic vs token_gap stale；P8 `shouldRunConnectStreamKeepalive` 同门槛直接 return false — conn=97 救场被 defer 挡死 |
+| **修复** | `tokenGapRescue` bypass defer（nudge + P8）· `isTokenGapRescueEligible` · in-flight 互斥 · 成功日志 `token_gap_rescue_nudge` |
+| **反复次数** | BUG-2026-07-22-002 遗漏项 #5 从未 ship；fcdf8644 为第 2 失败形态 |
+| **为何反复** | defer 防 dial 风暴与 token_gap 救场未统一条件 bypass |
+| **踩坑** | `token_gap_force_nudge` 日志出现 ≠ nudge 已执行；须看下一行是否 `deferred_cursor_load` |
+| **回归** | `cursorHy2MarathonKeepaliveCore.test.ts` · `cursorConnectStreamKeepaliveCore.test.ts` 新增 case 全绿 |
+| **用户动作** | `pnpm run upgrade:mac` → **1.26.59** · 30min Marathon soak（conn≥80 见 `token_gap_rescue_nudge` 且无批量 ECONNRESET） |
+| **代码位置** | `cursorHy2MarathonKeepaliveCore.ts` · `cursorHy2MarathonKeepalive.ts` · `cursorConnectStreamKeepaliveCore.ts` · `cursorConnectStreamKeepalive.ts` |
+
+---
+
+## 2026-07-23
+
+### BUG-2026-07-23-008 · v1.26.58 · MarathonCoreRestartGuard（install-sparkle 马拉松断连）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | FIXED |
+| **症状** | 马拉松并行 Agent 进行中 `upgrade-sparkle-local.sh` → `install-sparkle` Quit+stop service → `Mihomo shutting down` → Connect 长流 `read ECONNRESET` · Included 作废（例：6b3ce7c5 @ 17:15:17 · $9.77） |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle **≤1.26.57** |
+| **修复目标版本** | Sparkle **1.26.58** |
+| **根因** | P9 quiesce 仅 defer observability dial；**`install-sparkle-local.sh` OS 级 kill service 绕过 `restartCore` hot-reload**；`stopCore` 无 lifecycle reason 日志 |
+| **修复** | `marathonCoreRestartGuardCore/Guard` block `stopCore`/`restartCore`；`~/.sparkle/marathon-core-restart-guard.json`；`scripts/lib/marathon-core-restart-guard.sh` PRE-gate install+upgrade；`[CoreLifecycle]` structured log |
+| **反复次数** | 同日 8× `Mihomo shutting down`（core-2026-7-23.log） |
+| **为何反复** | Agent 约束未禁止马拉松 install；shell 与 JS 双层缺口 |
+| **踩坑** | `tls-reset` + `JP-VPS-HY2` 标签 ≠ VPS fault；17:15:12 provider reload 是 hot reload 非 second shutdown |
+| **回归** | `marathonCoreRestartGuardCore.test.ts` 6/6 · `pnpm run test:node-quality` |
+| **用户动作** | 马拉松中勿 install；紧急 override：`SPARKLE_FORCE_CORE_RESTART=1` |
+| **代码位置** | `marathonCoreRestartGuard*.ts` · `manager.ts` · `scripts/lib/marathon-core-restart-guard.sh` · `install-sparkle-local.sh` · `upgrade-sparkle-local.sh` |
 
 ---
 
@@ -213,7 +616,16 @@ pnpm run upgrade:mac
 bash scripts/install-sparkle-local.sh
 ```
 
-**upgrade:mac 流程**：`electron-vite build` → `electron-builder --mac dir`（含 `afterSign` deepSignMac）→ 校验 asar 非 stale → `install-sparkle-local.sh`（`rm -rf` 后 **整包 ditto**，禁止覆盖）→ **Finder POSIX 启动**（绕过 adhoc Gatekeeper 闪退）→ 验证版本 + GUI + mihomo socket。
+**upgrade:mac 流程**：`electron-vite build` → **`rm -rf dist/mac-arm64`**（防 stale `Electron.app` 签名竞态，BUG-005）→ `electron-builder --mac dir`（`mac.identity: "-"` + `afterSign` deepSignMac · 失败自动 clean+重试 1 次）→ **`verify-sparkle-main-asar.mts`**（SSOT：`upgradeSparkleAsarGateCore.ts`）→ `install-sparkle-local.sh` → **Marathon 就绪门控**：mihomo socket + **`Api2ProbePlane ON`**（90s 内）+ 禁止 `PostCoreBootstrap.*failed` → Finder 启动。
+
+**Marathon 就绪门控（SSOT · 零额外 userMessage）**：
+
+| 层 | 检查 | 失败后果 |
+| --- | --- | --- |
+| Sparkle | `upgrade:mac` 后 `Api2ProbePlane ON` | CTHC/token_gap/connect_stream_keepalive **全盲** |
+| Cursor EH | Reload Window（`files.watcherExclude` `.cursor`/`.git`） | FSEvents 风暴 → EH 冻结 → `WritableIterable is closed` |
+| Guard 315 | deploy 后 **⌘Q**（非 Reload）→ renderer 有 `[ifm-event-v1]` | Billing 三列/RID ledger **盲**；intercept 开关内存未加载 |
+| 续跑 | 同会话 `/jx` | 断 stream 不浪费新 userMessage |
 
 **禁止**：
 
@@ -239,8 +651,10 @@ bash scripts/install-sparkle-local.sh
 | 仅 `/Applications/Sparkle.app` 单路径 | `~/Applications/Sparkle.app` 并存（split-brain · BUG-001） |
 | install 后 **不重签** | install/pkg 后二次 `codesign`（CDHash 变 · BUG-002） |
 | 定责读 triage 证据包 + A 时刻三源 | 用 B 时刻探针否定 A 时刻断连 |
+| **马拉松中禁止 `upgrade-sparkle-local.sh` / install**（conn≥12 或 quiesce ON 时脚本 FAIL） | 马拉松进行中 install Sparkle（会 kill mihomo → Connect ECONNRESET） |
+| 紧急 override 仅 `SPARKLE_FORCE_CORE_RESTART=1` | 无 override 强杀 core |
 
-**验证安装成功**：`defaults read … CFBundleShortVersionString` · `pgrep -x Sparkle` · `/tmp/sparkle-mihomo-api.sock` · asar 含预期符号（如 `token_gap_force_nudge` @≥1.26.50）。
+**验证安装成功**：`defaults read … CFBundleShortVersionString` · `pgrep -x Sparkle` · `/tmp/sparkle-mihomo-api.sock` · app-log 含 `token_gap_nudge outcome=`（**≥1.26.64**）或 `token_gap_rescue_nudge`（成功 dial）。
 
 **等价 pkg 流程**（无 dev 构建时）：
 
@@ -660,6 +1074,103 @@ osascript -e "do shell script \"pkill -9 -x Sparkle 2>/dev/null; pkill -9 -f 'sp
 | **证据包** | `~/Desktop/cursor-triage-0946940c-20260722T114605/` · `Cursor-2-data/.../renderer.log` @ 11:40:06 toolCallDelta · `app-2026-7-22.log` token_gap @ 03:40 |
 | **代码位置** | `cursorConnectStreamKeepalive*.ts` · `cursorStreamTokenGapReader.ts` · `cursorTransportHealth.ts` · `temp-docs/repair/CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md` §14 |
 
+### BUG-2026-07-22-003 · v1.26.51→**1.26.52** · CTHC hung scan 崩溃 + mihomo history @ A 滚出（68a378b8 批次）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **PARTIAL FIXED**（① coreReadyTimestamp + bundler 链接 @ **1.26.52** ✅ — 见 **BUG-2026-07-23-004**；② history @ A 归档 @ **1.26.52** ✅；③ triage Step 3c 仍 OPEN） |
+| **症状** | 2026-07-22 15:49–16:23 CST **5 次** `resumeAction HTTP` 幽灵 Included +1（目标 `68a378b8` @ 16:03:09）；Sparkle UI 测速记录有高延迟柱；CTHC 无法 hung_scan / token_gap nudge |
+| **关联产品** | Sparkle **1.26.51**（运行中）· Cursor **3.1.15** · Guard patch **markers_missing** |
+| **bug 存在版本** | Sparkle **≤1.26.51**（hung scan 运行时崩溃）；mihomo history ~10 条滚出导致 V5.6 @ 15:49–16:03 **不可回放** |
+| **修复目标版本** | Sparkle **1.26.52** |
+| **根因（Sparkle 侧）** | ① `06:02–08:32+` app.log 连续 `[CursorTransportHealth]: hung scan failed: getLastCoreReadyAtMs is not a function` → hung_scan / token_gap / MarathonKeepalive warmth **全盲** ② mihomo `199e64b94e8-vps` 每 leaf history ~10 条 · 15:49–16:03 @A 已从 UI last8 **滚出** · 定责只能交叉 ledger（405ms OK @ 08:03:19）③ `network-stability-events.jsonl` A 窗口 **0 行** vps_node_snapshots |
+| **根因（本案 L1 · 非 Sparkle 单责）** | Cursor EH pid:32144 长期 unresponsive → resumeAction while SSE alive（见 roadmap SSOT）· **NOT** V5.2/V5.4 失败 @ A |
+| **修复（计划）** | ① ✅ `coreReadyTimestamp.ts` 叶子模块 ② ✅ `mihomo_vps_history_snapshot` last8 @ hung_scan heartbeat（1.26.52）③ triage Step 3c ④ `@A` 仍 OPEN |
+| **反复次数** | hung scan 类 **第 2 次**（同类 import/循环依赖）；history @ A 不可回放 **第 1 次**台账化 |
+| **为何反复** | CTHC 与 manager 动态 import 无启动自检；history 仅 mihomo 内存滚动 · 无 A 时刻归档 |
+| **踩坑** | ① UI 测速 765ms @ **16:23:50** 在 resume **后** 41s — 禁止当 A 时刻因果 ② 凌晨 707–947ms 柱可残留在 last8 — 须 filter `history[].time` @ A±5min ③ **禁止** 用 `vps_node_snapshots` 统计 delay 分布代替 UI history（手册 §6 节点对照） |
+| **回归** | `networkStartupGraceCore.test.ts` +1（coreReadyTimestamp）· `cursorTransportHealthCore.test.ts` |
+| **用户动作** | `pnpm run upgrade:mac` → app.log 应出现 `hung_scan_heartbeat` / `connect_stream_keepalive`，**不再**出现 `getLastCoreReadyAtMs is not a function` |
+| **证据包** | `renderer.3.log:3856-3878` · `~/.sparkle/api2-probe-ledger.jsonl` @ 08:03 · mihomo socket `199e64b94e8-vps` history |
+| **代码位置** | `coreReadyTimestamp.ts` · `mihomoApiSocketWatchdog.ts` · `cursorTransportHealth.ts:495-574` · `temp-docs/repair/CURSOR_RESUME_ACTION_EH_GHOST_BILLING_REPAIR_ROADMAP.md` |
+
+### BUG-2026-07-23-004 · v1.26.52 · PostCoreBootstrap 失败 · `markCoreReadyAtMs is not defined` · CTHC 下午全盲
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（**1.26.52** 已装 `/Applications` · CDHash `22c7ccfb59f92134bcf710075158377ead56432c` · 2026-07-23 14:46 CST） |
+| **症状** | 2026-07-23 **10:15:14 CST** app.log：`[PostCoreBootstrap]: failed: markCoreReadyAtMs is not defined`；此后 **无** `token_gap_force_nudge` / `connect_stream_keepalive`；`network-stability-events.jsonl` 最后 `transport_hung_scan` **10:09:54**；12:47 / 13:45 L3 断连时 Mac **无 CTHC 证据** |
+| **关联产品** | Sparkle **1.26.52**（`/Applications` 旧 asar 断裂包）· Cursor **3.1.15** · Guard **0.15.93** observe-only（独立：未 ⌘Q → Billing 三列 `—`） |
+| **bug 存在版本** | Sparkle **1.26.52 首装 asar**（`manager.ts` 调用 `markCoreReadyAtMs()` 但 bundle 无导出；仅 `safeGetLastCoreReadyAtMs` 经 `networkStartupGraceCore` chunk 链接） |
+| **修复目标版本** | Sparkle **1.26.52**（同 semver · 修复 build 产物，非 bump） |
+| **根因** | ① `coreReadyTimestamp.ts` 拆出后 `manager.ts` 使用 **named import** → electron-vite/rolldown 产物 `out/main/index.js` **裸调用** `markCoreReadyAtMs()` **无定义**（asar 内仅 1 处引用、0 处 export）② `completeCoreInitialization` 抛 ReferenceError → `runPostCoreBootstrap` 的 `startCore()` race reject → PostCoreBootstrap catch ③ 与 **BUG-2026-07-22-003** 同类：**coreReadyTimestamp 与 manager 循环依赖治理后的 bundler 链接盲区** |
+| **修复** | ① `manager.ts`：`import * as coreReadyTimestamp` + `coreReadyTimestamp.markCoreReadyAtMs()` → 产物 `require_networkStartupGraceCore.markCoreReadyAtMs()` ② asar 门禁 SSOT：`upgradeSparkleAsarGateCore.ts` + `verify-sparkle-main-asar.mts`（见 BUG-005） |
+| **反复次数** | coreReadyTimestamp 链 **第 3 次**（① hung scan `getLastCoreReadyAtMs is not a function` ② 叶子模块 ③ 本次 PostCoreBootstrap） |
+| **为何反复** | 源码 typecheck 通过但 **未在 asar 内 grep 导出**；PostCoreBootstrap 失败仅 1 行 app.log，Dashboard 无告警 |
+| **踩坑** | ① stale dist → signing flake 见 **BUG-2026-07-23-005** ② install 后看 `Api2ProbePlane ON`，**禁止**只看 semver ③ 断连定责前 grep `PostCoreBootstrap.*failed` — 有则 Step 3a 全盲 |
+| **回归** | `networkStartupGraceCore.test.ts` · `coreReadyTimestamp.bundle.test.ts` · `upgradeSparkleAsarGateCore.test.ts`（4/4）· `verify-sparkle-main-asar.mts` · app.log `Api2ProbePlane ON` 且无 `PostCoreBootstrap.*failed` |
+| **用户动作** | `bash scripts/upgrade-sparkle-local.sh`（或 vite build + `install-sparkle-local.sh`）→ ⌘Q Sparkle → app.log 验收 |
+| **证据包** | `app-2026-7-23.log` @ `2026-07-23T02:15:14.260Z` · 旧 asar：`markCoreReadyAtMs` count=1 无 export · 新 asar @ 14:46：`networkStartupGraceCore.markCoreReadyAtMs` · 装后 @ `06:40:08Z` `Api2ProbePlane ON` |
+| **代码位置** | `manager.ts` · `coreReadyTimestamp.ts` · `scripts/upgrade-sparkle-local.sh` · `scripts/verify-sparkle-main-asar.mts` · `scripts/upgradeSparkleAsarGateCore.ts` · `postCoreBootstrap.ts` · `CURSOR-DISCONNECT-TRIAGE.md` Step 3a |
+
+### BUG-2026-07-23-005 · v1.26.52 · `upgrade:mac` electron-builder signing flake · `Sparkle.app could not be found`
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（**1.26.52** · `scripts/upgrade-sparkle-local.sh` + `electron-builder.yml`） |
+| **症状** | `pnpm run upgrade:mac` @ 2026-07-23 **14:46 CST**：vite build 成功 → `@electron/osx-sign` 报错 `Application at path ".../dist/mac-arm64/Sparkle.app" could not be found`；`dist/mac-arm64/` 仅残留 **`Electron.app`**（无 `Sparkle.app`）→ install 未执行 |
+| **关联产品** | Sparkle dev 本地升级 · electron-builder **26.8.2** · macOS arm64 |
+| **bug 存在版本** | `upgrade-sparkle-local.sh` **未 clean dist** 且 asar 门禁误查 `coreReadyTimestamp.markCoreReadyAtMs`（Vite 压缩后为 `.markCoreReadyAtMs(`） |
+| **修复目标版本** | Sparkle **1.26.52**（脚本 + yml，semver 不变） |
+| **根因** | ① 前次 packaging/signing **中断** 或 **并发读写** → `dist/mac-arm64` 半成品（`Electron.app` 已写出、尚未 rename 为 `Sparkle.app`）② 下次 `electron-builder --mac dir` **增量**写入 → osx-sign 指向 `Sparkle.app` 时路径不存在 ③ asar 门禁字符串与 minified bundle 不一致 → **假失败**阻断 install |
+| **修复** | ① **`rm -rf dist/mac-arm64`** 于每次 dir build 前 ② **`CSC_IDENTITY_AUTO_DISCOVERY=false`** + `electron-builder.yml` **`mac.identity: "-"`** ③ dir build **失败 → clean + 重试 1 次** ④ post-build **`codesign --verify --deep --strict`** ⑤ asar 门禁 SSOT：`upgradeSparkleAsarGateCore.ts` + `verify-sparkle-main-asar.mts`（拒绝 bare `markCoreReadyAtMs(`）⑥ PostCoreBootstrap 门控 90s / tail 500 |
+| **反复次数** | 本地 upgrade signing **第 2 次**（① BUG-004 踩坑已记录 Electron.app 残留 ② 本次脚本化 fix） |
+| **为何反复** | 文档只警告、脚本未 **强制 clean**；electron-builder 错误信息像「签名失败」实为 **stale dist 路径** |
+| **踩坑** | ① 看到 `Sparkle.app could not be found` **先** `ls dist/mac-arm64` — 若仅 `Electron.app` = stale dist，非 codesign 身份问题 ② **`rm -rf dist/mac-arm64` 后单跑 dir** 可 100% 复现成功（2026-07-23 14:49 验证）③ install 验收仍看 **`Api2ProbePlane ON`**，不单看 build exit 0 |
+| **回归** | 手动：`rm -rf dist/mac-arm64 && pnpm run upgrade:mac` 连续 2 次成功 · build log `replacing existing signature` · `upgradeSparkleAsarGateCore.test.ts` 4/4 |
+| **用户动作** | `pnpm run upgrade:mac`（一条命令） |
+| **代码位置** | `scripts/upgrade-sparkle-local.sh` · `scripts/verify-sparkle-main-asar.mts` · `scripts/upgradeSparkleAsarGateCore.ts` · `electron-builder.yml` · `scripts/deepSignMac.cjs` · BUGFIX「Sparkle 本地安装」 |
+
+### BUG-2026-07-23-006 · v1.26.53 · P9 Marathon Quiesce · provider health-check + probe dial 风暴
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（**1.26.53** 已装 `/Applications` · 2026-07-23 15:43 CST 现场验收） |
+| **症状** | Marathon conn 12–157：6 VPS leaf 同秒 `delay=0` → UI 红字「超时」；`proxyHealthMonitor` 每 60s `mihomoProxyDelay`；P8 `MANDATORY_REAL_PROBE_MAX_AGE_MS=30s` + `burstProbeActive` 打穿 conn≥20 defer → Connect cancel / Included 浪费（12:02–12:50 批次 9 次） |
+| **关联产品** | Sparkle **1.26.52**（bug 存在版本）· Cursor **3.1.15** · Guard **0.15.93** observe-only（Billing 三列 `—` 为独立线 BUG-183，需 ⌘Q Cursor） |
+| **bug 存在版本** | Sparkle **≤1.26.52** |
+| **修复目标版本** | Sparkle **1.26.53** |
+| **根因** | 观测 dial（VPS/commercial provider auto health-check · `proxyHealthMonitor` · P8 mandatory 30s + burst · conn≥80 仍 `connect_stream_keepalive` 双 dial）与 Agent Connect 长流 **抢 JP-HY2 隧道**；`managedVpsDelayTest` defer **不覆盖** mihomo provider auto check |
+| **修复** | ① `marathonQuiesceCore.ts` SSOT conn≥12/80 ② conn≥12：`health-check.enable=false` + `patchRuntimeProxyProviderHealthCheckEnable` + `PUT /configs?force=true` + 暂停 `proxyHealthMonitor` ③ conn≥80：`shouldDeferProbeForCursorLoadUnderMarathonQuiesce` 禁 mandatory/burst 穿透 + `shouldRunConnectStreamKeepalive` @80 false ④ UI 过滤 `delay=0` 柱 + **Marathon 静默** badge |
+| **反复次数** | **同族 dial 风暴第 2 次根治尝试**（2026-07-22 defer@20 半修 · 2026-07-23 P9 全源 gate） |
+| **为何反复** | 上轮只修 UI 手动测速 defer + conn≥20 probe defer，**未枚举** provider auto health-check / mandatory 30s 穿透 / P8 keepalive@80 |
+| **踩坑** | ① `updateProvider()` 全量 reload 会抖 leaf — 用 runtime yaml patch + `reloadMihomoConfigFromDisk` ② `pnpm prepare` 网络失败时 upgrade 须 `SKIP_PREPARE=1`（sidecar/mihomo 已存在）③ 装 pkg 后须 **⌘Q Sparkle** 才加载新 asar — 否则 app.log 仍见旧 `connect_stream_keepalive` ④ Post-install 90s 门控在 grace 内可能报 FAIL，不等于 pkg 坏 |
+| **回归** | `marathonQuiesceCore.test.ts` 11/11 · `proxy-delay-sample-age.test.ts` +1 · `cursorConnectStreamKeepaliveCore.test.ts` @80 defer · app.log 验收 |
+| **用户动作** | `SKIP_PREPARE=1 bash scripts/upgrade-sparkle-local.sh` → ⌘Q Sparkle → conn≥12 验收 |
+| **证据包** | app.log @ `2026-07-23T07:43:25Z` `marathon_quiesce ON cursor_conn=13` · `provider health-check OFF` · @ `07:56:14Z` conn=157 · **07:43 后零条** `connect_stream_keepalive` |
+| **代码位置** | `marathonQuiesce*.ts` · `factory.patchRuntimeProxyProviderHealthCheckEnable` · `mihomoApi.reloadMihomoConfigFromDisk` · `networkStabilityMonitor.ts` · `proxyHealthMonitor.ts` · `cursorConnectStreamKeepaliveCore.ts` · `proxy-detail-tooltip.tsx` · `CURSOR-DISCONNECT-TRIAGE.md` |
+| **遗漏** | P9g 30min soak 对照 Included 基线 **未跑** · Guard BUG-183 **正交未修** |
+
+### BUG-2026-07-23-007 · v1.26.55 · P9 Phase 2 Dial Plane · in-flight health-check + hysteresis bypass
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（**1.26.56** · proxyHealthMonitor hysteresis + P9n 柱图 · pkg 待 `upgrade:mac`） |
+| **症状** | Phase 1（1.26.53）后 **15:56** 仍 6-leaf 同秒 `delay=0`；PostCoreBootstrap @conn=157 仍 warmup；Tray 尾部 delay=0 假红；HY2 tooltip 511ms 与 nudge 1:1 混读为 VPS 故障 |
+| **关联产品** | Sparkle **1.26.53–1.26.54** · Cursor **3.1.15** · Guard **0.15.93** observe-only（Billing 三列 `—` = BUG-183，需 ⌘Q Cursor，与 Sparkle 正交） |
+| **bug 存在版本** | Sparkle **≤1.26.54** |
+| **修复目标版本** | Sparkle **1.26.56** |
+| **根因** | ① mihomo **600s in-flight** health-check 不受 scheduled OFF 取消 ② cache miss 仍走 `mihomoProviderHealthcheckDeduped` `/healthcheck` API ③ probe_cycle defer 门槛 conn≥20 + mandatory 30s 穿透 ④ `shouldAllowObservabilityDial` 在 **exit hysteresis conn<12** 时误放行 observability dial ⑤ nudge RTT 写入 provider history 污染 UI |
+| **修复** | **P9i** `shouldAllowObservabilityDial` SSOT（hysteresis 仍 block）· **P9j** `healthcheck_inflight_skipped` 审计 · **P9k** warmup defer · **P9l** Tray `pickLatestSuccessfulProviderDelay` · **P9m** marketplace skip · **P9n** `session_nudge` → ledger + **柱图剔除 nudge** · **P9r** block `/healthcheck` API @ quiesce · **P9s** probe_cycle defer · **1.26.56** proxyHealthMonitor quiesce 全暂停 |
+| **反复次数** | dial 平面竞争 **第 3 次**（Phase 1 半修 → Phase 2 全源 gate → hysteresis bypass 补丁） |
+| **为何反复** | Phase 1 只关 scheduled toggle；未枚举 in-flight timer · cache-miss API · mandatory 穿透 · hysteresis conn 门槛不一致 |
+| **踩坑** | ① `delay=0` 与同批 TLS 689ms **可并存** — 拥塞非宕机 ② HY2 >500ms **常等于 nudge 成功探针** — 看中位数非尾部 ③ P9n **未** 剥离 provider history 柱图（ledger 分离已做，history 二期）④ **无 soak 数据前禁止宣称 >500ms 尖峰率下降** |
+| **回归** | `marathonQuiesceCore.test.ts` **14/14** · `pnpm run upgrade:mac` asar gate |
+| **用户动作** | `SKIP_PREPARE=1 bash scripts/upgrade-sparkle-local.sh` → ⌘Q Sparkle → 30min 并行 Agent soak（P9o） |
+| **证据包** | `CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md` §16.11 · app.log 15:56:46–50 TUIC batch · CTHC nudge 561/515/509 1:1 |
+| **代码位置** | `marathonQuiesceCore.ts` · `mihomoApi.ts` · `networkStabilityMonitor.ts` · `postCoreBootstrap.ts` · `tray.ts` · `cursorHy2MarathonKeepalive.ts` · `api2ProbeLedgerRowCore.ts` |
+| **遗漏** | P9o 30min soak **未跑** · P9i CI `grep mihomoProxyDelay` 门禁 **未加** · P9n provider history 分离 **部分** · Guard BUG-183 **未修** |
+
 ---
 
 ## 2026-07-21
@@ -680,7 +1191,7 @@ osascript -e "do shell script \"pkill -9 -x Sparkle 2>/dev/null; pkill -9 -f 'sp
 | **为何反复** | 每层修复只解决 split-brain **一个时间尺度**：VPS idle（小时级）· 40s nudge（分钟级）· 缺 **20–30s token 级** 自适应触发；短探针全绿造成「已修好」错觉 |
 | **踩坑** | ① `HTTP api2 303ms 全绿 ≠ Connect 长流正常` ② 40s nudge **不是** 33s EOF 充分条件 ③ UI 批量测速 Marathon 下 defer → **误报超时**，非 VPS 宕 ④ 定责必须 A 时刻 ledger + VPS sing-box + renderer `gapSinceActivityMs`，禁止 B 时刻否定 A ⑤ 删除 IFM 补丁 **不消除** stock `ConnectError aborted` |
 | **回归** | `cursorStreamTokenGapCore.test.ts` 4/4 · `cursorHy2MarathonKeepaliveCore.test.ts` token gap 3/3 · test:node-quality 含新文件 |
-| **用户动作** | `pnpm run upgrade:mac`（或 `bash scripts/upgrade-sparkle-local.sh`）→ app.log 搜 `token_gap_force_nudge` |
+| **用户动作** | `pnpm run upgrade:mac`（或 `bash scripts/upgrade-sparkle-local.sh`）→ app.log 搜 `token_gap_nudge outcome=`（≥1.26.64） |
 | **证据包** | `~/Desktop/cursor-triage-d56b1442-20260721T190949/` · `app-2026-7-21.log:885-891` · `renderer-A-full-disconnect.txt:42` |
 | **代码位置** | `cursorStreamTokenGapCore.ts` · `cursorStreamTokenGapReader.ts` · `cursorTransportHealth.ts` · `cursorHy2MarathonKeepaliveCore.ts` · `cursorHy2MarathonKeepalive.ts` |
 

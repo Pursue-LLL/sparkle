@@ -14,10 +14,17 @@ export interface AgentTransportFailureRow {
   connectCode?: string
   attempt?: number
   activeAgents?: number
+  /** Marathon silent EOF duration from ifm-event-v1 stream_terminated payload. */
+  durationMs?: number
+  /** P16: jsonl row kind — network_diagnostic_ping_storm vs agent_transport_failure. */
+  kind?: string
 }
 
+/** Align with P14c / cursorStreamTokenGapCore marathon silent EOF gate. */
+export const SILENT_EOF_MARATHON_MIN_DURATION_MS = 1_800_000
+
 const TRANSPORT_ERR_RE =
-  /PING timed out|\[unavailable\]|ECONNRESET|ETIMEDOUT|WritableIterable is closed|Stream ended without turnEnded|deadline exceeded|read ETIMEDOUT/i
+  /PING timed out|\[unavailable\]|ECONNRESET|ETIMEDOUT|WritableIterable is closed|Stream ended without turnEnded|generation-ended-without-turnEnded|deadline exceeded|read ETIMEDOUT/i
 
 export function parseLogField(line: string, key: string): string {
   const quoted = line.match(new RegExp(`${key}="([^"]*)"`))
@@ -42,7 +49,11 @@ function parseLogTimestampMs(line: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function classifyTransportReason(errMsg: string, connectCode: string): {
+function classifyTransportReason(
+  errMsg: string,
+  connectCode: string,
+  durationMs?: number,
+): {
   reasonType: string
   reasonSub: string
 } {
@@ -54,6 +65,12 @@ function classifyTransportReason(errMsg: string, connectCode: string): {
   }
   if (/ECONNRESET|WritableIterable is closed/i.test(errMsg)) {
     return { reasonType: 'proxy-network', reasonSub: 'tls-reset' }
+  }
+  if (/generation-ended-without-turnEnded|Stream ended without turnEnded/i.test(errMsg)) {
+    if ((durationMs ?? 0) >= SILENT_EOF_MARATHON_MIN_DURATION_MS) {
+      return { reasonType: 'proxy-network', reasonSub: 'connect-silent-eof' }
+    }
+    return { reasonType: 'cursor-server', reasonSub: 'stream-end-without-turn' }
   }
   if (connectCode === '14') {
     return { reasonType: 'proxy-network', reasonSub: 'dial-timeout' }
@@ -135,6 +152,10 @@ function parseIfmEventV1Line(line: string): AgentTransportFailureRow | undefined
       : {}
   const errMsg = String(nested.reason ?? payload.reason ?? '')
   const connectCode = String(nested.connectCode ?? payload.connectCode ?? '')
+  const durationMs =
+    typeof nested.durationMs === 'number' && Number.isFinite(nested.durationMs)
+      ? nested.durationMs
+      : undefined
   if (!TRANSPORT_ERR_RE.test(errMsg) && connectCode !== '14') {
     return undefined
   }
@@ -146,7 +167,7 @@ function parseIfmEventV1Line(line: string): AgentTransportFailureRow | undefined
   if (ts <= 0) {
     return undefined
   }
-  const classified = classifyTransportReason(errMsg, connectCode)
+  const classified = classifyTransportReason(errMsg, connectCode, durationMs)
   return {
     ts,
     requestId: String(payload.requestId ?? '').trim() || undefined,
@@ -156,6 +177,7 @@ function parseIfmEventV1Line(line: string): AgentTransportFailureRow | undefined
     reasonSub: classified.reasonSub,
     errMsg: errMsg || undefined,
     connectCode: connectCode || undefined,
+    durationMs,
     attempt:
       typeof payload.attempt === 'number'
         ? payload.attempt
@@ -225,23 +247,202 @@ function parseExthostConnectErrorLine(line: string): AgentTransportFailureRow | 
   }
 }
 
+function isNetworkDiagnosticTransportLine(line: string): boolean {
+  return /Network Diagnostic|networkDiagnostics|network.?diagnostic|cursorNetworkDiagnostics/i.test(
+    line,
+  )
+}
+
+function tagNetworkDiagnosticKind(
+  row: AgentTransportFailureRow,
+  line: string,
+): AgentTransportFailureRow {
+  if (!isNetworkDiagnosticTransportLine(line)) {
+    return row
+  }
+  return { ...row, kind: 'network_diagnostic_ping_storm' }
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string): string {
+  const value = metadata[key]
+  return typeof value === 'string' ? value.trim() : String(value ?? '').trim()
+}
+
+function parseDiagnosticsField(message: string, key: string): string {
+  const match = message.match(new RegExp(`${key}=([^\\s]+)`))
+  return match?.[1]?.trim() ?? ''
+}
+
+function isPingTransportFailure(errMsg: string, connectCode: string): boolean {
+  if (/PING timed out/i.test(errMsg)) {
+    return true
+  }
+  if (connectCode === '14' && /unavailable|ping|ETIMEDOUT|read ETIMEDOUT/i.test(errMsg)) {
+    return true
+  }
+  return connectCode === '14' && errMsg.length > 0
+}
+
+/** P17: Cursor NAL Structured Logs — Stream error / AGENT_ERROR_DIAGNOSTICS transport rows. */
+function parseCursorStructuredTransportLine(line: string): AgentTransportFailureRow | undefined {
+  const ts = parseLogTimestampMs(line)
+  if (ts === undefined) {
+    return undefined
+  }
+  const jsonStart = line.indexOf('{')
+  if (jsonStart < 0) {
+    return undefined
+  }
+  let payload: Record<string, unknown>
+  try {
+    payload = JSON.parse(line.slice(jsonStart)) as Record<string, unknown>
+  } catch {
+    return undefined
+  }
+  const metadata =
+    payload.metadata && typeof payload.metadata === 'object'
+      ? (payload.metadata as Record<string, unknown>)
+      : {}
+  const message = String(payload.message ?? '')
+
+  if (message.includes('Stream error reported from extension host')) {
+    const errMsg = metadataString(metadata, 'error.message') || metadataString(metadata, 'errorMessage')
+    const connectCode =
+      metadataString(metadata, 'errorCode') || metadataString(metadata, 'error.code')
+    if (!isPingTransportFailure(errMsg, connectCode)) {
+      return undefined
+    }
+    const classified = classifyTransportReason(errMsg, connectCode)
+    const requestId = metadataString(metadata, 'requestId')
+    const originalRequestId =
+      metadataString(metadata, 'originalRequestId') || requestId
+    return {
+      ts,
+      requestId: requestId || undefined,
+      originalRequestId: originalRequestId || undefined,
+      composerId: metadataString(metadata, 'composerId') || undefined,
+      reasonType: classified.reasonType,
+      reasonSub: classified.reasonSub,
+      errMsg: errMsg || undefined,
+      connectCode: connectCode || undefined,
+      attempt: Number(metadataString(metadata, 'attempt')) || undefined,
+    }
+  }
+
+  if (message.includes('[AGENT_ERROR_DIAGNOSTICS]')) {
+    const requestId =
+      metadataString(metadata, 'requestId') || parseDiagnosticsField(message, 'requestId')
+    const originalRequestId =
+      metadataString(metadata, 'originalRequestId') ||
+      parseDiagnosticsField(message, 'originalRequestId') ||
+      requestId
+    const connectCode =
+      metadataString(metadata, 'underlyingConnectError.code') ||
+      metadataString(metadata, 'error.displayInfo.connectCode')
+    const codeName = metadataString(metadata, 'underlyingConnectError.codeName')
+    const errMsg =
+      connectCode === '14' || codeName === 'Unavailable'
+        ? '[unavailable] PING timed out'
+        : ''
+    if (!isPingTransportFailure(errMsg, connectCode)) {
+      return undefined
+    }
+    const classified = classifyTransportReason(errMsg, connectCode)
+    return {
+      ts,
+      requestId: requestId || undefined,
+      originalRequestId: originalRequestId || undefined,
+      reasonType: classified.reasonType,
+      reasonSub: classified.reasonSub,
+      errMsg: errMsg || undefined,
+      connectCode: connectCode || undefined,
+      attempt: Number(metadataString(metadata, 'attempt')) || undefined,
+    }
+  }
+
+  if (message.includes('RetriableError') || line.includes('RetriableError')) {
+    const errMsg =
+      metadataString(metadata, 'error.message') ||
+      metadataString(metadata, 'rawMessage') ||
+      (line.includes('PING timed out') ? '[unavailable] PING timed out' : '')
+    const connectCode =
+      metadataString(metadata, 'errorCode') ||
+      metadataString(metadata, 'code') ||
+      (errMsg.includes('PING timed out') ? '14' : '')
+    if (!isPingTransportFailure(errMsg, connectCode)) {
+      return undefined
+    }
+    const classified = classifyTransportReason(errMsg, connectCode)
+    const requestId = metadataString(metadata, 'requestId')
+    const originalRequestId =
+      metadataString(metadata, 'originalRequestId') ||
+      parseDiagnosticsField(message, 'originalRequestId') ||
+      requestId
+    return {
+      ts,
+      requestId: requestId || undefined,
+      originalRequestId: originalRequestId || undefined,
+      reasonType: classified.reasonType,
+      reasonSub: classified.reasonSub,
+      errMsg: errMsg || undefined,
+      connectCode: connectCode || undefined,
+      attempt: Number(metadataString(metadata, 'attempt')) || undefined,
+    }
+  }
+
+  return undefined
+}
+
+function parseNetworkDiagnosticTransportLine(line: string): AgentTransportFailureRow | undefined {
+  if (!isNetworkDiagnosticTransportLine(line)) {
+    return undefined
+  }
+  const row =
+    parseRendererConnectErrorJsonLine(line) ??
+    parseExthostConnectErrorLine(line) ??
+    undefined
+  if (!row) {
+    return undefined
+  }
+  return tagNetworkDiagnosticKind(row, line)
+}
+
 export function parseTransportFailureLine(line: string): AgentTransportFailureRow | undefined {
-  return (
+  const row =
     parseIfmPatch99Line(line) ??
     parseIfmPatch29Line(line) ??
     parseIfmEventV1Line(line) ??
+    parseCursorStructuredTransportLine(line) ??
+    parseNetworkDiagnosticTransportLine(line) ??
     parseRendererConnectErrorJsonLine(line) ??
     parseExthostConnectErrorLine(line)
-  )
+  if (!row) {
+    return undefined
+  }
+  if (row.kind === 'network_diagnostic_ping_storm') {
+    return row
+  }
+  return tagNetworkDiagnosticKind(row, line)
 }
 
 export function shouldPersistTransportFailure(row: AgentTransportFailureRow): boolean {
   const errMsg = String(row.errMsg ?? '')
   const connectCode = String(row.connectCode ?? '')
+  if (row.reasonSub === 'stream-end-without-turn') {
+    return false
+  }
+  if (row.reasonSub === 'connect-silent-eof') {
+    return (row.durationMs ?? 0) >= SILENT_EOF_MARATHON_MIN_DURATION_MS
+  }
   if (/PING timed out/i.test(errMsg) || connectCode === '14') {
     return true
   }
-  if (row.reasonSub === 'dial-timeout' || row.reasonSub === 'tls-reset' || row.reasonSub === 'read-timeout') {
+  if (
+    row.reasonSub === 'dial-timeout' ||
+    row.reasonSub === 'tls-reset' ||
+    row.reasonSub === 'read-timeout' ||
+    row.reasonSub === 'connect-silent-eof'
+  ) {
     return true
   }
   return TRANSPORT_ERR_RE.test(errMsg)

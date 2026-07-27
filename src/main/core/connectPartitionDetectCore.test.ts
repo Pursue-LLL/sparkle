@@ -110,6 +110,38 @@ describe('connectPartitionDetectCore', () => {
     )
   })
 
+  it('uses 60s window at conn>=200 for sequential Diagnostic PING failures', () => {
+    const incidentTs = Date.parse('2026-07-27T09:57:15.000Z')
+    const rows = [
+      {
+        ts: incidentTs - 30_000,
+        errMsg: '[unavailable] PING timed out',
+        connectCode: '14',
+        requestId: '83abc20e-d7e4-4208-a219-e55345f6e2cb',
+      },
+      {
+        ts: incidentTs - 5_000,
+        errMsg: '[unavailable] PING timed out',
+        connectCode: '14',
+        requestId: 'rid-agent-2',
+      },
+    ]
+    const narrow = detectConnectPartitionSignal(rows, {
+      nowMs: incidentTs,
+      cursorConnectionCount: 816,
+      windowMs: 8_000,
+    })
+    assert.equal(narrow, undefined)
+
+    const wide = detectConnectPartitionSignal(rows, {
+      nowMs: incidentTs,
+      cursorConnectionCount: 816,
+      windowMs: 60_000,
+    })
+    assert.equal(wide?.pingFailureCount, 2)
+    assert.equal(wide?.windowMs, 60_000)
+  })
+
   it('replays RID 5d03320f mass PING @ 2026-07-20 16:00 with green HTTP probes', () => {
     const incidentTs = Date.parse('2026-07-20T08:00:24.710Z')
     const rows = [
