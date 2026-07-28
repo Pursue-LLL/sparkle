@@ -76,6 +76,8 @@ export async function runVpsL4ProbeBatch(): Promise<VpsL4ProbeResult[]> {
       )
     }
     lastVpsL4ProbeAtMs = Date.now()
+    const { maybeEmitLatencyTruthGateLog } = await import('./latencyTruthGate')
+    await maybeEmitLatencyTruthGateLog()
     return results
   } finally {
     vpsL4ProbeInFlight = false
