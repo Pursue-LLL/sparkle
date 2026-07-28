@@ -7,6 +7,7 @@ import {
   resetPartitionLatchStateForTests,
   resolvePartitionLatchCandidate,
   shouldArmPartitionLatchFromBlindSpot,
+  shouldArmPartitionLatchFromMassPingSync,
 } from './partitionLatchCore'
 import { HUNG_SCAN_INTERVAL_MS } from './cursorTransportHealthCore'
 
@@ -47,6 +48,22 @@ describe('partitionLatchCore', () => {
     assert.equal(partitionLatchActive(nowMs), true)
     clearPartitionLatch()
     assert.equal(partitionLatchActive(nowMs), false)
+  })
+
+  it('arms latch from mass ping sync batch (P26)', () => {
+    assert.equal(
+      shouldArmPartitionLatchFromMassPingSync([
+        { ts: 1, errMsg: 'PING timed out', connectCode: '14' },
+        { ts: 2, errMsg: 'PING timed out', connectCode: '14' },
+      ]),
+      true,
+    )
+    assert.equal(
+      shouldArmPartitionLatchFromMassPingSync([
+        { ts: 1, errMsg: 'PING timed out', connectCode: '14' },
+      ]),
+      false,
+    )
   })
 
   it('does not arm when rescue candidate already selected', () => {

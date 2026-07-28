@@ -112,13 +112,13 @@ describe('connectPartitionDetectCore', () => {
     )
   })
 
-  it('uses 15s window at conn>=12 aligned with hung_scan (G11)', () => {
-    assert.equal(resolveConnectPartitionWindowMs(30), HUNG_SCAN_INTERVAL_MS)
-    assert.equal(resolveConnectPartitionWindowMs(CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS), HUNG_SCAN_INTERVAL_MS)
+  it('uses 60s marathon window at conn>=12 (P26 — sync lag + conn cliff)', () => {
+    assert.equal(resolveConnectPartitionWindowMs(30), 60_000)
+    assert.equal(resolveConnectPartitionWindowMs(CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS), 60_000)
     assert.equal(resolveConnectPartitionWindowMs(CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS - 1), 8_000)
   })
 
-  it('detects mass PING at T0+14s within 15s window (G11)', () => {
+  it('detects mass PING at T0+14s within 60s marathon window (P26)', () => {
     const t0 = Date.parse('2026-07-27T10:59:00.000Z')
     const scanAt = t0 + 14_000
     const rows = [
@@ -224,5 +224,45 @@ describe('connectPartitionDetectCore', () => {
       resolveProbeAttributionWithConnectPartition(greenProbe, signal),
       'transport_partition_stale',
     )
+  })
+
+  it('replays f4344246 mass PING @ conn cliff — 25s lag still detected (P26)', () => {
+    const pingTs = Date.parse('2026-07-28T09:40:05.330Z')
+    const scanAt = Date.parse('2026-07-28T09:40:30.690Z')
+    const rows = [
+      {
+        ts: pingTs,
+        errMsg: 'PING timed out',
+        connectCode: '14',
+        originalRequestId: '06eb42b2-e8be-4463-b6f7-def00139a4a6',
+      },
+      {
+        ts: pingTs + 5,
+        errMsg: 'PING timed out',
+        connectCode: '14',
+        requestId: '5d39d7e3-0a0a-457a-89f3-2b702c5f5792',
+      },
+    ]
+    const narrow = detectConnectPartitionSignal(rows, {
+      nowMs: scanAt,
+      cursorConnectionCount: 25,
+      windowMs: HUNG_SCAN_INTERVAL_MS,
+    })
+    assert.equal(narrow, undefined)
+
+    const wide = detectConnectPartitionSignal(rows, {
+      nowMs: scanAt,
+      cursorConnectionCount: 25,
+      windowMs: resolveConnectPartitionWindowMs(25),
+    })
+    assert.equal(wide?.pingFailureCount, 2)
+
+    const cliff = detectConnectPartitionSignal(rows, {
+      nowMs: scanAt,
+      cursorConnectionCount: 0,
+      windowMs: resolveConnectPartitionWindowMs(25),
+      allowMassPingCliffRecovery: true,
+    })
+    assert.equal(cliff?.pingFailureCount, 2)
   })
 })

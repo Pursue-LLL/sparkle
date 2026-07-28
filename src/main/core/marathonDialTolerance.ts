@@ -8,7 +8,11 @@ import {
   MTDO_ACTIVE_STREAM_MAX_GAP_MS,
   MTDO_MARATHON_STREAM_MIN_AGE_MS,
 } from './marathonTransportDialOrchestratorCore'
-import { buildMarathonStreamRegistry, hasActiveMarathonStream } from './marathonStreamRegistryCore'
+import {
+  buildMarathonStreamRegistry,
+  hasActiveMarathonStream,
+  MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
+} from './marathonStreamRegistryCore'
 import {
   collectRendererActivitySamplesForMtdo,
   collectRendererToolAuditLinesForMtdo,
@@ -32,7 +36,7 @@ async function resolveMarathonDialToleranceIdleContext(cursorConnectionCount: nu
     activitySamples,
     toolLines,
     nowMs,
-    MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+    MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
   )
   return {
     hasActiveMarathonStream: hasActiveMarathonStream(registry, nowMs, {

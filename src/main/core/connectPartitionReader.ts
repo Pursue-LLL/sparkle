@@ -127,6 +127,7 @@ function detectFromMergedRows(
     nowMs,
     cursorConnectionCount,
     windowMs: resolveConnectPartitionWindowMs(cursorConnectionCount),
+    allowMassPingCliffRecovery: true,
   })
 }
 
@@ -167,7 +168,9 @@ export async function readConnectPartitionSignalAsync(
   )
   const jsonlPingCount = countConnectPingFailuresInWindow(jsonlRows, nowMs, cursorConnectionCount)
   const windowMs = resolveConnectPartitionWindowMs(cursorConnectionCount)
-  if (cursorConnectionCount >= CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS) {
+  const shouldLogPartitionWindow =
+    cursorConnectionCount >= CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS || signal != null
+  if (shouldLogPartitionWindow) {
     const { appendAppLog } = await import('../utils/log')
     await appendAppLog(
       `[ConnectPartitionWindow]: window_ms=${windowMs} cursor_conn=${cursorConnectionCount}` +

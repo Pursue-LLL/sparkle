@@ -5,6 +5,8 @@
 import { HUNG_SCAN_INTERVAL_MS } from './cursorTransportHealthCore'
 import {
   CONNECT_PARTITION_MIN_PING_FAILURES,
+  isConnectPingTransportFailure,
+  type AgentTransportFailureRow,
   type ConnectPartitionSignal,
 } from './connectPartitionDetectCore'
 import type { MarathonTransportDialCandidate } from './marathonTransportDialOrchestratorCore'
@@ -27,6 +29,18 @@ export function clearPartitionLatch(): void {
 
 export function armPartitionLatch(nowMs: number): void {
   partitionLatchUntilMs = nowMs + LATCH_SCAN_MULTIPLIER * HUNG_SCAN_INTERVAL_MS
+}
+
+export function shouldArmPartitionLatchFromMassPingSync(
+  writtenRows: readonly AgentTransportFailureRow[],
+): boolean {
+  let pingCount = 0
+  for (const row of writtenRows) {
+    if (isConnectPingTransportFailure(row)) {
+      pingCount += 1
+    }
+  }
+  return pingCount >= CONNECT_PARTITION_MIN_PING_FAILURES
 }
 
 export function shouldArmPartitionLatchFromBlindSpot(options: {

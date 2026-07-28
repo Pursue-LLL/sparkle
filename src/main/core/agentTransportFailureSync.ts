@@ -186,6 +186,7 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
       Math.max(0, (lastSyncFinishedAtMs || Date.now()) - SYNC_OVERLAP_MS)
     const seen = await loadExistingDedupeKeys(sinceMs)
     let written = 0
+    const writtenRows: AgentTransportFailureRow[] = []
     const cursorDataDirs = options?.cursorDataDirs ?? (await resolveCursorDataDirs())
     for (const cursorDataDir of cursorDataDirs) {
       const ingestLogTail = async (filePath: string, tailBytes: number): Promise<void> => {
@@ -202,6 +203,7 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
           seen.add(key)
           await appendAgentTransportFailureRow(candidate, options?.proxyNodeFallback)
           written += 1
+          writtenRows.push(candidate)
         }
       }
 
@@ -216,6 +218,24 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
       }
     }
     lastSyncFinishedAtMs = Date.now()
+    if (writtenRows.length > 0) {
+      const { shouldArmPartitionLatchFromMassPingSync, armPartitionLatch } = await import(
+        './partitionLatchCore'
+      )
+      if (shouldArmPartitionLatchFromMassPingSync(writtenRows)) {
+        armPartitionLatch(lastSyncFinishedAtMs)
+        try {
+          const { appendAppLog } = await import('../utils/log')
+          const { isConnectPingTransportFailure } = await import('./connectPartitionDetectCore')
+          const pingRows = writtenRows.filter((row) => isConnectPingTransportFailure(row)).length
+          await appendAppLog(
+            `[PartitionMassPingSync]: armed latch ping_rows=${pingRows} written=${written}\n`,
+          )
+        } catch {
+          // best-effort observability
+        }
+      }
+    }
     if (options?.logWrites !== false) {
       try {
         const { appendAppLog } = await import('../utils/log')
