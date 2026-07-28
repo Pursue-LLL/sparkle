@@ -53,6 +53,22 @@ describe('cursorStreamTokenGapCore', () => {
     assert.deepEqual(signal!.staleRequestIds, ['d56b1442-dd91-404e-90c7-6bb49aa57d49'])
   })
 
+  it('detects marathon token gap after long tool pause beyond 180s lookback (P25)', async () => {
+    const { CURSOR_HY2_TOKEN_GAP_LOOKBACK_MS } = await import('./cursorHy2MarathonKeepaliveCore')
+    const lastActivityMs = 1_000_000
+    const nowMs = lastActivityMs + 546_000
+    assert.ok(nowMs - lastActivityMs < CURSOR_HY2_TOKEN_GAP_LOOKBACK_MS)
+    const signal = detectMarathonStreamTokenGap(
+      [{ requestId: 'f4344246-ad78-47e1-96ab-0bf6cf329dd8', activityMs: lastActivityMs }],
+      {
+        nowMs,
+        cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      },
+    )
+    assert.ok(signal)
+    assert.ok(signal!.maxGapMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS)
+  })
+
   it('returns undefined below marathon conn threshold', () => {
     const signal = detectMarathonStreamTokenGap(
       [{ requestId: 'rid-1', activityMs: 1_000 }],

@@ -1,8 +1,12 @@
-// [INPUT] StreamActivitySample · SilentGenerationEndSample patterns
+// [INPUT] StreamActivitySample · SilentGenerationEndSample patterns · cursorHy2MarathonKeepaliveCore
 // [OUTPUT] buildMarathonStreamRegistry · isTokenGapSuppressedForPendingTool
 // [POS] §22 MTDO: active marathon RID registry from renderer/IFM tail (read-only).
 
 import type { StreamActivitySample } from './cursorStreamTokenGapCore'
+import {
+  CURSOR_HY2_PENDING_TOOL_GAP_SUPPRESS_MAX_MS,
+  CURSOR_HY2_TOKEN_GAP_LOOKBACK_MS,
+} from './cursorHy2MarathonKeepaliveCore'
 
 export interface MarathonStreamRecord {
   requestId: string
@@ -16,11 +20,15 @@ export interface MarathonStreamRegistry {
   records: ReadonlyMap<string, MarathonStreamRecord>
 }
 
+/** P25: registry scan window — must cover marathon tool pauses (not MTDO active-stream gap). */
+export const MARATHON_STREAM_REGISTRY_LOOKBACK_MS = CURSOR_HY2_TOKEN_GAP_LOOKBACK_MS
+
 const TOOL_START_CASES = new Set(['toolCallStarted', 'partialToolCall'])
 const TOOL_END_CASES = new Set(['toolCallCompleted'])
 
 export function parseStreamToolActivityLine(line: string): {
   requestId: string
+  originalRequestId: string
   activityMs: number
   msgCase: string
 } | undefined {
@@ -37,17 +45,48 @@ export function parseStreamToolActivityLine(line: string): {
   const txReqIdMatch = line.match(/txReqId=([^\s]+)/)
   const genMatch = line.match(/(?:genUUID|chatGenUUID)=([^\s]+)/)
   const requestId = txReqIdMatch?.[1] ?? genMatch?.[1] ?? ''
+  const originalRequestId = genMatch?.[1] ?? txReqIdMatch?.[1] ?? requestId
   if (activityMs <= 0 || !requestId) {
     return undefined
   }
-  return { requestId, activityMs, msgCase }
+  return { requestId, originalRequestId, activityMs, msgCase }
+}
+
+function resolveOriginalRequestId(requestId: string, originalRequestId?: string): string {
+  return originalRequestId?.trim() || requestId
+}
+
+function upsertMarathonStreamRecord(
+  records: Map<string, MarathonStreamRecord>,
+  requestId: string,
+  originalRequestId: string,
+  activityMs: number,
+): void {
+  const resolvedOriginal = resolveOriginalRequestId(requestId, originalRequestId)
+  const prev = records.get(requestId)
+  if (!prev) {
+    records.set(requestId, {
+      requestId,
+      originalRequestId: resolvedOriginal,
+      firstActivityMs: activityMs,
+      lastActivityMs: activityMs,
+      openToolCalls: 0,
+    })
+    return
+  }
+  records.set(requestId, {
+    ...prev,
+    originalRequestId: prev.originalRequestId || resolvedOriginal,
+    firstActivityMs: Math.min(prev.firstActivityMs, activityMs),
+    lastActivityMs: Math.max(prev.lastActivityMs, activityMs),
+  })
 }
 
 export function buildMarathonStreamRegistry(
   activitySamples: readonly StreamActivitySample[],
   toolLines: readonly string[],
   nowMs: number,
-  lookbackMs: number,
+  lookbackMs: number = MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
 ): MarathonStreamRegistry {
   const sinceMs = nowMs - lookbackMs
   const records = new Map<string, MarathonStreamRecord>()
@@ -56,22 +95,7 @@ export function buildMarathonStreamRegistry(
     if (sample.activityMs < sinceMs || sample.activityMs > nowMs + 2_000) {
       continue
     }
-    const prev = records.get(sample.requestId)
-    if (!prev) {
-      records.set(sample.requestId, {
-        requestId: sample.requestId,
-        originalRequestId: sample.requestId,
-        firstActivityMs: sample.activityMs,
-        lastActivityMs: sample.activityMs,
-        openToolCalls: 0,
-      })
-      continue
-    }
-    records.set(sample.requestId, {
-      ...prev,
-      firstActivityMs: Math.min(prev.firstActivityMs, sample.activityMs),
-      lastActivityMs: Math.max(prev.lastActivityMs, sample.activityMs),
-    })
+    upsertMarathonStreamRecord(records, sample.requestId, sample.requestId, sample.activityMs)
   }
 
   for (const line of toolLines) {
@@ -79,6 +103,12 @@ export function buildMarathonStreamRegistry(
     if (!toolActivity || toolActivity.activityMs < sinceMs) {
       continue
     }
+    upsertMarathonStreamRecord(
+      records,
+      toolActivity.requestId,
+      toolActivity.originalRequestId,
+      toolActivity.activityMs,
+    )
     const prev = records.get(toolActivity.requestId)
     if (!prev) {
       continue
@@ -102,11 +132,23 @@ export function buildMarathonStreamRegistry(
 export function isTokenGapSuppressedForPendingTool(
   registry: MarathonStreamRegistry,
   staleRequestIds: readonly string[],
+  maxGapMs: number = 0,
 ): boolean {
+  if (maxGapMs >= CURSOR_HY2_PENDING_TOOL_GAP_SUPPRESS_MAX_MS) {
+    return false
+  }
   for (const requestId of staleRequestIds) {
     const record = registry.records.get(requestId)
     if (record && record.openToolCalls > 0) {
       return true
+    }
+    for (const entry of registry.records.values()) {
+      if (
+        entry.openToolCalls > 0 &&
+        (entry.requestId === requestId || entry.originalRequestId === requestId)
+      ) {
+        return true
+      }
     }
   }
   return false
@@ -123,7 +165,13 @@ export function hasActiveMarathonStream(
   for (const record of registry.records.values()) {
     const streamAgeMs = nowMs - record.firstActivityMs
     const lastGapMs = nowMs - record.lastActivityMs
-    if (streamAgeMs >= options.minStreamAgeMs && lastGapMs <= options.maxLastActivityGapMs) {
+    if (streamAgeMs < options.minStreamAgeMs) {
+      continue
+    }
+    if (record.openToolCalls > 0) {
+      return true
+    }
+    if (lastGapMs <= options.maxLastActivityGapMs) {
       return true
     }
   }

@@ -48,6 +48,7 @@ import {
   buildMarathonStreamRegistry,
   hasActiveMarathonStream,
   isTokenGapSuppressedForPendingTool,
+  MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
   type MarathonStreamRegistry,
 } from './marathonStreamRegistryCore'
 import {
@@ -423,15 +424,19 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       activitySamples,
       toolLines,
       nowMs,
-      MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+      MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
     )
+    const tokenGapSuppressedPendingTool =
+      tokenGapSignal != null &&
+      isTokenGapSuppressedForPendingTool(
+        registry,
+        tokenGapSignal.staleRequestIds,
+        tokenGapSignal.maxGapMs,
+      )
     const marathonStreamActive = hasActiveMarathonStream(registry, nowMs, {
       minStreamAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS,
       maxLastActivityGapMs: MTDO_ACTIVE_STREAM_MAX_GAP_MS,
     })
-    const tokenGapSuppressedPendingTool =
-      tokenGapSignal != null &&
-      isTokenGapSuppressedForPendingTool(registry, tokenGapSignal.staleRequestIds)
 
     const recentProbe = getRecentCursorProbe()
     const forceHighLatencyWarmth = shouldForceHy2MarathonSessionKeepaliveForHighLatency(
@@ -492,6 +497,8 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       await appendAppLog(
         formatMtdoLogLine('token_gap', 'skipped_pending_tool', {
           cursor_conn: cursorConnectionCount,
+          max_gap_ms: tokenGapSignal?.maxGapMs,
+          stale_rids: tokenGapSignal?.staleRequestIds.slice(0, 3).join(','),
         }),
       )
       return

@@ -27,8 +27,14 @@ export const CURSOR_HY2_TOKEN_GAP_FORCE_MS = 20_000
 /** Min gap between token-gap force nudges. */
 export const CURSOR_HY2_TOKEN_GAP_MIN_INTERVAL_MS = 15_000
 
-/** Ignore stale activity samples older than this when scanning renderer tail. */
-export const CURSOR_HY2_TOKEN_GAP_LOOKBACK_MS = 180_000
+/**
+ * Marathon token-gap scan window — must cover long tool pauses (incident f4344246: ~546s gap).
+ * Aligns with P22 segment handoff (~90min) so growing gaps are not dropped from detection.
+ */
+export const CURSOR_HY2_TOKEN_GAP_LOOKBACK_MS = 5_400_000
+
+/** Pending-tool SSE silence below this gap is expected; above it still nudge HY2 keepalive. */
+export const CURSOR_HY2_PENDING_TOOL_GAP_SUPPRESS_MAX_MS = 60_000
 
 /** Cold resume: Cursor composer warns at 32s with zero inbound tokens — nudge before 90s stall_detector. */
 export const CURSOR_HY2_COLD_RESUME_NO_TOKEN_THRESHOLD_MS = 32_000
