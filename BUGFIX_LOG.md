@@ -1,5 +1,36 @@
 # Sparkle Bugfix Log
 
+> **2026-07-28 最新**：**BUG-2026-07-28-020** — P20a LatencyTruth + P20b IDLE dial-tolerance + P20c triage 三门 · **1.26.84**（§29 闭合）
+
+### BUG-2026-07-28-020 · v1.26.84 · p20_stability_closure (LatencyTruth + IDLE apply + triage gates)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | EXEC-CODE-DONE · SOAK-PENDING |
+| **症状** | conn 跨 12 时 dial-tolerance reload 可能在活跃 Marathon 流期间触发 · 300 vs 500 口径易误判 Sparkle 加税 · triage 缺 VPS/Latency 自动化门 |
+| **关联产品** | Sparkle |
+| **修复目标版本** | Sparkle **1.26.84** |
+| **根因** | `marathonDialTolerance.ts` 仅 conn≥12 defer · exit reload 无 `hasActiveMarathonStream` gate · 无 `[LatencyTruth]` SSOT log |
+| **修复** | P20a `latencyTruthGateCore.ts`+`latencyTruthGate.ts` @ VpsL4 300s · P20b `marathonDialToleranceIdleApplyCore.ts` stream/quiesce IDLE gate · P20c triage `VPS_CONTRACK_OK`/`VPS_HY2_UDP_TIMEOUT_OK`/`SPARKLE_LATENCY_TAX` |
+| **回归** | `marathonDialToleranceIdleApplyCore.test.ts` · `latencyTruthGateCore.test.ts` |
+| **用户动作** | `upgrade:mac` → soak 验 P19 executed + `[LatencyTruth] high=0` |
+
+> **2026-07-28**：**BUG-2026-07-28-019** — MTDO rescue 执行自锁 + connect_partition 弱 bundle + 分区窗错位 · **1.26.83**（P19/P20 §29）
+
+### BUG-2026-07-28-019 · v1.26.83 · mtdo_rescue_execution_plane (P19/P20 §29)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | EXEC-CODE-DONE · SOAK-PENDING（§27.8 9/14 · 需 upgrade:mac + live executed 验） |
+| **症状** | Jul27 22:31–0:58 mass PING @ conn≥20 · `connect_partition` 检出 · 100% `skipped_mtdo_in_flight` · 零 `outcome=executed` rescue · Marathon 断连浪费 500 次数 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle ≥1.26.75（BUG-019 guard 引入） |
+| **修复目标版本** | Sparkle 1.26.83 |
+| **根因** | **G10** `cursorHy2MarathonKeepalive.ts` mtdo re-entrancy guard · **G12** connect_partition→session_rescue_bundle 无三探针 pulse · **G11** 分区窗 8s&lt;scan 15s · **G16/G21** Marathon 期间零 recovery 平面 |
+| **修复** | P19a `MarathonRescueDialExecutor`+`MarathonWarmthDialExecutor` · 删 mtdo guard · connect_partition/latency_delta→connect_rescue_bundle · G11 窗=15s@conn≥12 · `PartitionLatch` · G15 blind_spot candidate 检 · P20b dial-tolerance IDLE defer @conn≥12 |
+| **回归** | `marathonTransportDialOrchestrator.integration.test.ts` G10/G12 · `connectPartitionDetectCore.test.ts` G11 · `partitionLatchCore.test.ts` · `partitionBlindSpotCore.test.ts` G15 |
+| **用户动作** | `upgrade:mac` → soak @conn≥20 mass PING 后验 `[MarathonRescueDial] outcome=executed` · 无 `skipped_mtdo_in_flight` |
+
 > **2026-07-27 最新**：**BUG-2026-07-27-018** — hot+jsonl 双计数 + jsonl homedir 固化 + blind_spot 缺失 · **1.26.78**（P18）
 
 ### BUG-2026-07-27-018 · v1.26.78 · transport_observability_hardening (P18)

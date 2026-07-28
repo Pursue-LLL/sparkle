@@ -177,6 +177,126 @@ run_vps_v52() {
   fi
 }
 
+detect_vps_runtime_gates() {
+  VPS_CONTRACK_OK=0
+  VPS_HY2_UDP_TIMEOUT_OK=0
+  local host
+  host="$(resolve_active_vps_ssh_host)"
+  if [[ -z "$host" ]]; then
+    host="jp-vps"
+  fi
+  echo "$host" >"${OUT}/vps-runtime-gates-host.txt"
+
+  if ssh -o BatchMode=yes -o ConnectTimeout=8 "$host" true 2>/dev/null; then
+    local ct ct_stream hy2_timeout
+    ct="$(ssh -o BatchMode=yes -o ConnectTimeout=12 "$host" \
+      "sysctl -n net.netfilter.nf_contrack_udp_timeout 2>/dev/null" 2>/dev/null || true)"
+    ct_stream="$(ssh -o BatchMode=yes -o ConnectTimeout=12 "$host" \
+      "sysctl -n net.netfilter.nf_contrack_udp_timeout_stream 2>/dev/null" 2>/dev/null || true)"
+    if [[ "$ct" == "3600" && "$ct_stream" == "3600" ]]; then
+      VPS_CONTRACK_OK=1
+    fi
+    hy2_timeout="$(ssh -o BatchMode=yes -o ConnectTimeout=12 "$host" \
+      "python3 -c \"import json; c=json.load(open('/etc/sing-box/config.json')); print(next((i.get('udp_timeout','') for i in c.get('inbounds',[]) if i.get('tag')=='hy2-in'), ''))\"" \
+      2>/dev/null || true)"
+    if [[ "$hy2_timeout" == "3600s" ]]; then
+      VPS_HY2_UDP_TIMEOUT_OK=1
+    fi
+  fi
+
+  {
+    echo "VPS_CONTRACK_OK=${VPS_CONTRACK_OK}"
+    echo "VPS_HY2_UDP_TIMEOUT_OK=${VPS_HY2_UDP_TIMEOUT_OK}"
+    echo "host=${host}"
+    echo "nf_conntrack_udp_timeout=${ct:-unknown}"
+    echo "nf_conntrack_udp_timeout_stream=${ct_stream:-unknown}"
+    echo "hy2_in_udp_timeout=${hy2_timeout:-unknown}"
+    echo "Expect: VPS_CONTRACK_OK=1 VPS_HY2_UDP_TIMEOUT_OK=1 for marathon QUIC stability."
+  } >"${OUT}/vps-runtime-gates.txt"
+}
+
+detect_sparkle_latency_tax() {
+  SPARKLE_LATENCY_TAX=0
+  local ledger="${SPARKLE_DIR}/api2-probe-ledger.jsonl"
+  local app_log=""
+  for f in "$SPARKLE_LOG_DIR"/app-$(date +%Y-%-m-%-d).log "$SPARKLE_LOG_DIR"/app.log; do
+    [[ -f "$f" ]] && app_log="$f" && break
+  done
+
+  if [[ -f "$ledger" ]]; then
+    python3 - "$ledger" <<'PY' >"${OUT}/sparkle-latency-truth.txt" 2>/dev/null || true
+import json, sys
+from datetime import datetime, timezone
+
+path = sys.argv[1]
+rows = []
+with open(path) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+def p50(values):
+    if not values:
+        return None
+    s = sorted(values)
+    return s[len(s) // 2]
+
+since_ms = datetime.now(timezone.utc).timestamp() * 1000 - 24 * 3600 * 1000
+mac = []
+vps = []
+active_node = None
+for row in rows:
+    ts = datetime.fromisoformat(row["ts"].replace("Z", "+00:00")).timestamp() * 1000
+    if ts < since_ms:
+        continue
+    if row.get("authoritative") is False or not row.get("ok") or row.get("latency_ms", 0) <= 0:
+        continue
+    method = row.get("method")
+    if method == "transport_pair":
+        mac.append(row["latency_ms"])
+        active_node = row.get("node") or active_node
+    elif method == "ssh_curl" and "JP" in str(row.get("node", "")):
+        vps.append(row["latency_ms"])
+
+mac_p50 = p50(mac)
+vps_p50 = p50(vps)
+delta = None
+high = 0
+if mac_p50 is not None and vps_p50 is not None and len(mac) >= 5 and len(vps) >= 5:
+    delta = mac_p50 - vps_p50
+    if delta > 150:
+        high = 1
+
+print(f"node={active_node or 'unknown'}")
+print(f"mac_p50={mac_p50}")
+print(f"mac_n={len(mac)}")
+print(f"vps_p50={vps_p50}")
+print(f"vps_n={len(vps)}")
+print(f"delta_ms={delta}")
+print(f"SPARKLE_LATENCY_TAX={high}")
+PY
+    if [[ -s "${OUT}/sparkle-latency-truth.txt" ]]; then
+      SPARKLE_LATENCY_TAX="$(sed -n 's/^SPARKLE_LATENCY_TAX=//p' "${OUT}/sparkle-latency-truth.txt" | tail -1)"
+      [[ -z "$SPARKLE_LATENCY_TAX" ]] && SPARKLE_LATENCY_TAX=0
+    fi
+  fi
+
+  if [[ -n "$app_log" && -f "$app_log" ]]; then
+    rg '\[LatencyTruth\]' "$app_log" 2>/dev/null | tail -5 >"${OUT}/sparkle-latency-truth-app-log.txt" || true
+  fi
+
+  {
+    echo "SPARKLE_LATENCY_TAX=${SPARKLE_LATENCY_TAX}"
+    echo "Interpretation: SPARKLE_LATENCY_TAX=1 only when Mac full path P50 exceeds VPS body P50 by >150ms (both n>=5)."
+    echo "Negative delta means Mac path is faster — Sparkle TUN tax claim is false."
+  } >>"${OUT}/sparkle-latency-truth.txt" 2>/dev/null || true
+}
+
 write_log_matrix() {
   local utc_prefix="$1"
   {

@@ -10,23 +10,100 @@ import {
   applyMarathonDialToleranceToProxies,
   resolveMarathonDialTimeoutSec,
 } from './marathonDialToleranceCore'
+import {
+  resolveMarathonDialToleranceApplySec,
+  resolveMarathonDialTolerancePendingTarget,
+  shouldApplyMarathonDialToleranceNow,
+  shouldDeferMarathonDialToleranceApply,
+} from './marathonDialToleranceIdleApplyCore'
 import { reloadMihomoProfileProviders, resolveVpsProviderId } from './provider'
+import {
+  MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+  MTDO_MARATHON_STREAM_MIN_AGE_MS,
+} from './marathonTransportDialOrchestratorCore'
+import { buildMarathonStreamRegistry, hasActiveMarathonStream } from './marathonStreamRegistryCore'
+import {
+  collectRendererActivitySamplesForMtdo,
+  collectRendererToolAuditLinesForMtdo,
+} from './marathonTransportDialReader'
 
 let lastAppliedDialTimeoutSec: number | undefined
+let pendingDialTimeoutSec: number | undefined
 
 function vpsProviderFilePath(profileId: string): string {
   return path.join(profilesDir(), `${resolveVpsProviderId(profileId)}-proxies.yaml`)
 }
 
-/** Hot-update VPS leaf dial-timeout when parallel Cursor load crosses marathon threshold. */
+async function resolveMarathonDialToleranceIdleContext(cursorConnectionCount: number): Promise<{
+  hasActiveMarathonStream: boolean
+  quiesceActive: boolean
+}> {
+  const nowMs = Date.now()
+  const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
+  const quiesceSnapshot = getMarathonQuiesceSnapshot()
+  const [activitySamples, toolLines] = await Promise.all([
+    collectRendererActivitySamplesForMtdo(nowMs),
+    collectRendererToolAuditLinesForMtdo(nowMs),
+  ])
+  const registry = buildMarathonStreamRegistry(
+    activitySamples,
+    toolLines,
+    nowMs,
+    MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+  )
+  return {
+    hasActiveMarathonStream: hasActiveMarathonStream(registry, nowMs, {
+      minStreamAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS,
+      maxLastActivityGapMs: MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+    }),
+    quiesceActive: quiesceSnapshot.active,
+  }
+}
+
+/** Hot-update VPS leaf dial-timeout when idle — never reload during active marathon streams. */
 export async function syncMarathonDialToleranceIfNeeded(
   cursorConnectionCount: number,
 ): Promise<boolean> {
-  const dialTimeoutSec = resolveMarathonDialTimeoutSec(cursorConnectionCount)
-  if (lastAppliedDialTimeoutSec === dialTimeoutSec) {
+  const targetDialTimeoutSec = resolveMarathonDialTimeoutSec(cursorConnectionCount)
+  const { hasActiveMarathonStream, quiesceActive } =
+    await resolveMarathonDialToleranceIdleContext(cursorConnectionCount)
+  const defer = shouldDeferMarathonDialToleranceApply(
+    cursorConnectionCount,
+    hasActiveMarathonStream,
+    quiesceActive,
+  )
+
+  pendingDialTimeoutSec = resolveMarathonDialTolerancePendingTarget(
+    targetDialTimeoutSec,
+    defer,
+    pendingDialTimeoutSec,
+  )
+
+  const applyContext = {
+    cursorConnectionCount,
+    hasActiveMarathonStream,
+    quiesceActive,
+    targetDialTimeoutSec,
+    lastAppliedDialTimeoutSec,
+    pendingDialTimeoutSec,
+  }
+
+  if (defer) {
+    if (pendingDialTimeoutSec != null && lastAppliedDialTimeoutSec !== pendingDialTimeoutSec) {
+      await appendAppLog(
+        `[MarathonDialTolerance]: apply_deferred_idle_gate cursor_conn=${cursorConnectionCount}` +
+          ` target_timeout=${pendingDialTimeoutSec}s active_stream=${hasActiveMarathonStream ? 1 : 0}` +
+          ` quiesce=${quiesceActive ? 1 : 0}\n`,
+      )
+    }
     return false
   }
 
+  if (!shouldApplyMarathonDialToleranceNow(applyContext)) {
+    return false
+  }
+
+  const applyDialTimeoutSec = resolveMarathonDialToleranceApplySec(applyContext)
   const profile = await getCurrentProfileItem()
   const providerPath = vpsProviderFilePath(profile.id)
   if (!existsSync(providerPath)) {
@@ -42,19 +119,23 @@ export async function syncMarathonDialToleranceIfNeeded(
 
   const result = applyMarathonDialToleranceToProxies(proxies, cursorConnectionCount)
   const guardedProxies = applyVlessVisionMuxGuard(result.proxies)
-  if (!result.changed && lastAppliedDialTimeoutSec === dialTimeoutSec) {
+  if (!result.changed && lastAppliedDialTimeoutSec === applyDialTimeoutSec) {
+    pendingDialTimeoutSec = undefined
     return false
   }
 
   await writeFile(providerPath, stringifyYaml({ proxies: guardedProxies }), 'utf8')
   await reloadMihomoProfileProviders(profile.id, true)
-  lastAppliedDialTimeoutSec = dialTimeoutSec
+  lastAppliedDialTimeoutSec = applyDialTimeoutSec
+  pendingDialTimeoutSec = undefined
   await appendAppLog(
-    `[MarathonDialTolerance]: dial_timeout=${dialTimeoutSec}s cursor_conn=${cursorConnectionCount}\n`,
+    `[MarathonDialTolerance]: dial_timeout=${applyDialTimeoutSec}s cursor_conn=${cursorConnectionCount}` +
+      ` idle_apply=1\n`,
   )
   return true
 }
 
 export function resetMarathonDialToleranceStateForTests(): void {
   lastAppliedDialTimeoutSec = undefined
+  pendingDialTimeoutSec = undefined
 }

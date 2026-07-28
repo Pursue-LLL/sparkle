@@ -101,6 +101,41 @@ collect_cursor_native_evidence() {
     || log "RID not found in Cursor Structured Logs; Guard retry/notification coverage is unproven"
 }
 
+detect_rescue_execution_gap() {
+  RESCUE_EXECUTION_GAP=0
+  local app_log="${SPARKLE_LOG_DIR}/app.log"
+  if [[ ! -f "$app_log" ]]; then
+    for f in "$SPARKLE_LOG_DIR"/app-*.log; do
+      [[ -f "$f" ]] && app_log="$f" && break
+    done
+  fi
+  [[ -f "$app_log" ]] || return 0
+
+  local partition_hits executed_hits mtdo_skip
+  partition_hits="$(rg -c 'partition=1|connect_partition|transport_partition_stale_connect' "$app_log" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+  executed_hits="$(rg -c 'MarathonRescueDial.*outcome=executed|connect_partition_rescue_nudge outcome=executed|connect_partition_nudge outcome=executed' "$app_log" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+  mtdo_skip="$(rg -c 'skipped_mtdo_in_flight' "$app_log" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+
+  if [[ "${partition_hits:-0}" -gt 0 && "${executed_hits:-0}" -eq 0 ]]; then
+    RESCUE_EXECUTION_GAP=1
+  fi
+  if [[ "${mtdo_skip:-0}" -gt 0 ]]; then
+    RESCUE_EXECUTION_GAP=1
+  fi
+
+  {
+    echo "RESCUE_EXECUTION_GAP=${RESCUE_EXECUTION_GAP}"
+    echo "partition_signal_hits=${partition_hits:-0}"
+    echo "rescue_executed_hits=${executed_hits:-0}"
+    echo "skipped_mtdo_in_flight_hits=${mtdo_skip:-0}"
+    echo "Interpretation: partition detected but zero rescue executed, or BUG-019 mtdo guard still active."
+    echo "Post-P19 (1.26.83+): expect RESCUE_EXECUTION_GAP=0 when partition=1 during marathon."
+  } >"$OUT/rescue-execution-gap.txt"
+  if [[ "$RESCUE_EXECUTION_GAP" -eq 1 ]]; then
+    log "RESCUE_EXECUTION_GAP=1 — partition/rescue execution plane broken (see rescue-execution-gap.txt)"
+  fi
+}
+
 detect_p17_log_plane_blind_spot() {
   P17_BLIND_SPOT=0
   local structured_file stock_hit=0 data_hit=0
@@ -546,6 +581,9 @@ write_report_skeleton() {
 collect_renderer_evidence || true
 collect_cursor_native_evidence
 detect_p17_log_plane_blind_spot
+detect_rescue_execution_gap
+detect_vps_runtime_gates
+detect_sparkle_latency_tax
 collect_auth_lifecycle_evidence
 collect_guard_evidence
 
