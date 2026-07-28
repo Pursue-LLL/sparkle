@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  filterProxyDelayHistoryForMarathonDisplay,
+  excludeSessionNudgeSamplesFromProviderHistory,
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
   latestProxyDelayHistoryEntry,
-  latestSuccessfulProxyDelayHistoryEntry
+  latestSuccessfulProxyDelayHistoryEntry,
+  shouldShowMarathonQuiesceDelayBadge,
 } from './proxy-delay-sample-age'
 
 describe('proxyDelaySampleAgeCore', () => {
@@ -63,5 +66,39 @@ describe('proxyDelaySampleAgeCore', () => {
   it('marks timeout without timestamp gracefully', () => {
     const tip = formatProxyDelayTooltip(0, undefined, Date.now(), 'zh')
     assert.equal(tip, '延迟测试超时')
+  })
+
+  it('filters marathon timeout bars when successful samples exist', () => {
+    const history = [
+      { time: 'a', delay: 420 },
+      { time: 'b', delay: 0 },
+    ]
+    assert.deepEqual(
+      filterProxyDelayHistoryForMarathonDisplay(history).map((entry) => entry.delay),
+      [420],
+    )
+    assert.equal(shouldShowMarathonQuiesceDelayBadge(history), true)
+  })
+
+  it('excludes session nudge spikes from bar chart history', () => {
+    const history = [
+      { time: '2026-07-23T07:58:00.000Z', delay: 303 },
+      { time: '2026-07-23T08:00:00.500Z', delay: 511 },
+    ]
+    const filtered = excludeSessionNudgeSamplesFromProviderHistory(history, [
+      { sampledAtMs: Date.parse('2026-07-23T08:00:00.000Z'), delayMs: 511 },
+    ])
+    assert.deepEqual(
+      filtered.map((entry) => entry.delay),
+      [303],
+    )
+  })
+
+  it('keeps baseline nudge bars below spike threshold', () => {
+    const history = [{ time: '2026-07-23T08:00:00.500Z', delay: 303 }]
+    const filtered = excludeSessionNudgeSamplesFromProviderHistory(history, [
+      { sampledAtMs: Date.parse('2026-07-23T08:00:00.000Z'), delayMs: 303 },
+    ])
+    assert.deepEqual(filtered, history)
   })
 })

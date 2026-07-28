@@ -235,6 +235,13 @@ interface SubStoreSub {
   tag?: string[]
 }
 
+interface LatencyTruthSummary {
+  vpsBodyP50: number | null
+  vpsBodySamples: number
+  macFullPathP50: number | null
+  macFullPathSamples: number
+}
+
 interface CommercialNodeStabilityEntry {
   node: string
   kind: 'vps' | 'commercial'

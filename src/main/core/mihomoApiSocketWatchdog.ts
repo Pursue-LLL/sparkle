@@ -1,15 +1,18 @@
-// [INPUT] mihomoIpcPath · manager.getLastCoreReadyAtMs · mihomoApi.getAxios
+// [INPUT] mihomoIpcPath · coreReadyTimestamp · mihomoApi.getAxios · marathonCoreRestartGuard
 // [OUTPUT] ensureMihomoApiReachableForMarathon
 // [POS] Restore mihomo REST unix socket when ECONNREFUSED breaks marathon nudge chain.
 
 import { existsSync } from 'fs'
 import { appendAppLog } from '../utils/log'
 import { mihomoIpcPath } from '../utils/dirs'
+import { safeGetLastCoreReadyAtMs } from './coreReadyTimestamp'
 import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
 
 const MIHOMO_SOCKET_RECOVERY_COOLDOWN_MS = 60_000
 
 let lastMihomoSocketRecoveryAtMs = 0
+let deferredMihomoSocketRecoveryTimer: NodeJS.Timeout | null = null
+let deferredMihomoSocketRecoveryReason = ''
 
 export function isMihomoApiSocketPresent(): boolean {
   if (process.platform === 'win32') {
@@ -27,14 +30,34 @@ function isMihomoApiConnectionError(message: string): boolean {
   )
 }
 
+function clearDeferredMihomoSocketRecoveryTimer(): void {
+  if (deferredMihomoSocketRecoveryTimer) {
+    clearTimeout(deferredMihomoSocketRecoveryTimer)
+    deferredMihomoSocketRecoveryTimer = null
+  }
+  deferredMihomoSocketRecoveryReason = ''
+}
+
+function scheduleDeferredMihomoSocketRecovery(reason: string, delayMs: number): void {
+  if (deferredMihomoSocketRecoveryTimer) {
+    return
+  }
+  deferredMihomoSocketRecoveryReason = reason
+  deferredMihomoSocketRecoveryTimer = setTimeout(() => {
+    deferredMihomoSocketRecoveryTimer = null
+    const retryReason = deferredMihomoSocketRecoveryReason
+    deferredMihomoSocketRecoveryReason = ''
+    void ensureMihomoApiReachableForMarathon(`${retryReason}_retry`)
+  }, delayMs)
+}
+
 export async function ensureMihomoApiReachableForMarathon(reason: string): Promise<boolean> {
   const nowMs = Date.now()
   if (nowMs - lastMihomoSocketRecoveryAtMs < MIHOMO_SOCKET_RECOVERY_COOLDOWN_MS) {
     return false
   }
 
-  const { getLastCoreReadyAtMs } = await import('./manager')
-  if (isCoreWithinStartupGrace(getLastCoreReadyAtMs(), undefined, nowMs)) {
+  if (isCoreWithinStartupGrace(safeGetLastCoreReadyAtMs(), undefined, nowMs)) {
     return false
   }
 
@@ -42,6 +65,7 @@ export async function ensureMihomoApiReachableForMarathon(reason: string): Promi
     try {
       const { mihomoVersion } = await import('./mihomoApi')
       await mihomoVersion()
+      clearDeferredMihomoSocketRecoveryTimer()
       return false
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error)
@@ -53,6 +77,16 @@ export async function ensureMihomoApiReachableForMarathon(reason: string): Promi
 
   lastMihomoSocketRecoveryAtMs = nowMs
   await appendAppLog(`[MihomoApiSocketWatchdog]: recover reason=${reason}\n`)
+  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+  const guard = await evaluateMarathonCoreColdRestart('restartCore')
+  if (guard.blocked) {
+    await appendAppLog(
+      `[MihomoApiSocketWatchdog]: defer restartCore cursor_conn=${guard.snapshot.cursorConnectionCount} quiesce=${guard.snapshot.quiesceActive ? '1' : '0'} retry_ms=${MIHOMO_SOCKET_RECOVERY_COOLDOWN_MS}\n`,
+    )
+    scheduleDeferredMihomoSocketRecovery(reason, MIHOMO_SOCKET_RECOVERY_COOLDOWN_MS)
+    return false
+  }
+  clearDeferredMihomoSocketRecoveryTimer()
   const { getAxios } = await import('./mihomoApi')
   await getAxios(true)
   const { restartCore } = await import('./manager')
@@ -74,4 +108,5 @@ export async function recoverMihomoApiAfterNudgeFailure(error: unknown): Promise
 
 export function resetMihomoApiSocketWatchdogForTests(): void {
   lastMihomoSocketRecoveryAtMs = 0
+  clearDeferredMihomoSocketRecoveryTimer()
 }

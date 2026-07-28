@@ -66,6 +66,7 @@ import {
   stopNetworkDetection as stopNetworkDetectionController
 } from './network'
 import { checkProfile } from './profile-check'
+import * as coreReadyTimestamp from './coreReadyTimestamp'
 import {
   createCoreEnvironment,
   createCoreSpawnArgs,
@@ -273,11 +274,11 @@ async function startMihomoApiStreamsWithGrace(timeoutMs = 10_000): Promise<void>
   }
 }
 
-let lastCoreReadyAtMs = 0
-
-export function getLastCoreReadyAtMs(): number {
-  return lastCoreReadyAtMs
-}
+export {
+  getLastCoreReadyAtMs,
+  markCoreReadyAtMs,
+  safeGetLastCoreReadyAtMs
+} from './coreReadyTimestamp'
 
 async function completeCoreInitialization(logLevel?: LogLevel): Promise<void> {
   const tasks: Promise<unknown>[] = [
@@ -294,7 +295,7 @@ async function completeCoreInitialization(logLevel?: LogLevel): Promise<void> {
 
   await Promise.all(tasks)
   setMihomoLogSource('ws')
-  lastCoreReadyAtMs = Date.now()
+  coreReadyTimestamp.markCoreReadyAtMs()
   void delay(5_000).then(() => verifyTunAfterCoreReady())
 }
 
@@ -643,7 +644,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   return coreStartupMode === 'post-up' ? waitForCoreReadyByHook() : waitForCoreReadyByLog()
 }
 
-export async function stopCore(force = false): Promise<void> {
+async function stopCoreUnchecked(force = false): Promise<void> {
   try {
     if (!force) {
       await recoverDNS()
@@ -703,6 +704,15 @@ export async function stopCore(force = false): Promise<void> {
     }
     await rm(path.join(dataDir(), 'core.pid')).catch(() => {})
   }
+}
+
+export async function stopCore(force = false): Promise<void> {
+  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+  const guard = await evaluateMarathonCoreColdRestart('stopCore', force)
+  if (guard.blocked) {
+    return
+  }
+  await stopCoreUnchecked(force)
 }
 
 function ensureServiceCoreEventHandler(): void {
@@ -1051,10 +1061,44 @@ async function fallbackUnavailableServiceModes(reason: unknown): Promise<void> {
   }
 }
 
-export async function restartCore(): Promise<void> {
+async function getActiveCursorConnectionCount(): Promise<number> {
+  try {
+    const { countCursorConnections } = await import('./cursorConnectionHygiene')
+    return await countCursorConnections()
+  } catch {
+    return 0
+  }
+}
+
+async function deferCoreRestartForActiveCursorStreams(): Promise<boolean> {
+  const activeConns = await getActiveCursorConnectionCount()
+  if (activeConns <= 0) {
+    return false
+  }
+
+  await appendAppLog(
+    `[Manager]: defer core restart — active cursor_conn=${activeConns} data_plane_action=none (zero-disruption)\n`,
+  )
+  return true
+}
+
+export async function restartCore(force = false): Promise<void> {
+  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+  const guard = await evaluateMarathonCoreColdRestart('restartCore', force)
+  if (guard.blocked) {
+    await deferCoreRestartForActiveCursorStreams()
+    return
+  }
+
+  if (!force) {
+    if (await deferCoreRestartForActiveCursorStreams()) {
+      return
+    }
+  }
+
   try {
     clearTailscaleAuthNotifications()
-    await stopCore()
+    await stopCoreUnchecked(force)
     const promises = await startCore()
     await Promise.all(promises)
   } catch (e) {

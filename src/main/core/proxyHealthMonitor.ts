@@ -1,3 +1,7 @@
+// [INPUT] mihomoApi · marathonQuiesce · networkStabilityMonitor
+// [OUTPUT] startProxyHealthMonitor · requestProxyFailover · checkProxyHealth cycle
+// [POS] 商用节点 failover 监测；Marathon quiesce active 时全暂停（含 exit hysteresis）。
+
 import { getAppConfig } from '../config/app'
 import { mihomoGroups, mihomoChangeProxy, mihomoProxyDelay } from './mihomoApi'
 import { getProfileConfig, addProfileItem } from '../config/profile'
@@ -94,6 +98,11 @@ export async function restartProxyHealthMonitor(): Promise<void> {
  * Does not switch when the current node is healthy (failover-only policy).
  */
 export async function requestProxyFailover(trigger: string): Promise<boolean> {
+  const { isMarathonQuiesceProxyHealthPaused } = await import('./marathonQuiesce')
+  if (isMarathonQuiesceProxyHealthPaused()) {
+    return false
+  }
+
   const appConfig = await getAppConfig()
   if (!appConfig.autoProxySwitch) {
     return false
@@ -161,6 +170,11 @@ function getPrimaryProxyGroup(groups: ControllerMixedGroup[]): ControllerMixedGr
 }
 
 async function checkProxyHealth(): Promise<void> {
+  const { isMarathonQuiesceProxyHealthPaused } = await import('./marathonQuiesce')
+  if (isMarathonQuiesceProxyHealthPaused()) {
+    return
+  }
+
   const appConfig = await getAppConfig()
   const { proxyTimeoutThreshold = 5000, proxySwitchPriority = [] } = appConfig
   const priorityList = normalizePriorityList(proxySwitchPriority)

@@ -7,6 +7,7 @@ export const VPS_DELAY_TEST_TIMEOUT_MS = 15_000
 export const VPS_UI_DELAY_DEFER_CONN_THRESHOLD = MARATHON_DIAL_TOLERANCE_CONN_THRESHOLD
 export const VPS_UI_DELAY_MAX_WAIT_MS = 120_000
 export const VPS_UI_DELAY_POLL_MS = 3_000
+export const VPS_UI_EXPLICIT_DELAY_COOLDOWN_MS = 15_000
 export const VPS_DELAY_TEST_CONCURRENCY = 1
 
 const VPS_NODE_SUFFIX = /-(HY2|Reality|TUIC|TLS)$/i
@@ -26,7 +27,13 @@ export interface UiVpsDelayDeferContext {
   shortProbeActive: boolean
 }
 
-export function shouldDeferUiVpsDelayTest(context: UiVpsDelayDeferContext): boolean {
+export function shouldDeferUiVpsDelayTest(
+  context: UiVpsDelayDeferContext,
+  options: { explicitUserRequest?: boolean } = {},
+): boolean {
+  if (options.explicitUserRequest) {
+    return false
+  }
   if (context.burstActive || context.delayProbeCongested || context.shortProbeActive) {
     return true
   }
@@ -72,9 +79,10 @@ export type UiVpsDelayWaitStep = 'ready' | 'keep_waiting' | 'slot_busy'
 export function evaluateUiVpsDelayWaitStep(
   startedAtMs: number,
   context: UiVpsDelayDeferContext,
-  nowMs: number = Date.now()
+  nowMs: number = Date.now(),
+  options: { explicitUserRequest?: boolean } = {},
 ): UiVpsDelayWaitStep {
-  if (!shouldDeferUiVpsDelayTest(context)) {
+  if (!shouldDeferUiVpsDelayTest(context, options)) {
     return 'ready'
   }
   if (resolveUiVpsDelayWaitRemainingMs(startedAtMs, nowMs) <= 0) {

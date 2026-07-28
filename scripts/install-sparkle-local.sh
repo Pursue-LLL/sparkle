@@ -44,6 +44,12 @@ if ! codesign --verify --deep --strict "$SRC" >/dev/null 2>&1; then
   fail "source app signature invalid — rebuild: pnpm run build:mac (afterSign deepSignMac.cjs)"
 fi
 
+# shellcheck source=lib/marathon-core-restart-guard.sh
+source "$ROOT/scripts/lib/marathon-core-restart-guard.sh"
+export MARATHON_GUARD_ROOT="$ROOT"
+marathon_core_restart_guard_assert_idle "install-sparkle-local-pre-quit"
+marathon_core_restart_guard_capture_pre_quit_snapshot "install-sparkle-local-pre-quit"
+
 SRC_CDHASH="$(get_cdhash "$SRC")"
 [[ -n "$SRC_CDHASH" ]] || fail "could not read CDHash from $SRC"
 
@@ -74,6 +80,8 @@ if pgrep -f "sparkle-service service run" >/dev/null 2>&1; then
   osascript -e 'do shell script "killall -9 sparkle-service 2>/dev/null || true" with administrator privileges' 2>/dev/null || true
   sleep 1
 fi
+
+marathon_guard_assert_pre_quit_snapshot_idle "install-sparkle-local-post-quit"
 
 if [[ -d "$USER_COPY" ]]; then
   BAK="${USER_COPY}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
@@ -116,6 +124,7 @@ if [[ "$GK" == "rejected" ]]; then
 fi
 
 echo "$NEW_CDHASH" > "$CDHASH_FILE"
+marathon_guard_clear_pre_quit_snapshot
 log "Installed Sparkle $VER at $DEST (CDHash $NEW_CDHASH)"
 
 launch_sparkle_via_finder

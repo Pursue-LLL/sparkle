@@ -20,8 +20,9 @@ import {
 } from './cursorHy2MarathonKeepaliveCore'
 import {
   resolveCursorDedicatedActiveNode,
-  runHy2MarathonSessionKeepaliveIfDue,
 } from './cursorHy2MarathonKeepalive'
+import { executeMarathonRescueDial } from './marathonRescueDialExecutor'
+import { executeMarathonWarmthDial } from './marathonWarmthDialExecutor'
 import {
   readConnectStreamKeepaliveGapSignal,
   readMarathonColdResumeNoTokenSignal,
@@ -71,6 +72,13 @@ import {
   partitionDetected,
   shouldEmitPartitionBlindSpot,
 } from './partitionBlindSpotCore'
+import {
+  armPartitionLatch,
+  clearPartitionLatch,
+  partitionLatchActive,
+  resolvePartitionLatchCandidate,
+  shouldArmPartitionLatchFromBlindSpot,
+} from './partitionLatchCore'
 
 export interface ConnectPathPulseResult {
   connectPathDelayMs: number
@@ -79,10 +87,19 @@ export interface ConnectPathPulseResult {
   partitionStale: boolean
 }
 
+let testConnectPathPulseOverride:
+  | ((activeNode: string, cursorConnectionCount: number) => Promise<ConnectPathPulseResult>)
+  | null = null
+
+export function setConnectPathPulseOverrideForTests(
+  override: typeof testConnectPathPulseOverride,
+): void {
+  testConnectPathPulseOverride = override
+}
+
 let lastMtdoDialAtMs = 0
 let lastConnectPathPulseAtMs = 0
 let lastConnectPathPartitionStale = false
-let mtdoInFlight = false
 let lastLatencyDeltaHigh = false
 let consecutiveLatencyDeltaHighCycles = 0
 let consecutiveWarmthDeferredCount = 0
@@ -96,17 +113,13 @@ export function resetMarathonTransportDialOrchestratorForTests(): void {
   lastMtdoDialAtMs = 0
   lastConnectPathPulseAtMs = 0
   lastConnectPathPartitionStale = false
-  mtdoInFlight = false
   lastLatencyDeltaHigh = false
   consecutiveLatencyDeltaHighCycles = 0
   consecutiveWarmthDeferredCount = 0
   cycleConnectPathPulse = undefined
   lastPartitionBlindSpotAtMs = 0
   lastCursorLogPlaneAtMs = 0
-}
-
-export function isMarathonTransportDialInFlight(): boolean {
-  return mtdoInFlight
+  testConnectPathPulseOverride = null
 }
 
 function formatMtdoLogLine(
@@ -127,6 +140,9 @@ async function executeConnectPathPulse(
   activeNode: string,
   cursorConnectionCount: number,
 ): Promise<ConnectPathPulseResult> {
+  if (testConnectPathPulseOverride) {
+    return testConnectPathPulseOverride(activeNode, cursorConnectionCount)
+  }
   const rescueDelayOptions = { purpose: 'marathon_rescue' as const }
   const [api2directResult, api2Result, connectPathResult] = await Promise.all([
     mihomoProxyDelay(activeNode, API2DIRECT_PROBE_TARGET, rescueDelayOptions),
@@ -192,7 +208,7 @@ async function runIndependentConnectPathPulseIfDue(
   if (!pulse.partitionStale) {
     return
   }
-  const sessionResult = await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, {
+  const sessionResult = await executeMarathonRescueDial(cursorConnectionCount, {
     trigger: 'connect_path_partition',
     nowMs,
   })
@@ -214,7 +230,7 @@ async function executeDialPlan(
   const plan: MarathonTransportDialPlan = candidate.plan
   if (plan === 'connect_rescue_bundle') {
     await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
-    const sessionResult = await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, {
+    const sessionResult = await executeMarathonRescueDial(cursorConnectionCount, {
       trigger: candidate.trigger,
       maxGapMs: candidate.maxGapMs,
       staleRequestIdCount: candidate.staleRequestIdCount,
@@ -230,21 +246,26 @@ async function executeDialPlan(
     return sessionResult
   }
 
-  const sessionResult = await runHy2MarathonSessionKeepaliveIfDue(cursorConnectionCount, {
+  if (candidate.trigger === 'periodic_session' || candidate.trigger === 'high_latency_warmth') {
+    return executeMarathonWarmthDial(cursorConnectionCount, {
+      trigger: candidate.trigger,
+      nowMs,
+    })
+  }
+
+  const sessionResult = await executeMarathonRescueDial(cursorConnectionCount, {
     trigger: candidate.trigger,
     maxGapMs: candidate.maxGapMs,
     staleRequestIdCount: candidate.staleRequestIdCount,
     nowMs,
   })
-  if (candidate.trigger !== 'periodic_session' && candidate.trigger !== 'high_latency_warmth') {
-    await appendAppLog(
-      formatMarathonRescueNudgeLogLine(candidate.trigger, sessionResult, {
-        cursorConnectionCount,
-        maxGapMs: candidate.maxGapMs,
-        staleRids: candidate.staleRequestIds?.slice(0, 3).join(','),
-      }),
-    )
-  }
+  await appendAppLog(
+    formatMarathonRescueNudgeLogLine(candidate.trigger, sessionResult, {
+      cursorConnectionCount,
+      maxGapMs: candidate.maxGapMs,
+      staleRids: candidate.staleRequestIds?.slice(0, 3).join(','),
+    }),
+  )
   return sessionResult
 }
 
@@ -261,10 +282,6 @@ function updateWarmthDeferStreak(
 }
 
 export async function runMarathonTransportDialCycle(cursorConnectionCount: number): Promise<void> {
-  if (mtdoInFlight) {
-    return
-  }
-  mtdoInFlight = true
   try {
     cycleConnectPathPulse = undefined
     const nowMs = Date.now()
@@ -296,6 +313,10 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     const partitionRead = await readConnectPartitionSignalAsync(cursorConnectionCount, nowMs)
     const jsonlConnectPartition = partitionRead.signal
 
+    if (jsonlConnectPartition) {
+      clearPartitionLatch()
+    }
+
     if (
       cursorConnectionCount >= 12 &&
       (nowMs - lastCursorLogPlaneAtMs >= CURSOR_LOG_PLANE_HEARTBEAT_MS ||
@@ -319,11 +340,13 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         cursorConnectionCount,
         structuredPingCount: partitionRead.structuredPingCount,
         jsonlPingCount: partitionRead.jsonlPingCount,
+        partitionSignal: partitionRead.signal,
         nowMs,
         lastEmittedAtMs: lastPartitionBlindSpotAtMs,
       })
     ) {
       lastPartitionBlindSpotAtMs = nowMs
+      armPartitionLatch(nowMs)
       await appendAppLog(
         formatPartitionBlindSpotLogLine({
           structuredPingCount: partitionRead.structuredPingCount,
@@ -445,7 +468,21 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       selectionBase.connectPathPartitionDetected = lastConnectPathPartitionStale
     }
 
-    const candidate = selectMarathonTransportDialTrigger(selectionBase)
+    let candidate = selectMarathonTransportDialTrigger(selectionBase)
+
+    if (
+      shouldArmPartitionLatchFromBlindSpot({
+        partitionSignal: connectPartition,
+        structuredPingCount: partitionRead.structuredPingCount,
+        candidate,
+      })
+    ) {
+      armPartitionLatch(nowMs)
+    }
+
+    if (partitionLatchActive(nowMs)) {
+      candidate = resolvePartitionLatchCandidate(nowMs, cursorConnectionCount)
+    }
 
     if (!candidate) {
       return
@@ -487,6 +524,9 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
 
     const dialResult = await executeDialPlan(candidate, cursorConnectionCount, nowMs, activeNode)
     updateWarmthDeferStreak(cursorConnectionCount, candidate.trigger, dialResult.outcome)
+    if (candidate.trigger === 'connect_partition' && dialResult.outcome === 'executed') {
+      clearPartitionLatch()
+    }
     if (candidate.trigger === 'connect_partition' && connectPartition) {
       await appendNetworkStabilityEvent({
         ts: new Date().toISOString(),
@@ -506,7 +546,5 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     await appendAppLog(
       `[MarathonTransportDial]: outcome=failed err=${formatUnknownErrorForLog(error)}\n`,
     )
-  } finally {
-    mtdoInFlight = false
   }
 }

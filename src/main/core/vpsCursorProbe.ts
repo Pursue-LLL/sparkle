@@ -4,7 +4,6 @@ import { isCanonicalVpsNodeName } from './vpsCanonicalNodes'
 export { CANONICAL_VPS_NODE_PATTERN, isCanonicalVpsNodeName } from './vpsCanonicalNodes'
 
 function resolveVpsRegion(nodeName: string): string {
-  if (nodeName.startsWith('KR-')) return 'KR-VPS'
   if (nodeName.startsWith('JP-')) return 'JP-VPS'
   return 'VPS'
 }

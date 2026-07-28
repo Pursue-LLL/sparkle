@@ -24,13 +24,13 @@ describe('vpsL4ProbeCore', () => {
 
   it('builds ok result when both curls succeed', () => {
     const result = buildVpsL4ProbeResult(
-      'kr-vps',
-      'KR-VPS',
+      'jp-vps',
+      'JP-VPS',
       'api2 0.621000 200\nmarketplace 0.249000 200\n',
       '',
       {
-        sshHost: 'kr-vps',
-        hostName: '203.0.113.10',
+        sshHost: 'jp-vps',
+        hostName: '198.51.100.10',
         port: 22,
         identityFiles: [],
         resolvedVia: 'leaf_proxy_fallback'
@@ -41,7 +41,7 @@ describe('vpsL4ProbeCore', () => {
     assert.equal(result.api2LatencyMs, 621)
     assert.equal(result.authoritative, true)
     assert.equal(result.probeAttribution, 'healthy')
-    assert.equal(result.sshConnectHost, '203.0.113.10')
+    assert.equal(result.sshConnectHost, '198.51.100.10')
   })
 
   it('marks failure when api2 line missing', () => {
@@ -71,21 +71,19 @@ describe('vpsL4ProbeCore', () => {
 
   it('resolves leaf proxy fallback by region', () => {
     const leafProxies = [
-      { name: 'KR-VPS-HY2', server: '203.0.113.10', type: 'hysteria2' },
       { name: 'JP-VPS-HY2', server: '198.51.100.10', type: 'hysteria2' }
     ]
-    assert.equal(resolveVpsServerIpByRegion('KR-VPS', leafProxies), '203.0.113.10')
     assert.equal(resolveVpsServerIpByRegion('JP-VPS', leafProxies), '198.51.100.10')
   })
 
   it('falls back to leaf proxy IP when ssh -G hostname is alias', () => {
     const target = resolveVpsSshTarget(
-      'kr-vps',
-      'KR-VPS',
-      { hostName: 'kr-vps', port: 22, identityFiles: [] },
-      [{ name: 'KR-VPS-HY2', server: '203.0.113.10', type: 'hysteria2' }]
+      'jp-vps',
+      'JP-VPS',
+      { hostName: 'jp-vps', port: 22, identityFiles: [] },
+      [{ name: 'JP-VPS-HY2', server: '198.51.100.10', type: 'hysteria2' }]
     )
-    assert.equal(target?.hostName, '203.0.113.10')
+    assert.equal(target?.hostName, '198.51.100.10')
     assert.equal(target?.resolvedVia, 'leaf_proxy_fallback')
   })
 

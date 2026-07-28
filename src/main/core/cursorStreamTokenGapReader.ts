@@ -5,9 +5,13 @@
 import {
   detectMarathonStreamTokenGap,
   detectMarathonColdResumeNoToken,
+  detectMarathonSilentGenerationEndRescue,
+  expandStreamActivitySampleAliases,
   parseColdResumeNoFirstTokenLine,
   parseRendererStreamActivityLine,
+  parseSilentGenerationEndLine,
   type MarathonStreamTokenGapSignal,
+  type SilentGenerationEndSample,
   type StreamActivitySample,
 } from './cursorStreamTokenGapCore'
 import { CURSOR_CONNECT_STREAM_KEEPALIVE_GAP_MS } from './cursorConnectStreamKeepaliveCore'
@@ -32,6 +36,25 @@ async function collectRendererActivitySamples(_nowMs: number): Promise<StreamAct
       for (const line of text.split('\n')) {
         const sample = parseRendererStreamActivityLine(line)
         if (sample) {
+          samples.push(...expandStreamActivitySampleAliases(sample, line))
+        }
+      }
+    }
+  }
+  return samples
+}
+
+async function collectSilentGenerationEndSamples(_nowMs: number): Promise<SilentGenerationEndSample[]> {
+  const samples: SilentGenerationEndSample[] = []
+  for (const cursorDataDir of await resolveCursorDataDirs()) {
+    for (const filePath of await listRendererLogFiles(cursorDataDir)) {
+      if (!/renderer(\.\d+)?\.log$/.test(filePath)) {
+        continue
+      }
+      const text = await readLogFileTail(filePath, RENDERER_ACTIVITY_TAIL_BYTES)
+      for (const line of text.split('\n')) {
+        const sample = parseSilentGenerationEndLine(line)
+        if (sample) {
           samples.push(sample)
         }
       }
@@ -54,6 +77,17 @@ async function collectColdResumeSamples(_nowMs: number): Promise<StreamActivityS
     }
   }
   return samples
+}
+
+export async function readMarathonSilentGenerationEndRescueSignal(
+  cursorConnectionCount: number,
+  nowMs: number = Date.now(),
+): Promise<MarathonStreamTokenGapSignal | undefined> {
+  const samples = await collectSilentGenerationEndSamples(nowMs)
+  return detectMarathonSilentGenerationEndRescue(samples, {
+    nowMs,
+    cursorConnectionCount,
+  })
 }
 
 export async function readMarathonStreamTokenGapSignal(

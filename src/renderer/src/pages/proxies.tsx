@@ -1,4 +1,5 @@
 import { Button, Card, CardBody, Chip } from '@heroui/react'
+import { buildStamp } from '@renderer/utils/init'
 import { Avatar } from '@heroui-v3/react'
 import BasePage from '@renderer/components/base/base-page'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
@@ -385,7 +386,9 @@ const Proxies: React.FC = () => {
   const onProxyDelay = useCallback(
     async (proxy: string, group?: ControllerMixedGroup): Promise<ControllerProxiesDelay> => {
       if (isVpsCursorLeafNode(proxy)) {
-        return runManagedVpsDelayTestSingle(proxy, getDelayTestUrl(group))
+        return runManagedVpsDelayTestSingle(proxy, getDelayTestUrl(group), {
+          explicitUserRequest: true
+        })
       }
       return await mihomoProxyDelay(proxy, getDelayTestUrl(group))
     },
@@ -433,7 +436,7 @@ const Proxies: React.FC = () => {
       try {
         const proxyNames = proxies.map((proxy) => proxy.name)
         if (isVpsCursorLeafBatch(proxyNames)) {
-          await runManagedVpsDelayTests(proxyNames, testUrl)
+          await runManagedVpsDelayTests(proxyNames, testUrl, { explicitUserRequest: true })
           return
         }
 
@@ -749,7 +752,21 @@ const Proxies: React.FC = () => {
 
   return (
     <BasePage
-      title="代理组"
+      title={
+        <span className="inline-flex items-center gap-2 min-w-0">
+          <span>代理组</span>
+          {buildStamp ? (
+            <Chip
+              size="sm"
+              variant="flat"
+              className="font-mono text-xs app-nodrag shrink-0"
+              title={`Sparkle ${buildStamp}`}
+            >
+              {buildStamp}
+            </Chip>
+          ) : null}
+        </span>
+      }
       header={
         <Button
           size="sm"

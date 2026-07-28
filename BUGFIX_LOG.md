@@ -1,5 +1,82 @@
 # Sparkle Bugfix Log
 
+> **2026-07-28 最新**：**BUG-2026-07-28-025** — 马拉松期 L0–L3 误杀健康连接 · **1.26.89**（R-07 zero-disruption）· **BUG-024** G22 rescue · **BUG-023** force install · **BUG-022** 见下
+
+### BUG-2026-07-28-025 · v1.26.89 · marathon_transport_recovery_zero_disruption (R-07)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | EXEC-CODE-DONE · SOAK-PENDING |
+| **症状** | 马拉松 conn≥12 时 TransportHealth L0/L1 仍可能 close hung 连接；L2 flush 全 outbound；L3 restart core — 误杀活跃 SSE，浪费 500 配额 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle ≤1.26.87（L0/L1 仅部分 hard-disable；L2/L3 无 marathon guard） |
+| **修复目标版本** | Sparkle **1.26.89** |
+| **根因** | `executeTransportRecovery` 未与 `cursorConnectionHygieneCore.shouldSkipCursorConnectionHygieneClose` 对齐 |
+| **修复** | L0–L3 @ conn≥12 或 quiesce active → log disabled + no-op · 与 Hygiene marathon_guard 同阈值 |
+| **关联** | `cursorTransportHealth.ts` · `marathonQuiesce.ts` · Sparkle SSOT `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` §14 R-07 |
+| **回归** | `cursorTransportHealthCore.test.ts` agent-stability-first · `cursorConnectionHygieneCore.test.ts` marathon skip |
+| **用户动作** | `upgrade:mac` @ cursor_conn=0 → app-log 马拉松窗口零 `L2 flushed all` / `L3 restarting` |
+| **踩坑** | 低 conn 非马拉松窗口 L2/L3 仍保留（TUN 真丢灾难路径）；与铁律 #5「马拉松禁杀连接」不冲突 |
+
+### BUG-2026-07-28-024 · v1.26.87 · marathon_force_install_hard_gate (P23)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | EXEC-CODE-DONE · SOAK-PENDING |
+| **症状** | Jul28 10:52 `force install` Sparkle 1.26.84 → `core_cold_restart` → mihomo/TUN reset → 马拉松断连（L2 自伤） |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle ≤1.26.86（upgrade 脚本可绕过 P10 marathon guard） |
+| **修复目标版本** | Sparkle **1.26.87** |
+| **根因** | `SPARKLE_FORCE_INSTALL_DURING_MARATHON=1` 未 hard-fail；pkg 安装未统一 PRE-gate |
+| **修复** | `scripts/lib/marathon-core-restart-guard.sh` 默认拒绝 force install · audit 日志 |
+| **回归** | marathon-core-restart-guard 脚本 gate |
+| **用户动作** | 禁止马拉松期 force install；任务结束后正常 `upgrade:mac` |
+
+### BUG-2026-07-28-023 · v1.26.85 · rescue_skipped_weak_probe_amplifier (G22)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | EXEC-CODE-DONE · SOAK-PENDING |
+| **症状** | Jul28 15:41 c8346504 mass PING · app-log 07:40:28 `connect_partition outcome=skipped_weak_probe` @ conn=290 delay=0 → 43s 后 transport 分区 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle ≤1.26.84 |
+| **修复目标版本** | Sparkle **1.26.85** |
+| **根因** | `executeHy2SessionDialWithGuard` delay≤0 否决 **含 marathon_rescue** 的 dial |
+| **修复** | G22 `forceOnWeakProbe:true` @ `marathonRescueDialExecutor.ts` · rescue 路径不受 weak delay veto |
+| **遗漏** | **warmth** nudge（`marathonWarmthDialExecutor.ts`）delay=0 仍 skip — 非 L3 主因，已记入 SSOT |
+| **回归** | `marathonRescueDialExecutor.test.ts` G22 @ conn=290+delay=0 |
+| **用户动作** | `upgrade:mac` → partition 窗口验 `MarathonRescueDial outcome=executed` |
+
+### BUG-2026-07-28-022 · v1.26.88 · l7_long_segment_silent_eof_handoff (P22a)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | EXEC-CODE-DONE · SOAK-PENDING（execute 在 Guard312 WB **1.0.16**） |
+| **症状** | Jul28 14:47–14:50 c69260ad/cc6c19f8/11b777ba @ ~89–91min · 服务端 generation-ended silent EOF → 用户手动 Continue 烧 Included |
+| **关联产品** | Sparkle（检测）+ Guard312（execute） |
+| **bug 存在版本** | 无客户端段轮换 · 被动等 silent EOF |
+| **修复目标版本** | Sparkle **1.26.88–1.26.89**（P22a detect）· Guard312 **1.0.17**（P22b execute） |
+| **修复** | Sparkle `cursorSegmentHandoffCore.ts` @ hung_scan `phase=detect_only` · WB `c2-wb-025` queue+resumeChat @ ~85min |
+| **诚实边界** | 服务端 ~89min cap 无法 100% 消除；首跑须验 `[SegmentHandoff] outcome=executed phase=resume-chat-invoked` |
+| **踩坑** | Sparkle detect 与 WB execute **双轨独立**；仅 deploy WB 后 execute 生效 · `submitChat` eager bind 避免 service 未捕获 |
+| **SSOT** | Sparkle `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` §11.2 · Guard312 `segmentHandoffCore.mjs` |
+
+> **2026-07-28 最新**：**BUG-2026-07-28-021** — Cursor/logs `.DS_Store` ENOTDIR 致 MTDO/rescue/hung_scan 全灭 · **1.26.85**（P21）
+
+### BUG-2026-07-28-021 · v1.26.85 · cursor_log_session_dir_filter (P21)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | EXEC-CODE-DONE · SOAK-PENDING |
+| **症状** | Jul28 08:02 起每 15s `[CursorTransportHealth]: hung scan failed: ENOTDIR …/Cursor/logs/.DS_Store` · `[MarathonTransportDial]: outcome=failed` · 零 `MarathonRescueDial outcome=executed` · P19 rescue 平面 100% 离线 |
+| **关联产品** | Sparkle |
+| **bug 存在版本** | Sparkle ≥1.26.77（`listRendererLogFiles` 未过滤非目录项） |
+| **修复目标版本** | Sparkle **1.26.85** |
+| **根因** | `agentTransportFailureSync.ts` `listRendererLogFiles`/`listCursorStructuredLogFiles` 用 `existsSync` 过滤 session，`Cursor/logs/.DS_Store` 文件通过后被 `readdir` → ENOTDIR |
+| **修复** | P21 `listCursorLogSessionDirs()` — `stat().isDirectory()` + 跳过 dotfile · 两 list 函数共用 |
+| **回归** | `agentTransportFailureSync.test.ts` BUG-021 case |
+| **用户动作** | 临时：`rm ~/Library/Application\ Support/Cursor/logs/.DS_Store` · 永久：`upgrade:mac` → soak 验零 ENOTDIR + `MarathonRescueDial outcome=executed` |
+
 > **2026-07-28 最新**：**BUG-2026-07-28-020** — P20a LatencyTruth + P20b IDLE dial-tolerance + P20c triage 三门 · **1.26.84**（§29 闭合）
 
 ### BUG-2026-07-28-020 · v1.26.84 · p20_stability_closure (LatencyTruth + IDLE apply + triage gates)

@@ -35,11 +35,10 @@ describe('vpsDirectBypass', () => {
     ])
 
     const rules = profile.rules as string[] | undefined
-    assert.equal(rules?.[0], 'DOMAIN,kr-vps,DIRECT,no-resolve')
-    assert.equal(rules?.[1], 'DOMAIN,jp-vps,DIRECT,no-resolve')
-    assert.equal(rules?.[2], 'IP-CIDR,198.51.100.10/32,DIRECT,no-resolve')
-    assert.equal(rules?.[3], 'IP-CIDR,203.0.113.10/32,DIRECT,no-resolve')
-    assert.equal(rules?.[4], 'MATCH,PROXY')
+    assert.equal(rules?.[0], 'DOMAIN,jp-vps,DIRECT,no-resolve')
+    assert.equal(rules?.[1], 'IP-CIDR,198.51.100.10/32,DIRECT,no-resolve')
+    assert.equal(rules?.[2], 'IP-CIDR,203.0.113.10/32,DIRECT,no-resolve')
+    assert.equal(rules?.[3], 'MATCH,PROXY')
     assert.deepEqual((profile.tun as MihomoTunConfig)['route-exclude-address'], [
       '198.51.100.10/32',
       '203.0.113.10/32',
@@ -58,21 +57,13 @@ describe('vpsDirectBypass', () => {
       { name: 'KR-自建', server: '203.0.113.10', type: 'ss' },
       { name: 'KR-VPS-LAN', server: '10.0.0.1', type: 'vless' }
     ])
-    assert.deepEqual(profile.rules, [
-      'DOMAIN,kr-vps,DIRECT,no-resolve',
-      'DOMAIN,jp-vps,DIRECT,no-resolve',
-      'MATCH,PROXY'
-    ])
+    assert.deepEqual(profile.rules, ['DOMAIN,jp-vps,DIRECT,no-resolve', 'MATCH,PROXY'])
   })
 
   it('injects SSH host alias DOMAIN rules even without leaf proxy IPs', async () => {
     const profile = { rules: ['MATCH,PROXY'] } as unknown as MihomoConfig
     await ensureVpsDirectBypass(profile, [])
-    assert.deepEqual(profile.rules, [
-      'DOMAIN,kr-vps,DIRECT,no-resolve',
-      'DOMAIN,jp-vps,DIRECT,no-resolve',
-      'MATCH,PROXY'
-    ])
+    assert.deepEqual(profile.rules, ['DOMAIN,jp-vps,DIRECT,no-resolve', 'MATCH,PROXY'])
   })
 
   it('does not duplicate existing DIRECT rules', async () => {
@@ -82,11 +73,11 @@ describe('vpsDirectBypass', () => {
     await ensureVpsDirectBypass(profile, [
       { name: 'KR-VPS-Reality', server: '203.0.113.10', type: 'vless' }
     ])
-    assert.equal(profile.rules?.length, 4)
-    assert.equal(profile.rules?.[0], 'DOMAIN,kr-vps,DIRECT,no-resolve')
-    assert.equal(profile.rules?.[1], 'DOMAIN,jp-vps,DIRECT,no-resolve')
-    assert.equal(profile.rules?.[2], 'IP-CIDR,203.0.113.10/32,DIRECT,no-resolve')
-    assert.equal(profile.rules?.[3], 'MATCH,PROXY')
+    const rules = profile.rules as string[] | undefined
+    assert.equal(rules?.length, 3)
+    assert.equal(rules?.[0], 'DOMAIN,jp-vps,DIRECT,no-resolve')
+    assert.equal(rules?.[1], 'IP-CIDR,203.0.113.10/32,DIRECT,no-resolve')
+    assert.equal(rules?.[2], 'MATCH,PROXY')
   })
 
   it('only adds rules when TUN and sniffer are disabled', async () => {
@@ -99,9 +90,8 @@ describe('vpsDirectBypass', () => {
       { name: 'KR-VPS-Reality', server: '203.0.113.10', type: 'vless' }
     ])
     const rules = profile.rules as string[] | undefined
-    assert.equal(rules?.[0], 'DOMAIN,kr-vps,DIRECT,no-resolve')
-    assert.equal(rules?.[1], 'DOMAIN,jp-vps,DIRECT,no-resolve')
-    assert.equal(rules?.[2], 'IP-CIDR,203.0.113.10/32,DIRECT,no-resolve')
+    assert.equal(rules?.[0], 'DOMAIN,jp-vps,DIRECT,no-resolve')
+    assert.equal(rules?.[1], 'IP-CIDR,203.0.113.10/32,DIRECT,no-resolve')
     assert.equal((profile.tun as MihomoTunConfig)['route-exclude-address'], undefined)
   })
 })

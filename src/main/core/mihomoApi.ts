@@ -19,6 +19,15 @@ import {
   buildProviderProxyLookup,
   resolveGroupMemberProxies
 } from './mihomoGroupMembersCore'
+import {
+  isMarathonRescueDelayPurpose,
+  isMihomoApiResourceNotFoundError,
+  isUserExplicitDelayPurpose,
+  resolveProviderNameForLeaf,
+  shouldBypassMihomoDelayProbeSlot,
+  shouldRefreshProviderLeafBeforeDelay,
+  type MihomoDelayPurpose,
+} from './mihomoProxyDelayCore'
 
 export type MihomoChangeProxySource = 'auto' | 'manual' | 'bootstrap'
 
@@ -125,6 +134,16 @@ export const patchMihomoConfig = async (patch: Partial<ControllerConfigs>): Prom
   return await instance.patch('/configs', patch)
 }
 
+/** Reload mihomo runtime config from on-disk work/config.yaml (non-destructive vs restartCore). */
+export const reloadMihomoConfigFromDisk = async (): Promise<void> => {
+  const instance = await getAxios()
+  await instance.put(
+    '/configs?force=true',
+    { path: '', payload: '' },
+    { timeout: 30_000 },
+  )
+}
+
 export const mihomoCloseConnection = async (id: string): Promise<void> => {
   const instance = await getAxios()
   return await instance.delete(`/connections/${encodeURIComponent(id)}`)
@@ -133,6 +152,12 @@ export const mihomoCloseConnection = async (id: string): Promise<void> => {
 export const mihomoGetConnections = async (): Promise<ControllerConnections> => {
   const instance = await getAxios()
   return await instance.get('/connections')
+}
+
+/** Clear in-memory and persisted store-fake-ip mapping (mihomo POST /cache/fakeip/flush). */
+export const mihomoFlushFakeIpCache = async (): Promise<void> => {
+  const instance = await getAxios()
+  await instance.post('/cache/fakeip/flush')
 }
 
 export const mihomoCloseConnections = async (name?: string): Promise<void> => {
@@ -289,27 +314,89 @@ export const mihomoUnfixedProxy = async (group: string): Promise<ControllerProxi
   return await instance.delete(`/proxies/${encodeURIComponent(group)}`)
 }
 
-async function mihomoProxyDelayFromProvider(
-  proxy: string
-): Promise<ControllerProxiesDelay> {
-  const providers = await mihomoProxyProviders()
-  let providerName: string | undefined
-  let proxyDetail: ControllerProxiesDetail | undefined
-  for (const [name, detail] of Object.entries(providers.providers)) {
-    const found = detail.proxies?.find((item) => item.name === proxy)
-    if (found) {
-      providerName = name
-      proxyDetail = found
-      break
+async function refreshProviderLeafBeforeDelay(
+  providerName: string,
+  options: MihomoDelayOptions | undefined,
+): Promise<void> {
+  const refreshWithHealthcheck = shouldRefreshProviderLeafBeforeDelay(options?.purpose)
+  if (refreshWithHealthcheck && !isMarathonRescueDelayPurpose(options?.purpose)) {
+    const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
+    const { shouldAllowObservabilityDial } = await import('./marathonQuiesceCore')
+    const { resolveProviderRefreshDialKind } = await import('./mihomoProxyDelayCore')
+    const quiesceSnapshot = getMarathonQuiesceSnapshot()
+    const dialKind = resolveProviderRefreshDialKind(options?.purpose)
+    if (
+      !shouldAllowObservabilityDial(
+        dialKind,
+        quiesceSnapshot.active,
+        quiesceSnapshot.cursorConnectionCount,
+      )
+    ) {
+      return
     }
   }
+  if (refreshWithHealthcheck) {
+    try {
+      await mihomoProviderHealthcheckDeduped(providerName)
+      return
+    } catch {
+      // Fall through to provider update + second healthcheck attempt.
+    }
+  }
+
+  try {
+    await mihomoUpdateProxyProviders(providerName)
+  } catch {
+    // Best-effort re-register provider leaves in /proxies before delay dial.
+  }
+
+  if (refreshWithHealthcheck) {
+    try {
+      await mihomoProviderHealthcheckDeduped(providerName)
+    } catch {
+      // Rescue / user explicit dial may still succeed via cached provider history.
+    }
+  }
+}
+
+async function mihomoProxyDelayFromProvider(
+  proxy: string,
+  options?: MihomoDelayOptions,
+): Promise<ControllerProxiesDelay> {
+  const providers = await mihomoProxyProviders()
+  const providerName = resolveProviderNameForLeaf(providers, proxy)
   if (!providerName) {
     return { delay: 0, message: `provider leaf not found: ${proxy}` }
   }
+  const proxyDetail = providers.providers[providerName]?.proxies?.find(
+    (item) => item.name === proxy,
+  )
 
   const cached = pickFreshSuccessfulProviderDelay(proxyDetail?.history ?? [])
   if (cached) {
     return { delay: cached.delay }
+  }
+
+  const bypassQuiesce = isMarathonRescueDelayPurpose(options?.purpose)
+  const providerDialKind = isUserExplicitDelayPurpose(options?.purpose)
+    ? 'managed_ui_delay_test'
+    : 'provider_healthcheck_api'
+  const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
+  const { shouldAllowObservabilityDial } = await import('./marathonQuiesceCore')
+  const quiesceSnapshot = getMarathonQuiesceSnapshot()
+  if (
+    !bypassQuiesce &&
+    !shouldAllowObservabilityDial(
+      providerDialKind,
+      quiesceSnapshot.active,
+      quiesceSnapshot.cursorConnectionCount,
+    )
+  ) {
+    const latestSuccessful = pickLatestSuccessfulProviderDelay(proxyDetail?.history ?? [])
+    if (latestSuccessful) {
+      return { delay: latestSuccessful.delay }
+    }
+    return { delay: 0, message: 'provider healthcheck skipped: marathon_quiesce' }
   }
 
   try {
@@ -336,8 +423,12 @@ async function mihomoProxyDelayFromProvider(
 
 const DEFAULT_DELAY_TEST_TIMEOUT_MS = 10000
 
+export type { MihomoDelayPurpose }
+
 export interface MihomoDelayOptions {
   timeoutMs?: number
+  /** Marathon rescue dial bypasses quiesce provider healthcheck gate (BUG-014). */
+  purpose?: MihomoDelayPurpose
 }
 
 async function resolveDelayTestTimeoutMs(
@@ -351,6 +442,45 @@ async function resolveDelayTestTimeoutMs(
     return Math.floor(appTimeoutMs!)
   }
   return DEFAULT_DELAY_TEST_TIMEOUT_MS
+}
+
+async function mihomoProxyDelayViaProviderLeaf(
+  proxy: string,
+  url: string | undefined,
+  options: MihomoDelayOptions | undefined,
+): Promise<ControllerProxiesDelay> {
+  const providers = await mihomoProxyProviders()
+  const providerName = resolveProviderNameForLeaf(providers, proxy)
+  if (!providerName) {
+    return { delay: 0, message: `provider leaf not found: ${proxy}` }
+  }
+
+  await refreshProviderLeafBeforeDelay(providerName, options)
+
+  const appConfig = await getAppConfig()
+  const { delayTestUrl, delayTestTimeout } = appConfig
+  const timeoutMs = await resolveDelayTestTimeoutMs(delayTestTimeout, options?.timeoutMs)
+  const instance = await getAxios()
+  try {
+    return await instance.get(`/proxies/${encodeURIComponent(proxy)}/delay`, {
+      params: {
+        url: url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL,
+        timeout: timeoutMs,
+      },
+    })
+  } catch (retryError) {
+    if (!isMihomoApiResourceNotFoundError(retryError)) {
+      throw retryError
+    }
+    const providerDelay = await mihomoProxyDelayFromProvider(proxy, options)
+    if (providerDelay.delay !== undefined && providerDelay.delay > 0) {
+      return providerDelay
+    }
+    if (providerDelay.message) {
+      return providerDelay
+    }
+    throw retryError
+  }
 }
 
 async function mihomoProxyDelayUnchecked(
@@ -371,14 +501,12 @@ async function mihomoProxyDelayUnchecked(
     })
   } catch (error) {
     const proxies = await mihomoProxies()
-    if (proxies.proxies[proxy]) {
+    const shouldTryProviderLeaf =
+      isMihomoApiResourceNotFoundError(error) || !proxies.proxies[proxy]
+    if (!shouldTryProviderLeaf) {
       throw error
     }
-    const providerDelay = await mihomoProxyDelayFromProvider(proxy)
-    if (providerDelay.delay !== undefined && providerDelay.delay > 0) {
-      return providerDelay
-    }
-    throw error
+    return mihomoProxyDelayViaProviderLeaf(proxy, url, options)
   }
 
 }
@@ -388,7 +516,11 @@ export const mihomoProxyDelay = async (
   url?: string,
   options?: MihomoDelayOptions
 ): Promise<ControllerProxiesDelay> => {
-  return withMihomoDelayProbeSlot(() => mihomoProxyDelayUnchecked(proxy, url, options))
+  const runUnchecked = () => mihomoProxyDelayUnchecked(proxy, url, options)
+  if (shouldBypassMihomoDelayProbeSlot(options?.purpose)) {
+    return runUnchecked()
+  }
+  return withMihomoDelayProbeSlot(runUnchecked)
 }
 
 async function mihomoGroupDelayUnchecked(

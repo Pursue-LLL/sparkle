@@ -1,121 +1,56 @@
-import { appendAppLog } from '../utils/log'
-import { mihomoGroups, mihomoProxyDelay } from './mihomoApi'
-import { resolveCursorStableSelectorGroup } from './cursorProxyGroup'
-import { API2_PROBE_TARGET, API2GEO_PROBE_TARGET } from './cursorTransportHealthCore'
+// [INPUT] cursorHy2MarathonKeepaliveCore · marathonRescueDialExecutor · marathonWarmthDialExecutor
+// [OUTPUT] runHy2MarathonSessionKeepaliveIfDue → MarathonSessionKeepaliveResult
+// [POS] Mac HY2/TUIC session nudge facade — delegates to P19 executors (no MTDO re-entrancy guard).
 import {
-  CURSOR_HY2_HIGH_LATENCY_FORCE_MIN_INTERVAL_MS,
-  CURSOR_HY2_TOKEN_GAP_MIN_INTERVAL_MS,
-  isMarathonQuIcInboundCursorNode,
-  shouldDeferHy2MarathonSessionNudgeForCursorLoad,
-  shouldRunHy2MarathonSessionKeepalive
+  isMarathonRescueTrigger,
+  type MarathonSessionKeepaliveResult,
+  type MarathonWarmthTrigger,
 } from './cursorHy2MarathonKeepaliveCore'
+export { resolveCursorDedicatedActiveNode } from './cursorDedicatedNodeResolver'
+import {
+  getLastHy2SessionKeepaliveAtMs,
+  isHy2SessionDialInFlight,
+  resetMarathonSessionDialExecutorStateForTests,
+} from './marathonSessionDialExecutorCore'
+import { executeMarathonRescueDial } from './marathonRescueDialExecutor'
+import { executeMarathonWarmthDial } from './marathonWarmthDialExecutor'
 
-let lastHy2SessionKeepaliveAtMs = 0
-let hy2SessionKeepaliveInFlight = false
-
-export async function resolveCursorDedicatedActiveNode(): Promise<string | undefined> {
-  const groups = await mihomoGroups()
-  return resolveCursorStableSelectorGroup(groups)?.now
+export interface MarathonSessionKeepaliveRequest {
+  trigger: MarathonWarmthTrigger
+  maxGapMs?: number
+  staleRequestIdCount?: number
+  nowMs?: number
 }
+
+export type { MarathonSessionKeepaliveResult } from './cursorHy2MarathonKeepaliveCore'
 
 export async function runHy2MarathonSessionKeepaliveIfDue(
   cursorConnectionCount: number,
-  options: {
-    force?: boolean
-    highLatencyForce?: boolean
-    tokenGapForce?: boolean
-    nowMs?: number
-  } = {}
-): Promise<boolean> {
-  if (hy2SessionKeepaliveInFlight) {
-    return false
-  }
+  request?: MarathonSessionKeepaliveRequest,
+): Promise<MarathonSessionKeepaliveResult> {
+  const trigger = request?.trigger ?? 'periodic_session'
+  const nowMs = request?.nowMs ?? Date.now()
 
-  const nowMs = options.nowMs ?? Date.now()
-  const activeNode = await resolveCursorDedicatedActiveNode()
-  if (!activeNode || !isMarathonQuIcInboundCursorNode(activeNode)) {
-    return false
-  }
-
-  if (
-    !options.force &&
-    !options.highLatencyForce &&
-    !options.tokenGapForce &&
-    !shouldRunHy2MarathonSessionKeepalive({
-      activeNode,
-      cursorConnectionCount,
-      lastKeepaliveAtMs: lastHy2SessionKeepaliveAtMs,
-      nowMs
+  if (isMarathonRescueTrigger(trigger)) {
+    return executeMarathonRescueDial(cursorConnectionCount, {
+      trigger,
+      nowMs,
+      maxGapMs: request?.maxGapMs,
+      staleRequestIdCount: request?.staleRequestIdCount,
     })
-  ) {
-    return false
   }
 
-  if (
-    options.highLatencyForce &&
-    !options.force &&
-    lastHy2SessionKeepaliveAtMs > 0 &&
-    nowMs - lastHy2SessionKeepaliveAtMs < CURSOR_HY2_HIGH_LATENCY_FORCE_MIN_INTERVAL_MS
-  ) {
-    return false
-  }
+  return executeMarathonWarmthDial(cursorConnectionCount, { trigger, nowMs })
+}
 
-  if (
-    options.tokenGapForce &&
-    !options.force &&
-    lastHy2SessionKeepaliveAtMs > 0 &&
-    nowMs - lastHy2SessionKeepaliveAtMs < CURSOR_HY2_TOKEN_GAP_MIN_INTERVAL_MS
-  ) {
-    return false
-  }
-
-  if (shouldDeferHy2MarathonSessionNudgeForCursorLoad(cursorConnectionCount)) {
-    const trigger = options.force
-      ? 'force'
-      : options.tokenGapForce
-        ? 'token_gap'
-        : options.highLatencyForce
-          ? 'high_latency'
-          : 'periodic'
-    await appendAppLog(
-      `[CursorHy2MarathonKeepalive]: session_transport_nudge_deferred_cursor_load node=${activeNode} cursor_conn=${cursorConnectionCount} trigger=${trigger}\n`
-    )
-    return false
-  }
-
-  hy2SessionKeepaliveInFlight = true
-  try {
-    const [api2Result, api2geoResult] = await Promise.all([
-      mihomoProxyDelay(activeNode, API2_PROBE_TARGET),
-      mihomoProxyDelay(activeNode, API2GEO_PROBE_TARGET),
-    ])
-    const api2DelayMs = typeof api2Result.delay === 'number' ? api2Result.delay : 0
-    const api2geoDelayMs = typeof api2geoResult.delay === 'number' ? api2geoResult.delay : 0
-    const delayMs = Math.max(api2DelayMs, api2geoDelayMs)
-    if (delayMs <= 0) {
-      await appendAppLog(
-        `[CursorHy2MarathonKeepalive]: session_transport_nudge_weak node=${activeNode} cursor_conn=${cursorConnectionCount} api2_delay_ms=${api2DelayMs} api2geo_delay_ms=${api2geoDelayMs} msg=${api2Result.message ?? api2geoResult.message ?? 'none'}\n`
-      )
-      return false
-    }
-    lastHy2SessionKeepaliveAtMs = nowMs
-    await appendAppLog(
-      `[CursorHy2MarathonKeepalive]: session_transport_nudge node=${activeNode} cursor_conn=${cursorConnectionCount} api2_delay_ms=${api2DelayMs} api2geo_delay_ms=${api2geoDelayMs}\n`
-    )
-    return true
-  } catch (error) {
-    await appendAppLog(
-      `[CursorHy2MarathonKeepalive]: session_transport_nudge_failed node=${activeNode} cursor_conn=${cursorConnectionCount} err=${error instanceof Error ? error.message : String(error)}\n`
-    )
-    const { recoverMihomoApiAfterNudgeFailure } = await import('./mihomoApiSocketWatchdog')
-    await recoverMihomoApiAfterNudgeFailure(error)
-    return false
-  } finally {
-    hy2SessionKeepaliveInFlight = false
-  }
+export function isHy2MarathonSessionKeepaliveInFlight(): boolean {
+  return isHy2SessionDialInFlight()
 }
 
 export function resetHy2MarathonSessionKeepaliveStateForTests(): void {
-  lastHy2SessionKeepaliveAtMs = 0
-  hy2SessionKeepaliveInFlight = false
+  resetMarathonSessionDialExecutorStateForTests()
+}
+
+export function getHy2MarathonSessionKeepaliveLastAtMsForTests(): number {
+  return getLastHy2SessionKeepaliveAtMs()
 }

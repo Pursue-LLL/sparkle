@@ -1,18 +1,23 @@
 # Cursor Connect Split-Brain · 修复 Roadmap（Sparkle 仓索引）
 
-> **唯一 SSOT**：`/Users/yululiu/projects/AI/open-perplexity/temp-docs/repair/CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md`
+> **MTCP split-brain / P17–P29 唯一 SSOT**：`/Users/yululiu/projects/AI/open-perplexity/temp-docs/repair/CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md` **§29**
 >
-> 禁止在本目录创建同主题平行 roadmap。所有 P0–P17 实施细节、验收、风险矩阵以 SSOT 为准。
+> **Marathon 零中断 / L7 / P21–P23 / R-01–R-11 SSOT**：[`CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md`](./CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md) **§10–§17**（**禁止**另建同主题 roadmap）
+>
+> **实施/发版以 open-perplexity SSOT §29 为准**。§27/§28 为分 plane 细节。
 
-## 最新（2026-07-27）
+## 最新（2026-07-28）
 
-- **§25 P17 ⚠️部分 ship（1.26.77）** · **§26 P18 待授权** — 闭合 merge dedupe + blind_spot + triage v3.4
-- **根因**：L3 JP-VPS-HY2 Connect partition + Sparkle observability dead path（`Cursor/logs` 未 discover · NAL `Stream error reported…` 未 parse）
-- **pkg 目标**：Sparkle **≥1.26.77**
+- **§29 MTCP Phase 4** — 500 Included 终极方案（P19 Execution + P20 Stability · 一批次 · 十四门禁 · pkg 1.26.83+）
+- **P21 BUG-021** — `.DS_Store` ENOTDIR 致 MTDO 全灭 · **1.26.85** · 见 Marathon SSOT §11.1
+- **P22 段轮换** — 长段 silent EOF / 省 Continue · 见 Marathon SSOT §11.2 · **R-02**
+- **定责 c69260ad @14:47** — PRIMARY L7 segment cap + AMPLIFIER BUG-021 · 见 Marathon SSOT §10.1
+- **定责 c8346504 @15:41** — PRIMARY **L3** mass PING code=14 · rescue 滞后 · 见 open-perplexity SSOT **§29.10**
+- **军师结论**：P21 未装 = §29 观测面 dead · 必须先 P21 再 soak §29 · **L7 用 P22 · L3 用 §29**
 
 ## 关联
 
 | 文档 | 关系 |
 | --- | --- |
 | `CURSOR-DISCONNECT-TRIAGE.md` | 排查 SOP |
-| `temp-docs/repair/CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` | 数据面零 mutation 内核（并行，不重复） |
+| `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` | IDLE apply / 零 mutation 内核 |

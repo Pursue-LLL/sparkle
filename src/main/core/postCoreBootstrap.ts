@@ -63,16 +63,60 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
   setTimeout(() => {
     void (async () => {
       try {
-        const { warmupRegionalUrlTestGroups } = await import('./regionalUrlTestWarmup')
-        const warmed = await warmupRegionalUrlTestGroups({ mihomoGroups, mihomoGroupDelay })
-        if (warmed > 0) {
-          await appendAppLog(
-            `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`
+        const { countCursorConnections } = await import('./cursorConnectionHygiene')
+        const { syncMarathonQuiesceIfNeeded, getMarathonQuiesceSnapshot } = await import(
+          './marathonQuiesce'
+        )
+        const { shouldAllowObservabilityDial } = await import('./marathonQuiesceCore')
+        const cursorConn = await countCursorConnections().catch(() => 0)
+        await syncMarathonQuiesceIfNeeded(cursorConn)
+        const quiesceSnapshot = getMarathonQuiesceSnapshot()
+        const { refreshMarathonCoreRestartGuardStateFile } = await import('./marathonCoreRestartGuard')
+        await refreshMarathonCoreRestartGuardStateFile({
+          quiesceActive: quiesceSnapshot.active,
+          cursorConnectionCount: quiesceSnapshot.cursorConnectionCount || cursorConn,
+          updatedAtMs: Date.now(),
+        })
+        const { safeGetLastCoreReadyAtMs } = await import('./coreReadyTimestamp')
+        const {
+          isPostCoreRestartQuarantineActive,
+          remainingPostCoreRestartQuarantineMs,
+          shouldDeferObservabilityDialDuringPostCoreRestartQuarantine,
+        } = await import('./coreRestartQuarantineCore')
+        const coreReadyAtMs = safeGetLastCoreReadyAtMs()
+        const quarantineActive = isPostCoreRestartQuarantineActive(coreReadyAtMs)
+        const deferWarmup =
+          quarantineActive &&
+          shouldDeferObservabilityDialDuringPostCoreRestartQuarantine(
+            'regional_url_test_warmup',
+            coreReadyAtMs,
           )
+        if (deferWarmup) {
+          await appendAppLog(
+            `[RegionalUrlTestWarmup]: deferred post_core_restart_quarantine remaining_ms=${remainingPostCoreRestartQuarantineMs(coreReadyAtMs)} cursor_conn=${quiesceSnapshot.cursorConnectionCount}\n`,
+          )
+        } else if (
+          !shouldAllowObservabilityDial(
+            'regional_url_test_warmup',
+            quiesceSnapshot.active,
+            quiesceSnapshot.cursorConnectionCount,
+          )
+        ) {
+          await appendAppLog(
+            `[RegionalUrlTestWarmup]: deferred marathon_quiesce cursor_conn=${quiesceSnapshot.cursorConnectionCount}\n`,
+          )
+        } else {
+          const { warmupRegionalUrlTestGroups } = await import('./regionalUrlTestWarmup')
+          const warmed = await warmupRegionalUrlTestGroups({ mihomoGroups, mihomoGroupDelay })
+          if (warmed > 0) {
+            await appendAppLog(
+              `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`,
+            )
+          }
         }
       } catch (error) {
         await appendAppLog(
-          `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`
+          `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`,
         )
       }
 

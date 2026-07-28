@@ -107,19 +107,26 @@ export async function mihomoGroupDelay(
 
 export async function runManagedVpsDelayTests(
   proxyNames: string[],
-  testUrl?: string
+  testUrl?: string,
+  options?: ManagedVpsDelayTestOptions
 ): Promise<ManagedVpsDelayTestResult> {
   return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke('runManagedVpsDelayTests', proxyNames, testUrl)
+    await window.electron.ipcRenderer.invoke('runManagedVpsDelayTests', proxyNames, testUrl, options)
   )
 }
 
 export async function runManagedVpsDelayTestSingle(
   proxyName: string,
-  testUrl?: string
+  testUrl?: string,
+  options?: ManagedVpsDelayTestOptions
 ): Promise<ControllerProxiesDelay> {
   return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke('runManagedVpsDelayTestSingle', proxyName, testUrl)
+    await window.electron.ipcRenderer.invoke(
+      'runManagedVpsDelayTestSingle',
+      proxyName,
+      testUrl,
+      options
+    )
   )
 }
 
@@ -422,6 +429,15 @@ export async function getVersion(): Promise<string> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getVersion'))
 }
 
+export interface SparkleBuildStampInfo {
+  buildStamp: string
+  semver: string
+}
+
+export async function getBuildStamp(): Promise<SparkleBuildStampInfo> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getBuildStamp'))
+}
+
 export async function getPlatform(): Promise<NodeJS.Platform> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('platform'))
 }
@@ -666,6 +682,47 @@ export async function getCommercialNodeReportPath(): Promise<string> {
 export async function getCommercialNodeStabilityMarkers(): Promise<CommercialNodeStabilitySnapshot> {
   return ipcErrorWrapper(
     await window.electron.ipcRenderer.invoke('getCommercialNodeStabilityMarkers')
+  )
+}
+
+import type { SessionNudgeDelayAnchor, ProxyDelayHistoryEntry } from '@renderer/utils/proxy-delay-sample-age'
+
+export async function getRecentSessionNudgeAnchorsForNode(
+  nodeName: string,
+  lookbackMs?: number,
+): Promise<SessionNudgeDelayAnchor[]> {
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke(
+      'getRecentSessionNudgeAnchorsForNode',
+      nodeName,
+      lookbackMs,
+    ),
+  )
+}
+
+export async function getProviderDelayHistoryFromLedger(
+  nodeName: string,
+  lookbackMs?: number,
+): Promise<ProxyDelayHistoryEntry[]> {
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke(
+      'getProviderDelayHistoryFromLedger',
+      nodeName,
+      lookbackMs,
+    ),
+  )
+}
+
+export async function getLatencyTruthSummaryForNode(
+  nodeName: string,
+  lookbackMs?: number,
+): Promise<LatencyTruthSummary> {
+  return ipcErrorWrapper(
+    await window.electron.ipcRenderer.invoke(
+      'getLatencyTruthSummaryForNode',
+      nodeName,
+      lookbackMs,
+    ),
   )
 }
 

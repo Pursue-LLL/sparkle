@@ -8,6 +8,7 @@ export type Api2ProbeMethod =
   | 'deferred'
   | 'on_demand'
   | 'defer_check'
+  | 'session_nudge'
 
 export interface Api2ProbeLedgerRow {
   ts: string

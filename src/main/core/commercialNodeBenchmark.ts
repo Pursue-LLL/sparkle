@@ -28,6 +28,12 @@ import {
   pruneApi2ProbeLedger,
   readApi2ProbeLedgerSince
 } from './api2ProbeLedgerCore'
+import { isVpsBodyBenchmarkLedgerRow } from './latencyTruthFromLedgerCore'
+import {
+  CANONICAL_VPS_LEAVES_BY_REGION,
+  isCanonicalVpsNodeName,
+  isVpsRegionNodeName,
+} from './vpsCanonicalNodes'
 
 const BENCHMARK_DIR = path.join(homeDir, '.sparkle')
 const AGENT_FAILURES_PATH = path.join(BENCHMARK_DIR, 'agent-transport-failures.jsonl')
@@ -155,6 +161,25 @@ function toStabilityEntry(d: DerivedStats, rank: number): CommercialNodeStabilit
   }
 }
 
+function assignStabilityScoreTargets(
+  scoresByNode: Record<string, CommercialNodeStabilityEntry>,
+  entry: DerivedStats,
+): void {
+  const stabilityEntry = toStabilityEntry(entry, 0)
+  const node = entry.stats.node
+  if (isVpsRegionNodeName(node)) {
+    const leaves = CANONICAL_VPS_LEAVES_BY_REGION[node]
+    for (const leaf of leaves) {
+      scoresByNode[leaf] = stabilityEntry
+    }
+    scoresByNode[node] = stabilityEntry
+    return
+  }
+  if (isCanonicalVpsNodeName(node)) {
+    scoresByNode[node] = stabilityEntry
+  }
+}
+
 function buildStabilitySnapshot(
   bundle: RankingBundle,
   enabled: boolean,
@@ -167,13 +192,18 @@ function buildStabilitySnapshot(
   }
   const markersByNode: Record<string, CommercialNodeStabilityEntry> = {}
   for (const entry of topStable) {
+    if (isVpsRegionNodeName(entry.node)) {
+      for (const leaf of CANONICAL_VPS_LEAVES_BY_REGION[entry.node]) {
+        markersByNode[leaf] = entry
+      }
+    }
     markersByNode[entry.node] = entry
   }
   const scoresByNode: Record<string, CommercialNodeStabilityEntry> = {}
   for (const entry of bundle.derived) {
     if (entry.stats.kind !== 'vps') continue
     if (entry.stats.samples < MIN_RANK_SAMPLES) continue
-    scoresByNode[entry.stats.node] = toStabilityEntry(entry, 0)
+    assignStabilityScoreTargets(scoresByNode, entry)
   }
   return {
     updatedAt,
@@ -190,7 +220,7 @@ async function buildRankingBundle(): Promise<RankingBundle> {
   const cutoff = Date.now() - RETENTION_MS
   const ledgerRows = await readApi2ProbeLedgerSince(cutoff, 'vps')
   const samples = ledgerRows
-    .filter((row) => row.kind === 'vps' || row.kind === undefined)
+    .filter((row) => (row.kind === 'vps' || row.kind === undefined) && isVpsBodyBenchmarkLedgerRow(row))
     .map(ledgerRowToBenchmarkSample)
 
   const statsMap = buildStats(samples, RECENT_SLOW_WINDOW_MS)
@@ -369,7 +399,7 @@ export async function generateCommercialNodeReport(options?: {
     '- **badge gate**: success≥95%, slow>500ms≤15%, jitter≤150ms — otherwise no UI badge',
     '- **Jitter**: P95 − P50; tail latency risk for long SSE sessions',
     '- **CV%**: coefficient of variation (σ/mean); normalized stability',
-    '- **VPS ranking**: scope=vps ledger rows from SSH L4 probe (kr-vps/jp-vps every 300s)',
+    '- **VPS ranking**: scope=vps ledger rows from SSH L4 probe (jp-vps every 300s)',
     ''
   )
 

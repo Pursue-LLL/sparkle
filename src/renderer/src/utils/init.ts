@@ -1,4 +1,4 @@
-import { getVersion } from './ipc'
+import { getBuildStamp, getVersion } from './ipc'
 // const originError = console.error
 // const originWarn = console.warn
 // console.error = function (...args: any[]): void {
@@ -16,7 +16,10 @@ import { getVersion } from './ipc'
 
 export const platform: NodeJS.Platform = window.api.platform
 export let version: string = ''
+export let buildStamp: string = ''
 
 export async function init(): Promise<void> {
   version = await getVersion()
+  const stampInfo = await getBuildStamp()
+  buildStamp = stampInfo.buildStamp
 }

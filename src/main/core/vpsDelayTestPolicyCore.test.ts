@@ -48,6 +48,39 @@ describe('vpsDelayTestPolicyCore', () => {
     )
   })
 
+  it('allows explicit user delay during marathon conn load', () => {
+    const heavyLoad = {
+      cursorConnectionCount: VPS_UI_DELAY_DEFER_CONN_THRESHOLD + 50,
+      burstActive: false,
+      delayProbeCongested: false,
+      shortProbeActive: false
+    }
+    assert.equal(shouldDeferUiVpsDelayTest(heavyLoad), true)
+    assert.equal(shouldDeferUiVpsDelayTest(heavyLoad, { explicitUserRequest: true }), false)
+    assert.equal(
+      evaluateUiVpsDelayWaitStep(Date.now(), heavyLoad, Date.now(), {
+        explicitUserRequest: true
+      }),
+      'ready'
+    )
+  })
+
+  it('explicit user skips conn defer loop even when probe congested', () => {
+    const congested = {
+      cursorConnectionCount: VPS_UI_DELAY_DEFER_CONN_THRESHOLD + 50,
+      burstActive: true,
+      delayProbeCongested: true,
+      shortProbeActive: true
+    }
+    assert.equal(shouldDeferUiVpsDelayTest(congested, { explicitUserRequest: true }), false)
+    assert.equal(
+      evaluateUiVpsDelayWaitStep(Date.now(), congested, Date.now(), {
+        explicitUserRequest: true
+      }),
+      'ready'
+    )
+  })
+
   it('fail-closes when wait budget exhausted under cursor load', () => {
     const startedAt = Date.now() - 120_001
     assert.equal(

@@ -1,7 +1,7 @@
 # Cursor Marathon 代理操作手册
 
 > SSOT 交叉引用：`open-perplexity/tools/CURSOR_500_GUARD_ROADMAP.md` §5.4  
-> 代码证据：`src/main/core/confirmCursorProxySwitch.ts` · `cursorNetworkOptimize.ts`
+> 代码证据：`src/main/core/confirmCursorProxySwitch.ts` · `cursorNetworkOptimize.ts` · `marathonTransportDialOrchestrator.ts`（P15–P16）
 
 ## 核心原则
 
@@ -26,6 +26,8 @@
 - [ ] **不**依赖 ProxyHealthMonitor 对 Cursor 组 auto-failover
 - [ ] Cursor Guard：**拦截 ON** → 断连后 **Continue 1 次**（同 session）
 - [ ] 容忍 stream-eof / resource_exhausted（Cursor 服务端；换节点无效）
+- [ ] conn>500：**QUIC 饱和预期** — Sparkle defer warmth/nudge 正常；查 app-log `[UltraConnObservability]` + VpsL4Probe（**≠ VPS 宕**，见 P16）
+- [ ] Network Diagnostic 四路 FAIL @ 高 conn：查 `latency_delta_rescue_nudge` / synthetic `connect_partition`（**≥1.26.76**）；Structured PING 查 P17 ingest（**≥1.26.77**）
 
 ## 赛后（全 Agent idle）
 

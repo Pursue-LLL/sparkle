@@ -6,7 +6,7 @@ import { appendFile, mkdir, open, readFile, readdir, stat } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { discoverCursorLogRoots } from './cursorLogDiscoveryCore'
+import { discoverCursorLogRoots, listCursorLogSessionDirs } from './cursorLogDiscoveryCore'
 import {
   parseTransportFailureLine,
   rowDedupeKey,
@@ -18,7 +18,6 @@ const RENDERER_TAIL_BYTES = 2_000_000
 const EXTHOST_TAIL_BYTES = 512_000
 const STRUCTURED_LOG_TAIL_BYTES = 512_000
 const SYNC_OVERLAP_MS = 120_000
-const MAX_LOG_SESSIONS = 6
 
 function sparkleAgentTransportPath(): string {
   return join(homedir(), '.sparkle', 'agent-transport-failures.jsonl')
@@ -59,12 +58,8 @@ export async function listRendererLogFiles(cursorDataDir: string): Promise<strin
   if (!existsSync(logsDir)) {
     return []
   }
-  const sessions = (await readdir(logsDir))
-    .filter((name) => existsSync(join(logsDir, name)))
-    .sort()
-    .slice(-Math.max(1, MAX_LOG_SESSIONS))
   const files: string[] = []
-  for (const session of sessions) {
+  for (const session of await listCursorLogSessionDirs(logsDir)) {
     const root = join(logsDir, session)
     const entries = await readdir(root)
     for (const entry of entries) {
@@ -96,12 +91,8 @@ export async function listCursorStructuredLogFiles(cursorDataDir: string): Promi
   if (!existsSync(logsDir)) {
     return []
   }
-  const sessions = (await readdir(logsDir))
-    .filter((name) => existsSync(join(logsDir, name)))
-    .sort()
-    .slice(-Math.max(1, MAX_LOG_SESSIONS))
   const files: string[] = []
-  for (const session of sessions) {
+  for (const session of await listCursorLogSessionDirs(logsDir)) {
     const root = join(logsDir, session)
     const entries = await readdir(root)
     for (const entry of entries) {
@@ -249,8 +240,20 @@ export function startAgentTransportFailureSync(): void {
     return
   }
   syncBootstrapped = true
-  // Periodic sync is driven by cursorTransportHealth hung_scan (15s cadence).
   void (async () => {
+    const { auditCursorLogDiscoveryHealth } = await import('./cursorLogDiscoveryCore')
+    const { appendAppLog } = await import('../utils/log')
+    const { getAppConfig } = await import('../config/app')
+    const health = await auditCursorLogDiscoveryHealth({
+      appPathPrefixes: (await getAppConfig()).cursorProxyAppPathPrefixes ?? [],
+    })
+    const strayNote =
+      health.strayEntries.length > 0
+        ? ` stray=${health.strayEntries.length}`
+        : ''
+    await appendAppLog(
+      `[LogDiscoveryHealth]: outcome=${health.outcome} roots=${health.rootsChecked} sessions=${health.sessionCount}${strayNote}${health.errors.length > 0 ? ` err=${health.errors.join('; ')}` : ''}\n`,
+    )
     const { resolveCursorDedicatedActiveNode } = await import('./cursorHy2MarathonKeepalive')
     const proxyNode = await resolveCursorDedicatedActiveNode()
     await syncAgentTransportFailuresFromCursorLogs({ proxyNodeFallback: proxyNode })

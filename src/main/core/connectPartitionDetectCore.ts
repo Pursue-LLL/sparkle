@@ -1,6 +1,8 @@
-// [INPUT] (pure — no external deps)
+// [INPUT] HUNG_SCAN_INTERVAL_MS from cursorTransportHealthCore
 // [OUTPUT] detectConnectPartitionSignal · resolveConnectPartitionWindowMs · ConnectPartitionSignal types
-// [POS] Connect split-brain partition 纯函数 SSOT；conn≥200 时分区窗 60s（P16 ultra-conn Diagnostic PING 23–39s）。
+// [POS] Connect split-brain partition 纯函数 SSOT；conn≥12 窗=15s（G11）· conn≥200 窗 60s（P16 ultra-conn）。
+
+import { HUNG_SCAN_INTERVAL_MS } from './cursorTransportHealthCore'
 
 /** Connect long-stream failures while short HTTP probes stay green (split-brain). */
 
@@ -14,6 +16,9 @@ export const CONNECT_PARTITION_ULTRA_CONN_WINDOW_MS = 60_000
 export function resolveConnectPartitionWindowMs(cursorConnectionCount: number): number {
   if (cursorConnectionCount >= CONNECT_PARTITION_ULTRA_CONN_THRESHOLD) {
     return CONNECT_PARTITION_ULTRA_CONN_WINDOW_MS
+  }
+  if (cursorConnectionCount >= CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS) {
+    return HUNG_SCAN_INTERVAL_MS
   }
   return CONNECT_PARTITION_WINDOW_MS
 }

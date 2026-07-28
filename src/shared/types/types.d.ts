@@ -66,6 +66,11 @@ type Fingerprints =
 
 interface MihomoDelayOptions {
   timeoutMs?: number
+  purpose?: 'default' | 'marathon_rescue'
+}
+
+interface ManagedVpsDelayTestOptions {
+  explicitUserRequest?: boolean
 }
 
 interface ManagedVpsDelayTestResult {

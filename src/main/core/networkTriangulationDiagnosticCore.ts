@@ -68,10 +68,10 @@ export function buildTriangulationProbePlan(
     ? { proxy: TRIANGULATION_JP_NODE, target: API2_PROBE_TARGET, ok: false, delayMs: 0 }
     : skippedProbe(TRIANGULATION_JP_NODE, 'node_not_in_profile')
 
-  const marketplaceHost = availableNodes.has(TRIANGULATION_KR_NODE)
-    ? TRIANGULATION_KR_NODE
-    : availableNodes.has(TRIANGULATION_JP_NODE)
-      ? TRIANGULATION_JP_NODE
+  const marketplaceHost = availableNodes.has(TRIANGULATION_JP_NODE)
+    ? TRIANGULATION_JP_NODE
+    : availableNodes.has(TRIANGULATION_KR_NODE)
+      ? TRIANGULATION_KR_NODE
       : ''
 
   const marketplace: TriangulationProbeSnapshot = marketplaceHost
@@ -110,13 +110,13 @@ export function resolveTriangulationVerdict(input: TriangulationInput): Triangul
   const jpAttempted = isProbeAttempted(input.jp)
   const marketplaceAttempted = isProbeAttempted(input.marketplace)
 
-  if (!marketplaceAttempted || (!krAttempted && !jpAttempted)) {
+  if (!marketplaceAttempted || !jpAttempted) {
     return {
       layer: 'inconclusive_missing_node',
       probeAttribution: 'inconclusive',
       confidence: 'partial',
-      summaryZh: '缺少 KR/JP Reality 节点，无法完成三点定责。',
-      summaryEn: 'KR/JP Reality nodes missing; triangulation incomplete.',
+      summaryZh: '缺少 JP Reality 节点，无法完成定责诊断。',
+      summaryEn: 'JP Reality node missing; triangulation incomplete.',
       limitationZh,
       limitationEn
     }
@@ -184,7 +184,7 @@ export function resolveTriangulationVerdict(input: TriangulationInput): Triangul
     }
   }
 
-  if (marketplaceOk && krOk && jpOk) {
+  if (marketplaceOk && jpOk && (!krAttempted || krOk)) {
     const activeAttempted = isProbeAttempted(input.active)
     const activeOk = isProbeOk(input.active)
     if (activeAttempted && !activeOk) {
