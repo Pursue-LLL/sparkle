@@ -14,6 +14,7 @@ export function shouldEmitPartitionBlindSpot(options: {
   cursorConnectionCount: number
   structuredPingCount: number
   jsonlPingCount: number
+  partitionSignal?: ConnectPartitionSignal
   nowMs: number
   lastEmittedAtMs: number
 }): boolean {
@@ -21,6 +22,9 @@ export function shouldEmitPartitionBlindSpot(options: {
     return false
   }
   if (options.structuredPingCount < CONNECT_PARTITION_MIN_PING_FAILURES) {
+    return false
+  }
+  if (options.partitionSignal != null) {
     return false
   }
   if (options.jsonlPingCount > 0) {

@@ -20,6 +20,7 @@
 - [x] 通过 WebDAV 一键备份和恢复配置
 - [x] 强大的覆写功能，任意修订配置文件
 - [x] 深度集成 Sub-Store，轻松管理订阅
+- [x] **构建标识 Chip**（代理组旁 `YYYY.MMDD.HHMM`，便于确认本地安装版本）
 
 ## 开发
 
@@ -107,7 +108,8 @@ sparkle/
 │   │   ├── index.ts        # 预加载脚本主文件
 │   │   └── index.d.ts      # 预加载脚本类型定义
 │   └── shared/             # 共享资源
-│       └── types           # 全局类型定义
+│       ├── types           # 全局类型定义
+│       └── buildStamp.ts   # 构建标识（write-build-stamp 生成）
 ├── resources/              # 应用资源文件
 ├── build/                  # 构建配置
 ├── extra/                  # 额外资源
@@ -127,6 +129,8 @@ sparkle/
 - `pnpm typecheck:web` - 渲染进程类型检查
 - `pnpm lint` - 运行代码检查
 - `pnpm format` - 格式化代码
+- `pnpm test:node-quality` - 核心纯函数单测（含 P16/P17/P18 partition · transport ingest）
+- `pnpm write-build-stamp` - 写入 `src/shared/buildStamp.ts`（`dev`/`build:*` 已自动调用）
 
 #### 构建命令
 
@@ -203,9 +207,9 @@ cd /path/to/sparkle
 pnpm run upgrade:mac
 ```
 
-等价 `bash scripts/upgrade-sparkle-local.sh`：vite 编译 → electron-builder dir（含 deepSign）→ asar 校验 → 安装到 `/Applications` → Finder 启动。
+等价 `bash scripts/upgrade-sparkle-local.sh`：vite 编译 → **`rm -rf dist/mac-arm64`** → electron-builder dir（`mac.identity: "-"` + deepSign · 失败自动重试）→ **`verify-sparkle-main-asar.mts`**（SSOT asar 门禁）→ **Marathon PRE-gate**（conn≥12 或 quiesce ON 时 FAIL，见 `scripts/lib/marathon-core-restart-guard.sh`）→ 安装到 `/Applications` → **Marathon 就绪门控**（`Api2ProbePlane ON` · 90s · grace 内 FAIL 可忽略，见 BUG-006 踩坑）→ Finder 启动。网络不可达时：`SKIP_PREPARE=1 bash scripts/upgrade-sparkle-local.sh`。紧急 override：`SPARKLE_FORCE_CORE_RESTART=1`（会 kill in-flight Connect 流）。
 
-**仅安装已构建 dist**：`bash scripts/install-sparkle-local.sh`
+**仅安装已构建 dist**：`bash scripts/install-sparkle-local.sh`（同样受 Marathon PRE-gate 约束）
 
 **禁止**：
 
@@ -218,7 +222,7 @@ pnpm run upgrade:mac
 
 完整 SSOT 见 [BUGFIX_LOG.md — Sparkle 本地安装](BUGFIX_LOG.md)。
 
-**Agent 稳定性**：安装 **≥1.26.50**（含 token gap nudge · 覆盖 ~33s server EOF 窗口）。
+**Agent 稳定性**：安装 **≥1.26.77**（含 P17 Structured transport ingest + P16 ultra-conn rescue；UI build stamp Chip）。最低 **≥1.26.53**（P9 Marathon Quiesce）。**≥1.26.50**（token gap nudge · ~33s server EOF 窗口）。
 
 ### 常见问题
 

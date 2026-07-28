@@ -3,6 +3,7 @@ import { shouldTreatHealthyProbeAsConnectPartition } from './connectPartitionDet
 import {
   CURSOR_CONN_IDLE_MIN_AGE_MS,
   isCursorConnection,
+  shouldSkipCursorConnectionHygieneClose,
   type ConnectionHygieneRow
 } from './cursorConnectionHygieneCore'
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
@@ -298,4 +299,48 @@ export function isMarathonIdleCursorConnection(row: ConnectionHygieneRow, nowMs:
     return false
   }
   return row.uploadSpeed <= 0 && row.downloadSpeed <= 0
+}
+
+/** R-07: skip L2/L3 transport recovery when marathon hygiene would skip closes. */
+export function shouldSkipDestructiveTransportRecoveryDuringMarathon(
+  cursorConnectionCount: number,
+  quiesceActive: boolean,
+): boolean {
+  return shouldSkipCursorConnectionHygieneClose(cursorConnectionCount, quiesceActive)
+}
+
+export type TransportRecoveryExecutionDecision =
+  | 'noop'
+  | 'hard-disable-l0'
+  | 'hard-disable-l1'
+  | 'marathon-disable-l2'
+  | 'marathon-disable-l3'
+  | 'execute-l2'
+  | 'execute-l3'
+
+/** Pure R-07 ladder: L0/L1 always hard-disable; L2/L3 marathon-guarded. */
+export function decideTransportRecoveryExecution(
+  action: RecoveryAction,
+  marathonContext: { cursorConnectionCount: number; quiesceActive: boolean },
+): TransportRecoveryExecutionDecision {
+  if (action === 'none') {
+    return 'noop'
+  }
+  if (action === 'L0') {
+    return 'hard-disable-l0'
+  }
+  if (action === 'L1') {
+    return 'hard-disable-l1'
+  }
+  const marathonSkip = shouldSkipDestructiveTransportRecoveryDuringMarathon(
+    marathonContext.cursorConnectionCount,
+    marathonContext.quiesceActive,
+  )
+  if (action === 'L2') {
+    return marathonSkip ? 'marathon-disable-l2' : 'execute-l2'
+  }
+  if (action === 'L3') {
+    return marathonSkip ? 'marathon-disable-l3' : 'execute-l3'
+  }
+  return 'noop'
 }

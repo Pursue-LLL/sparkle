@@ -528,3 +528,50 @@ export async function getOverrideProfileStr(): Promise<string> {
 export async function getRuntimeConfig(): Promise<MihomoConfig> {
   return runtimeConfig
 }
+
+interface ProxyProviderHealthCheckConfig {
+  enable?: boolean
+  url?: string
+  interval?: number
+  lazy?: boolean
+}
+
+/** Hot-patch proxy-provider health-check.enable in runtime yaml (Marathon quiesce). */
+export async function patchRuntimeProxyProviderHealthCheckEnable(
+  profileId: string,
+  enable: boolean,
+  diffWorkDir: boolean,
+): Promise<boolean> {
+  if (!runtimeConfig?.['proxy-providers']) {
+    return false
+  }
+
+  const { resolveVpsProviderId } = await import('./provider')
+  const providerIds = [profileId, resolveVpsProviderId(profileId)]
+  const providers = runtimeConfig['proxy-providers'] as Record<
+    string,
+    { 'health-check'?: ProxyProviderHealthCheckConfig }
+  >
+
+  let changed = false
+  for (const providerId of providerIds) {
+    const provider = providers[providerId]
+    const healthCheck = provider?.['health-check']
+    if (!healthCheck || healthCheck.enable === enable) {
+      continue
+    }
+    healthCheck.enable = enable
+    changed = true
+  }
+
+  if (!changed) {
+    return false
+  }
+
+  runtimeConfigStr = stringifyYaml(runtimeConfig)
+  await writeFile(
+    diffWorkDir ? mihomoWorkConfigPath(profileId) : mihomoWorkConfigPath('work'),
+    runtimeConfigStr,
+  )
+  return true
+}

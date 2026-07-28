@@ -100,6 +100,14 @@ export function shouldDeferNetworkProbeForCursorLoad(cursorConnectionCount: numb
   return cursorConnectionCount >= CURSOR_CONN_PROBE_DEFER_THRESHOLD
 }
 
+/** Zero-disruption: never close Cursor sockets during marathon or quiesce exit hysteresis. */
+export function shouldSkipCursorConnectionHygieneClose(
+  cursorConnectionCount: number,
+  quiesceActive: boolean,
+): boolean {
+  return quiesceActive || cursorConnectionCount >= CURSOR_CONN_HYGIENE_MIN_COUNT
+}
+
 export function mergeConnectionIdsToClose(
   duplicateIds: string[],
   globalIds: string[]

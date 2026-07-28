@@ -1,3 +1,4 @@
+import { getAppConfig } from '../config'
 import { formatUnknownErrorForUi } from '../utils/formatUnknownErrorForLog'
 import { appendAppLog } from '../utils/log'
 import { countCursorConnections } from './cursorConnectionHygiene'
@@ -156,7 +157,8 @@ export async function runManagedVpsDelayTests(
       await appendAppLog('[ManagedVpsDelayTest]: explicit user delay bypass conn defer\n')
     }
     const timeoutMs = await resolveManagedTimeoutMs()
-    const delayOptions: MihomoDelayOptions = { timeoutMs }
+    const delayPurpose = options.explicitUserRequest ? ('user_explicit' as const) : undefined
+    const delayOptions: MihomoDelayOptions = { timeoutMs, purpose: delayPurpose }
     const delays: Record<string, ControllerProxiesDelay> = {}
     const { resolveMarathonObservabilityDialContext, withMarathonObservabilityDialBudget } =
       await import('./marathonObservabilityDialBudget')
@@ -200,7 +202,8 @@ export async function runManagedVpsDelayTestSingle(
   const trimmed = proxyName.trim()
   if (!isVpsCursorLeafNode(trimmed)) {
     const timeoutMs = await resolveManagedTimeoutMs()
-    return mihomoProxyDelay(trimmed, testUrl, { timeoutMs })
+    const purpose = options.explicitUserRequest ? ('user_explicit' as const) : undefined
+    return mihomoProxyDelay(trimmed, testUrl, { timeoutMs, purpose })
   }
   const result = await runManagedVpsDelayTests([trimmed], testUrl, options)
   return result.delays[trimmed] ?? { delay: 0, message: 'managed delay result missing' }

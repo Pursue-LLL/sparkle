@@ -12,7 +12,7 @@ import {
 } from './networkAlertNotifier'
 import { shouldSkipCommercialBenchmarkDuringBurst } from './networkBurstGateCore'
 import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
-import { getLastCoreReadyAtMs } from './manager'
+import { safeGetLastCoreReadyAtMs } from './coreReadyTimestamp'
 import { countCursorConnections, startCursorConnectionHygiene, stopCursorConnectionHygiene } from './cursorConnectionHygiene'
 import { runMarathonSessionWarmthIfDue } from './cursorTransportHealth'
 import { isTransportPairHealthy } from './cursorTransportHealthCore'
@@ -22,6 +22,7 @@ import {
   type MandatoryProbeContext,
   type ProbeAttribution
 } from './cursorTransportHealthCore'
+import { shouldDeferProbeForCursorLoadUnderMarathonQuiesce } from './marathonQuiesceCore'
 import {
   clearTunInterfaceLostConfirmed,
   evaluateAndRecoverTransport,
@@ -79,6 +80,10 @@ type NetworkStabilityKind =
   | 'tun_interface_recovered'
   | 'transport_recovery'
   | 'transport_hung_scan'
+  | 'transport_partition_stale_connect'
+  | 'transport_partition_stale_connect_path'
+  | 'transport_partition_blind_spot'
+  | 'transport_mac_vps_delta_high'
 
 export interface NetworkStabilityEvent {
   ts: string
@@ -109,6 +114,14 @@ export interface NetworkStabilityEvent {
     delay: number
     time: string
     alive?: boolean
+  }>
+  mihomo_vps_history_snapshot?: Array<{
+    name: string
+    alive?: boolean
+    history: Array<{
+      time: string
+      delay: number
+    }>
   }>
 }
 
@@ -394,7 +407,7 @@ async function handleTunInterfaceLost(): Promise<void> {
     return
   }
 
-  if (isCoreWithinStartupGrace(getLastCoreReadyAtMs(), undefined, now)) {
+  if (isCoreWithinStartupGrace(safeGetLastCoreReadyAtMs(), undefined, now)) {
     await appendAppLog(
       '[NetworkStabilityMonitor]: defer TUN recovery — core still within startup grace window\n'
     )
@@ -533,9 +546,18 @@ async function runProbeCycle(): Promise<number> {
     await scanTunLogEvents()
 
     const cursorConnCount = await countCursorConnections().catch(() => 0)
+    const { syncMarathonQuiesceIfNeeded, getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
+    await syncMarathonQuiesceIfNeeded(cursorConnCount)
+    const quiesceSnapshot = getMarathonQuiesceSnapshot()
     const hungCount = await countHungCursorConnections().catch(() => 0)
     const mandatoryContext = buildMandatoryProbeContext(cursorConnCount, hungCount)
-    if (shouldDeferProbeForCursorLoad(cursorConnCount, mandatoryContext)) {
+    if (
+      shouldDeferProbeForCursorLoadUnderMarathonQuiesce(
+        quiesceSnapshot.active,
+        cursorConnCount,
+        mandatoryContext,
+      )
+    ) {
       void runMarathonSessionWarmthIfDue(cursorConnCount)
       await appendDeferredProbeCacheEvent(cursorConnCount)
       await logDeferredProbeIfDue(cursorConnCount)
@@ -636,9 +658,43 @@ async function runCursorTransportConnectivityCheck(
 ): Promise<boolean> {
   const transport = await resolveProbeTransportOptions()
   const proxyNode = await resolveCurrentProxyNode()
-  const probe = proxyNode
-    ? await runTransportProbePairViaCursorNode(proxyNode, transport)
-    : await runTransportProbePair(transport)
+  const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
+  const { shouldAllowObservabilityDial } = await import('./marathonQuiesceCore')
+  const {
+    resolveMarathonObservabilityDialContext,
+    withMarathonObservabilityDialBudget,
+  } = await import('./marathonObservabilityDialBudget')
+  const quiesceSnapshot = getMarathonQuiesceSnapshot()
+  const { safeGetLastCoreReadyAtMs } = await import('./coreReadyTimestamp')
+  const { shouldDeferObservabilityDialDuringPostCoreRestartQuarantine } = await import(
+    './coreRestartQuarantineCore'
+  )
+  const coreReadyAtMs = safeGetLastCoreReadyAtMs()
+  const skipMarketplaceForQuarantine = shouldDeferObservabilityDialDuringPostCoreRestartQuarantine(
+    'marketplace_probe',
+    coreReadyAtMs,
+  )
+  const skipMarketplace =
+    skipMarketplaceForQuarantine ||
+    !shouldAllowObservabilityDial(
+    'marketplace_probe',
+    quiesceSnapshot.active,
+    quiesceSnapshot.cursorConnectionCount,
+  )
+  const probeOptions = { ...transport, skipMarketplace }
+  const dialContext = await resolveMarathonObservabilityDialContext()
+  const budgetResult = await withMarathonObservabilityDialBudget(
+    'transport_pair',
+    dialContext,
+    async () =>
+      proxyNode
+        ? runTransportProbePairViaCursorNode(proxyNode, probeOptions)
+        : runTransportProbePair(probeOptions),
+  )
+  if (budgetResult.outcome === 'skipped_busy' || budgetResult.value === null) {
+    return lastCursorProbe?.ok ?? true
+  }
+  const probe = budgetResult.value
   const attribution = resolveTransportProbeAttribution(probe)
   lastTransportAttribution = attribution
   lastRealProbeAtMs = Date.now()
@@ -708,9 +764,18 @@ export function getRecentCursorProbe(
 export async function shouldDeferCursorFailover(currentProxy: string): Promise<boolean> {
   const transport = await resolveProbeTransportOptions()
   const proxyNode = await resolveCurrentProxyNode()
-  const probe = proxyNode
-    ? await runTransportProbePairViaCursorNode(proxyNode, transport)
-    : await runTransportProbePair(transport)
+  const { resolveMarathonObservabilityDialContext, withMarathonObservabilityDialBudget } =
+    await import('./marathonObservabilityDialBudget')
+  const dialContext = await resolveMarathonObservabilityDialContext()
+  const budgetResult = await withMarathonObservabilityDialBudget('defer_check', dialContext, async () =>
+    proxyNode
+      ? runTransportProbePairViaCursorNode(proxyNode, transport)
+      : runTransportProbePair(transport),
+  )
+  if (budgetResult.outcome === 'skipped_busy' || budgetResult.value === null) {
+    return shouldDeferDestructiveRecoveryAfterLiveProbe(lastCursorProbe?.ok ?? false, currentProxy, proxyNode)
+  }
+  const probe = budgetResult.value
   lastRealProbeAtMs = Date.now()
   lastCursorProbe = {
     ok: probe.api2Ok,

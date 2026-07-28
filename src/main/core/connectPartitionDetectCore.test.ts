@@ -4,8 +4,10 @@ import {
   CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS,
   detectConnectPartitionSignal,
   isConnectPingTransportFailure,
+  resolveConnectPartitionWindowMs,
   shouldTreatHealthyProbeAsConnectPartition,
 } from './connectPartitionDetectCore'
+import { HUNG_SCAN_INTERVAL_MS } from './cursorTransportHealthCore'
 import { resolveProbeAttributionWithConnectPartition } from './cursorTransportHealthCore'
 
 const NOW = Date.parse('2026-07-20T08:00:24.000Z')
@@ -108,6 +110,44 @@ describe('connectPartitionDetectCore', () => {
       shouldTreatHealthyProbeAsConnectPartition(true, signal),
       true,
     )
+  })
+
+  it('uses 15s window at conn>=12 aligned with hung_scan (G11)', () => {
+    assert.equal(resolveConnectPartitionWindowMs(30), HUNG_SCAN_INTERVAL_MS)
+    assert.equal(resolveConnectPartitionWindowMs(CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS), HUNG_SCAN_INTERVAL_MS)
+    assert.equal(resolveConnectPartitionWindowMs(CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS - 1), 8_000)
+  })
+
+  it('detects mass PING at T0+14s within 15s window (G11)', () => {
+    const t0 = Date.parse('2026-07-27T10:59:00.000Z')
+    const scanAt = t0 + 14_000
+    const rows = [
+      {
+        ts: t0,
+        errMsg: 'PING timed out',
+        connectCode: '14',
+        originalRequestId: 'rid-1',
+      },
+      {
+        ts: t0 + 500,
+        errMsg: 'PING timed out',
+        connectCode: '14',
+        requestId: 'rid-2',
+      },
+    ]
+    const narrow = detectConnectPartitionSignal(rows, {
+      nowMs: scanAt,
+      cursorConnectionCount: 25,
+      windowMs: 8_000,
+    })
+    assert.equal(narrow, undefined)
+
+    const aligned = detectConnectPartitionSignal(rows, {
+      nowMs: scanAt,
+      cursorConnectionCount: 25,
+      windowMs: resolveConnectPartitionWindowMs(25),
+    })
+    assert.equal(aligned?.pingFailureCount, 2)
   })
 
   it('uses 60s window at conn>=200 for sequential Diagnostic PING failures', () => {

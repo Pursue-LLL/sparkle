@@ -7,8 +7,12 @@ import {
 import {
   detectMarathonStreamTokenGap,
   detectMarathonColdResumeNoToken,
+  detectMarathonSilentGenerationEndRescue,
+  expandStreamActivitySampleAliases,
   parseColdResumeNoFirstTokenLine,
   parseRendererStreamActivityLine,
+  parseSilentGenerationEndLine,
+  CURSOR_SILENT_GENERATION_END_MIN_DURATION_MS,
 } from './cursorStreamTokenGapCore'
 
 describe('cursorStreamTokenGapCore', () => {
@@ -94,5 +98,41 @@ describe('cursorStreamTokenGapCore', () => {
       },
     )
     assert.equal(signal, undefined)
+  })
+
+  it('parses df1501ed silent generation end and rescues below token_gap threshold', () => {
+    const line =
+      '2026-07-25 14:51:54.960 [info] [ifm-event-v1] {"schemaVersion":1,"eventKind":"stream_terminated","occurredAtMs":1784962314581,"requestId":"dd06a733-8ac3-4dc4-80e1-dc2b89bd3e5f","originalRequestId":"df1501ed-a0ad-46ae-950c-2057366f88b3","payload":{"terminalMs":1784962314581,"reason":"generation-ended-without-turnEnded","gapSinceActivityMs":7622,"durationMs":6435381}}'
+    const sample = parseSilentGenerationEndLine(line)
+    assert.ok(sample)
+    assert.equal(sample?.requestId, 'dd06a733-8ac3-4dc4-80e1-dc2b89bd3e5f')
+    assert.equal(sample?.originalRequestId, 'df1501ed-a0ad-46ae-950c-2057366f88b3')
+    assert.equal(sample?.gapSinceActivityMs, 7622)
+
+    const signal = detectMarathonSilentGenerationEndRescue([sample!], {
+      nowMs: sample!.terminalMs + 5_000,
+      cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      minDurationMs: CURSOR_SILENT_GENERATION_END_MIN_DURATION_MS,
+    })
+    assert.ok(signal)
+    assert.equal(signal!.suddenSilentGenerationEnd, true)
+    assert.ok(signal!.maxGapMs < CURSOR_HY2_TOKEN_GAP_FORCE_MS)
+    assert.deepEqual(signal!.staleRequestIds, [
+      'dd06a733-8ac3-4dc4-80e1-dc2b89bd3e5f',
+      'df1501ed-a0ad-46ae-950c-2057366f88b3',
+    ])
+  })
+
+  it('expandStreamActivitySampleAliases indexes txReqId and originalRequestId', () => {
+    const line =
+      '2026-07-25 14:51:00.000 [info] [ifm-patch-19] SSE audit msgCase=tokenDelta ts=1784962306959 txReqId=dd06a733-8ac3-4dc4-80e1-dc2b89bd3e5f genUUID=df1501ed-a0ad-46ae-950c-2057366f88b3'
+    const sample = parseRendererStreamActivityLine(line)
+    assert.ok(sample)
+    const aliases = expandStreamActivitySampleAliases(sample!, line)
+    assert.equal(aliases.length, 2)
+    assert.deepEqual(
+      aliases.map((entry) => entry.requestId).sort(),
+      ['dd06a733-8ac3-4dc4-80e1-dc2b89bd3e5f', 'df1501ed-a0ad-46ae-950c-2057366f88b3'].sort(),
+    )
   })
 })

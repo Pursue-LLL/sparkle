@@ -1,6 +1,6 @@
 // [INPUT] none (pure marathon timing constants)
-// [OUTPUT] shouldRunHy2MarathonSessionKeepalive · shouldDeferHy2MarathonSessionNudgeForCursorLoad · hy2InQuicMarathonFields · tuicInQuicMarathonFields · QUIC SSOT
-// [POS] Mac session nudge + VPS sing-box hy2-in/tuic-in 共享 marathon QUIC 计时常量。
+// [OUTPUT] MarathonWarmthTrigger · shouldDeferMarathonWarmth · MarathonSessionKeepaliveResult · formatMarathonRescueNudgeLogLine · shouldRunHy2MarathonSessionKeepalive · hy2InQuicMarathonFields · QUIC SSOT
+// [POS] MTCP SSOT: Rescue vs Warmth defer policy + Mac session nudge + VPS sing-box hy2-in/tuic-in QUIC 常量。
 
 /** HY2/TUIC marathon: keep UDP/QUIC session warm when many Cursor transport sockets are open. */
 
@@ -83,10 +83,144 @@ export interface Hy2SessionKeepaliveContext {
   nowMs?: number
 }
 
-export function shouldDeferHy2MarathonSessionNudgeForCursorLoad(
-  cursorConnectionCount: number,
+/** MTCP session nudge triggers — replaces force/tokenGapForce/highLatencyForce boolean soup. */
+export type MarathonWarmthTrigger =
+  | 'connect_partition'
+  | 'latency_delta_rescue'
+  | 'silent_generation_end'
+  | 'connect_path_partition'
+  | 'token_gap'
+  | 'cold_resume'
+  | 'marathon_connect_path_pulse'
+  | 'periodic_session'
+  | 'high_latency_warmth'
+
+const MARATHON_RESCUE_TRIGGERS: ReadonlySet<MarathonWarmthTrigger> = new Set([
+  'connect_partition',
+  'latency_delta_rescue',
+  'silent_generation_end',
+  'connect_path_partition',
+  'token_gap',
+  'cold_resume',
+])
+
+export interface MarathonWarmthDeferContext {
+  maxGapMs?: number
+  staleRequestIdCount?: number
+}
+
+export function isMarathonRescueTrigger(trigger: MarathonWarmthTrigger): boolean {
+  return MARATHON_RESCUE_TRIGGERS.has(trigger)
+}
+
+export function isTokenGapRescueEligible(
+  maxGapMs: number,
+  staleRequestIdCount: number,
 ): boolean {
-  return cursorConnectionCount >= CURSOR_HY2_NUDGE_DEFER_THRESHOLD
+  return staleRequestIdCount > 0 && maxGapMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS
+}
+
+export function shouldDeferMarathonWarmth(
+  cursorConnectionCount: number,
+  trigger: MarathonWarmthTrigger,
+  context: MarathonWarmthDeferContext = {},
+): boolean {
+  if (cursorConnectionCount < CURSOR_HY2_NUDGE_DEFER_THRESHOLD) {
+    return false
+  }
+  switch (trigger) {
+    case 'connect_partition':
+    case 'latency_delta_rescue':
+    case 'silent_generation_end':
+    case 'connect_path_partition':
+    case 'marathon_connect_path_pulse':
+      return false
+    case 'token_gap':
+      return !isTokenGapRescueEligible(
+        context.maxGapMs ?? 0,
+        context.staleRequestIdCount ?? 0,
+      )
+    case 'cold_resume':
+      return (context.staleRequestIdCount ?? 0) <= 0
+    case 'periodic_session':
+    case 'high_latency_warmth':
+      return true
+  }
+}
+
+export function resolveMarathonWarmthLogKind(trigger: MarathonWarmthTrigger): string {
+  switch (trigger) {
+    case 'connect_partition':
+      return 'connect_partition_rescue_nudge'
+    case 'latency_delta_rescue':
+      return 'latency_delta_rescue_nudge'
+    case 'silent_generation_end':
+      return 'silent_generation_end_rescue_nudge'
+    case 'connect_path_partition':
+      return 'connect_path_partition_rescue_nudge'
+    case 'marathon_connect_path_pulse':
+      return 'marathon_connect_path_pulse'
+    case 'token_gap':
+      return 'token_gap_rescue_nudge'
+    case 'cold_resume':
+      return 'cold_resume_rescue_nudge'
+    case 'high_latency_warmth':
+      return 'high_latency_force_nudge'
+    case 'periodic_session':
+      return 'session_transport_nudge'
+  }
+}
+
+/** P12: single-line triage SSOT for rescue nudge attempts. */
+export type MarathonSessionKeepaliveOutcome =
+  | 'executed'
+  | 'skipped_in_flight'
+  | 'skipped_no_quic_node'
+  | 'skipped_not_due'
+  | 'skipped_cooldown'
+  | 'skipped_deferred'
+  | 'skipped_connect_keepalive_in_flight'
+  | 'skipped_budget_busy'
+  | 'skipped_weak_probe'
+  | 'failed'
+
+export interface MarathonSessionKeepaliveResult {
+  outcome: MarathonSessionKeepaliveOutcome
+  err?: string
+  api2DelayMs?: number
+  api2geoDelayMs?: number
+}
+
+export function formatMarathonRescueNudgeLogLine(
+  trigger: MarathonWarmthTrigger,
+  result: MarathonSessionKeepaliveResult,
+  fields: {
+    cursorConnectionCount: number
+    maxGapMs?: number
+    staleRids?: string
+  },
+): string {
+  const parts = [
+    `[CursorHy2MarathonKeepalive]: ${trigger}_nudge`,
+    `outcome=${result.outcome}`,
+    `cursor_conn=${fields.cursorConnectionCount}`,
+  ]
+  if (fields.maxGapMs != null) {
+    parts.push(`max_gap_ms=${fields.maxGapMs}`)
+  }
+  if (fields.staleRids) {
+    parts.push(`stale_rids=${fields.staleRids}`)
+  }
+  if (result.api2DelayMs != null) {
+    parts.push(`api2_delay_ms=${result.api2DelayMs}`)
+  }
+  if (result.api2geoDelayMs != null) {
+    parts.push(`api2geo_delay_ms=${result.api2geoDelayMs}`)
+  }
+  if (result.err) {
+    parts.push(`err=${result.err}`)
+  }
+  return `${parts.join(' ')}\n`
 }
 
 export function shouldRunHy2MarathonSessionKeepalive(

@@ -39,6 +39,21 @@ export interface MarathonStreamTokenGapSignal {
   staleRequestIds: string[]
   lookbackMs: number
   cursorConnectionCount: number
+  /** P14c: marathon silent EOF with gap < token_gap threshold — force Connect-path rescue. */
+  suddenSilentGenerationEnd?: boolean
+}
+
+/** P14c: sudden generation-ended-without-turnEnded on long marathon turns. */
+export const CURSOR_SILENT_GENERATION_END_MIN_DURATION_MS = 1_800_000
+export const CURSOR_SILENT_GENERATION_END_MAX_GAP_MS = 30_000
+export const CURSOR_SILENT_GENERATION_END_LOOKBACK_MS = 120_000
+
+export interface SilentGenerationEndSample {
+  requestId: string
+  originalRequestId: string
+  terminalMs: number
+  durationMs: number
+  gapSinceActivityMs: number
 }
 
 function parseSseAuditActivityLine(line: string): StreamActivitySample | undefined {
@@ -50,14 +65,83 @@ function parseSseAuditActivityLine(line: string): StreamActivitySample | undefin
     return undefined
   }
   const activityMs = parseLogNumber(line, 'ts')
-  const requestId =
-    parseLogField(line, 'txReqId') ||
-    parseLogField(line, 'genUUID') ||
-    parseLogField(line, 'chatGenUUID')
+  const txReqId = parseLogField(line, 'txReqId')
+  const genUuid = parseLogField(line, 'genUUID') || parseLogField(line, 'chatGenUUID')
+  const requestId = txReqId || genUuid
   if (activityMs <= 0 || !requestId) {
     return undefined
   }
   return { requestId, activityMs }
+}
+
+/** P14d: index both segment txReqId and marathon originalRequestId for rescue stale_rids. */
+export function expandStreamActivitySampleAliases(
+  sample: StreamActivitySample,
+  line: string,
+): StreamActivitySample[] {
+  if (!line.includes('[ifm-patch-19] SSE audit')) {
+    return [sample]
+  }
+  const ids = new Set<string>([sample.requestId])
+  for (const field of ['txReqId', 'genUUID', 'chatGenUUID'] as const) {
+    const value = parseLogField(line, field)
+    if (value) {
+      ids.add(value)
+    }
+  }
+  return [...ids].map((requestId) => ({ requestId, activityMs: sample.activityMs }))
+}
+
+export function parseSilentGenerationEndLine(line: string): SilentGenerationEndSample | undefined {
+  if (!line.includes('[ifm-event-v1]') || !line.includes('"eventKind":"stream_terminated"')) {
+    return undefined
+  }
+  const jsonStart = line.indexOf('{')
+  if (jsonStart < 0) {
+    return undefined
+  }
+  try {
+    const payload = JSON.parse(line.slice(jsonStart)) as {
+      requestId?: string
+      originalRequestId?: string
+      occurredAtMs?: number
+      payload?: {
+        reason?: string
+        terminalMs?: number
+        durationMs?: number
+        gapSinceActivityMs?: number
+      }
+    }
+    const nested = payload.payload ?? {}
+    const reason = String(nested.reason ?? '')
+    if (reason !== 'generation-ended-without-turnEnded') {
+      return undefined
+    }
+    const durationMs = typeof nested.durationMs === 'number' ? nested.durationMs : 0
+    const gapSinceActivityMs =
+      typeof nested.gapSinceActivityMs === 'number' ? nested.gapSinceActivityMs : 0
+    const terminalMs =
+      typeof nested.terminalMs === 'number'
+        ? nested.terminalMs
+        : typeof payload.occurredAtMs === 'number'
+          ? payload.occurredAtMs
+          : 0
+    const requestId = String(payload.requestId ?? '').trim()
+    const originalRequestId =
+      String(payload.originalRequestId ?? payload.requestId ?? '').trim() || requestId
+    if (terminalMs <= 0 || !requestId) {
+      return undefined
+    }
+    return {
+      requestId,
+      originalRequestId,
+      terminalMs,
+      durationMs,
+      gapSinceActivityMs,
+    }
+  } catch {
+    return undefined
+  }
 }
 
 function parseIfmEventStreamActivityLine(line: string): StreamActivitySample | undefined {
@@ -272,5 +356,66 @@ export function detectMarathonStreamTokenGap(
     staleRequestIds,
     lookbackMs,
     cursorConnectionCount: options.cursorConnectionCount,
+  }
+}
+
+/** P14c: recent marathon silent EOF — rescue even when token gap < 20s. */
+export function detectMarathonSilentGenerationEndRescue(
+  samples: readonly SilentGenerationEndSample[],
+  options: {
+    nowMs: number
+    cursorConnectionCount: number
+    lookbackMs?: number
+    marathonConnThreshold?: number
+    minDurationMs?: number
+    maxGapMs?: number
+  },
+): MarathonStreamTokenGapSignal | undefined {
+  const lookbackMs = options.lookbackMs ?? CURSOR_SILENT_GENERATION_END_LOOKBACK_MS
+  const marathonConnThreshold = options.marathonConnThreshold ?? CURSOR_HY2_MARATHON_CONN_THRESHOLD
+  const minDurationMs = options.minDurationMs ?? CURSOR_SILENT_GENERATION_END_MIN_DURATION_MS
+  const maxGapMs = options.maxGapMs ?? CURSOR_SILENT_GENERATION_END_MAX_GAP_MS
+
+  if (options.cursorConnectionCount < marathonConnThreshold) {
+    return undefined
+  }
+
+  const sinceMs = options.nowMs - lookbackMs
+  const staleRequestIds: string[] = []
+  let latestTerminalMs = 0
+  let latestGapMs = 0
+
+  for (const sample of samples) {
+    if (sample.terminalMs < sinceMs || sample.terminalMs > options.nowMs + 2_000) {
+      continue
+    }
+    if (sample.durationMs < minDurationMs) {
+      continue
+    }
+    if (sample.gapSinceActivityMs >= maxGapMs) {
+      continue
+    }
+    staleRequestIds.push(sample.requestId)
+    if (sample.originalRequestId !== sample.requestId) {
+      staleRequestIds.push(sample.originalRequestId)
+    }
+    if (sample.terminalMs >= latestTerminalMs) {
+      latestTerminalMs = sample.terminalMs
+      latestGapMs = sample.gapSinceActivityMs
+    }
+  }
+
+  if (staleRequestIds.length === 0) {
+    return undefined
+  }
+
+  const uniqueStaleIds = [...new Set(staleRequestIds)].sort()
+
+  return {
+    maxGapMs: Math.max(latestGapMs, 1),
+    staleRequestIds: uniqueStaleIds,
+    lookbackMs,
+    cursorConnectionCount: options.cursorConnectionCount,
+    suddenSilentGenerationEnd: true,
   }
 }

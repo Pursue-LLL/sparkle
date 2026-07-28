@@ -7,8 +7,10 @@ import {
   mergeConnectionIdsToClose,
   selectGlobalIdleCursorConnectionsToClose,
   selectStaleCursorConnectionsToClose,
+  shouldSkipCursorConnectionHygieneClose,
   type ConnectionHygieneRow
 } from './cursorConnectionHygieneCore'
+import { getMarathonQuiesceSnapshot } from './marathonQuiesce'
 
 const HYGIENE_INTERVAL_MS = 10 * 60_000
 const HYGIENE_START_DELAY_MS = 12 * 60_000
@@ -63,6 +65,18 @@ async function runCursorConnectionHygieneCycle(): Promise<void> {
   hygieneInFlight = true
   try {
     const rows = await listCursorConnectionRows()
+    const { active: quiesceActive } = getMarathonQuiesceSnapshot()
+    if (shouldSkipCursorConnectionHygieneClose(rows.length, quiesceActive)) {
+      const nowMs = Date.now()
+      if (nowMs - lastHygieneSkipLogAt >= HYGIENE_SKIP_LOG_COOLDOWN_MS) {
+        lastHygieneSkipLogAt = nowMs
+        await appendAppLog(
+          `[CursorConnectionHygiene]: skip marathon_guard cursor_conn=${rows.length} quiesce=${quiesceActive}\n`,
+        )
+      }
+      return
+    }
+
     const staleIds = mergeConnectionIdsToClose(
       selectStaleCursorConnectionsToClose(rows),
       selectGlobalIdleCursorConnectionsToClose(rows)

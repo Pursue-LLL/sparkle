@@ -1,5 +1,13 @@
 import { Chip, Separator, Surface } from '@heroui-v3/react'
-import { latestSuccessfulProxyDelayHistoryEntry } from '@renderer/utils/proxy-delay-sample-age'
+import {
+  filterProxyDelayHistoryForMarathonDisplay,
+  excludeSessionNudgeSamplesFromProviderHistory,
+  latestSuccessfulProxyDelayHistoryEntry,
+  shouldShowMarathonQuiesceDelayBadge,
+  type SessionNudgeDelayAnchor,
+  type ProxyDelayHistoryEntry,
+} from '@renderer/utils/proxy-delay-sample-age'
+import { getProviderDelayHistoryFromLedger, getRecentSessionNudgeAnchorsForNode, getLatencyTruthSummaryForNode } from '@renderer/utils/ipc'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -70,10 +78,66 @@ function formatSignedScore(value: number): string {
   return value.toFixed(1)
 }
 
+function formatLatencyP50(value: number | null | undefined, samples: number): string {
+  if (value === null || value === undefined || samples <= 0) {
+    return '—'
+  }
+  return `${Math.round(value)}ms (${samples})`
+}
+
 const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchmarkScore }) => {
   const [pos, setPos] = useState<{ top: number; left: number; side: 'left' | 'right' } | null>(null)
   const [finalTop, setFinalTop] = useState<number | null>(null)
+  const [nudgeAnchors, setNudgeAnchors] = useState<SessionNudgeDelayAnchor[]>([])
+  const [ledgerHistory, setLedgerHistory] = useState<ProxyDelayHistoryEntry[]>([])
+  const [latencyTruth, setLatencyTruth] = useState<LatencyTruthSummary | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!visible || isGroupProxy(proxy)) {
+      setNudgeAnchors([])
+      setLedgerHistory([])
+      setLatencyTruth(null)
+      return
+    }
+    let cancelled = false
+    void getRecentSessionNudgeAnchorsForNode(proxy.name)
+      .then((anchors) => {
+        if (!cancelled) {
+          setNudgeAnchors(anchors)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNudgeAnchors([])
+        }
+      })
+    void getProviderDelayHistoryFromLedger(proxy.name)
+      .then((history) => {
+        if (!cancelled) {
+          setLedgerHistory(history)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLedgerHistory([])
+        }
+      })
+    void getLatencyTruthSummaryForNode(proxy.name)
+      .then((summary) => {
+        if (!cancelled) {
+          setLatencyTruth(summary)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLatencyTruth(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [visible, proxy.name])
 
   useEffect(() => {
     if (!anchorEl || !visible) {
@@ -111,7 +175,19 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
   const delaySample = latestSuccessfulProxyDelayHistoryEntry(proxy.history)
   const delay = delaySample?.delay ?? -1
 
-  const history = proxy.history.slice(-8)
+  const rawHistory = (proxy.history ?? []).slice(-8)
+  const marathonFiltered = filterProxyDelayHistoryForMarathonDisplay(rawHistory)
+  let history: ProxyDelayHistoryEntry[] = []
+  if (ledgerHistory.length > 0) {
+    history = ledgerHistory
+  } else {
+    history = excludeSessionNudgeSamplesFromProviderHistory(marathonFiltered, nudgeAnchors)
+    if (history.length === 0 && delaySample && delaySample.delay > 0) {
+      history = [delaySample]
+    }
+  }
+  const historyFromLedger = ledgerHistory.length > 0 && history === ledgerHistory
+  const showMarathonBadge = shouldShowMarathonQuiesceDelayBadge(rawHistory)
   const validDelays = history.filter((h) => h.delay > 0).map((h) => h.delay)
   const maxDelay = validDelays.length > 0 ? Math.max(...validDelays) : 500
 
@@ -179,9 +255,12 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
           <span className="text-xs font-semibold flag-emoji truncate flex-1 leading-snug">
             {proxy.name}
           </span>
-          <Chip color={getDelayChipColor(delay)} variant="soft" size="sm">
-            {getDelayText(delay)}
-          </Chip>
+          <div className="flex flex-col items-end gap-0.5 shrink-0">
+            <Chip color={getDelayChipColor(delay)} variant="soft" size="sm">
+              {getDelayText(delay)}
+            </Chip>
+            <span className="text-[9px] text-muted leading-none">Mac 路径</span>
+          </div>
         </div>
 
         <Separator variant="tertiary" />
@@ -240,7 +319,18 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
             </div>
             <Separator variant="tertiary" />
             <div className="px-3 pt-2 pb-1.5">
-              <span className="text-[10px] text-muted block mb-1">24h api2 短探测</span>
+              <span className="text-[10px] text-muted block mb-1">延迟双轨 (24h ledger)</span>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] mb-1.5">
+                <span className="text-muted">VPS 本体 P50</span>
+                <span className="justify-self-end">
+                  {formatLatencyP50(latencyTruth?.vpsBodyP50, latencyTruth?.vpsBodySamples ?? 0)}
+                </span>
+                <span className="text-muted">Mac 全路径 P50</span>
+                <span className="justify-self-end">
+                  {formatLatencyP50(latencyTruth?.macFullPathP50, latencyTruth?.macFullPathSamples ?? 0)}
+                </span>
+              </div>
+              <span className="text-[10px] text-muted block mb-1">VPS 本体 badge (ssh_curl · scope=vps)</span>
               <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
                 <span className="text-muted">P50</span>
                 <span className="justify-self-end">{Math.round(benchmarkScore.p50)}ms</span>
@@ -388,7 +478,16 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
 
         <Separator variant="tertiary" />
         <div className="px-3 pt-2 pb-2.5">
-          <span className="text-[10px] text-muted block mb-1.5">测速记录（mihomo）</span>
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <span className="text-[10px] text-muted">
+              {historyFromLedger ? 'Mac 全路径 (transport_pair · scope=active)' : '测速记录（mihomo）'}
+            </span>
+            {showMarathonBadge && (
+              <Chip color="warning" variant="soft" size="sm" className="h-4 min-h-4 px-1 text-[10px]">
+                Marathon 静默
+              </Chip>
+            )}
+          </div>
           {history.length > 0 ? (
             <svg width={SPARK_W} height={CHART_H}>
               {history.map((h, i) => {
@@ -428,6 +527,10 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
                 )
               })}
             </svg>
+          ) : showMarathonBadge && delay > 0 ? (
+            <span className="text-[10px] text-muted/50">
+              Marathon 静默 · scheduled 测速暂停
+            </span>
           ) : (
             <span className="text-[10px] text-muted/50">暂无记录</span>
           )}

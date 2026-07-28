@@ -4,6 +4,8 @@ import { showNotification } from '../utils/notification'
 import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
 import { safeGetLastCoreReadyAtMs } from './coreReadyTimestamp'
 import { listCursorConnectionRows } from './cursorConnectionHygiene'
+import { getMarathonQuiesceSnapshot } from './marathonQuiesce'
+import { decideTransportRecoveryExecution } from './cursorTransportHealthCore'
 import { readConnectPartitionSignalAsync } from './connectPartitionReader'
 import { getRecentCursorProbe } from './networkStabilityMonitor'
 import { syncMarathonDialToleranceIfNeeded } from './marathonDialTolerance'
@@ -320,23 +322,6 @@ export function resolveTransportProbeAttribution(
   return resolveProbeAttributionWithConnectPartition(probe, connectPartition)
 }
 
-async function executeRecoveryL0(hungIds: string[]): Promise<number> {
-  let closed = 0
-  for (const id of hungIds) {
-    try {
-      await mihomoCloseConnection(id)
-      closed += 1
-    } catch {
-      // ignore single close errors
-    }
-  }
-  cooldowns.lastL0AtMs = Date.now()
-  if (closed > 0) {
-    await appendAppLog(`[CursorTransportHealth]: L0 closed ${closed} hung Cursor connection(s)\n`)
-  }
-  return closed
-}
-
 async function executeRecoveryL1(rows: Awaited<ReturnType<typeof listCursorConnectionRows>>): Promise<number> {
   const ids = selectCriticalHostConnectionsToClose(rows)
   let closed = 0
@@ -393,32 +378,42 @@ async function executeRecoveryL3(): Promise<void> {
 }
 
 export async function executeTransportRecovery(action: RecoveryAction): Promise<void> {
-  if (action === 'none') {
-    return
-  }
-
   const rows = await listCursorConnectionRows()
-  const hungIds = selectHungCursorConnectionsToClose(rows)
+  const { active: quiesceActive } = getMarathonQuiesceSnapshot()
+  const decision = decideTransportRecoveryExecution(action, {
+    cursorConnectionCount: rows.length,
+    quiesceActive,
+  })
 
-  if (action === 'L0') {
-    const closed = await executeRecoveryL0(hungIds)
-    priorRecoveryFailed = closed === 0
+  if (decision === 'noop') {
     return
   }
 
-  if (action === 'L1') {
-    const closed = await executeRecoveryL1(rows)
-    priorRecoveryFailed = closed === 0
+  if (decision === 'hard-disable-l0') {
+    await appendAppLog('[CursorTransportHealth]: L0 disabled (zero-disruption marathon guard)\n')
     return
   }
 
-  if (action === 'L2') {
+  if (decision === 'hard-disable-l1') {
+    await appendAppLog('[CursorTransportHealth]: L1 disabled (zero-disruption marathon guard)\n')
+    return
+  }
+
+  if (decision === 'marathon-disable-l2' || decision === 'marathon-disable-l3') {
+    const level = decision === 'marathon-disable-l2' ? 'L2' : 'L3'
+    await appendAppLog(
+      `[CursorTransportHealth]: ${level} disabled (zero-disruption marathon guard)\n`,
+    )
+    return
+  }
+
+  if (decision === 'execute-l2') {
     await executeRecoveryL2()
     priorRecoveryFailed = true
     return
   }
 
-  if (action === 'L3') {
+  if (decision === 'execute-l3') {
     await executeRecoveryL3()
   }
 }
@@ -479,6 +474,8 @@ async function runHungConnectionScanCycle(): Promise<void> {
     void syncMarathonDialToleranceIfNeeded(rows.length)
     const { syncMarathonQuiesceIfNeeded } = await import('./marathonQuiesce')
     await syncMarathonQuiesceIfNeeded(rows.length)
+    const { evaluateAndLogSegmentHandoffDue } = await import('./cursorSegmentHandoff')
+    await evaluateAndLogSegmentHandoffDue(rows.length)
     const { syncAgentTransportFailuresFromCursorLogs } = await import('./agentTransportFailureSync')
     const { resolveCursorDedicatedActiveNode } = await import('./cursorHy2MarathonKeepalive')
     const activeNode = await resolveCursorDedicatedActiveNode()
@@ -548,9 +545,6 @@ async function runHungConnectionScanCycle(): Promise<void> {
       action,
       proxyNode: recentProbeForHung?.proxyNode
     })
-    if (action === 'L0') {
-      await executeTransportRecovery('L0')
-    }
   } catch (error) {
     await appendAppLog(
       `[CursorTransportHealth]: hung scan failed: ${error instanceof Error ? error.message : String(error)}\n`

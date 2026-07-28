@@ -2,7 +2,7 @@ import dns from 'node:dns'
 
 const IPV4_PATTERN = /^(\d{1,3}\.){3}\d{1,3}$/
 
-export const VPS_SSH_HOST_ALIASES = ['kr-vps', 'jp-vps'] as const
+export const VPS_SSH_HOST_ALIASES = ['jp-vps'] as const
 
 function parseIpv4(ip: string): number[] | null {
   if (!IPV4_PATTERN.test(ip)) {

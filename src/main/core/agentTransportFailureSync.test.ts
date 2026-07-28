@@ -8,6 +8,7 @@ import {
   resolveCursorDataDirs,
   syncAgentTransportFailuresFromCursorLogs,
 } from './agentTransportFailureSync'
+import { listCursorLogSessionDirs } from './cursorLogDiscoveryCore'
 
 const ORIGINAL_HOME = process.env.HOME
 
@@ -15,6 +16,20 @@ describe('agentTransportFailureSync', () => {
   afterEach(() => {
     resetAgentTransportFailureSyncForTests()
     process.env.HOME = ORIGINAL_HOME
+  })
+
+  it('listCursorLogSessionDirs skips dotfiles and non-directory entries (BUG-021)', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sparkle-log-session-dirs-'))
+    const logsDir = join(home, 'logs')
+    const validSession = join(logsDir, '20260728T104341', 'window1')
+    await mkdir(validSession, { recursive: true })
+    await writeFile(join(logsDir, '.DS_Store'), 'fake ds store', 'utf8')
+    await writeFile(join(logsDir, 'orphan-file.log'), 'not a session dir', 'utf8')
+
+    const sessions = await listCursorLogSessionDirs(logsDir)
+    assert.deepEqual(sessions, ['20260728T104341'])
+
+    await rm(home, { recursive: true, force: true })
   })
 
   it('writes PING failure from renderer log to sparkle jsonl with proxyNode fallback', async () => {

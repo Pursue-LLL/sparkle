@@ -16,6 +16,7 @@ import {
   mihomoGroupDelay,
   patchMihomoConfig
 } from '../core/mihomoApi'
+import { pickLatestSuccessfulProviderDelay } from '../core/mihomoProviderDelayCore'
 import { confirmCursorProxySwitch } from '../core/confirmCursorProxySwitch'
 import { mainWindow, setNotQuitDialog, showMainWindow, triggerMainWindow } from '..'
 import {
@@ -232,9 +233,10 @@ export const buildContextMenu = async (): Promise<Menu> => {
       const groups = await mihomoGroups()
       groupsMenu = groups.map((group) => {
         const currentProxy = group.all.find((proxy) => proxy.name === group.now)
-        const delay = currentProxy?.history.length
-          ? currentProxy.history[currentProxy.history.length - 1].delay
-          : -1
+        const latestSuccessful = currentProxy?.history
+          ? pickLatestSuccessfulProviderDelay(currentProxy.history)
+          : undefined
+        const delay = latestSuccessful?.delay ?? -1
         const displayDelay = formatDelayText(delay)
 
         const isNewLine = trayProxyDelayLayout === 'new-line'
@@ -259,9 +261,10 @@ export const buildContextMenu = async (): Promise<Menu> => {
             },
             { type: 'separator' },
             ...group.all.map((proxy) => {
-              const proxyDelay = proxy.history.length
-                ? proxy.history[proxy.history.length - 1].delay
-                : -1
+              const latestSuccessful = proxy.history
+                ? pickLatestSuccessfulProviderDelay(proxy.history)
+                : undefined
+              const proxyDelay = latestSuccessful?.delay ?? -1
               const proxyDisplayDelay = formatDelayText(proxyDelay)
 
               const isNewLine = trayProxyDelayLayout === 'new-line'

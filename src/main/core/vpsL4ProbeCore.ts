@@ -8,10 +8,7 @@ export const VPS_L4_PROBE_INTERVAL_MS = 300_000
 export const VPS_SSH_CONNECT_TIMEOUT_SEC = 10
 export const VPS_L4_CURL_TIMEOUT_SEC = 10
 
-export const VPS_SSH_HOSTS = [
-  { sshHost: 'kr-vps', region: 'KR-VPS' as const },
-  { sshHost: 'jp-vps', region: 'JP-VPS' as const }
-]
+export const VPS_SSH_HOSTS = [{ sshHost: 'jp-vps', region: 'JP-VPS' as const }]
 
 const IPV4_PATTERN = /^(\d{1,3}\.){3}\d{1,3}$/
 
@@ -35,7 +32,7 @@ export interface VpsL4CurlLine {
 }
 
 export interface VpsL4ProbeResult {
-  region: 'KR-VPS' | 'JP-VPS'
+  region: 'JP-VPS'
   sshHost: string
   api2Ok: boolean
   api2LatencyMs: number
@@ -102,14 +99,14 @@ export function isUnresolvedSshHostName(hostName: string, sshHost: string): bool
   return !isPublicIpv4(hostName)
 }
 
-function isVpsLeafProxyForRegion(name: string, region: 'KR-VPS' | 'JP-VPS'): boolean {
+function isVpsLeafProxyForRegion(name: string, region: 'JP-VPS'): boolean {
   const normalized = name.toUpperCase()
   const regionToken = region.replace('-VPS', '')
   return /VPS/.test(normalized) && normalized.includes(regionToken)
 }
 
 export function resolveVpsServerIpByRegion(
-  region: 'KR-VPS' | 'JP-VPS',
+  region: 'JP-VPS',
   leafProxies: unknown[]
 ): string | undefined {
   for (const raw of leafProxies) {
@@ -131,7 +128,7 @@ export function resolveVpsServerIpByRegion(
 
 export function resolveVpsSshTarget(
   sshHost: string,
-  region: 'KR-VPS' | 'JP-VPS',
+  region: 'JP-VPS',
   sshG: { hostName: string; port: number; user?: string; identityFiles: string[] },
   leafProxies: unknown[]
 ): VpsSshResolvedTarget | null {
@@ -216,7 +213,7 @@ export function parseVpsL4CurlOutput(stdout: string): {
 
 export function buildVpsL4ProbeResult(
   sshHost: string,
-  region: 'KR-VPS' | 'JP-VPS',
+  region: 'JP-VPS',
   stdout: string,
   stderr: string,
   target?: VpsSshResolvedTarget
@@ -261,7 +258,7 @@ export function buildVpsL4ProbeResult(
 
 function buildPathErrorResult(
   sshHost: string,
-  region: 'KR-VPS' | 'JP-VPS',
+  region: 'JP-VPS',
   probeAttribution: Exclude<VpsProbeAttribution, 'healthy'>,
   errorDetail: string
 ): VpsL4ProbeResult {
@@ -280,7 +277,7 @@ function buildPathErrorResult(
 
 export async function runVpsL4ProbeViaSsh(
   sshHost: string,
-  region: 'KR-VPS' | 'JP-VPS',
+  region: 'JP-VPS',
   leafProxies: unknown[] = []
 ): Promise<VpsL4ProbeResult> {
   try {

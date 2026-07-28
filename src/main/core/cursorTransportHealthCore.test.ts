@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   canExecuteRecoveryLevel,
   decideRecoveryAction,
+  decideTransportRecoveryExecution,
   describeRecoveryBlockReason,
   HUNG_CONNECTION_MIN_AGE_MS,
   isCriticalCursorHost,
@@ -12,7 +13,8 @@ import {
   shouldDeferDestructiveRecoveryAfterLiveProbe,
   shouldDeferProbeForCursorLoad,
   shouldExcludeProbeSampleFromNodeScoring,
-  shouldForceMandatoryRealProbe
+  shouldForceMandatoryRealProbe,
+  shouldSkipDestructiveTransportRecoveryDuringMarathon,
 } from './cursorTransportHealthCore'
 import type { ConnectionHygieneRow as HygieneRow } from './cursorConnectionHygieneCore'
 
@@ -299,5 +301,49 @@ describe('cursorTransportHealthCore', () => {
       nowMs: NOW
     })
     assert.equal(reason, 'agent_stability_hold')
+  })
+
+  describe('R-07 transport recovery marathon guard', () => {
+    it('shouldSkipDestructiveTransportRecoveryDuringMarathon mirrors hygiene threshold', () => {
+      assert.equal(shouldSkipDestructiveTransportRecoveryDuringMarathon(11, false), false)
+      assert.equal(shouldSkipDestructiveTransportRecoveryDuringMarathon(12, false), true)
+      assert.equal(shouldSkipDestructiveTransportRecoveryDuringMarathon(8, true), true)
+    })
+
+    it('decideTransportRecoveryExecution hard-disables L0/L1 always', () => {
+      assert.equal(
+        decideTransportRecoveryExecution('L0', { cursorConnectionCount: 4, quiesceActive: false }),
+        'hard-disable-l0',
+      )
+      assert.equal(
+        decideTransportRecoveryExecution('L1', { cursorConnectionCount: 4, quiesceActive: false }),
+        'hard-disable-l1',
+      )
+    })
+
+    it('decideTransportRecoveryExecution marathon-disables L2/L3 @ conn>=12', () => {
+      assert.equal(
+        decideTransportRecoveryExecution('L2', { cursorConnectionCount: 20, quiesceActive: false }),
+        'marathon-disable-l2',
+      )
+      assert.equal(
+        decideTransportRecoveryExecution('L3', { cursorConnectionCount: 12, quiesceActive: false }),
+        'marathon-disable-l3',
+      )
+    })
+
+    it('decideTransportRecoveryExecution allows L2 when conn<12 and quiesce off', () => {
+      assert.equal(
+        decideTransportRecoveryExecution('L2', { cursorConnectionCount: 4, quiesceActive: false }),
+        'execute-l2',
+      )
+    })
+
+    it('decideTransportRecoveryExecution noop for none', () => {
+      assert.equal(
+        decideTransportRecoveryExecution('none', { cursorConnectionCount: 100, quiesceActive: true }),
+        'noop',
+      )
+    })
   })
 })

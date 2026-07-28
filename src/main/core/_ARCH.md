@@ -19,7 +19,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `nodeProbeStats.ts`                                                     | ledger vps 样本聚合 → DerivedStats                                                                                                                                    |
 | `commercialNodeBenchmark.ts`                                            | 24h VPS 报告（ledger scope=vps SSH + active）、UI snapshot IPC                                                                                                        |
 | `networkStabilityMonitor.ts`                                            | 当前节点 short probe、TUN 恢复（委托 CTHC）；**P9 `shouldDeferProbeForCursorLoadUnderMarathonQuiesce` + `syncMarathonQuiesceIfNeeded`**；非 probe 事件 jsonl         |
-| `cursorTransportHealthCore.ts`                                          | 纯函数：挂死检测（**≥12min** 零吞吐）、**Agent-stability-first 恢复**（禁 L0/L1 杀 SSE；仅 offline+TUN 灾难 L2/L3）；L2 后 **fake-ip flush**（`mihomoFlushFakeIpCache`）；L0 每 host **保留最新 6 条** hung 连接（仅观测）；Connect split-brain 归因 |
+| `cursorTransportHealthCore.ts`                                          | 纯函数：挂死检测、Agent-stability-first 恢复决策、**R-07 `decideTransportRecoveryExecution`**（L0–L3 marathon guard） |
 | `connectPartitionDetectCore.ts` / `connectPartitionReader.ts`           | Connect mass-PING · **G11/P19** `resolveConnectPartitionWindowMs`（conn≥12 → **15s** · conn≥200 → **60s** · 低 conn 8s）· `[ConnectPartitionWindow]` 日志 · **P18** dedupe · `partitionBlindSpotCore` · `partitionLatchCore` |
 | `connectPingStormCore.ts`                                               | **P16** ultra-conn：Diagnostic ingest 合成 · synthetic partition · latency_delta rescue streak · ultra_conn 观测                                                      |
 | `cursorLogDiscoveryCore.ts` / `cursorStructuredTransportIngestCore.ts` / `cursorStructuredTailCacheCore.ts` | **P17/P18** log roots SSOT · Structured tail 热读 + mtime/size cache · merge 输入 |
@@ -27,7 +27,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost/**Structured NAL** 同步 + proxyNode 回填）                                            |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | 高并行时 VPS leaf dial-timeout 5s→45s · **P20b IDLE apply**（active stream/quiesce 期间 defer reload） |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
-| `marathonQuiesceCore.ts` / `marathonQuiesce.ts` / `marathonQuiesceProviderSync.ts` | P9 Marathon 静默：conn≥12 暂停 provider health-check + proxyHealthMonitor；**P9 Phase 2** `shouldAllowObservabilityDial` + quiesce 全 defer probe + block `/healthcheck` API + warmup/marketplace skip |
+| `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默（纯内存）：conn≥12 暂停 proxyHealthMonitor + observability dial；**零** runtime yaml / mihomo reload |
 | `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：quiesce active 或 conn≥12 时 block `stopCore`/`restartCore`；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate |
 | `cursorHy2MarathonKeepaliveCore.ts` / `cursorHy2MarathonKeepalive.ts`   | **MTCP/P13/P19** Rescue vs Warmth facade · delegates to `marathonRescueDialExecutor` / `marathonWarmthDialExecutor` · **无 mtdo re-entrancy guard** |
 | `marathonSessionDialExecutorCore.ts` / `marathonRescueDialExecutor.ts` / `marathonWarmthDialExecutor.ts` | **P19** shared HY2 session dial + in-flight guard · rescue bypass P12 budget · warmth uses P12 budget |
@@ -37,7 +37,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `coreReadyTimestamp.ts`                                                 | 叶子模块：`markCoreReadyAtMs` / `safeGetLastCoreReadyAtMs`（CTHC startup grace）；`manager.ts` 须 **namespace import** |
 | `mihomoApiSocketWatchdog.ts`                                            | mihomo-api.sock ECONNREFUSED 时自动 `restartCore`（60s cooldown，startup grace 内跳过） |
 | `cursorCriticalTransportCore.ts`                                        | critical Cursor transport host SSOT（CTHC + Hygiene 共享）                                                                                                            |
-| `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描、L0–L3 恢复；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan（单 in-flight · 非 destructive dial） |
+| `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描；**L0–L3 marathon hard-disable**（conn≥12/quiesce）；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan |
+| `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a** ~85min 段轮换检测 @ hung_scan · `[SegmentHandoff] outcome=due phase=detect_only`（execute 在 Guard312 WB） |
 | `marathonStreamRegistryCore.ts` / `marathonTransportDialReader.ts`       | §22 active RID registry · pendingTool 门控 |
 | `marathonTransportDialOrchestratorCore.ts` / `marathonTransportDialOrchestrator.ts` | §22 MTDO · **P15/P16**：独立 60s pulse · synthetic partition · `latency_delta_rescue` · ultra_conn 观测 |
 | `latencyDeltaGateCore.ts`                                               | §22 Mac 全路径 vs VPS 本体 P50 delta 告警（defer warmth only） |

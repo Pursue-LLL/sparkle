@@ -8,6 +8,7 @@ import { join } from 'path'
 import {
   detectConnectPartitionSignal,
   resolveConnectPartitionWindowMs,
+  CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS,
   type AgentTransportFailureRow,
   type ConnectPartitionSignal,
 } from './connectPartitionDetectCore'
@@ -17,6 +18,20 @@ import {
 } from './transportObservabilityMergeCore'
 
 const JSONL_TAIL_BYTES = 512_000
+
+let testConnectPartitionReadOverride:
+  | ((cursorConnectionCount: number, nowMs?: number) => Promise<ConnectPartitionReadResult>)
+  | null = null
+
+export function setConnectPartitionReadOverrideForTests(
+  override: typeof testConnectPartitionReadOverride,
+): void {
+  testConnectPartitionReadOverride = override
+}
+
+export function resetConnectPartitionReaderStateForTests(): void {
+  testConnectPartitionReadOverride = null
+}
 
 function sparkleHomeDir(): string {
   return homedir()
@@ -132,6 +147,9 @@ export async function readConnectPartitionSignalAsync(
   nowMs: number = Date.now(),
   cursorDataDirs?: string[],
 ): Promise<ConnectPartitionReadResult> {
+  if (testConnectPartitionReadOverride) {
+    return testConnectPartitionReadOverride(cursorConnectionCount, nowMs)
+  }
   const { readRecentStructuredTransportFailuresForPartition } = await import(
     './cursorStructuredTransportIngestCore'
   )
@@ -148,6 +166,16 @@ export async function readConnectPartitionSignalAsync(
     cursorConnectionCount,
   )
   const jsonlPingCount = countConnectPingFailuresInWindow(jsonlRows, nowMs, cursorConnectionCount)
+  const windowMs = resolveConnectPartitionWindowMs(cursorConnectionCount)
+  if (cursorConnectionCount >= CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS) {
+    const { appendAppLog } = await import('../utils/log')
+    await appendAppLog(
+      `[ConnectPartitionWindow]: window_ms=${windowMs} cursor_conn=${cursorConnectionCount}` +
+        ` partition=${signal != null ? 1 : 0}` +
+        ` ping_failures=${signal?.pingFailureCount ?? 0}` +
+        ` structured_ping=${structuredPingCount} jsonl_ping=${jsonlPingCount}\n`,
+    )
+  }
   return {
     signal,
     structuredRows: structuredIngest.rows,

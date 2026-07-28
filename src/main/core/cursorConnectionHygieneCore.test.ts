@@ -7,6 +7,7 @@ import {
   selectGlobalIdleCursorConnectionsToClose,
   selectStaleCursorConnectionsToClose,
   shouldDeferNetworkProbeForCursorLoad,
+  shouldSkipCursorConnectionHygieneClose,
   mergeConnectionIdsToClose,
   type ConnectionHygieneRow
 } from './cursorConnectionHygieneCore'
@@ -130,5 +131,12 @@ describe('cursorConnectionHygieneCore', () => {
     const global = selectGlobalIdleCursorConnectionsToClose(rows, NOW)
     assert.ok(global.length >= 10)
     assert.ok(!global.includes('live'))
+  })
+
+  it('skips hygiene close during marathon or quiesce', () => {
+    assert.equal(shouldSkipCursorConnectionHygieneClose(11, false), false)
+    assert.equal(shouldSkipCursorConnectionHygieneClose(12, false), true)
+    assert.equal(shouldSkipCursorConnectionHygieneClose(8, true), true)
+    assert.equal(shouldSkipCursorConnectionHygieneClose(400, false), true)
   })
 })

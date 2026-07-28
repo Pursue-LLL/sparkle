@@ -33,6 +33,25 @@ describe('partitionBlindSpotCore', () => {
     )
   })
 
+  it('suppresses when partition signal already detected (G15)', () => {
+    assert.equal(
+      shouldEmitPartitionBlindSpot({
+        cursorConnectionCount: 436,
+        structuredPingCount: 2,
+        jsonlPingCount: 0,
+        partitionSignal: {
+          pingFailureCount: 2,
+          windowMs: 15_000,
+          cursorConnectionCount: 436,
+          sampleRequestIds: ['rid-a'],
+        },
+        nowMs: 1_000_000,
+        lastEmittedAtMs: 0,
+      }),
+      false,
+    )
+  })
+
   it('respects cooldown', () => {
     const nowMs = 1_000_000
     assert.equal(
