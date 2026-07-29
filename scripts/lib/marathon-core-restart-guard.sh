@@ -95,6 +95,10 @@ marathon_guard_write_pre_quit_snapshot() {
 
 marathon_guard_assert_pre_quit_snapshot_idle() {
   local caller="${1:-install}"
+  if [[ "${SPARKLE_OVERRIDE_P23_MARATHON_INSTALL:-}" == "1" ]]; then
+    marathon_guard_log "WARN: SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1 — skip pre-quit snapshot idle gate (caller=$caller)"
+    return 0
+  fi
   if [[ "${SPARKLE_FORCE_INSTALL_DURING_MARATHON:-}" == "1" ]]; then
     marathon_guard_fail "$caller blocked: SPARKLE_FORCE_INSTALL_DURING_MARATHON is disabled (P23) — wait for cursor_conn=0"
   fi
@@ -197,6 +201,13 @@ PY
 marathon_core_restart_guard_assert_idle() {
   local caller="${1:-install}"
 
+  if [[ "${SPARKLE_OVERRIDE_P23_MARATHON_INSTALL:-}" == "1" ]]; then
+    local cursor_conn=""
+    cursor_conn="$(marathon_guard_read_live_cursor_conn || true)"
+    marathon_guard_log "WARN: SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1 — user override; proceeding despite marathon (caller=$caller cursor_conn=${cursor_conn:-unknown})"
+    return 0
+  fi
+
   if [[ "${SPARKLE_FORCE_INSTALL_DURING_MARATHON:-}" == "1" ]]; then
     marathon_guard_fail "$caller blocked: SPARKLE_FORCE_INSTALL_DURING_MARATHON is disabled (P23) — wait for cursor_conn=0"
   fi
@@ -236,6 +247,10 @@ marathon_core_restart_guard_assert_idle() {
 
 marathon_core_restart_guard_capture_pre_quit_snapshot() {
   local caller="${1:-install-sparkle-local-pre-quit}"
+  if [[ "${SPARKLE_OVERRIDE_P23_MARATHON_INSTALL:-}" == "1" ]]; then
+    marathon_guard_log "WARN: SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1 — skip pre-quit snapshot write (caller=$caller)"
+    return 0
+  fi
   if [[ "${SPARKLE_FORCE_INSTALL_DURING_MARATHON:-}" == "1" ]]; then
     marathon_guard_fail "$caller blocked: SPARKLE_FORCE_INSTALL_DURING_MARATHON is disabled (P23) — wait for cursor_conn=0"
   fi
