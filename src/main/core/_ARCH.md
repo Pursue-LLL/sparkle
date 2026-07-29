@@ -26,6 +26,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `transportObservabilityMergeCore.ts` / `partitionBlindSpotCore.ts`     | **P18** hot+jsonl dedupe · jsonl=0∧structured≥2 blind_spot 告警 |
 | `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost/**Structured NAL** 同步 + proxyNode 回填）；**P27b** server-eof → `natStaleSuspectObserver` |
 | `natStaleSuspectObserverCore.ts` / `natStaleSuspectObserver.ts`         | **P27b** token_gap≥180s + api2 绿 + server-eof → `[NatStaleSuspect]` + jsonl `nat_stale_suspect`（observe-only，无 recovery） |
+| `hy2TunnelVitalityCore.ts` / `hy2TunnelVitality.ts`                       | **P27** Mac outbound HY2 隧道活性：marathonTruthActive + parent age≥30min → 每 30s connect_path dial（purpose=`hy2_tunnel_vitality`）；日志 `[Hy2TunnelVitality] outcome=` SSOT |
+| `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | 高并行时 VPS leaf dial-timeout 5s→45s · **P20b IDLE apply**（active stream/quiesce 期间 defer reload） |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
 | `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默（纯内存）：conn≥12 暂停 proxyHealthMonitor + observability dial；**零** runtime yaml / mihomo reload |
