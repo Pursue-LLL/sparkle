@@ -11,6 +11,11 @@ import { MTDO_MARATHON_STREAM_MIN_AGE_MS } from './marathonTransportDialOrchestr
 /** Align with VPS sing-box keep_alive_period (30s). */
 export const HY2_TUNNEL_VITALITY_INTERVAL_MS = 30_000
 
+/** P28: ultra-conn + aged parent chain — accelerate vitality before mass PING partition. */
+export const HY2_TUNNEL_VITALITY_PRE_PARTITION_CONN_THRESHOLD = 80
+export const HY2_TUNNEL_VITALITY_PRE_PARTITION_CHAIN_AGE_MS = 43_200_000
+export const HY2_TUNNEL_VITALITY_PRE_PARTITION_INTERVAL_MS = 10_000
+
 /** P27b: token gap + green api2 + server-eof → NAT mapping stale suspect (observe-only). */
 export const NAT_STALE_SUSPECT_MIN_TOKEN_GAP_MS = 180_000
 
@@ -38,6 +43,20 @@ export interface Hy2TunnelVitalityResult {
   err?: string
 }
 
+export function isHy2TunnelVitalityPrePartitionRisk(input: Hy2TunnelVitalityGateInput): boolean {
+  return (
+    input.cursorConnectionCount >= HY2_TUNNEL_VITALITY_PRE_PARTITION_CONN_THRESHOLD &&
+    input.maxParentChainAgeMs >= HY2_TUNNEL_VITALITY_PRE_PARTITION_CHAIN_AGE_MS
+  )
+}
+
+export function resolveHy2TunnelVitalityIntervalMs(input: Hy2TunnelVitalityGateInput): number {
+  if (isHy2TunnelVitalityPrePartitionRisk(input)) {
+    return HY2_TUNNEL_VITALITY_PRE_PARTITION_INTERVAL_MS
+  }
+  return HY2_TUNNEL_VITALITY_INTERVAL_MS
+}
+
 export function shouldRunHy2TunnelVitality(input: Hy2TunnelVitalityGateInput): boolean {
   if (!isMarathonQuIcInboundCursorNode(input.activeNode)) {
     return false
@@ -51,10 +70,11 @@ export function shouldRunHy2TunnelVitality(input: Hy2TunnelVitalityGateInput): b
   if (input.maxParentChainAgeMs < MTDO_MARATHON_STREAM_MIN_AGE_MS) {
     return false
   }
+  const intervalMs = resolveHy2TunnelVitalityIntervalMs(input)
   if (input.lastVitalityAtMs <= 0) {
     return true
   }
-  return input.nowMs - input.lastVitalityAtMs >= HY2_TUNNEL_VITALITY_INTERVAL_MS
+  return input.nowMs - input.lastVitalityAtMs >= intervalMs
 }
 
 export function resolveHy2TunnelVitalitySkipReason(
@@ -69,10 +89,8 @@ export function resolveHy2TunnelVitalitySkipReason(
   if (input.maxParentChainAgeMs < MTDO_MARATHON_STREAM_MIN_AGE_MS) {
     return 'skipped_below_marathon_age'
   }
-  if (
-    input.lastVitalityAtMs > 0 &&
-    input.nowMs - input.lastVitalityAtMs < HY2_TUNNEL_VITALITY_INTERVAL_MS
-  ) {
+  const intervalMs = resolveHy2TunnelVitalityIntervalMs(input)
+  if (input.lastVitalityAtMs > 0 && input.nowMs - input.lastVitalityAtMs < intervalMs) {
     return 'skipped_not_due'
   }
   return undefined
@@ -96,6 +114,7 @@ export function formatHy2TunnelVitalityLogLine(fields: {
   node: string
   connectPathDelayMs?: number
   maxParentChainAgeMs?: number
+  prePartitionRisk?: boolean
   err?: string
 }): string {
   const parts = [
@@ -104,6 +123,9 @@ export function formatHy2TunnelVitalityLogLine(fields: {
     `cursor_conn=${fields.cursorConnectionCount}`,
     `node=${fields.node}`,
   ]
+  if (fields.prePartitionRisk) {
+    parts.push('mode=pre_partition')
+  }
   if (fields.maxParentChainAgeMs != null) {
     parts.push(`max_parent_chain_age_ms=${fields.maxParentChainAgeMs}`)
   }

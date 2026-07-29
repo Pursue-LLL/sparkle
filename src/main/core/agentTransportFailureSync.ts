@@ -222,20 +222,55 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
     }
     lastSyncFinishedAtMs = Date.now()
     if (writtenRows.length > 0) {
-      const { shouldArmPartitionLatchFromMassPingSync, armPartitionLatch } = await import(
-        './partitionLatchCore'
-      )
-      if (shouldArmPartitionLatchFromMassPingSync(writtenRows)) {
-        armPartitionLatch(lastSyncFinishedAtMs)
+      const { isConnectPingTransportFailure, isHttpSseServerEofTransportFailure } =
+        await import('./connectPartitionDetectCore')
+      const {
+        shouldArmPartitionLatchFromTransportSync,
+        shouldArmPartitionLatchFromMassPingSync,
+        shouldMergePartitionLatchFromLateServerEof,
+        collectPartitionLatchRequestIds,
+        collectLateServerEofPartitionLatchRequestIds,
+        armPartitionLatch,
+        formatPartitionMassPingSyncLogLine,
+      } = await import('./partitionLatchCore')
+      if (shouldArmPartitionLatchFromTransportSync(writtenRows)) {
+        const affectedRequestIds = collectPartitionLatchRequestIds(writtenRows)
+        armPartitionLatch(lastSyncFinishedAtMs, affectedRequestIds)
         try {
           const { appendAppLog } = await import('../utils/log')
-          const { isConnectPingTransportFailure } = await import('./connectPartitionDetectCore')
+          const { countCursorConnections } = await import('./cursorConnectionHygiene')
           const pingRows = writtenRows.filter((row) => isConnectPingTransportFailure(row)).length
+          const serverEofRows = writtenRows.filter((row) =>
+            isHttpSseServerEofTransportFailure(row),
+          ).length
+          const cursorConnectionCount = await countCursorConnections().catch(() => -1)
           await appendAppLog(
-            `[PartitionMassPingSync]: armed latch ping_rows=${pingRows} written=${written}\n`,
+            formatPartitionMassPingSyncLogLine({
+              pingRows,
+              serverEofRows,
+              written,
+              cursorConnectionCount,
+              affectedRequestIds,
+              latchReason: shouldArmPartitionLatchFromMassPingSync(writtenRows)
+                ? 'mass_ping'
+                : 'mixed_ping_eof',
+            }),
           )
         } catch {
           // best-effort observability
+        }
+      } else if (shouldMergePartitionLatchFromLateServerEof(writtenRows, lastSyncFinishedAtMs)) {
+        const lateEofRequestIds = collectLateServerEofPartitionLatchRequestIds(writtenRows)
+        if (lateEofRequestIds.length > 0) {
+          armPartitionLatch(lastSyncFinishedAtMs, lateEofRequestIds)
+          try {
+            const { appendAppLog } = await import('../utils/log')
+            await appendAppLog(
+              `[PartitionLateEofMerge]: merged latch stale_rids=${lateEofRequestIds.slice(0, 8).join(',')} count=${lateEofRequestIds.length}\n`,
+            )
+          } catch {
+            // best-effort observability
+          }
         }
       }
       for (const row of writtenRows) {

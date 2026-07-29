@@ -7,6 +7,7 @@ import { CONNECT_PATH_PROBE_TARGET } from './cursorConnectStreamKeepaliveCore'
 import type { MarathonSSETruthResult } from './marathonSSETruthCore'
 import {
   formatHy2TunnelVitalityLogLine,
+  isHy2TunnelVitalityPrePartitionRisk,
   resolveHy2TunnelVitalitySkipReason,
   shouldRunHy2TunnelVitality,
   type Hy2TunnelVitalityResult,
@@ -66,6 +67,8 @@ export async function runHy2TunnelVitalityIfDue(
     maxParentChainAgeMs: truth.maxParentChainAgeMs,
   }
 
+  const prePartitionRisk = isHy2TunnelVitalityPrePartitionRisk(gate)
+
   if (!shouldRunHy2TunnelVitality(gate)) {
     const skipReason = resolveHy2TunnelVitalitySkipReason(gate)
     if (
@@ -79,6 +82,7 @@ export async function runHy2TunnelVitalityIfDue(
           cursorConnectionCount,
           node: activeNode,
           maxParentChainAgeMs: truth.maxParentChainAgeMs,
+          prePartitionRisk,
         }),
       )
     }
@@ -111,6 +115,7 @@ export async function runHy2TunnelVitalityIfDue(
         node: activeNode,
         connectPathDelayMs,
         maxParentChainAgeMs: truth.maxParentChainAgeMs,
+        prePartitionRisk,
       }),
     )
     return { outcome: 'executed', connectPathDelayMs }
@@ -122,6 +127,7 @@ export async function runHy2TunnelVitalityIfDue(
         cursorConnectionCount,
         node: activeNode,
         maxParentChainAgeMs: truth.maxParentChainAgeMs,
+        prePartitionRisk,
         err,
       }),
     )
