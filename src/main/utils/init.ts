@@ -47,7 +47,7 @@ import { appendAppLog } from './log'
 
 async function initDirs(): Promise<void> {
   if (!existsSync(dataDir())) {
-    await mkdir(dataDir())
+    await mkdir(dataDir(), { recursive: true })
   }
   const dirs = [
     themesDir(),

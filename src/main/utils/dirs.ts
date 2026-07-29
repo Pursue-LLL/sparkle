@@ -1,5 +1,6 @@
 import { is } from '@electron-toolkit/utils'
-import { existsSync, mkdirSync, readdirSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
+import { ensureDirectoryExists } from './logDirEnsureCore'
 import { app } from 'electron'
 import path from 'path'
 import { execSync } from 'child_process'
@@ -181,6 +182,11 @@ export function mihomoWorkConfigPath(id: string | undefined): string {
 
 export function logDir(): string {
   return path.join(dataDir(), 'logs')
+}
+
+/** R-17: create logs/ before any createWriteStream — prevents main-process ENOENT crash. */
+export function ensureLogDir(): void {
+  ensureDirectoryExists(logDir(), existsSync, mkdirSync)
 }
 
 function datedLogPath(prefix?: string): string {
