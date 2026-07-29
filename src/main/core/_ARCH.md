@@ -24,7 +24,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `connectPingStormCore.ts`                                               | **P16** ultra-conn：Diagnostic ingest 合成 · synthetic partition · latency_delta rescue streak · ultra_conn 观测                                                      |
 | `cursorLogDiscoveryCore.ts` / `cursorStructuredTransportIngestCore.ts` / `cursorStructuredTailCacheCore.ts` | **P17/P18** log roots SSOT · Structured tail 热读 + mtime/size cache · merge 输入 |
 | `transportObservabilityMergeCore.ts` / `partitionBlindSpotCore.ts`     | **P18** hot+jsonl dedupe · jsonl=0∧structured≥2 blind_spot 告警 |
-| `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost/**Structured NAL** 同步 + proxyNode 回填）                                            |
+| `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost/**Structured NAL** 同步 + proxyNode 回填）；**P27b** server-eof → `natStaleSuspectObserver` |
+| `natStaleSuspectObserverCore.ts` / `natStaleSuspectObserver.ts`         | **P27b** token_gap≥180s + api2 绿 + server-eof → `[NatStaleSuspect]` + jsonl `nat_stale_suspect`（observe-only，无 recovery） |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | 高并行时 VPS leaf dial-timeout 5s→45s · **P20b IDLE apply**（active stream/quiesce 期间 defer reload） |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
 | `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默（纯内存）：conn≥12 暂停 proxyHealthMonitor + observability dial；**零** runtime yaml / mihomo reload |
