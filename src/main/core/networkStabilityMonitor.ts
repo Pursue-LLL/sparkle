@@ -84,6 +84,7 @@ type NetworkStabilityKind =
   | 'transport_partition_stale_connect_path'
   | 'transport_partition_blind_spot'
   | 'transport_mac_vps_delta_high'
+  | 'path_change'
 
 export interface NetworkStabilityEvent {
   ts: string

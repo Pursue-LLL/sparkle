@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  isHy2TunnelVitalityDelayPurpose,
   isMarathonRescueDelayPurpose,
   isMihomoApiResourceNotFoundError,
   isUserExplicitDelayPurpose,
   resolveProviderNameForLeaf,
   resolveProviderRefreshDialKind,
+  shouldBypassMarathonQuiesceForDelay,
   shouldBypassMihomoDelayProbeSlot,
   shouldRefreshProviderLeafBeforeDelay,
 } from './mihomoProxyDelayCore'
@@ -36,10 +38,17 @@ describe('mihomoProxyDelayCore', () => {
     assert.equal(isUserExplicitDelayPurpose('marathon_rescue'), false)
   })
 
-  it('shouldBypassMihomoDelayProbeSlot only for marathon_rescue', () => {
+  it('shouldBypassMihomoDelayProbeSlot for marathon_rescue and hy2_tunnel_vitality', () => {
     assert.equal(shouldBypassMihomoDelayProbeSlot('marathon_rescue'), true)
+    assert.equal(shouldBypassMihomoDelayProbeSlot('hy2_tunnel_vitality'), true)
     assert.equal(shouldBypassMihomoDelayProbeSlot('default'), false)
     assert.equal(shouldBypassMihomoDelayProbeSlot(undefined), false)
+  })
+
+  it('P27 hy2_tunnel_vitality bypasses quiesce but not provider refresh', () => {
+    assert.equal(isHy2TunnelVitalityDelayPurpose('hy2_tunnel_vitality'), true)
+    assert.equal(shouldBypassMarathonQuiesceForDelay('hy2_tunnel_vitality'), true)
+    assert.equal(shouldRefreshProviderLeafBeforeDelay('hy2_tunnel_vitality'), false)
   })
 
   it('detects mihomo REST Resource not found reject payload', () => {

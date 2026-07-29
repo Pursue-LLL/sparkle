@@ -2,10 +2,14 @@
 // [OUTPUT] isMihomoApiResourceNotFoundError · resolveProviderNameForLeaf · isMarathonRescueDelayPurpose
 // [POS] mihomo /proxies/{leaf}/delay Resource not found → provider leaf refresh path (marathon rescue SSOT).
 
-export type MihomoDelayPurpose = 'default' | 'marathon_rescue' | 'user_explicit'
+export type MihomoDelayPurpose = 'default' | 'marathon_rescue' | 'user_explicit' | 'hy2_tunnel_vitality'
 
 export function isMarathonRescueDelayPurpose(purpose: MihomoDelayPurpose | undefined): boolean {
   return purpose === 'marathon_rescue'
+}
+
+export function isHy2TunnelVitalityDelayPurpose(purpose: MihomoDelayPurpose | undefined): boolean {
+  return purpose === 'hy2_tunnel_vitality'
 }
 
 export function isUserExplicitDelayPurpose(purpose: MihomoDelayPurpose | undefined): boolean {
@@ -23,9 +27,13 @@ export function resolveProviderRefreshDialKind(
   return isUserExplicitDelayPurpose(purpose) ? 'managed_ui_delay_test' : 'provider_healthcheck_api'
 }
 
-/** Rescue dial must not queue behind observability delay probes (BUG-015). */
+/** Rescue + P27 vitality dial must not queue behind observability delay probes (BUG-015). */
 export function shouldBypassMihomoDelayProbeSlot(purpose: MihomoDelayPurpose | undefined): boolean {
-  return isMarathonRescueDelayPurpose(purpose)
+  return isMarathonRescueDelayPurpose(purpose) || isHy2TunnelVitalityDelayPurpose(purpose)
+}
+
+export function shouldBypassMarathonQuiesceForDelay(purpose: MihomoDelayPurpose | undefined): boolean {
+  return isMarathonRescueDelayPurpose(purpose) || isHy2TunnelVitalityDelayPurpose(purpose)
 }
 
 export function isMihomoApiResourceNotFoundError(error: unknown): boolean {

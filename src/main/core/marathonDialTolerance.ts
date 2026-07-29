@@ -4,45 +4,20 @@ import {
   resolveMarathonDialTolerancePendingTarget,
   shouldDeferMarathonDialToleranceApply,
 } from './marathonDialToleranceIdleApplyCore'
-import {
-  MTDO_ACTIVE_STREAM_MAX_GAP_MS,
-  MTDO_MARATHON_STREAM_MIN_AGE_MS,
-} from './marathonTransportDialOrchestratorCore'
-import {
-  buildMarathonStreamRegistry,
-  hasActiveMarathonStream,
-  MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
-} from './marathonStreamRegistryCore'
-import {
-  collectRendererActivitySamplesForMtdo,
-  collectRendererToolAuditLinesForMtdo,
-} from './marathonTransportDialReader'
+import { resolveMarathonSSETruthNow } from './marathonSSETruthRuntime'
 
 let lastAppliedDialTimeoutSec: number | undefined
 let pendingDialTimeoutSec: number | undefined
 
 async function resolveMarathonDialToleranceIdleContext(cursorConnectionCount: number): Promise<{
-  hasActiveMarathonStream: boolean
+  marathonTruthActive: boolean
   quiesceActive: boolean
 }> {
-  const nowMs = Date.now()
   const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
   const quiesceSnapshot = getMarathonQuiesceSnapshot()
-  const [activitySamples, toolLines] = await Promise.all([
-    collectRendererActivitySamplesForMtdo(nowMs),
-    collectRendererToolAuditLinesForMtdo(nowMs),
-  ])
-  const registry = buildMarathonStreamRegistry(
-    activitySamples,
-    toolLines,
-    nowMs,
-    MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
-  )
+  const truth = await resolveMarathonSSETruthNow(cursorConnectionCount)
   return {
-    hasActiveMarathonStream: hasActiveMarathonStream(registry, nowMs, {
-      minStreamAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS,
-      maxLastActivityGapMs: MTDO_ACTIVE_STREAM_MAX_GAP_MS,
-    }),
+    marathonTruthActive: truth.marathonTruthActive,
     quiesceActive: quiesceSnapshot.active,
   }
 }
@@ -52,11 +27,11 @@ export async function syncMarathonDialToleranceIfNeeded(
   cursorConnectionCount: number,
 ): Promise<boolean> {
   const targetDialTimeoutSec = resolveMarathonDialTimeoutSec(cursorConnectionCount)
-  const { hasActiveMarathonStream, quiesceActive } =
+  const { marathonTruthActive, quiesceActive } =
     await resolveMarathonDialToleranceIdleContext(cursorConnectionCount)
   const defer = shouldDeferMarathonDialToleranceApply(
     cursorConnectionCount,
-    hasActiveMarathonStream,
+    marathonTruthActive,
     quiesceActive,
   )
 
@@ -70,7 +45,7 @@ export async function syncMarathonDialToleranceIfNeeded(
     if (pendingDialTimeoutSec != null && lastAppliedDialTimeoutSec !== pendingDialTimeoutSec) {
       await appendAppLog(
         `[MarathonDialTolerance]: memory_only_deferred cursor_conn=${cursorConnectionCount}` +
-          ` target_timeout=${pendingDialTimeoutSec}s active_stream=${hasActiveMarathonStream ? 1 : 0}` +
+          ` target_timeout=${pendingDialTimeoutSec}s marathon_truth_active=${marathonTruthActive ? 1 : 0}` +
           ` quiesce=${quiesceActive ? 1 : 0} data_plane_action=none\n`,
       )
     }

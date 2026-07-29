@@ -126,6 +126,9 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
       const { startAgentTransportFailureSync } = await import('./agentTransportFailureSync')
       startAgentTransportFailureSync()
 
+      const { startNetworkPathMonitor } = await import('./networkPathMonitor')
+      startNetworkPathMonitor()
+
       await appendAppLog(
         `[PostCoreBootstrap]: Api2ProbePlane ON after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace (60s active transport probe)\n`
       )

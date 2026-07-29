@@ -1,3 +1,8 @@
+import {
+  HY2_QUIC_IDLE_TIMEOUT_SEC,
+  HY2_QUIC_KEEPALIVE_PERIOD_SEC,
+} from './cursorHy2MarathonKeepaliveCore'
+
 /** HY2 over macOS system TUN: conservative MTU reduces QUIC fragmentation loss. */
 export const CURSOR_HY2_MTU = 1280
 
@@ -25,6 +30,12 @@ export function normalizeHysteria2Proxy(proxy: Record<string, unknown>): Record<
   }
   if (next.alpn === undefined || next.alpn === null) {
     next.alpn = ['h3']
+  }
+  if (next['udp-timeout'] === undefined && next['udp_timeout'] === undefined) {
+    next['udp-timeout'] = HY2_QUIC_IDLE_TIMEOUT_SEC
+  }
+  if (next['heartbeat-interval'] === undefined && next['heartbeatInterval'] === undefined) {
+    next['heartbeat-interval'] = HY2_QUIC_KEEPALIVE_PERIOD_SEC
   }
   return next
 }

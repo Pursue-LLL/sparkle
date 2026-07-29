@@ -20,13 +20,13 @@ describe('marathonTransportDialOrchestrator G10/G12 static', () => {
     assert.doesNotMatch(src, /isMarathonTransportDialInFlight/)
   })
 
-  it('marathonTransportDialOrchestrator has no mtdo in-flight gate (G10)', () => {
+  it('marathonTransportDialOrchestrator wires P27 hy2 tunnel vitality (G27)', () => {
     const src = readFileSync(
       new URL('./marathonTransportDialOrchestrator.ts', import.meta.url),
       'utf8',
     )
-    assert.doesNotMatch(src, /mtdoInFlight/)
-    assert.doesNotMatch(src, /isMarathonTransportDialInFlight/)
+    assert.match(src, /runHy2TunnelVitalityIfDue/)
+    assert.match(src, /hy2TunnelVitality/)
   })
 })
 

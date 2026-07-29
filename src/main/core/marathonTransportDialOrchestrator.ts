@@ -45,10 +45,8 @@ import {
   type ConnectPartitionSignalWithSource,
 } from './connectPingStormCore'
 import {
-  buildMarathonStreamRegistry,
   hasActiveMarathonStream,
   isTokenGapSuppressedForPendingTool,
-  MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
   type MarathonStreamRegistry,
 } from './marathonStreamRegistryCore'
 import {
@@ -63,9 +61,13 @@ import {
 } from './marathonTransportDialOrchestratorCore'
 import { API2_PROBE_TARGET } from './cursorTransportHealthCore'
 import {
-  collectRendererActivitySamplesForMtdo,
-  collectRendererToolAuditLinesForMtdo,
-} from './marathonTransportDialReader'
+  formatPulseContractBreachLine,
+  formatPulseSkippedLine,
+  isPulseContractBreach,
+  resolvePulseSkippedReason,
+  type MarathonSSETruthResult,
+} from './marathonSSETruthCore'
+import { resolveMarathonSSETruthSnapshot } from './marathonSSETruthRuntime'
 import { appendNetworkStabilityEvent } from './networkStabilityMonitor'
 import {
   formatCursorLogPlaneLine,
@@ -198,28 +200,62 @@ async function ensureCycleConnectPathPulse(
 
 async function runIndependentConnectPathPulseIfDue(
   context: MarathonTransportDialSelectionContext,
+  truth: MarathonSSETruthResult,
   activeNode: string,
   cursorConnectionCount: number,
   nowMs: number,
 ): Promise<void> {
-  if (!shouldRunIndependentConnectPathPulse(context)) {
+  if (isPulseContractBreach(truth, context.lastConnectPathPulseAtMs, nowMs)) {
+    await appendAppLog(
+      formatPulseContractBreachLine({
+        gapMs: nowMs - context.lastConnectPathPulseAtMs,
+        openSegmentCount: truth.openSegmentCount,
+        maxParentChainAgeMs: truth.maxParentChainAgeMs,
+        cursorConnectionCount,
+      }),
+    )
+  }
+
+  if (shouldRunIndependentConnectPathPulse(context)) {
+    const pulse = await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
+    if (!pulse.partitionStale) {
+      return
+    }
+    const sessionResult = await executeMarathonRescueDial(cursorConnectionCount, {
+      trigger: 'connect_path_partition',
+      nowMs,
+    })
+    await appendAppLog(
+      formatMarathonRescueNudgeLogLine('connect_path_partition', sessionResult, {
+        cursorConnectionCount,
+      }),
+    )
+    lastMtdoDialAtMs = nowMs
+    lastConnectPathPartitionStale = false
     return
   }
-  const pulse = await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
-  if (!pulse.partitionStale) {
-    return
-  }
-  const sessionResult = await executeMarathonRescueDial(cursorConnectionCount, {
-    trigger: 'connect_path_partition',
+
+  const skippedReason = resolvePulseSkippedReason(
+    truth,
+    cursorConnectionCount,
+    context.lastConnectPathPulseAtMs,
     nowMs,
-  })
-  await appendAppLog(
-    formatMarathonRescueNudgeLogLine('connect_path_partition', sessionResult, {
-      cursorConnectionCount,
-    }),
+    Boolean(activeNode),
   )
-  lastMtdoDialAtMs = nowMs
-  lastConnectPathPartitionStale = false
+  if (skippedReason === 'not_due_yet') {
+    return
+  }
+  if (skippedReason && truth.pulseContractDue) {
+    await appendAppLog(
+      formatPulseSkippedLine(skippedReason, {
+        cursor_conn: cursorConnectionCount,
+        open_segments: truth.openSegmentCount,
+        max_parent_chain_age_ms: truth.maxParentChainAgeMs,
+        last_pulse_age_ms:
+          context.lastConnectPathPulseAtMs > 0 ? nowMs - context.lastConnectPathPulseAtMs : 0,
+      }),
+    )
+  }
 }
 
 async function executeDialPlan(
@@ -405,27 +441,22 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     }
 
     const [
-      activitySamples,
-      toolLines,
       silentGenerationEnd,
       coldResumeSignal,
       connectStreamGapSignal,
       tokenGapSignal,
+      marathonSnapshot,
     ] = await Promise.all([
-      collectRendererActivitySamplesForMtdo(nowMs),
-      collectRendererToolAuditLinesForMtdo(nowMs),
       readMarathonSilentGenerationEndRescueSignal(cursorConnectionCount, nowMs),
       readMarathonColdResumeNoTokenSignal(cursorConnectionCount, nowMs),
       readConnectStreamKeepaliveGapSignal(cursorConnectionCount, nowMs),
       readMarathonStreamTokenGapSignal(cursorConnectionCount, nowMs),
+      resolveMarathonSSETruthSnapshot(cursorConnectionCount, lastConnectPathPulseAtMs),
     ])
 
-    const registry: MarathonStreamRegistry = buildMarathonStreamRegistry(
-      activitySamples,
-      toolLines,
-      nowMs,
-      MARATHON_STREAM_REGISTRY_LOOKBACK_MS,
-    )
+    const registry: MarathonStreamRegistry = marathonSnapshot.registry
+    const marathonTruth = marathonSnapshot.truth
+
     const tokenGapSuppressedPendingTool =
       tokenGapSignal != null &&
       isTokenGapSuppressedForPendingTool(
@@ -437,6 +468,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       minStreamAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS,
       maxLastActivityGapMs: MTDO_ACTIVE_STREAM_MAX_GAP_MS,
     })
+    const marathonTruthPulseDue = marathonTruth.pulseContractDue
 
     const recentProbe = getRecentCursorProbe()
     const forceHighLatencyWarmth = shouldForceHy2MarathonSessionKeepaliveForHighLatency(
@@ -459,18 +491,25 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       connectPathPartitionDetected: lastConnectPathPartitionStale,
       tokenGapSuppressedPendingTool,
       marathonStreamActive,
+      marathonTruthPulseDue,
       forceHighLatencyWarmth,
     }
 
-    if (activeNode && marathonStreamActive) {
+    if (activeNode && (marathonTruthPulseDue || marathonTruth.marathonTruthActive)) {
       await runIndependentConnectPathPulseIfDue(
         selectionBase,
+        marathonTruth,
         activeNode,
         cursorConnectionCount,
         nowMs,
       )
       selectionBase.lastConnectPathPulseAtMs = lastConnectPathPulseAtMs
       selectionBase.connectPathPartitionDetected = lastConnectPathPartitionStale
+    }
+
+    if (activeNode && marathonTruth.marathonTruthActive) {
+      const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
+      await runHy2TunnelVitalityIfDue(activeNode, cursorConnectionCount, nowMs, marathonTruth)
     }
 
     let candidate = selectMarathonTransportDialTrigger(selectionBase)

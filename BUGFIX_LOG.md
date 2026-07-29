@@ -1,5 +1,42 @@
 # Sparkle Bugfix Log
 
+> **2026-07-29 最新**：**BUG-2026-07-29-026** — P15 pulse blackout · **445ba497 四段级联** · **1.26.93**（P24/P25/P27 已编码）· **BUG-025** L0–L3
+
+### BUG-2026-07-29-026 · v1.26.92 · marathon_pulse_registry_desync + hy2_sse_silent_eof (P24/P25/P27)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **P24/P25/P27 EXEC-CODE-DONE** · SOAK-PENDING · 当前安装 **1.26.90** |
+| **症状** | Jul29 **10:35 双路** + **11:12–11:16 四段级联** · `streamPrimarySub=server-eof` · parent `445ba497` 单 userMessage 断 **4 次** · ghost resume ≥4 Included |
+| **关联产品** | Sparkle **1.26.90** · Cursor-3.1.15 · JP-VPS-HY2 · sing-box **1.14.0-alpha.48** |
+| **bug 存在版本** | Sparkle ≥1.26.77（P15 pulse gate 仅认 registry + 512KB tail 假阴性） |
+| **修复目标版本** | **1.26.93**（P24+P25+P27） |
+| **PRIMARY 根因** | **L3** — Mac→JP HY2 QUIC 马拉松 SSE **长流静默 server-eof**（split-brain：短 api2 287–321ms 绿 · VPS sing-box @ A **0 error** · SSH 11:12 复核） |
+| **AMPLIFIER 根因** | P15 pulse gate 三重 false-negative → **10:35 34min** + **11:12 13.5min** pulse blackout（`app-2026-7-29.log` 末 pulse `03:00:51Z` → 下次 `03:14:20Z`） |
+| **TERMINAL（非 PRIMARY）** | `1e5c49ca` @11:16:11 · `serverErrorRetries=3` · UI `Stream ended without turnEnded` — 级联终点 |
+| **修复 P24** | `marathonSSETruthCore.ts` — parent-chain `httpStartMs` SSOT · pulse → `marathonTruthPulseDue` · segment cache |
+| **修复 P25** | HTTP SSE jsonl · NWPathMonitor · incident_bundle 自动采集 |
+| **修复 P27** | `hy2TunnelVitalityCore.ts` · `hy2TunnelVitality.ts` — 30s connect_path vitality · outbound HY2 udp-timeout/heartbeat-interval @ generate |
+| **关联文件** | P24/P25 见 §11.4–11.5 · P27 见 roadmap §11.7 · R-14 |
+| **反复出现次数** | 同类 L3 server-eof **≥5 次/日**（7/29 D+D′+E 四段）；P15 blackout **2 次 definitive**（34min + 13.5min） |
+| **为何反复修不好** | ① 只修 VPS 入站未修 Mac 出站 ② pulse/rescue 误当「保活长流」③ registry 单源 gate 假阴性直到 BUG-026 |
+| **如何避免再翻车** | 装 **1.26.93** → soak 双锚点（零 breach + server-eof 率降）→ 外部锚点：parent 链 server-eof / ghost Included |
+| **踩坑** | ① nudge 绿 ≠ SSE 活 ② stale_rids rescue =  post-mortem ③ UI transport 错误 ≠ 新根因 ④ P26 已被 partition 窗占用 — 隧道活性叫 **P27** |
+
+#### BUG-026 · P24/P25 代码审计（2026-07-29 · feedback#9）
+
+| 审计项 | 结论 | 证据 |
+| --- | --- | --- |
+| **单测** | **52/52 pass**（含 runtime cache+tail 合并 · P27 executor） | marathon 栈全覆盖门控+executor |
+| **覆盖率** | **~70%** P24/P25/P27 栈 | 90% 需 E2E soak，非单测可达 |
+| **P24 可用性** | 门控逻辑正确；**不能治 L3** | `shouldRunIndependentConnectPathPulse` 仅认 `marathonTruthPulseDue`（`marathonTransportDialOrchestratorCore.ts:107`） |
+| **性能风险** | 中 | `readMarathonSegmentCache` 每 cycle 全文件读（`marathonSegmentCache.ts:71-89`）；长跑 append-only jsonl 线性增长 |
+| **测量衰减 R-A** | **命中** | pulse 绿 ≠ SSE 活（7/29 @ gapSinceActivityMs=7）；验收须 parent 链 server-eof 外部锚点 |
+| **古德哈特 R-B** | **命中** | rescue `outcome=executed` 可在 stale_rids 上虚高；P27 须独立 `hy2_tunnel_vitality` SSOT |
+| **向上失明 R-C** | **命中** | 1.26.92 仍无 Mac outbound QUIC 活性 → L3 必复发直至 P27 |
+| **1.26.92 会引入新 bug 吗** | 低概率语法 bug；**中概率目标误判** | 更多 pulse dial → observability 预算争用；segment cache I/O；**不会**因 P24  alone 消除 server-eof |
+| **同类 bug 还会来吗** | **会**（不同族） | L3 server-eof 直至 P27 · L7 ~90min gen-end（P22）· L2 mutation（§4 kernel 未完成）· ISP 硬断 |
+
 > **2026-07-28 最新**：**BUG-2026-07-28-025** — 马拉松期 L0–L3 误杀健康连接 · **1.26.89**（R-07 zero-disruption）· **BUG-024** G22 rescue · **BUG-023** force install · **BUG-022** 见下
 
 ### BUG-2026-07-28-025 · v1.26.89 · marathon_transport_recovery_zero_disruption (R-07)

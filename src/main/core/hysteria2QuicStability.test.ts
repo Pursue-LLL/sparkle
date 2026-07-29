@@ -10,6 +10,8 @@ test('normalizeHysteria2Proxy caps mtu and sets h3 alpn', () => {
   const out = normalizeHysteria2Proxy({ name: 'KR-VPS-HY2', type: 'hysteria2', mtu: 1500 })
   assert.equal(out.mtu, CURSOR_HY2_MTU)
   assert.deepEqual(out.alpn, ['h3'])
+  assert.equal(out['udp-timeout'], 3600)
+  assert.equal(out['heartbeat-interval'], 30)
 })
 
 test('normalizeHysteria2Proxy preserves user mtu at or below cap', () => {

@@ -112,4 +112,26 @@ describe('agentTransportFailureWriterCore', () => {
     assert.equal(row?.reasonType, 'cursor-server')
     assert.equal(shouldPersistTransportFailure(row!), false)
   })
+
+  it('parses 7/29 HTTP SSE server-eof marathon agent-error (BUG-026 D case)', () => {
+    const ts = 1_783_732_510_780
+    const line =
+      `2026-07-29 10:35:10.780 [info] [ifm-patch-29 agent-error] requestId="436bb3ce-f456-4a2a-9c0a-8f1e2d3c4b5a" originalRequestId="5f6f5e93-8aeb-4023-b6c7-746050c822a6" attempt=0 actionCase="userMessageAction" willRetry=true errMsg="server-eof" connectCode="" lastSseCase="tokenDelta" lastSseN=25030 activeAgents=2 composerId="e6829e24-f8f0-4a2b-9c0d-1e2f3a4b5c6d" httpVerObserved="1.1" streamPrimarySub="server-eof" disconnectPhase="phase1_stream" durationMs=2381906 pendingTool=1 gapSinceActivityMs=523 ts=${ts}`
+    const row = parseTransportFailureLine(line)
+    assert.ok(row)
+    assert.equal(row?.kind, 'http_sse_transport_failure')
+    assert.equal(row?.reasonSub, 'http-sse-server-eof')
+    assert.equal(row?.streamPrimarySub, 'server-eof')
+    assert.equal(row?.durationMs, 2_381_906)
+    assert.equal(shouldPersistTransportFailure(row!), true)
+  })
+
+  it('does not persist short HTTP SSE server-eof under 30min', () => {
+    const line =
+      '[ifm-patch-29 agent-error] requestId="rid-short" originalRequestId="rid-short" streamPrimarySub="server-eof" durationMs=900000 errMsg="server-eof" ts=1783732510780'
+    const row = parseTransportFailureLine(line)
+    assert.ok(row)
+    assert.equal(row?.reasonSub, 'http-sse-server-eof')
+    assert.equal(shouldPersistTransportFailure(row!), false)
+  })
 })

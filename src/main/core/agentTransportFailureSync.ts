@@ -164,6 +164,9 @@ export async function appendAgentTransportFailureRow(
     connectCode: row.connectCode ?? '',
     attempt: row.attempt ?? 0,
     ...(row.activeAgents !== undefined ? { activeAgents: row.activeAgents } : {}),
+    ...(row.durationMs !== undefined ? { durationMs: row.durationMs } : {}),
+    ...(row.streamPrimarySub ? { streamPrimarySub: row.streamPrimarySub } : {}),
+    ...(row.disconnectPhase ? { disconnectPhase: row.disconnectPhase } : {}),
     source: 'sparkle-sync',
   }
   await mkdir(join(homedir(), '.sparkle'), { recursive: true })
@@ -234,6 +237,33 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
         } catch {
           // best-effort observability
         }
+      }
+      for (const row of writtenRows) {
+        if (row.kind !== 'http_sse_transport_failure') {
+          continue
+        }
+        const originalRequestId = row.originalRequestId ?? row.requestId
+        if (!originalRequestId) {
+          continue
+        }
+        void (async () => {
+          try {
+            const { collectIncidentBundleAtDisconnect } = await import(
+              './incidentBundleCollectorCore'
+            )
+            const { appendAppLog } = await import('../utils/log')
+            const result = await collectIncidentBundleAtDisconnect({
+              originalRequestId,
+              tsMs: row.ts,
+              reasonSub: row.reasonSub,
+            })
+            await appendAppLog(
+              `[IncidentBundle]: collected rid=${originalRequestId} dir=${result.bundleDir} files=${result.filesWritten}\n`,
+            )
+          } catch {
+            // best-effort — jsonl row is authoritative
+          }
+        })()
       }
     }
     if (options?.logWrites !== false) {
