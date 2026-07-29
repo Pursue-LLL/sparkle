@@ -1,0 +1,4 @@
+# yaml-language-server: $schema=../src/ifm/schema/profile.schema.json
+version: 1
+name: open-perplexity
+extends: preset://generic

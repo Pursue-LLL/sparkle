@@ -1,0 +1,37 @@
+{
+  "name": "sparkle",
+  "version": "1.26.64",
+  "description": "Sparkle",
+  "main": "./out/main/index.js",
+  "author": {
+    "name": "xishang0128",
+    "email": "xishang02@gmail.com"
+  },
+  "homepage": "https://github.com/xishang0128/sparkle",
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@heroui-v3/react": "npm:@heroui/react@3.0.4",
+    "@heroui-v3/styles": "npm:@heroui/styles@3.0.4",
+    "@heroui/react": "2.8.10",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/crypto-js": "^4.2.2",
+    "@uruhalushia/sparkle-native": "^0.1.1",
+    "adm-zip": "^0.5.17",
+    "axios": "^1.16.0",
+    "crypto-js": "^4.2.0",
+    "dayjs": "^1.11.20",
+    "express": "^5.2.1",
+    "iconv-lite": "^0.7.2",
+    "is-cidr": "^7.0.0",
+    "is-ip": "^5.0.1",
+    "js-yaml": "^4.1.1",
+    "monaco-editor": "^0.52.2",
+    "qrcode.react": "^4.2.0",
+    "webdav": "^5.10.0",
+    "ws": "^8.20.0",
+    "yaml": "^2.8.4"
+  },
+  "packageManager": "pnpm@11.1.1"
+}

@@ -189,6 +189,12 @@ export function ensureLogDir(): void {
   ensureDirectoryExists(logDir(), existsSync, mkdirSync)
 }
 
+/** R-17: sync guard at init entry — userData + logs before any async initDirs race. */
+export function ensureUserDataDirs(): void {
+  ensureDirectoryExists(dataDir(), existsSync, mkdirSync)
+  ensureLogDir()
+}
+
 function datedLogPath(prefix?: string): string {
   const date = new Date()
   const name = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
