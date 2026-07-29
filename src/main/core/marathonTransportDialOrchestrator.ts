@@ -278,6 +278,7 @@ async function executeDialPlan(
         cursorConnectionCount,
         maxGapMs: candidate.maxGapMs,
         staleRids: candidate.staleRequestIds?.slice(0, 3).join(','),
+        staleRequestIdCount: candidate.staleRequestIdCount,
       }),
     )
     return sessionResult
@@ -301,6 +302,7 @@ async function executeDialPlan(
       cursorConnectionCount,
       maxGapMs: candidate.maxGapMs,
       staleRids: candidate.staleRequestIds?.slice(0, 3).join(','),
+      staleRequestIdCount: candidate.staleRequestIdCount,
     }),
   )
   return sessionResult
