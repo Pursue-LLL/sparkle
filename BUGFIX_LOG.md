@@ -1,12 +1,43 @@
 # Sparkle Bugfix Log
 
-> **2026-07-29 最新**：**BUG-2026-07-29-026** — P15 pulse blackout · **445ba497 四段级联** · **1.26.93**（P24/P25/P27 已编码）· **BUG-025** L0–L3
+> **2026-07-29 最新**：**BUG-2026-07-29-028** — P23 override env · **1.26.94** 已装 · **BUG-027** P27b nat_stale · **BUG-026** P24/P25/P27 · **BUG-025** L0–L3
+
+### BUG-2026-07-29-028 · v1.26.94 · marathon_install_p23_explicit_override
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **EXEC-CODE-DONE** @ **1.26.94** · git `60e4a64` |
+| **症状** | 马拉松中 `install-sparkle-local.sh` 被 P23 拒装（`cursor_conn>0`）；用户明确要求强制安装 |
+| **关联产品** | Sparkle **1.26.93→1.26.94** · Cursor 马拉松 conn≈11–13 |
+| **bug 存在版本** | Sparkle ≤1.26.93（P23 无显式 opt-in override；`SPARKLE_FORCE_INSTALL_DURING_MARATHON=1` 恒 fail） |
+| **修复目标版本** | Sparkle **1.26.94**（脚本层，无 pkg 行为变） |
+| **根因** | P23 hard gate 正确默认拒装；缺 operator 显式 override 通道 |
+| **修复** | `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` → skip conn/quiesce/snapshot gate · 日志 WARN |
+| **副作用** | sparkle-service 重启 · `cursor_conn` 12→7（部分 Connect 流中断）— operator 已知代价 |
+| **关联文件** | `scripts/lib/marathon-core-restart-guard.sh` |
+| **用户动作** | 仅马拉松期确需时用：`SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1 bash scripts/install-sparkle-local.sh` |
+| **踩坑** | override ≠ 无代价；与铁律 #5 冲突时须 operator 明示；正常路径仍等 `cursor_conn=0` |
+
+### BUG-2026-07-29-027 · v1.26.94 · nat_stale_suspect_observe + stale_rid_rescue_ssot (P27b + R-B)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **EXEC-CODE-DONE** @ **1.26.94** · SOAK-PENDING |
+| **症状** | L3 split-brain：token_gap≥180s + api2 绿 + HTTP SSE `server-eof` · rescue 日志 `outcome=executed` 在 dead SSE 上误导 |
+| **关联产品** | Sparkle **1.26.94** · JP-VPS-HY2 · Cursor-3.1.15 |
+| **bug 存在版本** | Sparkle ≤1.26.93（P27b core-only 未 wired runtime；stale_rid SSOT 缺失） |
+| **修复目标版本** | Sparkle **1.26.94** · git `125fbbd` |
+| **修复 P27b** | `natStaleSuspectObserverCore.ts` · `natStaleSuspectObserver.ts` · hook `agentTransportFailureSync.ts` on server-eof → `[NatStaleSuspect]` + `network-stability-events.jsonl` kind `nat_stale_suspect`（**observe-only，无 recovery**） |
+| **修复 R-B** | `cursorHy2MarathonKeepaliveCore.ts` `resolveRescueDialLogOutcome` — stale RID 不再误标 `executed` |
+| **回归** | `natStaleSuspectObserverCore.test.ts` · `cursorHy2MarathonKeepaliveCore.test.ts` 15/15 |
+| **用户动作** | `install-sparkle-local.sh` → app **1.26.94** · 验收 jsonl `nat_stale_suspect` |
+| **踩坑** | P27b **不触发 dial**；仅 triage；L3 物理 EOF 仍可能发生 |
 
 ### BUG-2026-07-29-026 · v1.26.92 · marathon_pulse_registry_desync + hy2_sse_silent_eof (P24/P25/P27)
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **P24/P25/P27 EXEC-CODE-DONE** · SOAK-PENDING · 当前安装 **1.26.90** |
+| **状态** | **P24/P25/P27 EXEC-CODE-DONE** · SOAK-PENDING · 当前安装 **1.26.94** |
 | **症状** | Jul29 **10:35 双路** + **11:12–11:16 四段级联** · `streamPrimarySub=server-eof` · parent `445ba497` 单 userMessage 断 **4 次** · ghost resume ≥4 Included |
 | **关联产品** | Sparkle **1.26.90** · Cursor-3.1.15 · JP-VPS-HY2 · sing-box **1.14.0-alpha.48** |
 | **bug 存在版本** | Sparkle ≥1.26.77（P15 pulse gate 仅认 registry + 512KB tail 假阴性） |
@@ -65,7 +96,7 @@
 | **bug 存在版本** | Sparkle ≤1.26.86（upgrade 脚本可绕过 P10 marathon guard） |
 | **修复目标版本** | Sparkle **1.26.87** |
 | **根因** | `SPARKLE_FORCE_INSTALL_DURING_MARATHON=1` 未 hard-fail；pkg 安装未统一 PRE-gate |
-| **修复** | `scripts/lib/marathon-core-restart-guard.sh` 默认拒绝 force install · audit 日志 |
+| **修复** | `scripts/lib/marathon-core-restart-guard.sh` 默认拒绝 force install · audit 日志 · **显式 override**：`SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1`（operator opt-in，见 BUG-028） |
 | **回归** | marathon-core-restart-guard 脚本 gate |
 | **用户动作** | 禁止马拉松期 force install；任务结束后正常 `upgrade:mac` |
 

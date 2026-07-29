@@ -553,7 +553,7 @@ VPS 指标必须记录 delta/速率，禁止用累计值直接定责。
 
 北极星不变：单次 userMessage 物尽其用。以下 **不拆消息、不减并行、不 failover、不设客户端总时长上限、不 kill 健康连接**。
 
-### 11.1 P21 — BUG-021 日志目录过滤（**1.26.85 · 已编码待装**）
+### 11.1 P21 — BUG-021 日志目录过滤（**1.26.85+ · 1.26.94 已装**）
 
 **问题**：`agentTransportFailureSync` 对 `Cursor/logs` 用 `existsSync` 过滤，`.DS_Store` 文件通过 → `readdir` ENOTDIR → **整条 MTDO/rescue/hung_scan/jsonl 链死亡**（维护成本真实、用户价值为零的 dead path 在运行）。
 
@@ -676,7 +676,7 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 1. **Mac mihomo HY2 outbound SSOT** — 初始 provider 生成时写入与 VPS 对称的 QUIC 字段（`udp_timeout` / `idle_timeout` / `keep_alive_period`），**禁止** Marathon 运行期 provider reload 改写（接 §4 kernel）。
 2. **TunnelVitality 绑定** — 当 P24 `marathonTruthActive=1` 且 parent-chain age≥30min：每 **30s** 经 **同一 JP-VPS-HY2 leaf** 发 **轻量 UDP/QUIC 活性包**（复用现有 leaf dial 路径，**不新建 provider、不 failover、不关旧连接**）。
 3. **活性 vs 探针分离** — `session_transport_nudge` / pulse 继续负责 **观测**；P27 负责 **维持 outbound QUIC 映射活性** — 日志字段 `hy2_tunnel_vitality outcome=` 独立 SSOT。
-4. **ISP NAT 观测（P27b）** — `networkPathMonitor` 已有 path_change；追加 **UDP mapping age 推断**（token_gap>180s + api2 绿 + server-eof → 标 `nat_stale_suspect` 供 triage，**不触发 recovery**）。
+4. **ISP NAT 观测（P27b · 1.26.94 EXEC-CODE-DONE）** — `natStaleSuspectObserverCore.ts` · `natStaleSuspectObserver.ts`：token_gap>180s + api2 绿 + server-eof → jsonl `nat_stale_suspect` + `[NatStaleSuspect]` app log（**observe-only，不触发 recovery**）。**P27 主体（Hy2TunnelVitality 30s 活性 dial）仍待编码**。
 
 **完美原因（真实用户场景）**：
 
@@ -785,7 +785,7 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 
 ## 15. 实施顺序（2026-07-29 起）
 
-1. **立即**：P21 部署（rm `.DS_Store` + pkg **1.26.89**）— 用户确认后执行
+1. **已完成**：**1.26.94** 已装（P21+P27b+R-B · P24/P25）— 2026-07-29 强制安装验收 · SOAK 进行中
 2. **Soak 24h**：零 ENOTDIR · rescue executed · jsonl 写入恢复
 3. **P24 编码 + 单测** — MarathonSSETruth + Pulse Contract（**优先于** P15 soak）
 4. **P25 观测面** — HTTP SSE jsonl + NWPathMonitor + incident_bundle hook
@@ -847,7 +847,7 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 | 2 | BUG-021 代码（listCursorLogSessionDirs + LogDiscoveryHealth） | ✅ 已编码 | 待 pkg 生效 |
 | 2b | **G22** rescue 禁止 skipped_weak_probe @ weak delay | ✅ 已编码 | c8346504 案 07:40:28 放大器 |
 | 3 | BUG-021 + G22 + R-06 单测 | ✅ **PASS** | rescue G10+G22 · quiesce 无 reload · hygiene marathon_guard |
-| 4 | `bun run upgrade:mac` → **1.26.89** | ⏸ **等你** | 含 P22a 检测 · P21+G22+G10+R-04~07 · **L0+L1 hard-disable** |
+| 4 | `install-sparkle-local.sh` → **1.26.94** | ✅ **已装** | P27b nat_stale · stale_rid SSOT · P21 · P24/P25 |
 | 5 | Guard312 `deploy:dev` → **WB 1.0.17** | ⏸ **等你** | P22b eager bind @ submitChat · deferred retry if service late |
 | 6 | **P24 编码** | ✅ **已编码 1.26.92** | BUG-026 · MarathonSSETruth + Pulse Contract |
 | 6b | **P25 观测面** | ✅ **已编码 1.26.92** | HTTP SSE jsonl · path_change · incident_bundle |
