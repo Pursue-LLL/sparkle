@@ -2,6 +2,7 @@ import {
   appConfigPath,
   controledMihomoConfigPath,
   dataDir,
+  ensureUserDataDirs,
   logDir,
   mihomoTestDir,
   mihomoWorkDir,
@@ -251,6 +252,7 @@ function startBackgroundInit(appConfig: AppConfig): void {
 }
 
 export async function init(): Promise<AppConfig> {
+  ensureUserDataDirs()
   await initDirs()
   await Promise.all([initConfig(), initFiles()])
   await migration()

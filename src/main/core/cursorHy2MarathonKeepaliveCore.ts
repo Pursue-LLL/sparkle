@@ -237,6 +237,7 @@ export function formatMarathonRescueNudgeLogLine(
     maxGapMs?: number
     staleRids?: string
     staleRequestIdCount?: number
+    partitionLatchAgeMs?: number
   },
 ): string {
   const logOutcome = resolveRescueDialLogOutcome(trigger, result, fields)
@@ -245,6 +246,9 @@ export function formatMarathonRescueNudgeLogLine(
     `outcome=${logOutcome}`,
     `cursor_conn=${fields.cursorConnectionCount}`,
   ]
+  if (fields.partitionLatchAgeMs != null && fields.partitionLatchAgeMs >= 0) {
+    parts.push(`partition_latch_age_ms=${fields.partitionLatchAgeMs}`)
+  }
   if (fields.maxGapMs != null) {
     parts.push(`max_gap_ms=${fields.maxGapMs}`)
   }
