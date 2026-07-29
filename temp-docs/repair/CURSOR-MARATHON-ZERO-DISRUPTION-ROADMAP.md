@@ -665,7 +665,7 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 
 **诚实边界**：P25 **不能阻止** L3 silent EOF；目标是 **下次 A 时刻零证据缺口**，定责不再靠手工 grep。
 
-### 11.7 P27 — Hy2TunnelVitality（Mac 出站 QUIC 隧道活性 · **L3 物理层 · 待编码**）
+### 11.7 P27 — Hy2TunnelVitality（Mac 出站 QUIC 隧道活性 · **L3 物理层 · EXEC-CODE-DONE · SOAK-PENDING**）
 
 > **命名说明**：代码库已有 **P26 = connect partition 60s 马拉松窗**（`connectPartitionDetectCore.ts`）。本项为 **P27**，避免歧义。
 
@@ -676,7 +676,7 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 1. **Mac mihomo HY2 outbound SSOT** — 初始 provider 生成时写入与 VPS 对称的 QUIC 字段（`udp_timeout` / `idle_timeout` / `keep_alive_period`），**禁止** Marathon 运行期 provider reload 改写（接 §4 kernel）。
 2. **TunnelVitality 绑定** — 当 P24 `marathonTruthActive=1` 且 parent-chain age≥30min：每 **30s** 经 **同一 JP-VPS-HY2 leaf** 发 **轻量 UDP/QUIC 活性包**（复用现有 leaf dial 路径，**不新建 provider、不 failover、不关旧连接**）。
 3. **活性 vs 探针分离** — `session_transport_nudge` / pulse 继续负责 **观测**；P27 负责 **维持 outbound QUIC 映射活性** — 日志字段 `hy2_tunnel_vitality outcome=` 独立 SSOT。
-4. **ISP NAT 观测（P27b · 1.26.94 EXEC-CODE-DONE）** — `natStaleSuspectObserverCore.ts` · `natStaleSuspectObserver.ts`：token_gap>180s + api2 绿 + server-eof → jsonl `nat_stale_suspect` + `[NatStaleSuspect]` app log（**observe-only，不触发 recovery**）。**P27 主体（Hy2TunnelVitality 30s 活性 dial）仍待编码**。
+4. **ISP NAT 观测（P27b · 1.26.94 EXEC-CODE-DONE）** — `natStaleSuspectObserverCore.ts` · `natStaleSuspectObserver.ts`：token_gap>180s + api2 绿 + server-eof → jsonl `nat_stale_suspect` + `[NatStaleSuspect]` app log（**observe-only，不触发 recovery**）。**P27 主体（Hy2TunnelVitality 30s 活性 dial）· 1.26.92+ EXEC-CODE-DONE · 1.26.94 已装运行中** — 验收见 SOAK §858 row 9。
 
 **完美原因（真实用户场景）**：
 
@@ -817,7 +817,7 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 | **R-11** | Cross-仓 Guard × P22 handoff 联合验收 | 草案 | Continue 计次与 ghost 拦截一致 | open-perplexity Guard SSOT | Sparkle 500 铁律 | 906c2bf1 Continue mode=allowed 实证 |
 | **R-12** | P24 MarathonSSETruth + Pulse Contract | **已编码 1.26.91** | 根治 P15 26min blackout · 马拉松 >30min 强制 60s pulse | `marathonSSETruthCore.ts` · `marathonTransportDialOrchestratorCore.ts` | BUG-026 §10.5 | registry≠真实 SSE 时 rescue 链全盲 |
 | **R-13** | P25 Incident Observability Plane | **已编码 1.26.92** | A 时刻 HTTP SSE jsonl + path_change + incident_bundle | `agentTransportFailureWriterCore.ts` · `networkPathMonitorCore.ts` · `incidentBundleCollectorCore.ts` | Jul29 证据缺口清单 | 定责不再靠手工 grep |
-| **R-14** | P27 Hy2TunnelVitality（Mac outbound QUIC） | **草案** | 维持 SSE 绑定隧道 · 减 40min server-eof 复发 | 新 `hy2TunnelVitalityCore.ts` · `cursorHy2MarathonKeepaliveCore.ts` · 初始 provider 模板 | VPS `hy2InQuicMarathonFields` 已有 · Jul29 E 案 | pulse/rescue 不能复活已死 SSE |
+| **R-14** | P27 Hy2TunnelVitality（Mac outbound QUIC） | **EXEC-CODE-DONE · SOAK** | 维持 SSE 绑定隧道 · 减 40min server-eof 复发 | `hy2TunnelVitalityCore.ts` · `hy2TunnelVitality.ts` · `hysteria2QuicStability.ts` · `marathonTransportDialOrchestrator.ts` | 1.26.94 已装 · app-log 92× executed @7/29 | pulse/rescue 不能复活已死 SSE |
 
 ### 不值得做（明确排除 · 禁止立项）
 
@@ -855,10 +855,10 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 
 **P24+P25 已编码 1.26.92**。你确认 marathon 结束后：`bun run upgrade:mac`（cursor_conn=0）→ 验收 pulse + 零 breach + server-eof 写入 jsonl。
 
-| 8 | **P27 Hy2TunnelVitality 编码** | ⏸ **待你批准** | Mac outbound QUIC 活性 · 减 in-flight server-eof |
-| 9 | P27 soak @ 40min+ | ⏸ | `hy2_tunnel_vitality outcome=executed` · server-eof 率 vs 7/29 baseline |
+| 8 | **P27 Hy2TunnelVitality** | ✅ **EXEC-CODE-DONE · 1.26.94 已装** | `[Hy2TunnelVitality] outcome=executed` ~30s · connect_path ~250–300ms |
+| 9 | P27 soak @ 40min+ | 🔄 **进行中** | server-eof 率 vs 7/29 baseline · NatStaleSuspect 应趋 0 |
 
-**推荐执行序（一步到底 · 最少返工）**：① 装 **1.26.92** soak P24/P25 24h → ② 编码 **P27** → ③ 再 soak 40min+ 马拉松验证 server-eof 率下降。
+**推荐执行序（一步到底 · 最少返工）**：① **1.26.94 已装** P24/P25/P27/P27b → ② SOAK 40min+ 马拉松验 server-eof 率降 → ③ Guard 0.16.27 ⌘Q 重启 3.1.15 进内存。
 
 ---
 
