@@ -150,8 +150,9 @@ async function resolveSidecar(binInfo) {
   const sidecarPath = path.join(sidecarDir, targetFile)
 
   fs.mkdirSync(sidecarDir, { recursive: true })
-  if (fs.existsSync(sidecarPath)) {
-    fs.rmSync(sidecarPath)
+  const stagingPath = `${sidecarPath}.staging`
+  if (fs.existsSync(stagingPath)) {
+    fs.rmSync(stagingPath)
   }
   const tempDir = path.join(TEMP_DIR, name)
   const tempZip = path.join(tempDir, zipFile)
@@ -169,7 +170,7 @@ async function resolveSidecar(binInfo) {
         console.log(`[DEBUG]: "${name}" entry name`, entry.entryName)
       })
       zip.extractAllTo(tempDir, true)
-      fs.renameSync(tempExe, sidecarPath)
+      fs.renameSync(tempExe, stagingPath)
       console.log(`[INFO]: "${name}" unzip finished`)
     } else if (zipFile.endsWith('.tgz')) {
       // tgz
@@ -183,9 +184,9 @@ async function resolveSidecar(binInfo) {
       const extractedFile = files.find((file) => file.startsWith('虚空终端-'))
       if (extractedFile) {
         const extractedFilePath = path.join(tempDir, extractedFile)
-        fs.renameSync(extractedFilePath, sidecarPath)
-        console.log(`[INFO]: "${name}" file renamed to "${sidecarPath}"`)
-        execSync(`chmod 755 ${sidecarPath}`)
+        fs.renameSync(extractedFilePath, stagingPath)
+        console.log(`[INFO]: "${name}" file renamed to "${stagingPath}"`)
+        execSync(`chmod 755 ${stagingPath}`)
         console.log(`[INFO]: "${name}" chmod binary finished`)
       } else {
         throw new Error(`Expected file not found in ${tempDir}`)
@@ -193,7 +194,7 @@ async function resolveSidecar(binInfo) {
     } else {
       // gz
       const readStream = fs.createReadStream(tempZip)
-      const writeStream = fs.createWriteStream(sidecarPath)
+      const writeStream = fs.createWriteStream(stagingPath)
       await new Promise<void>((resolve, reject) => {
         const onError = (error: unknown) => {
           console.error(`[ERROR]: "${name}" gz failed:`, getErrorMessage(error))
@@ -204,16 +205,21 @@ async function resolveSidecar(binInfo) {
           .pipe(writeStream)
           .on('finish', () => {
             console.log(`[INFO]: "${name}" gunzip finished`)
-            execSync(`chmod 755 ${sidecarPath}`)
+            execSync(`chmod 755 ${stagingPath}`)
             console.log(`[INFO]: "${name}" chmod binary finished`)
             resolve()
           })
           .on('error', onError)
       })
     }
+    if (fs.existsSync(sidecarPath)) {
+      fs.rmSync(sidecarPath)
+    }
+    fs.renameSync(stagingPath, sidecarPath)
   } catch (err) {
-    // 需要删除文件
-    fs.rmSync(sidecarPath)
+    if (fs.existsSync(stagingPath)) {
+      fs.rmSync(stagingPath)
+    }
     throw err
   } finally {
     fs.rmSync(tempDir, { recursive: true })

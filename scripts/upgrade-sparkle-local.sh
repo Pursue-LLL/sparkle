@@ -21,6 +21,11 @@ APP="$DIST_ARM64/Sparkle.app"
 
 log "Building Sparkle $EXPECTED_VER (electron-vite + electron-builder dir)..."
 
+if [[ -f "$ROOT/extra/sidecar/mihomo" ]]; then
+  export SKIP_PREPARE=1
+  log "SKIP_PREPARE=1 (extra/sidecar/mihomo present — skip GitHub sidecar re-download)"
+fi
+
 pnpm run write-build-stamp
 
 # shellcheck source=lib/marathon-core-restart-guard.sh
