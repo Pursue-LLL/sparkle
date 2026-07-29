@@ -1,5 +1,5 @@
 import { ChildProcess, spawn } from 'child_process'
-import { dataDir, coreLogPath, mihomoCorePath } from '../utils/dirs'
+import { dataDir, coreLogPath, ensureLogDir, mihomoCorePath } from '../utils/dirs'
 import { generateProfile, getRuntimeConfig } from './factory'
 import {
   getAppConfig,
@@ -483,6 +483,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   })
 
   if (useServiceCore) {
+    ensureLogDir()
     const serviceProfile: ServiceCoreLaunchProfile = {
       core_path: corePath,
       args: spawnArgs,
@@ -526,6 +527,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   }
 
   const providerTracker = createProviderInitializationTracker(await getRuntimeConfig())
+  ensureLogDir()
   const stdout = createLogWritable('core', 'info')
   const stderr = createLogWritable('core', 'error')
   directCoreLogLineBuffer = ''

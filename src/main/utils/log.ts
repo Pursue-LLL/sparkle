@@ -3,7 +3,7 @@ import { createWriteStream, type WriteStream } from 'fs'
 import { readFile, stat, writeFile } from 'fs/promises'
 import { Writable } from 'stream'
 import { getAppConfig } from '../config/app'
-import { appLogPath, coreLogPath, substoreLogPath } from './dirs'
+import { appLogPath, coreLogPath, substoreLogPath, ensureLogDir } from './dirs'
 
 type LogTarget = 'app' | 'core' | 'substore'
 type MihomoLogSource = 'out' | 'ws'
@@ -54,6 +54,7 @@ async function getMaxLogFileSizeBytes(): Promise<number> {
 }
 
 function getWriteStream(target: LogTarget): WriteStream {
+  ensureLogDir()
   const nextPath = resolveLogPath(target)
   const current = streamMap.get(target)
   const sizeState = logFileSizeMap.get(target)
