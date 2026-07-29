@@ -3,8 +3,12 @@ import { describe, it } from 'node:test'
 import { CURSOR_HY2_MARATHON_CONN_THRESHOLD } from './cursorHy2MarathonKeepaliveCore'
 import {
   HY2_TUNNEL_VITALITY_INTERVAL_MS,
+  HY2_TUNNEL_VITALITY_PRE_PARTITION_CHAIN_AGE_MS,
+  HY2_TUNNEL_VITALITY_PRE_PARTITION_CONN_THRESHOLD,
+  HY2_TUNNEL_VITALITY_PRE_PARTITION_INTERVAL_MS,
   inferNatStaleSuspect,
   NAT_STALE_SUSPECT_MIN_TOKEN_GAP_MS,
+  resolveHy2TunnelVitalityIntervalMs,
   shouldRunHy2TunnelVitality,
 } from './hy2TunnelVitalityCore'
 import { MTDO_MARATHON_STREAM_MIN_AGE_MS } from './marathonTransportDialOrchestratorCore'
@@ -35,6 +39,26 @@ describe('hy2TunnelVitalityCore', () => {
         activeNode: 'JP-VPS-HY2',
         marathonTruthActive: true,
         maxParentChainAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS - 1_000,
+      }),
+      false,
+    )
+  })
+
+  it('accelerates vitality interval under pre-partition risk (P28)', () => {
+    const gate = {
+      nowMs: 50_000_000,
+      cursorConnectionCount: HY2_TUNNEL_VITALITY_PRE_PARTITION_CONN_THRESHOLD,
+      lastVitalityAtMs: 50_000_000 - HY2_TUNNEL_VITALITY_PRE_PARTITION_INTERVAL_MS,
+      activeNode: 'JP-VPS-HY2',
+      marathonTruthActive: true,
+      maxParentChainAgeMs: HY2_TUNNEL_VITALITY_PRE_PARTITION_CHAIN_AGE_MS,
+    }
+    assert.equal(resolveHy2TunnelVitalityIntervalMs(gate), HY2_TUNNEL_VITALITY_PRE_PARTITION_INTERVAL_MS)
+    assert.equal(shouldRunHy2TunnelVitality(gate), true)
+    assert.equal(
+      shouldRunHy2TunnelVitality({
+        ...gate,
+        lastVitalityAtMs: gate.nowMs - HY2_TUNNEL_VITALITY_PRE_PARTITION_INTERVAL_MS + 1_000,
       }),
       false,
     )

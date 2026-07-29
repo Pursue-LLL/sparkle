@@ -57,7 +57,7 @@
 
 1. **除 `max-steps-cap` 等 Cursor 硬限外，Cursor 服务端不会无缘无故断开 SSE。** 报错几乎总有传输层原因。
 2. **同一时刻多路 Agent 同时断连 → 几乎一定是代理 / VPS / QUIC 隧道问题**，不是「服务端随机关流」。
-3. **HTTP api2 probe 全绿 ≠ Connect 长流正常。** 短探针 OK 时 gRPC 双向流仍可能已断（split-brain）；QUIC 中途断连 mihomo **无日志**。
+3. **HTTP api2 probe 全绿 ≠ Connect 长流正常。** 短探针 OK 时 gRPC 双向流仍可能已断（split-brain）；QUIC 中途断连 mihomo **无 error 日志** — **≥1.26.95** 读 `[MihomoQuicSilentStall]` + `network-stability-events.jsonl kind=mihomo_quic_silent_stall`（R-16 observe-only）。
 4. **IFM 会把 `WritableIterable is closed` 标为 `marathon-stream-closed`（cursor-server）**，但 `agent-transport-failures.jsonl` 中同类错误常带 `proxyNode: *-HY2`——**标签不可盲信**（Guard patch-363/364 已修正弹窗 classify；仍交叉 ledger）。
 5. **仅 `max-steps-cap` 可停止网络排查。** `marathon-stream-closed` 在 **<20min、多路并行、或 HY2/TUIC 节点** 时仍要继续 Step 3。
 6. **Sparkle L0 @ 60s hung 会误杀 Agent tool 暂停中的 Connect 流**（v1.26.33）；**v1.26.34+** 改为 **12min** 阈值 + 每 host 保留最新 **6** 条（v1.26.36，并行 Agent 保护）。若 A 时刻 app-log 有 `L0 closed N hung` 且运行 <12min → 定责 **Sparkle L0 误杀/过度清理**，非 Cursor Marathon cap。

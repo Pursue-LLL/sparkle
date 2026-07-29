@@ -1,6 +1,87 @@
 # Sparkle Bugfix Log
 
-> **2026-07-29 最新**：**BUG-2026-07-29-028** — P23 override env · **1.26.94** 已装 · **BUG-027** P27b nat_stale · **BUG-026** P24/P25/P27 · **BUG-025** L0–L3
+> **2026-07-29 最新**：**BUG-2026-07-29-032** — R-16 Mihomo QUIC silent stall observe-only · **1.26.95** · **BUG-031** P29 · **BUG-030** P28
+
+### BUG-2026-07-29-032 · v1.26.95 · mihomo_quic_silent_stall_observer (R-16)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **EXEC-CODE-DONE** · **18/18 单测 PASS**（partition+vitality+R16）· **未重启 Sparkle** |
+| **症状** | VPS sing-box @ A **0 error** 但 mass PING/server-eof — triage §60「QUIC 中途断连 mihomo **无日志**」 |
+| **根因** | mihomo `/connections` WS 仅推 renderer · 无 HY2 byte-frozen stall 归因 |
+| **修复** | `mihomoQuicSilentStallCore.ts` byte 不变≥45s + age≥90s + speed=0 → `[MihomoQuicSilentStall]` + `network-stability-events.jsonl kind=mihomo_quic_silent_stall` · aggregate @ conn≥80 frozen≥5 |
+| **关联文件** | `mihomoQuicSilentStallCore.ts` · `mihomoQuicSilentStallObserver.ts` · `mihomoApi.ts` · `networkStabilityMonitor.ts` |
+| **诚实边界** | **observe-only** · **不 recovery** · **不能阻止** partition · 5s scan 节流（非每 500ms） |
+
+### BUG-2026-07-29-031 · v1.26.95 · http_sse_server_eof_partition_latch_reqId (P29)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **EXEC-CODE-DONE** · pkg **1.26.95** · **14/14 单测 PASS** · **未重启 Sparkle** |
+| **症状** | parent `165cb7db` http-sse-server-eof @17:29:42 与 mass PING 同窗，但 latch 只登记 PING reqIds；余波 RID `67699e2d` 缺直接 eof 登记 |
+| **根因** | `agentTransportFailureSync` 仅 `shouldArmPartitionLatchFromMassPingSync` → `collectConnectPingFailureRequestIds`；server-eof 行不参与 latch |
+| **修复** | P29 同窗 mixed · **P29b** latch active 时迟到的 server-eof 合并 `[PartitionLateEofMerge]` |
+| **关联文件** | `partitionLatchCore.ts` · `connectPartitionDetectCore.ts` · `agentTransportFailureSync.ts` · `marathonTransportDialOrchestrator.ts` |
+| **诚实边界** |  solitary 单条 server-eof **不** arm latch（防 L7 误报）；**不能**复活已死 SSE stream |
+
+### BUG-2026-07-29-030 · v1.26.95 · partition_latch_empty_stale_rids + pre_partition_vitality (P28)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **EXEC-CODE-DONE** · **待 pkg 1.26.95+** · git 未发版 · **13/13 单测 PASS** · **未重启 Sparkle**（operator 马拉松中） |
+| **症状** | mass PING @ 17:29:11 后 rescue 日志 **29s** 才出现 victim RID `67699e2d`；`connect_partition_nudge` 早期 `stale_rids` 不含余波牺牲品；`PartitionMassPingSync` 无 reqId/cursor_conn |
+| **关联产品** | Sparkle **1.26.94**（bug 存在）· stock **Cursor 3.13.25** · JP-VPS-HY2 · parent RID **67699e2d** |
+| **bug 存在版本** | Sparkle ≤1.26.94（`resolvePartitionLatchCandidate` 返回空 `staleRequestIds`；blind_spot `armPartitionLatch(nowMs)` 无 RIDs；vitality 固定 30s @ ultra-conn） |
+| **修复目标版本** | Sparkle **1.26.95** |
+| **PRIMARY 关联** | **BUG-029** L3 mass PING partition — P28 **不阻止** partition，只修 **观测/归因/前兆频率** |
+| **根因** | ① `partitionLatchCore.ts` latch armed 不持久化 ping failure reqIds ② `agentTransportFailureSync` 日志缺 cursor_conn/affected_rids ③ blind_spot 路径同漏 ④ ultra-conn+parent_chain≥12h 时 vitality 30s 间隔不足（**非 parent chain refresh**） |
+| **修复 P28a** | `armPartitionLatch(nowMs, staleRequestIds)` · `collectConnectPingFailureRequestIds` · candidate 返回 ≤32 RIDs |
+| **修复 P28b** | `marathonTransportDialOrchestrator.ts` blind_spot arm 带 mergedRows reqIds |
+| **修复 P28c** | `hy2TunnelVitalityCore.ts` conn≥80 + chain≥12h → interval 30s→10s · log `mode=pre_partition` |
+| **修复 P28d** | `formatPartitionMassPingSyncLogLine` · `partition_latch_age_ms` · stale_rids 展示 8 条 |
+| **关联文件** | `partitionLatchCore.ts` · `agentTransportFailureSync.ts` · `hy2TunnelVitalityCore.ts` · `hy2TunnelVitality.ts` · `marathonTransportDialOrchestrator.ts` · `cursorHy2MarathonKeepaliveCore.ts` · `connectPartitionDetectCore.ts` |
+| **回归** | `partitionLatchCore.test.ts` 7/7 · `hy2TunnelVitalityCore.test.ts` 4/4 · `hy2TunnelVitality.test.ts` 2/2 |
+| **遗漏（诚实）** | ① P28c **不能**替代 `session_transport_nudge`（conn≥80 仍 defer，见 `CURSOR_HY2_NUDGE_DEFER_THRESHOLD`）② **不能**复活已死 Connect bidirectional stream ③ Mihomo QUIC silent stall **仍无 outbound log**（未来 R-16）④ stock Cursor **45GB vscdb** — **非 Sparkle 范围**，operator VACUUM |
+| **反复次数** | partition latch 空 stale_rids：**第 3 次**定责（c8346504 @7/28 · 5d03320f 族 · 67699e2d @7/29）；每次 rescue 日志误导「已救」 |
+| **为何反复修不好** | ① 修 rescue 执行未修 **latch 登记** ② 用 B 时刻 stale_rids 反推 A 时刻 ③ 把 P27 vitality 误当 mass PING 解药 ④ 未区分 **同秒 mass fail** vs **partition 余波 +54s** |
+| **如何避免再翻车** | 装 1.26.95 → 验收 mass PING 后 **同一 sync 周期** `affected_rids=` 非空 → `partition_latch_age_ms` 有值 → 外部锚点：Included 消耗/turn 存活时长 |
+| **踩坑** | ① **禁止**取消 session_nudge defer@80（dial storm，BUG-2026-07-22-001）② **禁止**用 vitality executed 率验收 mass PING（古德哈特 R-B）③ Continue 同 RID ≠ 新 userMessage |
+| **用户动作** | marathon 结束 · `cursor_conn=0` → `upgrade:mac` 1.26.95+ · **并行** ⌘Q stock Cursor → VACUUM 45GB vscdb |
+
+#### BUG-030 · 结构性风险审计（2026-07-29 · feedback#11）
+
+| 风险 | 类型 | 证据 | 影响 | 纠偏 | 校准顺序 |
+| --- | --- | --- | --- | --- | --- |
+| vitality 3× dial | 测量衰减 | pre_partition 10s vs 30s | observability 预算争用 | rescue 永不 defer · budget 已有 | ① 装 1.26.95 ② 比 server-eof/partition 外部锚点 |
+| latch reqId 满 | 边界 | cap 32 RIDs | ultra-conn>32 并行 victim 截断 | log `affected_rid_count` | 若截断频发 → 提 cap 或 spill file |
+| clearPartitionLatch @ jsonl partition | 兼容性 | MTDO L356-357 | jsonl path 有 sampleRequestIds · latch 被清 — **OK** | 无 | — |
+| 1.26.95 新 bug | 低 | 13/13 pass · 纯 additive | 极低语法/逻辑 | soak partition 窗 | marathon 后 upgrade |
+| **同类还会来吗** | **会（L3 族）** | 117 conn + HY2 QUIC silent stall | mass PING / 余波 +54s | P28 降频+归因 · **不能 100% 杜绝** | VACUUM vscdb + P28 soak |
+
+---
+
+### BUG-2026-07-29-029 · v1.26.94 · mass_ping_partition_aftershock + vscdb_amplifier (F 案 67699e2d)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **INCIDENT-DOCUMENTED** · PRIMARY L3 definitive · AMPLIFIER 已识别 · **P28 + VACUUM 待 operator** |
+| **症状** | 2026-07-29 **17:30:05 CST** · `RetriableError: [unavailable] PING timed out` · causeCode=**14** · RID `67699e2d-1e0c-4994-b992-5648a403dba1` |
+| **关联产品** | stock **Cursor 3.13.25** window2 · Sparkle **1.26.94** · JP-VPS-HY2 · `state.vscdb` **45GB** |
+| **A 时刻** | Structured Logs `:6654` · jsonl `:1343` · Sparkle `09:29:11–09:30:34Z` |
+| **PRIMARY · L3** | **17:29:11** mass partition · `ping_rows=20` · `cursor_conn` 66→117 · split-brain（api2 280–292ms 绿 · Connect 死） |
+| **NOT** | max-steps-cap · Cursor 随机关流 · VPS sing-box 崩溃（SSH @ A±2min **0 ERROR** · conntrack 614/1M） |
+| **余波修正** | 67699e2d **不在** jsonl mass wave `:1321–1340`（同秒 20 路）· `:1343` **+54s** 终局 → **partition 余波牺牲品**，非同秒齐断 |
+| **AMPLIFIER #1** | **45GB vscdb** · 16:25 同 RID `read EADDRNOTAVAIL` Structured `:2963` |
+| **AMPLIFIER #2** | cursor_conn=117 · `CURSOR_HY2_NUDGE_DEFER_THRESHOLD=80` → session 保活 defer |
+| **AMPLIFIER #3** | turn 自 15:49:48 · streamId `848c6ebe` · 长绑定 1h40m |
+| **LatencyTruth** | mac_p50=**278** vps_p50=**539** delta=**−261** — **Sparkle 未加税**（500+ 仅 api2geo 或 ultra-conn 尖峰） |
+| **P27 @ 案发现场** | `[Hy2TunnelVitality] outcome=executed` @ 09:29:12 — **在跑但不能阻止 mass PING**（§11.7 诚实边界） |
+| **ghost Included** | turn 已跑 ~1h40m · 利用率良好 · **Continue 同 RID 不新开 userMessage** |
+| **反复次数** | L3 mass PING code=14 族 **≥4 次/2 日**（c8346504 · 5d03320f · 15:49 wave · 17:29 wave） |
+| **关联 SSOT** | `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` **§10.5d** · `CURSOR-DISCONNECT-TRIAGE.md` |
+| **修复路径** | ① operator VACUUM vscdb（P0 · 非 Sparkle）② Sparkle P28（BUG-030）③ 禁止 failover/减并行/L0 清连接 |
+
+---
 
 ### BUG-2026-07-29-028 · v1.26.94 · marathon_install_p23_explicit_override
 

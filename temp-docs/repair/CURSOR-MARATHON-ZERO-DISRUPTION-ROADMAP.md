@@ -1,6 +1,6 @@
 # Cursor Marathon 零中断修复 Roadmap
 
-> **最后更新**：2026-07-29 · 合并 7/29 10:35–11:16 `445ba497` 四段 server-eof 链 + P24/P25/P27 · **Sparkle 仓 Marathon/L7/P21–P27 唯一 SSOT**（open-perplexity 仅薄索引）
+> **最后更新**：2026-07-29 · 合并 F 案 `67699e2d` mass PING 定责 + **P28 EXEC-CODE-DONE** · P24/P25/P27
 
 ## 1. 文档定位
 
@@ -547,6 +547,43 @@ VPS 指标必须记录 delta/速率，禁止用累计值直接定责。
 
 **与 §10.5 关系**：D 案首次双路齐断 + 34min pulse blackout；E 案为 **同 parent 四段级联** + 13.5min pulse blackout — **同一 PRIMARY+AMPLIFIER，复发**。
 
+### 10.5d 事故 F — 7/29 17:30 `67699e2d` mass PING partition（stock Cursor 3.13.25 · window2）
+
+| 字段 | 值 |
+|---|---|
+| **用户可见 A** | 2026-07-29 **17:30:05.646 CST** · `RetriableError: [unavailable] PING timed out` · **causeCode=14** |
+| **RID** | `67699e2d-1e0c-4994-b992-5648a403dba1` · streamId `848c6ebe` · turn 自 **15:49:48** 起 |
+| **PRIMARY · L3** | **17:29:11** mass partition · `PartitionMassPingSync ping_rows=20` · `cursor_conn` **66→117** · 全部 `JP-VPS-HY2` |
+| **NOT** | max-steps-cap · Cursor 随机关流 · VPS sing-box 崩溃 |
+
+**证据矩阵 @ A±60s**：
+
+| 层 | 结论 | 证据 |
+|---|---|---|
+| Structured | PING code 14 @ 17:30:05 | `Cursor Structured Logs.log:6654` |
+| jsonl | proxy-network dial-timeout | `agent-transport-failures.jsonl:1343` |
+| Sparkle | partition=1 · api2 **280–292ms 绿** | `app-2026-7-29.log` @ `09:29:11–09:30:12Z` |
+| VPS SSH | **0 ERROR** · conntrack 614/1M · load 0.04 | sing-box @ `09:29–09:31 UTC` |
+| LatencyTruth | **无 Sparkle 加税** · delta=**−261ms** | `[LatencyTruth] mac_p50=278 vps_p50=539` 全天 |
+
+**先前结论修正（诚实协议）**：
+
+| 误判/遗漏 | 修正 |
+|---|---|
+| 「67699e2d 与 20 路同秒 PING fail」 | **❌ 不准确**。mass wave @ **17:29:11** 的 jsonl RIDs **不含** 67699e2d（`:1321–1340`）；67699e2d @ `:1343` **~54s 后**终局 → **partition 余波牺牲品**，非同秒齐断 |
+| 「P27 未执行」 | **❌ 不准确**。`[Hy2TunnelVitality] outcome=executed` @ 09:29:12 / 09:30:12 — P27 在跑但 **不能阻止 mass PING**（§11.7 诚实边界已声明） |
+| 「Sparkle 把 300ms 加成 500ms」 | **❌ 不准确**。mac_p50=278 < vps_p50=539；500+ 仅 **api2geo endpoint** 或 **ultra-conn 探针尖峰**（09:46 `1065ms` @ conn=34），非基线加税 |
+| 「rescue 29s 才见 67699e2d」 | **✅ 准确**。09:30:34 `stale_rids=...,67699e2d` — partition latch **未登记 reqId**（P28 修复点） |
+| 「16:25 EADDRNOTAVAIL 前兆」 | **✅ 准确**。Structured `:2963` 同 RID · `last_server_sent_heartbeat_ago_ms=24711` |
+| **45GB vscdb 放大器** | **✅ 准确**。stock `state.vscdb` 45G @ 17:36 · **非 PING 首因，加剧余波存活难度** |
+| **session_nudge @ conn≥80 defer** | **⚠️ 新识别**。`CURSOR_HY2_NUDGE_DEFER_THRESHOLD=80`（`cursorHy2MarathonKeepaliveCore.ts:16`）— 117 conn 时 **session 保活被 defer**；与 mass PING 叠加风险 · **observe-only，禁止盲目取消 defer（dial storm）** |
+| **L0 误杀本 RID** | **✅ 已排除**。R-07 @ 1.26.89：`hard-disable-l0` @ marathon · A±60s 无 `L0 closed` |
+| **Hygiene 误杀健康 Connect** | **✅ 已排除 @ 117 conn**。`HUNG_CONNECTION_MIN_AGE_MS=12min` · `KEEP_NEWEST_PER_HOST=6` · critical host 跳过（`cursorTransportHealthCore.ts:13–19`） |
+
+**AMPLIFIER 排序**：① 45GB vscdb → EADDRNOTAVAIL ② cursor_conn=117 + session_nudge defer ③ 1h40m 长绑定 Connect 流
+
+**ghost Included**：67699e2d turn 已跑 **~1h40m** — 配额利用率良好；**Continue 同 RID 不新开 userMessage**。
+
 ---
 
 ## 11. 500 Included 终极加固（P21–P27 · 观测面 + 保活契约 + 隧道活性）
@@ -697,7 +734,46 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 - `server-eof` @ duration≥30min **率下降**（外部锚点：Usage ghost resume 次数 / parent 链 server-eof 计数）
 - **零** 健康 SSE 连接 close · **零** provider reload · **零** failover
 
-**诚实边界**：P27 **不能** 消除 Cursor L7 ~90min generation-ended（仍靠 P22）；**不能** 修复 mass PING partition（仍靠 §29 P19）。
+**诚实边界**：P27 **不能** 消除 Cursor L7 ~90min generation-ended（仍靠 P22）；**不能** 修复 mass PING partition（仍靠 §29 P19 + **P28**）。
+
+### 11.8 P28 — Connect Partition 前兆加固（**EXEC-CODE-DONE · 待 pkg 1.26.95+ · 等你重启 Sparkle**）
+
+> **命名**：P26=partition 60s 窗 · P27=TunnelVitality · **P28=partition latch reqId 零延迟 + ultra-conn 前兆加速**
+
+**问题（67699e2d @ F 案 definitive）**：
+
+1. **stale_rid 登记延迟** — `PartitionMassPingSync` armed latch 但 `resolvePartitionLatchCandidate` 返回 **空 staleRequestIds** → rescue 日志 29s 后才出现 victim RID
+2. **partition 余波** — mass wave 杀其他流后，长绑定 Connect（67699e2d 跑 1h40m）在 degraded HY2 路径上 **54s 后**终局；P27 30s vitality **频率不足** @ conn≥80 + parent_chain≥12h
+3. **blind_spot 路径** — `shouldEmitPartitionBlindSpot` arm latch **亦未带 reqIds**（P28b 已补）
+
+**方案（无 failover · 无 kill 健康连接 · 无减并行）**：
+
+| 子项 | 代码锚点 | 行为 |
+|---|---|---|
+| **P28a latch reqId SSOT** | `partitionLatchCore.ts` · `agentTransportFailureSync.ts` | mass PING sync armed 瞬间写入 `affected_rids`（≤32）· candidate 返回完整列表 |
+| **P28b blind_spot reqId** | `marathonTransportDialOrchestrator.ts` | blind_spot arm 时 `collectConnectPingFailureRequestIds(mergedRows)` |
+| **P28c 前兆 vitality 加速** | `hy2TunnelVitalityCore.ts` | conn≥80 且 parent_chain_age≥12h → interval **30s→10s** · log `mode=pre_partition` |
+| **P28d rescue 可观测** | `cursorHy2MarathonKeepaliveCore.ts` · MTDO | `partition_latch_age_ms` · stale_rids 展示 **8 条** · `[PartitionMassPingSync] cursor_conn/affected_rid_count` |
+
+**验收**：
+
+- mass PING 后 **同一 sync 周期** app-log 见 `affected_rids=...`（非空）
+- connect_partition_nudge 见 `partition_latch_age_ms=<ms>` · stale_rids 含 victim
+- ultra-conn 马拉松见 `[Hy2TunnelVitality] mode=pre_partition outcome=executed` ~10s  cadence
+
+**诚实边界**：
+
+- P28 **不能** 复活已死 Connect bidirectional stream（gRPC heartbeat 丢失不可逆 — §29 P19 已知）
+- P28 **不能** 100% 杜绝 mass PING（L3 物理限制 @ 117 conn）
+- P28c vitality 是 **轻量 connect_path dial**，**不是** session_transport_nudge parent chain refresh — 降低 partition 频率，非根治
+- conn≥80 时 session_nudge 仍 **defer**（`CURSOR_HY2_NUDGE_DEFER_THRESHOLD`）— **禁止**为 P28 盲目取消（dial storm 反增断连）
+
+**潜在负面（可控）**：
+
+- pre_partition 模式：vitality dial 3× 频率 · 经 `marathonObservabilityDialBudget` · **不 defer rescue**
+- 日志体积略增（affected_rids 8 条）
+
+**单元测试**：partitionLatchCore · hy2TunnelVitalityCore · hy2TunnelVitality — **13/13 PASS**
 
 ### 11.6 与 Connect Split-Brain SSOT 关系
 
@@ -818,6 +894,7 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 | **R-12** | P24 MarathonSSETruth + Pulse Contract | **已编码 1.26.91** | 根治 P15 26min blackout · 马拉松 >30min 强制 60s pulse | `marathonSSETruthCore.ts` · `marathonTransportDialOrchestratorCore.ts` | BUG-026 §10.5 | registry≠真实 SSE 时 rescue 链全盲 |
 | **R-13** | P25 Incident Observability Plane | **已编码 1.26.92** | A 时刻 HTTP SSE jsonl + path_change + incident_bundle | `agentTransportFailureWriterCore.ts` · `networkPathMonitorCore.ts` · `incidentBundleCollectorCore.ts` | Jul29 证据缺口清单 | 定责不再靠手工 grep |
 | **R-14** | P27 Hy2TunnelVitality（Mac outbound QUIC） | **EXEC-CODE-DONE · SOAK** | 维持 SSE 绑定隧道 · 减 40min server-eof 复发 | `hy2TunnelVitalityCore.ts` · `hy2TunnelVitality.ts` · `hysteria2QuicStability.ts` · `marathonTransportDialOrchestrator.ts` | 1.26.94 已装 · app-log 92× executed @7/29 | pulse/rescue 不能复活已死 SSE |
+| **R-15** | P28 Partition 前兆 + latch reqId SSOT | **EXEC-CODE-DONE · 待 1.26.95+** | mass PING 秒级 reqId 归因 · ultra-conn vitality 10s · partition_latch_age_ms | `partitionLatchCore.ts` · `agentTransportFailureSync.ts` · `hy2TunnelVitalityCore.ts` · `marathonTransportDialOrchestrator.ts` | F 案 67699e2d @7/29 | 不能复活已死 Connect 流 · 不能杜绝 mass PING |
 
 ### 不值得做（明确排除 · 禁止立项）
 
@@ -827,7 +904,7 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 
 | 文档 | 职责 |
 |---|---|
-| **`CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md`** | **本文（Sparkle 仓）** — 500 马拉松零中断 + L7/L3 定责 + P21–P27 + P22 + Latency Tax + TODO R-01–R-14 |
+| **`CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md`** | **本文（Sparkle 仓）** — 500 马拉松零中断 + L7/L3 定责 + P21–**P28** + P22 + Latency Tax + TODO R-01–**R-15** |
 | open-perplexity `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` | 薄索引 → 本文 · **禁止**复制全文 |
 | open-perplexity `CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md` §29 | **MTCP split-brain 实施/发版 SSOT**（P17–P20 · 十四门禁） |
 | `CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md`（本仓） | 薄索引 → open-perplexity §29 |
@@ -857,8 +934,11 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 
 | 8 | **P27 Hy2TunnelVitality** | ✅ **EXEC-CODE-DONE · 1.26.94 已装** | `[Hy2TunnelVitality] outcome=executed` ~30s · connect_path ~250–300ms |
 | 9 | P27 soak @ 40min+ | 🔄 **进行中** | server-eof 率 vs 7/29 baseline · NatStaleSuspect 应趋 0 |
+| 10 | **P28 编码** | ✅ **EXEC-CODE-DONE · 待 pkg** | latch reqId · pre_partition vitality · blind_spot reqId · 13/13 单测 |
+| 11 | **stock Cursor vscdb VACUUM** | ⏸ **等你 ⌘Q** | 45GB→~500MB · 消除 EADDRNOTAVAIL 放大器 · **零 Included 计次** |
+| 12 | Sparkle 重启加载 P28 | ⏸ **等你 marathon 结束** | `upgrade:mac` 或正常重启 · **禁止** cursor_conn>0 时重启 |
 
-**推荐执行序（一步到底 · 最少返工）**：① **1.26.94 已装** P24/P25/P27/P27b → ② SOAK 40min+ 马拉松验 server-eof 率降 → ③ Guard 0.16.27 ⌘Q 重启 3.1.15 进内存。
+**推荐执行序（一步到底 · 最少返工）**：① marathon 结束 → **⌘Q stock Cursor → VACUUM vscdb**（最高 ROI）→ ② cursor_conn=0 → **upgrade:mac 1.26.95+** 加载 P28 → ③ Continue 同 RID 续跑。
 
 ---
 
@@ -875,6 +955,9 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 | 未解释 nudge 仍绿却断 | `session_transport_nudge` 是 **短 HTTP**，与 **长 SSE** 不同通道 — split-brain 预期行为 |
 | VPS @ A 仅引用旧数据 | **已 SSH 复核** 10:35 + **11:12** A±2min：sing-box **0 error** · `udp_timeout=3600s` · conntrack udp=3600s |
 | 「P24 够了」 | 7/29 E 案：pulse 恢复后 rescue 仍 **stale_rids** — **in-flight SSE 仍需 P27** |
+| F 案「67699e2d 同秒 mass fail」 | **修正**：67699e2d 为 partition **余波** @ +54s · mass wave RIDs 不含本 RID |
+| F 案「Sparkle 加延迟」 | **修正**：LatencyTruth delta=−261ms · mac 278 < vps 539 |
+| session_nudge defer @ conn≥80 | **新识别**：117 conn 时 defer · 与 mass PING 叠加 · observe-only |
 
 ### 18.2 代理/VPS 稳定性：值得做 vs 不值得做
 
@@ -897,7 +980,9 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 
 **机制已存在**：`latencyDeltaGateCore.ts` — `delta = macFullPathP50 - vpsBodyP50` · 阈值 **150ms**。
 
-**7/29 @ A**：api2 nudge 302/426ms — **未观测到加税**（需 ledger 双轨 P50 持续窗口才 definitive）。
+**7/29 @ A definitive**：`[LatencyTruth] mac_p50=278 vps_p50=539 delta=-261` **全天稳定** · VPS curl api2=537ms · **Sparkle 未加税**。
+
+**尖峰 vs 基线**：api2geo 541–579ms（不同 endpoint）· connect_path 1065ms @ conn=34（瞬态，非永久加税）。
 
 **产品化（R-05）**：Tray + 代理页双轨 P50 · triage 标 `SPARKLE_LATENCY_TAX=1` · **只告警不切节点**。
 
@@ -970,3 +1055,67 @@ THEN marathon_connect_path_pulse MUST fire within 60s
 | **触发条件** | cursor_conn>80 且 latency delta>150ms 持续 |
 | **验证方式** | Latency Tax 双轨 P50 · 无 token_gap 恶化 |
 | **剩余风险** | 极低频 ISP 硬断无法消除 — 靠 P22 @85min 减 L7 损失 |
+
+---
+
+## 20. 网络稳定性修复方案 SSOT（500 铁律 · 一步到底 · 2026-07-29）
+
+> **禁止重复立项** · 与 §11.8 P28 · §18 · BUG-029/030 · R-01–R-15 一致 · **不切节点 · 不减并行 · 不 kill 健康连接**
+
+### 20.1 Sparkle 是否拖慢 VPS？（definitive · 7/29 全天）
+
+| 探针 | P50 | 含义 |
+|------|-----|------|
+| **mac_p50**（Mac 全路径 TUN→HY2→Cursor） | **278ms** | 你的实际使用延迟 |
+| **vps_p50**（VPS ssh_curl 直连 api2） | **539ms** | VPS 本体到 Cursor CDN |
+| **delta** | **−261ms** | Mac 路径**更快**，Sparkle **未加税** |
+| **VPS curl 实测** | api2 total=**537ms** | 与 vps_p50 一致 |
+
+**500+ 仅出现于**：① **api2geo** endpoint（541–579ms，不同 host）② **ultra-conn 尖峰**（09:46 `1065ms` @ conn=34，瞬态排队，非基线）
+
+**红线「300→500+ 绝不允许」**：**api2 基线未越线** · 尖峰需 R-05 UI 告警 · **禁止 failover**
+
+### 20.2 影响 VPS/节点质量的全部因子（同节点）
+
+| 因子 | 谁的问题 | 7/29 证据 | 可优化 | 禁止 |
+|------|----------|-----------|--------|------|
+| VPS→Cursor CDN 路由远 | VPS 地理 | vps_p50=539 | sing-box 路由调优 api2geo | 切节点 |
+| Mac 全路径 HY2 | 正常 | mac_p50=278 | P27/P28 vitality | — |
+| ultra-conn QUIC mux 竞争 | 马拉松副作用 | conn=117 @ partition | P28 10s 前兆 · VACUUM | 减并行 |
+| session_nudge defer@80 | 防 dial storm | 117 conn defer | **禁止取消**（BUG-022-001） | 盲目取消 |
+| 45GB vscdb | **Mac 本地** | EADDRNOTAVAIL | **VACUUM** | — |
+| ISP QUIC/NAT silent stall | 物理层 | VPS 0 ERROR 但 eof/PING | P27/P28 · R-16 日志 | — |
+| Marathon data-plane mutation | Sparkle L2 | §4 案 | Zero-Disruption kernel | reload @ marathon |
+| L0/hygiene 误杀 | Sparkle（已禁） | R-07 hard-disable | **维持** | 开 L0 @ marathon |
+
+### 20.3 修复执行序（一步到底 · 最少返工）
+
+| 序 | 动作 | 状态 | 解决什么 | Included 成本 | 负面 |
+|----|------|------|----------|---------------|------|
+| **1** | ⌘Q stock Cursor → **VACUUM 45GB vscdb** | ⏸ 等你 | EADDRNOTAVAIL · EH IO | **0** | 需 Quit 5–15min |
+| **2** | marathon 结束 · cursor_conn=0 → **upgrade 1.26.95**（P28） | ⏸ 等你 | latch reqId · pre_partition vitality | 0 | vitality 3× dial（budget 保护） |
+| **3** | **Continue 同 composer**（3dbdfb49 / 67699e2d 链） | operator | 不新开 userMessage | **0 额外** | — |
+| **4** | P27 soak 40min+（已装 1.26.94） | 🔄 进行 | server-eof 率 | 0 | — |
+| **5** | R-05 Latency Tax UI | 草案 | 500+ 尖峰可见 | 0 | 只观测 |
+| **6** | R-16 Mihomo QUIC stall log | **EXEC-CODE-DONE · 1.26.95** | silent stall 定责 @ A± | 0 | 纯日志 · 5s scan |
+| **7** | §4 Zero-Disruption kernel 完成 | 长期 | L2 mutation 误杀 | 0 | 工程量大 |
+
+### 20.4 改完后不会再出现什么 / 仍会出现什么
+
+| 现象 | VACUUM | +P28 | 诚实 |
+|------|--------|------|------|
+| mass PING @ 117 conn | 余波更扛 | 频率降 | **仍可能**（L3 物理） |
+| server-eof @ 52min（165cb7db 案） | 略减 | 略减 | **仍可能**（≠ L7 90min） |
+| EADDRNOTAVAIL | **基本消除** | — | ✅ |
+| stale_rids 空 29s | — | **修复** | ✅ |
+| Sparkle api2 加税 300→500 | — | — | **从未发生**（delta−261） |
+| ghost resume（server-eof 后） | 减 | 减 | **仍可能** · 用 P22@85min 减 L7 损失 |
+
+### 20.5 反复修 bug 仍出的根因（元教训）
+
+1. **只修 rescue 执行，未修 latch 登记** → P28 补环
+2. **混淆同秒 mass fail vs 余波 +54s** → 定责必须 A 时刻 jsonl 逐 RID
+3. **用 vitality executed 率验收** → 古德哈特；须 turn 存活时长外部锚点
+4. **45GB vscdb 未动** → 所有 L3 修复被本地放大器抵消
+
+**目标**：不是零 bug，是 **同一子 bug 不第三次翻车**（partition stale_rids 已第三次 → P28 封口）

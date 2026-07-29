@@ -785,7 +785,18 @@ const mihomoConnections = async (): Promise<void> => {
     const data = e.data as string
     connectionsRetry = 10
     try {
-      mainWindow?.webContents.send('mihomoConnections', JSON.parse(data) as ControllerConnections)
+      const payload = JSON.parse(data) as ControllerConnections
+      mainWindow?.webContents.send('mihomoConnections', payload)
+      void (async () => {
+        try {
+          const { observeMihomoConnectionsForQuicSilentStall } = await import(
+            './mihomoQuicSilentStallObserver'
+          )
+          await observeMihomoConnectionsForQuicSilentStall(payload)
+        } catch {
+          // R-16 observe-only — renderer IPC must not fail
+        }
+      })()
     } catch {
       // ignore
     }

@@ -135,3 +135,30 @@ export function shouldTreatHealthyProbeAsConnectPartition(
 ): boolean {
   return probeHealthy && signal !== undefined
 }
+
+/** Collect unique request IDs from Connect PING failures (P28 partition latch registration). */
+export function collectConnectPingFailureRequestIds(
+  rows: readonly AgentTransportFailureRow[],
+): string[] {
+  const ids: string[] = []
+  for (const row of rows) {
+    if (!isConnectPingTransportFailure(row)) {
+      continue
+    }
+    const rid = String(row.originalRequestId || row.requestId || '').trim()
+    if (rid && !ids.includes(rid)) {
+      ids.push(rid)
+    }
+  }
+  return ids
+}
+
+export function isHttpSseServerEofTransportFailure(row: AgentTransportFailureRow): boolean {
+  if (row.kind !== 'http_sse_transport_failure') {
+    return false
+  }
+  if (row.streamPrimarySub === 'server-eof') {
+    return true
+  }
+  return row.reasonSub === 'http-sse-server-eof' || /server-eof/i.test(String(row.errMsg ?? ''))
+}

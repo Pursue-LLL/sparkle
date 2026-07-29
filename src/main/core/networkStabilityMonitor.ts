@@ -86,6 +86,7 @@ type NetworkStabilityKind =
   | 'transport_mac_vps_delta_high'
   | 'path_change'
   | 'nat_stale_suspect'
+  | 'mihomo_quic_silent_stall'
 
 export interface NetworkStabilityEvent {
   ts: string

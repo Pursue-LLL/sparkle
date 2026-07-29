@@ -78,6 +78,8 @@ import {
 import {
   armPartitionLatch,
   clearPartitionLatch,
+  collectPartitionLatchRequestIds,
+  getPartitionLatchArmedAtMs,
   partitionLatchActive,
   resolvePartitionLatchCandidate,
   shouldArmPartitionLatchFromBlindSpot,
@@ -263,7 +265,17 @@ async function executeDialPlan(
   cursorConnectionCount: number,
   nowMs: number,
   activeNode: string,
+  options?: { partitionLatchAgeMs?: number },
 ): Promise<MarathonSessionKeepaliveResult | { outcome: 'executed' | 'skipped_weak_probe' }> {
+  const staleRidLimit = candidate.trigger === 'connect_partition' ? 8 : 3
+  const staleRids = candidate.staleRequestIds?.slice(0, staleRidLimit).join(',')
+  const rescueLogFields = {
+    cursorConnectionCount,
+    maxGapMs: candidate.maxGapMs,
+    staleRids,
+    staleRequestIdCount: candidate.staleRequestIdCount,
+    partitionLatchAgeMs: options?.partitionLatchAgeMs,
+  }
   const plan: MarathonTransportDialPlan = candidate.plan
   if (plan === 'connect_rescue_bundle') {
     await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
@@ -274,12 +286,7 @@ async function executeDialPlan(
       nowMs,
     })
     await appendAppLog(
-      formatMarathonRescueNudgeLogLine(candidate.trigger, sessionResult, {
-        cursorConnectionCount,
-        maxGapMs: candidate.maxGapMs,
-        staleRids: candidate.staleRequestIds?.slice(0, 3).join(','),
-        staleRequestIdCount: candidate.staleRequestIdCount,
-      }),
+      formatMarathonRescueNudgeLogLine(candidate.trigger, sessionResult, rescueLogFields),
     )
     return sessionResult
   }
@@ -298,12 +305,7 @@ async function executeDialPlan(
     nowMs,
   })
   await appendAppLog(
-    formatMarathonRescueNudgeLogLine(candidate.trigger, sessionResult, {
-      cursorConnectionCount,
-      maxGapMs: candidate.maxGapMs,
-      staleRids: candidate.staleRequestIds?.slice(0, 3).join(','),
-      staleRequestIdCount: candidate.staleRequestIdCount,
-    }),
+    formatMarathonRescueNudgeLogLine(candidate.trigger, sessionResult, rescueLogFields),
   )
   return sessionResult
 }
@@ -385,7 +387,8 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       })
     ) {
       lastPartitionBlindSpotAtMs = nowMs
-      armPartitionLatch(nowMs)
+      const blindSpotRequestIds = collectPartitionLatchRequestIds(partitionRead.mergedRows)
+      armPartitionLatch(nowMs, blindSpotRequestIds)
       await appendAppLog(
         formatPartitionBlindSpotLogLine({
           structuredPingCount: partitionRead.structuredPingCount,
@@ -570,7 +573,19 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       return
     }
 
-    const dialResult = await executeDialPlan(candidate, cursorConnectionCount, nowMs, activeNode)
+    const latchArmedAtMs = getPartitionLatchArmedAtMs()
+    const partitionLatchAgeMs =
+      candidate.trigger === 'connect_partition' && latchArmedAtMs > 0
+        ? nowMs - latchArmedAtMs
+        : undefined
+
+    const dialResult = await executeDialPlan(
+      candidate,
+      cursorConnectionCount,
+      nowMs,
+      activeNode,
+      { partitionLatchAgeMs },
+    )
     updateWarmthDeferStreak(cursorConnectionCount, candidate.trigger, dialResult.outcome)
     if (candidate.trigger === 'connect_partition' && dialResult.outcome === 'executed') {
       clearPartitionLatch()
