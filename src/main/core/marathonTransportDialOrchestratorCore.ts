@@ -47,7 +47,10 @@ export interface MarathonTransportDialSelectionContext {
   connectStreamGap?: MarathonStreamTokenGapSignal
   connectPathPartitionDetected: boolean
   tokenGapSuppressedPendingTool: boolean
+  /** @deprecated P24 — pulse uses marathonTruthPulseDue; kept for tests. */
   marathonStreamActive: boolean
+  /** P24: pulse contract gate from httpStartMs parent-chain age. */
+  marathonTruthPulseDue: boolean
   forceHighLatencyWarmth: boolean
 }
 
@@ -94,14 +97,14 @@ export function resolveMarathonTransportDialPlan(
   }
 }
 
-/** P15: independent 60s cadence — not gated by token_gap / warmth trigger priority. */
+/** P24: independent 60s cadence — gated on MarathonSSETruth parent-chain age, not registry tail age. */
 export function shouldRunIndependentConnectPathPulse(
   context: MarathonTransportDialSelectionContext,
 ): boolean {
   if (context.cursorConnectionCount < CURSOR_HY2_MARATHON_CONN_THRESHOLD) {
     return false
   }
-  if (!context.marathonStreamActive) {
+  if (!context.marathonTruthPulseDue) {
     return false
   }
   if (context.lastConnectPathPulseAtMs <= 0) {

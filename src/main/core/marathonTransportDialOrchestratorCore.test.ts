@@ -35,6 +35,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
       marathonStreamActive: true,
+      marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
     assert.equal(candidate?.trigger, 'silent_generation_end')
@@ -52,6 +53,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
       marathonStreamActive: true,
+      marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     }
     assert.equal(
@@ -88,9 +90,30 @@ describe('marathonTransportDialOrchestratorCore', () => {
       connectPathPartitionDetected: true,
       tokenGapSuppressedPendingTool: false,
       marathonStreamActive: true,
+      marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
     assert.equal(candidate?.trigger, 'connect_path_partition')
+  })
+
+  it('P24: skips independent pulse when marathonTruthPulseDue is false', () => {
+    const nowMs = 10_000_000
+    assert.equal(
+      shouldRunIndependentConnectPathPulse({
+        nowMs,
+        cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+        lastDialAtMs: 0,
+        lastConnectPathPulseAtMs: nowMs - MTDO_CONNECT_PATH_PULSE_INTERVAL_MS,
+        latencyDeltaHigh: false,
+        latencyDeltaRescueEligible: false,
+        connectPathPartitionDetected: false,
+        tokenGapSuppressedPendingTool: false,
+        marathonStreamActive: true,
+        marathonTruthPulseDue: false,
+        forceHighLatencyWarmth: false,
+      }),
+      false,
+    )
   })
 
   it('runs independent connect path pulse every 60s when marathon stream active', () => {
@@ -106,6 +129,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
         connectPathPartitionDetected: false,
         tokenGapSuppressedPendingTool: false,
         marathonStreamActive: true,
+      marathonTruthPulseDue: true,
         forceHighLatencyWarmth: false,
       }),
       true,
@@ -131,6 +155,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
         connectPathPartitionDetected: false,
         tokenGapSuppressedPendingTool: false,
         marathonStreamActive: true,
+      marathonTruthPulseDue: true,
         forceHighLatencyWarmth: false,
       }),
       true,
@@ -155,6 +180,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
       marathonStreamActive: true,
+      marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
     assert.equal(candidate?.trigger, 'connect_partition')
@@ -172,6 +198,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
       marathonStreamActive: true,
+      marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
     assert.equal(candidate?.trigger, 'latency_delta_rescue')
@@ -189,6 +216,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
       marathonStreamActive: true,
+      marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
     assert.notEqual(candidate?.trigger, 'marathon_connect_path_pulse')

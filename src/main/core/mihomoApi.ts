@@ -24,6 +24,7 @@ import {
   isMihomoApiResourceNotFoundError,
   isUserExplicitDelayPurpose,
   resolveProviderNameForLeaf,
+  shouldBypassMarathonQuiesceForDelay,
   shouldBypassMihomoDelayProbeSlot,
   shouldRefreshProviderLeafBeforeDelay,
   type MihomoDelayPurpose,
@@ -377,7 +378,7 @@ async function mihomoProxyDelayFromProvider(
     return { delay: cached.delay }
   }
 
-  const bypassQuiesce = isMarathonRescueDelayPurpose(options?.purpose)
+  const bypassQuiesce = shouldBypassMarathonQuiesceForDelay(options?.purpose)
   const providerDialKind = isUserExplicitDelayPurpose(options?.purpose)
     ? 'managed_ui_delay_test'
     : 'provider_healthcheck_api'

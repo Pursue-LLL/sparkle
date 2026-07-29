@@ -18,10 +18,17 @@ export interface AgentTransportFailureRow {
   durationMs?: number
   /** P16: jsonl row kind — network_diagnostic_ping_storm vs agent_transport_failure. */
   kind?: string
+  /** P25a: renderer agent-error streamPrimarySub (e.g. server-eof). */
+  streamPrimarySub?: string
+  /** P25a: renderer agent-error disconnectPhase (e.g. phase1_stream). */
+  disconnectPhase?: string
 }
 
 /** Align with P14c / cursorStreamTokenGapCore marathon silent EOF gate. */
 export const SILENT_EOF_MARATHON_MIN_DURATION_MS = 1_800_000
+
+/** P25a: HTTP SSE userMessage/resumeAction marathon silent server-eof gate. */
+export const HTTP_SSE_MARATHON_MIN_DURATION_MS = 1_800_000
 
 const TRANSPORT_ERR_RE =
   /PING timed out|\[unavailable\]|ECONNRESET|ETIMEDOUT|WritableIterable is closed|Stream ended without turnEnded|generation-ended-without-turnEnded|deadline exceeded|read ETIMEDOUT/i
@@ -101,7 +108,44 @@ function parseIfmPatch99Line(line: string): AgentTransportFailureRow | undefined
   }
 }
 
+function parseHttpSseServerEofAgentError(line: string): AgentTransportFailureRow | undefined {
+  if (!line.includes('[ifm-patch-29 agent-error]')) {
+    return undefined
+  }
+  const streamPrimarySub = parseLogField(line, 'streamPrimarySub')
+  if (streamPrimarySub !== 'server-eof') {
+    return undefined
+  }
+  const durationMs = parseLogNumber(line, 'durationMs') || undefined
+  const ts = parseLogNumber(line, 'ts') || parseLogTimestampMs(line) || 0
+  if (ts <= 0) {
+    return undefined
+  }
+  const errMsg = parseLogField(line, 'errMsg') || 'server-eof'
+  const disconnectPhase = parseLogField(line, 'disconnectPhase') || undefined
+  return {
+    ts,
+    requestId: parseLogField(line, 'requestId') || undefined,
+    originalRequestId: parseLogField(line, 'originalRequestId') || undefined,
+    composerId: parseLogField(line, 'composerId') || undefined,
+    reasonType: 'proxy-network',
+    reasonSub: 'http-sse-server-eof',
+    errMsg,
+    connectCode: parseLogField(line, 'connectCode') || undefined,
+    attempt: parseLogNumber(line, 'attempt') || undefined,
+    activeAgents: parseLogNumber(line, 'activeAgents') || undefined,
+    durationMs,
+    streamPrimarySub,
+    disconnectPhase,
+    kind: 'http_sse_transport_failure',
+  }
+}
+
 function parseIfmPatch29Line(line: string): AgentTransportFailureRow | undefined {
+  const httpSse = parseHttpSseServerEofAgentError(line)
+  if (httpSse) {
+    return httpSse
+  }
   if (!line.includes('[ifm-patch-29 agent-error]')) {
     return undefined
   }
@@ -428,6 +472,9 @@ export function parseTransportFailureLine(line: string): AgentTransportFailureRo
 export function shouldPersistTransportFailure(row: AgentTransportFailureRow): boolean {
   const errMsg = String(row.errMsg ?? '')
   const connectCode = String(row.connectCode ?? '')
+  if (row.reasonSub === 'http-sse-server-eof') {
+    return (row.durationMs ?? 0) >= HTTP_SSE_MARATHON_MIN_DURATION_MS
+  }
   if (row.reasonSub === 'stream-end-without-turn') {
     return false
   }
