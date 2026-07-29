@@ -190,6 +190,38 @@ export type MarathonSessionKeepaliveOutcome =
   | 'skipped_weak_probe'
   | 'failed'
 
+/** P27/R-B: triage SSOT — distinguish post-mortem rescue from live-path warmth. */
+export type MarathonRescueDialLogOutcome =
+  | MarathonSessionKeepaliveOutcome
+  | 'executed_on_stale_rid'
+  | 'executed_on_live_rid'
+
+export function resolveRescueDialLogOutcome(
+  trigger: MarathonWarmthTrigger,
+  result: MarathonSessionKeepaliveResult,
+  fields: { maxGapMs?: number; staleRequestIdCount?: number; staleRids?: string },
+): MarathonRescueDialLogOutcome {
+  if (result.outcome !== 'executed') {
+    return result.outcome
+  }
+  const staleCount =
+    fields.staleRequestIdCount ??
+    (fields.staleRids ? fields.staleRids.split(',').filter((id) => id.trim().length > 0).length : 0)
+  if (
+    (trigger === 'token_gap' ||
+      trigger === 'silent_generation_end' ||
+      trigger === 'cold_resume') &&
+    staleCount > 0 &&
+    (fields.maxGapMs ?? 0) >= CURSOR_HY2_TOKEN_GAP_FORCE_MS
+  ) {
+    return 'executed_on_stale_rid'
+  }
+  if (trigger === 'periodic_session' || trigger === 'high_latency_warmth') {
+    return 'executed_on_live_rid'
+  }
+  return 'executed'
+}
+
 export interface MarathonSessionKeepaliveResult {
   outcome: MarathonSessionKeepaliveOutcome
   err?: string
@@ -204,11 +236,13 @@ export function formatMarathonRescueNudgeLogLine(
     cursorConnectionCount: number
     maxGapMs?: number
     staleRids?: string
+    staleRequestIdCount?: number
   },
 ): string {
+  const logOutcome = resolveRescueDialLogOutcome(trigger, result, fields)
   const parts = [
     `[CursorHy2MarathonKeepalive]: ${trigger}_nudge`,
-    `outcome=${result.outcome}`,
+    `outcome=${logOutcome}`,
     `cursor_conn=${fields.cursorConnectionCount}`,
   ]
   if (fields.maxGapMs != null) {

@@ -248,6 +248,18 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
         }
         void (async () => {
           try {
+            const { observeNatStaleSuspectFromTransportFailure } = await import(
+              './natStaleSuspectObserver'
+            )
+            await observeNatStaleSuspectFromTransportFailure(row, {
+              proxyNodeFallback: options?.proxyNodeFallback,
+            })
+          } catch {
+            // P27b observe-only — jsonl row is authoritative
+          }
+        })()
+        void (async () => {
+          try {
             const { collectIncidentBundleAtDisconnect } = await import(
               './incidentBundleCollectorCore'
             )
