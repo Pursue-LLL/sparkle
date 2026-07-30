@@ -1,6 +1,6 @@
 // [INPUT] cursorDedicatedDefault suboptimal + protocol upgrade SSOT
 // [OUTPUT] evaluateMarathonProtocolColdStartGate · evaluateMarathonProtocolSwitchDecision
-// [POS] R-30 SSOT — cold-start TLS gate · zero mid-marathon leaf mutation.
+// [POS] R-30/R-31 SSOT — cold-start TLS gate · operator manual switch exempt.
 
 import {
   CURSOR_DEFAULT_VPS_NODE,
@@ -14,6 +14,7 @@ export type MarathonProtocolSwitchBlockReason =
   | 'protocol_upgrade_to_tls'
   | 'allowed_trusted_idle'
   | 'allowed_manual_suboptimal_idle'
+  | 'allowed_manual_operator'
   | 'blocked_marathon_active'
   | 'blocked_mid_session'
   | 'blocked_auto_suboptimal'
@@ -37,9 +38,24 @@ export function evaluateMarathonProtocolColdStartGate(input: {
   marathonTruthActive: boolean
   activeNode: string
   recommendedNode?: string
+  /** R-31: skip gate when operator explicitly hand-picked this suboptimal leaf. */
+  manualSelectionNode?: string
 }): MarathonProtocolColdStartGateResult {
   const activeNode = input.activeNode.trim()
   const recommendedNode = input.recommendedNode ?? CURSOR_DEFAULT_VPS_NODE
+  const manualSelection = input.manualSelectionNode?.trim() ?? ''
+  if (
+    manualSelection &&
+    manualSelection === activeNode &&
+    isCursorSuboptimalNode(activeNode)
+  ) {
+    return {
+      required: false,
+      activeNode,
+      recommendedNode,
+      riskClass: 'none',
+    }
+  }
   if (
     input.cursorConnectionCount !== 0 ||
     input.marathonTruthActive ||
@@ -94,6 +110,23 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
     ) {
       return { allowed: true, reason: 'protocol_upgrade_to_tls' }
     }
+  }
+
+  // R-31: operator manual switches bypass mid-session / marathon locks (UI warns disconnect).
+  if (input.source === 'manual') {
+    if (isCursorSuboptimalNode(fromNode) && isCursorSuboptimalNode(toNode)) {
+      return { allowed: false, reason: 'blocked_suboptimal_lateral' }
+    }
+    if (isCursorProtocolUpgrade(fromNode, toNode)) {
+      return { allowed: true, reason: 'protocol_upgrade_to_tls' }
+    }
+    if (!isCursorSuboptimalNode(toNode)) {
+      return { allowed: true, reason: 'allowed_trusted_idle' }
+    }
+    if (input.cursorConnectionCount === 0 && !input.marathonTruthActive) {
+      return { allowed: true, reason: 'allowed_manual_suboptimal_idle' }
+    }
+    return { allowed: true, reason: 'allowed_manual_operator' }
   }
 
   if (input.marathonTruthActive) {

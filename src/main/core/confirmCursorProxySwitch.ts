@@ -70,7 +70,11 @@ export async function confirmCursorProxySwitch(
     cancelId: 0,
     title: '切换 Cursor 节点',
     message: `将「${groupName}」从「${fromProxy}」切换到「${toProxy}」`,
-    detail: '运行中的 Cursor Agent 长连接会断开，可能触发额外计次。',
+    detail:
+      '运行中的 Cursor Agent 长连接会立即断开，可能触发额外计次。' +
+      (block.cursorConnectionCount > 0 || block.marathonTruthActive
+        ? ' 当前会话活跃，切换后需等待 Agent 重连。'
+        : ''),
   })
   return response === 1
 }

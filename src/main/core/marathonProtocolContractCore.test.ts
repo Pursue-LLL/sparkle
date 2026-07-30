@@ -8,7 +8,7 @@ import {
   formatMarathonProtocolSwitchBlockedLogLine,
 } from './marathonProtocolContractCore'
 
-describe('marathonProtocolContractCore R-30', () => {
+describe('marathonProtocolContractCore R-30/R-31', () => {
   it('requires cold-start gate for HY2 while idle', () => {
     const gate = evaluateMarathonProtocolColdStartGate({
       cursorConnectionCount: 0,
@@ -60,19 +60,54 @@ describe('marathonProtocolContractCore R-30', () => {
     assert.equal(gate.required, false)
   })
 
-  it('blocks all cursor leaf switches during marathon truth active', () => {
+  it('skips cold-start gate when operator manually selected suboptimal leaf', () => {
+    const gate = evaluateMarathonProtocolColdStartGate({
+      cursorConnectionCount: 0,
+      marathonTruthActive: false,
+      activeNode: 'JP-VPS-HY2',
+      manualSelectionNode: 'JP-VPS-HY2',
+    })
+    assert.equal(gate.required, false)
+    assert.equal(gate.riskClass, 'none')
+  })
+
+  it('blocks auto leaf switches during marathon truth active', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 18,
       marathonTruthActive: true,
       fromNode: 'JP-VPS-HY2',
       toNode: 'JP-VPS-TLS',
-      source: 'manual',
+      source: 'auto',
     })
     assert.equal(decision.allowed, false)
     assert.equal(decision.reason, 'blocked_marathon_active')
   })
 
-  it('blocks mid-session switches when cursor_conn > 0', () => {
+  it('blocks auto mid-session switches when cursor_conn > 0', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 3,
+      marathonTruthActive: false,
+      fromNode: 'JP-VPS-HY2',
+      toNode: 'JP-VPS-TLS',
+      source: 'auto',
+    })
+    assert.equal(decision.allowed, false)
+    assert.equal(decision.reason, 'blocked_mid_session')
+  })
+
+  it('R-31 allows manual TLS to HY2 during marathon truth active', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 18,
+      marathonTruthActive: true,
+      fromNode: 'JP-VPS-TLS',
+      toNode: 'JP-VPS-HY2',
+      source: 'manual',
+    })
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.reason, 'allowed_manual_operator')
+  })
+
+  it('R-31 allows manual HY2 to TLS during active cursor connections', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 3,
       marathonTruthActive: false,
@@ -80,8 +115,20 @@ describe('marathonProtocolContractCore R-30', () => {
       toNode: 'JP-VPS-TLS',
       source: 'manual',
     })
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.reason, 'protocol_upgrade_to_tls')
+  })
+
+  it('R-31 still blocks manual suboptimal lateral switches during session', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 20,
+      marathonTruthActive: true,
+      fromNode: 'JP-VPS-HY2',
+      toNode: 'JP-VPS-TUIC',
+      source: 'manual',
+    })
     assert.equal(decision.allowed, false)
-    assert.equal(decision.reason, 'blocked_mid_session')
+    assert.equal(decision.reason, 'blocked_suboptimal_lateral')
   })
 
   it('allows cold-start protocol upgrade HY2 to TLS', () => {
