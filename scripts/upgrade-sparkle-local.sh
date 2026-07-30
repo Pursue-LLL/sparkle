@@ -99,18 +99,44 @@ if [[ -z "${APP_LOG:-}" ]]; then
   APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
 fi
 if [[ -n "$APP_LOG" ]]; then
-  if tail -120 "$APP_LOG" 2>/dev/null | grep -q 'PostCoreBootstrap.*failed'; then
-    fail "PostCoreBootstrap failed in $APP_LOG — marathon keepalive offline"
+  post_core_fail="$(
+    "$ROOT/node_modules/.bin/tsx" -e "
+      import { readFileSync } from 'node:fs';
+      import { countPostCoreBootstrapFailuresSinceLine } from './scripts/upgradeSparklePostInstallGateCore.ts';
+      const text = readFileSync(process.argv[1], 'utf8');
+      process.stdout.write(String(countPostCoreBootstrapFailuresSinceLine(text, Number(process.argv[2]))));
+    " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
+  )"
+  if [[ "${post_core_fail:-0}" -gt 0 ]]; then
+    fail "PostCoreBootstrap failed ${post_core_fail} time(s) since install line $BUG014_GATE_SINCE_LINE in $APP_LOG — marathon keepalive offline"
   fi
   log "Waiting for Api2ProbePlane ON (PostCoreBootstrap, up to 90s)..."
   probe_ok=false
   for _ in $(seq 1 18); do
-    if [[ -f "$APP_LOG" ]] && tail -500 "$APP_LOG" 2>/dev/null | grep -q 'PostCoreBootstrap.*failed'; then
-      fail "PostCoreBootstrap failed in $APP_LOG — marathon keepalive offline"
-    fi
-    if tail -500 "$APP_LOG" 2>/dev/null | grep -q 'Api2ProbePlane.*ON'; then
-      probe_ok=true
-      break
+    if [[ -f "$APP_LOG" ]]; then
+      post_core_fail="$(
+        "$ROOT/node_modules/.bin/tsx" -e "
+          import { readFileSync } from 'node:fs';
+          import {
+            countPostCoreBootstrapFailuresSinceLine,
+            hasApi2ProbePlaneOnSinceLine,
+          } from './scripts/upgradeSparklePostInstallGateCore.ts';
+          const text = readFileSync(process.argv[1], 'utf8');
+          const since = Number(process.argv[2]);
+          if (countPostCoreBootstrapFailuresSinceLine(text, since) > 0) {
+            process.stdout.write('fail');
+            process.exit(0);
+          }
+          process.stdout.write(hasApi2ProbePlaneOnSinceLine(text, since) ? 'ok' : 'wait');
+        " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
+      )"
+      if [[ "$post_core_fail" == "fail" ]]; then
+        fail "PostCoreBootstrap failed since install line $BUG014_GATE_SINCE_LINE in $APP_LOG — marathon keepalive offline"
+      fi
+      if [[ "$post_core_fail" == "ok" ]]; then
+        probe_ok=true
+        break
+      fi
     fi
     sleep 5
     APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
