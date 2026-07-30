@@ -39,6 +39,22 @@ describe('marathonTransportDialOrchestrator G10/G12 static', () => {
     assert.match(src, /lastMtdoDialAtMs = nowMs/)
     assert.match(src, /executed: false/)
   })
+
+  it('marathonTransportDialOrchestrator wires R-31 ConnectPartitionRescueIneffective', () => {
+    const src = readFileSync(
+      new URL('./marathonTransportDialOrchestrator.ts', import.meta.url),
+      'utf8',
+    )
+    assert.match(src, /ConnectPartitionRescueIneffective/)
+    assert.match(src, /lastConnectPartitionRescueRecord/)
+    assert.match(src, /CONNECT_PARTITION_RESCUE_INEFFECTIVE_KIND/)
+  })
+
+  it('mihomoChangeProxy wires R-30 MarathonProtocolContract gate', () => {
+    const src = readFileSync(new URL('./mihomoApi.ts', import.meta.url), 'utf8')
+    assert.match(src, /evaluateMarathonProtocolSwitchBlock/)
+    assert.match(src, /protocol_contract/)
+  })
 })
 
 // G10 gate #9 full MTDO cycle requires Electron runtime (orchestrator imports mihomo/networkStability).
