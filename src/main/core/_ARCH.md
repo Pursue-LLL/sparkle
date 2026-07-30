@@ -30,7 +30,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | 高并行时 VPS leaf dial-timeout 5s→45s · **P20b IDLE apply**（active stream/quiesce 期间 defer reload） |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
-| `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默（纯内存）：conn≥12 暂停 proxyHealthMonitor + observability dial；**零** runtime yaml / mihomo reload |
+| `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默：conn≥12 暂停 proxyHealthMonitor + observability dial；**R-24** quiesce ON/OFF 热 patch `health-check.enable` + mihomo reload |
 | `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：quiesce active 或 conn≥12 时 block `stopCore`/`restartCore`；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate |
 | `cursorHy2MarathonKeepaliveCore.ts` / `cursorHy2MarathonKeepalive.ts`   | **MTCP/P13/P19** Rescue vs Warmth facade · delegates to `marathonRescueDialExecutor` / `marathonWarmthDialExecutor` · **无 mtdo re-entrancy guard** |
 | `marathonSessionDialExecutorCore.ts` / `marathonRescueDialExecutor.ts` / `marathonWarmthDialExecutor.ts` | **P19** shared HY2 session dial + in-flight guard · rescue bypass P12 budget · warmth uses P12 budget |

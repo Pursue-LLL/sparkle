@@ -6,7 +6,19 @@
 
 | 字段 | 内容 |
 | --- | --- |
-> **2026-07-30 最新**：**BUG-2026-07-30-002** — probe contention · **R-23 IMPLEMENTED @1.26.98** · **BUG-2026-07-30-001** R-17–22 @1.26.97
+> **2026-07-30 最新**：**BUG-2026-07-30-003** — R-24 contention breach closure @ **1.26.99** · **BUG-2026-07-30-002** R-23 @1.26.98 · **BUG-2026-07-30-001** R-17–22 @1.26.97
+
+### BUG-2026-07-30-003 · v1.26.99 · marathon_contention_breach_closure_r24 (R-24)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-30 — pkg **1.26.99** · **30/30 R-24 相关单测 PASS** · **待 upgrade + TLS soak** |
+| **症状** | R-23 上线后 cap 仍几乎永不 deny：07:06 TLS **26s/4 triple-pulse** · token_gap 每 15s hung_scan 触发 rescue bundle pulse |
+| **PRIMARY 根因** | **R-23 设计漏洞**：routine `token_gap`/`connect_stream_gap`∈breachKinds → cap 永久 bypass；`pulse_contract_breach` 对 rescue bundle 也 bypass；independent pulse 成功不写 `lastMtdoDialAtMs` |
+| **修复内容** | **R-24** ① `buildMarathonContentionBreachKinds` — 移除 routine token/connect_stream gap；`pulse_contract_breach` 仅 independent pulse ② rescue bundle 用独立 breach 集 ③ independent pulse 更新 lastMtdoDialAtMs ④ `frozen_quic_cursor` 接线 ⑤ quiesce ON/OFF 真调 `patchRuntimeProxyProviderHealthCheckEnable` + reload |
+| **证据** | app-log:12521-12534 07:06:30-56 ×4 pulse/26s · orchestratorCore.ts:212 rescue 不 coalesce · marathonQuiesce.ts 原 data_plane_action=none |
+| **验收** | 40min JP-VPS-TLS soak：`[MarathonContentionBudget] outcome=deny` · 无 26s/>1 pulse · connect_path ~290ms · server-eof rid=0 |
+| **改完还会 bug 吗** | 07:06 类争用放大：**极低** · L7 max-steps / QUIC split-brain：**仍会**（非本 fix 范围） |
 
 ### BUG-2026-07-30-002 · v1.26.98 · marathon_probe_contention_amplifies_cursor_disconnect (R-23)
 
