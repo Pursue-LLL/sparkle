@@ -93,8 +93,16 @@ import {
   evaluateTokenGapRescueIneffective,
   formatTokenGapRescueIneffectiveLogLine,
   shouldRecordTokenGapRescueExecution,
+  TOKEN_GAP_RESCUE_INEFFECTIVE_KIND,
   type TokenGapRescueExecutionRecord,
 } from './tokenGapRescueIneffectiveCore'
+import {
+  evaluateConnectPartitionRescueIneffective,
+  formatConnectPartitionRescueIneffectiveLogLine,
+  shouldRecordConnectPartitionRescueExecution,
+  CONNECT_PARTITION_RESCUE_INEFFECTIVE_KIND,
+  type ConnectPartitionRescueExecutionRecord,
+} from './connectPartitionRescueIneffectiveCore'
 import { isHy2TunnelVitalityPrePartitionRisk } from './hy2TunnelVitalityCore'
 import {
   buildMarathonContentionBreachKinds,
@@ -140,9 +148,12 @@ let lastCursorLogPlaneAtMs = 0
 let lastMarathonTruthActiveForPreflight = false
 let lastTokenGapRescueRecord: TokenGapRescueExecutionRecord | undefined
 let lastTokenGapIneffectiveEmitAtMs = 0
+let lastConnectPartitionRescueRecord: ConnectPartitionRescueExecutionRecord | undefined
+let lastConnectPartitionIneffectiveEmitAtMs = 0
 
 const CURSOR_LOG_PLANE_HEARTBEAT_MS = 60_000
 const TOKEN_GAP_INEFFECTIVE_EMIT_COOLDOWN_MS = 120_000
+const CONNECT_PARTITION_INEFFECTIVE_EMIT_COOLDOWN_MS = 120_000
 
 export function resetMarathonTransportDialOrchestratorForTests(): void {
   lastMtdoDialAtMs = 0
@@ -160,6 +171,8 @@ export function resetMarathonTransportDialOrchestratorForTests(): void {
   lastMarathonTruthActiveForPreflight = false
   lastTokenGapRescueRecord = undefined
   lastTokenGapIneffectiveEmitAtMs = 0
+  lastConnectPartitionRescueRecord = undefined
+  lastConnectPartitionIneffectiveEmitAtMs = 0
   testConnectPathPulseOverride = null
 }
 
@@ -197,6 +210,7 @@ function resolveMarathonContentionBreachInput(options: {
   silentGenerationEndPresent: boolean
   coldResumePresent: boolean
   tokenGapRescueIneffective: boolean
+  connectPartitionRescueIneffective: boolean
   frozenQuicCursorCount: number
 }) {
   return {
@@ -211,6 +225,7 @@ function resolveMarathonContentionBreachInput(options: {
     silentGenerationEndPresent: options.silentGenerationEndPresent,
     coldResumePresent: options.coldResumePresent,
     tokenGapRescueIneffective: options.tokenGapRescueIneffective,
+    connectPartitionRescueIneffective: options.connectPartitionRescueIneffective,
     frozenQuicCursorCount: options.frozenQuicCursorCount,
   }
 }
@@ -687,6 +702,17 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         api2DelayMs: recentProbe?.latencyMs,
       }) != null
 
+    const connectPartitionRescueIneffective =
+      connectPartition != null &&
+      evaluateConnectPartitionRescueIneffective({
+        record: lastConnectPartitionRescueRecord,
+        nowMs,
+        pingFailureCount: connectPartition.pingFailureCount,
+        staleRequestIds: connectPartition.sampleRequestIds,
+        connectPathPartitionStale: lastConnectPathPartitionStale,
+        api2DelayMs: recentProbe?.latencyMs,
+      }) != null
+
     const { getMarathonFrozenQuicCursorCount } = await import('./mihomoQuicSilentStallObserver')
     const breachInput = resolveMarathonContentionBreachInput({
       truth: marathonTruth,
@@ -698,6 +724,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       silentGenerationEndPresent: silentGenerationEnd != null,
       coldResumePresent: coldResumeSignal != null,
       tokenGapRescueIneffective,
+      connectPartitionRescueIneffective,
       frozenQuicCursorCount: getMarathonFrozenQuicCursorCount(),
     })
     const independentContentionBreachKinds = buildContentionBreachKindsForCycle(breachInput, true)
@@ -754,11 +781,40 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         await appendAppLog(formatTokenGapRescueIneffectiveLogLine(ineffective))
         await appendNetworkStabilityEvent({
           ts: new Date(nowMs).toISOString(),
-          kind: 'token_gap_rescue_ineffective',
+          kind: TOKEN_GAP_RESCUE_INEFFECTIVE_KIND,
           probe_ok: true,
           recovery_action: 'none',
           hung_connection_count: cursorConnectionCount,
           error_detail: `max_gap_ms=${ineffective.maxGapMs} stale_rids=${ineffective.staleRequestIds.slice(0, 3).join(',')}`,
+        })
+      }
+    }
+
+    if (connectPartition) {
+      const ineffective = evaluateConnectPartitionRescueIneffective({
+        record: lastConnectPartitionRescueRecord,
+        nowMs,
+        pingFailureCount: connectPartition.pingFailureCount,
+        staleRequestIds: connectPartition.sampleRequestIds,
+        connectPathPartitionStale: lastConnectPathPartitionStale,
+        api2DelayMs: recentProbe?.latencyMs,
+      })
+      if (
+        ineffective &&
+        nowMs - lastConnectPartitionIneffectiveEmitAtMs >=
+          CONNECT_PARTITION_INEFFECTIVE_EMIT_COOLDOWN_MS
+      ) {
+        lastConnectPartitionIneffectiveEmitAtMs = nowMs
+        await appendAppLog(formatConnectPartitionRescueIneffectiveLogLine(ineffective))
+        await appendNetworkStabilityEvent({
+          ts: new Date(nowMs).toISOString(),
+          kind: CONNECT_PARTITION_RESCUE_INEFFECTIVE_KIND,
+          probe_ok: true,
+          recovery_action: 'none',
+          hung_connection_count: cursorConnectionCount,
+          error_detail:
+            `ping_failures=${ineffective.pingFailureCount}` +
+            ` stale_rids=${ineffective.staleRequestIds.slice(0, 3).join(',')}`,
         })
       }
     }
@@ -843,6 +899,19 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         maxGapMs: candidate.maxGapMs ?? tokenGapSignal?.maxGapMs ?? 0,
         staleRequestIds: candidate.staleRequestIds ?? tokenGapSignal?.staleRequestIds ?? [],
         partitionStale: lastConnectPathPartitionStale,
+      }
+    }
+    if (
+      candidate.trigger === 'connect_partition' &&
+      shouldRecordConnectPartitionRescueExecution(dialResult.outcome)
+    ) {
+      lastConnectPartitionRescueRecord = {
+        executedAtMs: nowMs,
+        outcome: dialResult.outcome,
+        staleRequestIds:
+          candidate.staleRequestIds ?? connectPartition?.sampleRequestIds ?? [],
+        pingFailureCountAtRescue: connectPartition?.pingFailureCount ?? 0,
+        connectPathPartitionStale: lastConnectPathPartitionStale,
       }
     }
     if (candidate.trigger === 'connect_partition' && dialResult.outcome === 'executed') {

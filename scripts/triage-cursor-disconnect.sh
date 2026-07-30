@@ -427,11 +427,11 @@ collect_agent_transport_by_ts() {
 
 write_quic_stall_signals_at_a() {
   [[ -s "$OUT/sparkle-app-A-window.log" ]] || return 0
-  rg 'MihomoQuicSilentStall|frozen_quic_cursor|mihomo_quic_silent_stall|token_gap_rescue_ineffective|MarathonDataPlaneMutation|marathon_transport_preflight|MarathonContentionBudget' \
+  rg 'MihomoQuicSilentStall|frozen_quic_cursor|mihomo_quic_silent_stall|token_gap_rescue_ineffective|connect_partition_rescue_ineffective|ConnectPartitionRescueIneffective|MarathonDataPlaneMutation|marathon_transport_preflight|MarathonContentionBudget' \
     "$OUT/sparkle-app-A-window.log" \
     >"$OUT/sparkle-quic-stall-A-window.log" 2>/dev/null || true
   if [[ -s "$OUT/sparkle-A-window-network-stability-events.jsonl" ]]; then
-    rg 'mihomo_quic_silent_stall|token_gap_rescue_ineffective|marathon_transport_preflight' \
+    rg 'mihomo_quic_silent_stall|token_gap_rescue_ineffective|connect_partition_rescue_ineffective|marathon_transport_preflight' \
       "$OUT/sparkle-A-window-network-stability-events.jsonl" \
       >"$OUT/sparkle-quic-stall-events-A-window.jsonl" 2>/dev/null || true
   fi
@@ -486,7 +486,7 @@ collect_app_core_at_a() {
         [[ -n "$p" ]] || continue
         local p_esc="${p//-/\\-}"
         rg "${p_esc}" "$f" \
-          | rg 'CursorTransportHealth|L0|L1|hung|VpsL4Probe|Triangulation|defer|protocol upgrade|mihomoChangeProxy|hung_scan_heartbeat|MihomoQuicSilentStall|frozen_quic_cursor|token_gap_rescue_ineffective|MarathonDataPlaneMutation|marathon_transport_preflight|marathon_connect_path_pulse' \
+          | rg 'CursorTransportHealth|L0|L1|hung|VpsL4Probe|Triangulation|defer|protocol upgrade|mihomoChangeProxy|hung_scan_heartbeat|MihomoQuicSilentStall|frozen_quic_cursor|token_gap_rescue_ineffective|connect_partition_rescue_ineffective|ConnectPartitionRescueIneffective|MarathonDataPlaneMutation|marathon_transport_preflight|marathon_connect_path_pulse' \
           >>"$OUT/sparkle-app-A-window.log" 2>/dev/null || true
       done < <(expand_utc_minute_prefixes "$utc_prefix")
     fi
