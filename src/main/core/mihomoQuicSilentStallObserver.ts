@@ -6,6 +6,7 @@ import { appendAppLog } from '../utils/log'
 import {
   createMihomoQuicStallTrackedConnection,
   countCursorConnectionsFromMihomo,
+  countMarathonFrozenQuicCursorConnections,
   formatMihomoQuicSilentStallLogLine,
   isMarathonQuIcCursorTransportConnection,
   mihomoQuicSilentStallDedupeKey,
@@ -21,11 +22,18 @@ const SCAN_INTERVAL_MS = 5_000
 const trackedById = new Map<string, MihomoQuicStallTrackedConnection>()
 const lastEmitAtByKey = new Map<string, number>()
 let lastScanAtMs = 0
+let lastObservedFrozenQuicCursorCount = 0
 
 export function resetMihomoQuicSilentStallObserverForTests(): void {
   trackedById.clear()
   lastEmitAtByKey.clear()
   lastScanAtMs = 0
+  lastObservedFrozenQuicCursorCount = 0
+}
+
+/** Latest frozen QUIC Cursor transport count from the most recent stall scan (R-24 MTDO breach). */
+export function getMarathonFrozenQuicCursorCount(): number {
+  return lastObservedFrozenQuicCursorCount
 }
 
 function syncTrackedConnections(connections: readonly ControllerConnectionDetail[]): void {
@@ -66,6 +74,11 @@ export async function observeMihomoConnectionsForQuicSilentStall(
   const connections = payload.connections ?? []
   syncTrackedConnections(connections)
   const cursorConnectionCount = countCursorConnectionsFromMihomo(connections)
+  lastObservedFrozenQuicCursorCount = countMarathonFrozenQuicCursorConnections({
+    connections,
+    trackedById,
+    nowMs,
+  })
   const observations = scanMihomoQuicSilentStalls({
     connections,
     trackedById,

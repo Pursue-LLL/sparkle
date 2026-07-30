@@ -160,6 +160,27 @@ export function countCursorConnectionsFromMihomo(
   return count
 }
 
+export function countMarathonFrozenQuicCursorConnections(input: {
+  connections: readonly ControllerConnectionDetail[]
+  trackedById: ReadonlyMap<string, MihomoQuicStallTrackedConnection>
+  nowMs: number
+}): number {
+  let frozenQuicCursorCount = 0
+  for (const connection of input.connections) {
+    if (!isMarathonQuIcCursorTransportConnection(connection)) {
+      continue
+    }
+    const tracked = input.trackedById.get(connection.id)
+    if (!tracked) {
+      continue
+    }
+    if (isMarathonQuIcConnectionFrozen(connection, tracked, input.nowMs)) {
+      frozenQuicCursorCount += 1
+    }
+  }
+  return frozenQuicCursorCount
+}
+
 export function scanMihomoQuicSilentStalls(input: {
   connections: readonly ControllerConnectionDetail[]
   trackedById: ReadonlyMap<string, MihomoQuicStallTrackedConnection>
@@ -171,7 +192,7 @@ export function scanMihomoQuicSilentStalls(input: {
   }
 
   const observations: MihomoQuicSilentStallObservation[] = []
-  let frozenQuicCursorCount = 0
+  let frozenQuicCursorCount = countMarathonFrozenQuicCursorConnections(input)
   let totalQuicCursorCount = 0
   let dominantLeaf = 'unknown'
   let maxFrozenStallMs = 0
@@ -189,7 +210,6 @@ export function scanMihomoQuicSilentStalls(input: {
     if (!isMarathonQuIcConnectionFrozen(connection, tracked, input.nowMs)) {
       continue
     }
-    frozenQuicCursorCount += 1
     const stallMs = input.nowMs - tracked.lastBytesChangeAtMs
     if (stallMs > maxFrozenStallMs) {
       maxFrozenStallMs = stallMs

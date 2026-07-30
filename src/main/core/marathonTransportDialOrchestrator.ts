@@ -97,6 +97,7 @@ import {
 } from './tokenGapRescueIneffectiveCore'
 import { isHy2TunnelVitalityPrePartitionRisk } from './hy2TunnelVitalityCore'
 import {
+  buildMarathonContentionBreachKinds,
   evaluateMarathonContentionBudget,
   formatMarathonContentionBudgetLogLine,
   type MarathonContentionBreachKind,
@@ -181,7 +182,7 @@ function buildConnectPathPulseFallback(): ConnectPathPulseResult {
   }
 }
 
-function collectMarathonContentionBreachKinds(options: {
+function resolveMarathonContentionBreachInput(options: {
   truth: MarathonSSETruthResult
   lastConnectPathPulseAtMs: number
   nowMs: number
@@ -189,41 +190,31 @@ function collectMarathonContentionBreachKinds(options: {
   connectPartitionPresent: boolean
   latencyDeltaRescueEligible: boolean
   silentGenerationEndPresent: boolean
-  tokenGapPresent: boolean
   coldResumePresent: boolean
-  connectStreamGapPresent: boolean
   tokenGapRescueIneffective: boolean
-}): MarathonContentionBreachKind[] {
-  const kinds: MarathonContentionBreachKind[] = []
-  if (isPulseContractBreach(options.truth, options.lastConnectPathPulseAtMs, options.nowMs)) {
-    kinds.push('pulse_contract_breach')
+  frozenQuicCursorCount: number
+}) {
+  return {
+    pulseContractBreach: isPulseContractBreach(
+      options.truth,
+      options.lastConnectPathPulseAtMs,
+      options.nowMs,
+    ),
+    connectPathPartitionDetected: options.connectPathPartitionDetected,
+    connectPartitionPresent: options.connectPartitionPresent,
+    latencyDeltaRescueEligible: options.latencyDeltaRescueEligible,
+    silentGenerationEndPresent: options.silentGenerationEndPresent,
+    coldResumePresent: options.coldResumePresent,
+    tokenGapRescueIneffective: options.tokenGapRescueIneffective,
+    frozenQuicCursorCount: options.frozenQuicCursorCount,
   }
-  if (options.connectPathPartitionDetected) {
-    kinds.push('partition_stale_connect_path')
-    kinds.push('connect_path_partition')
-  }
-  if (options.connectPartitionPresent) {
-    kinds.push('connect_partition')
-  }
-  if (options.latencyDeltaRescueEligible) {
-    kinds.push('latency_delta_rescue')
-  }
-  if (options.silentGenerationEndPresent) {
-    kinds.push('silent_generation_end')
-  }
-  if (options.tokenGapPresent) {
-    kinds.push('token_gap')
-  }
-  if (options.coldResumePresent) {
-    kinds.push('cold_resume')
-  }
-  if (options.connectStreamGapPresent) {
-    kinds.push('connect_stream_gap')
-  }
-  if (options.tokenGapRescueIneffective) {
-    kinds.push('token_gap_rescue_ineffective')
-  }
-  return kinds
+}
+
+function buildContentionBreachKindsForCycle(
+  breachInput: ReturnType<typeof resolveMarathonContentionBreachInput>,
+  forIndependentPulse: boolean,
+): MarathonContentionBreachKind[] {
+  return buildMarathonContentionBreachKinds(breachInput, { forIndependentPulse })
 }
 
 async function shouldAllowConnectPathPulse(options: {
@@ -372,6 +363,7 @@ async function runIndependentConnectPathPulseIfDue(
       independentPulse: true,
       breachKinds,
     })
+    lastMtdoDialAtMs = nowMs
     if (!pulse.partitionStale) {
       return
     }
@@ -683,7 +675,8 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         api2DelayMs: recentProbe?.latencyMs,
       }) != null
 
-    const contentionBreachKinds = collectMarathonContentionBreachKinds({
+    const { getMarathonFrozenQuicCursorCount } = await import('./mihomoQuicSilentStallObserver')
+    const breachInput = resolveMarathonContentionBreachInput({
       truth: marathonTruth,
       lastConnectPathPulseAtMs,
       nowMs,
@@ -691,11 +684,12 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       connectPartitionPresent: connectPartition != null,
       latencyDeltaRescueEligible,
       silentGenerationEndPresent: silentGenerationEnd != null,
-      tokenGapPresent: tokenGapSignal != null && !tokenGapSuppressedPendingTool,
       coldResumePresent: coldResumeSignal != null,
-      connectStreamGapPresent: connectStreamGapSignal != null,
       tokenGapRescueIneffective,
+      frozenQuicCursorCount: getMarathonFrozenQuicCursorCount(),
     })
+    const independentContentionBreachKinds = buildContentionBreachKindsForCycle(breachInput, true)
+    const rescueContentionBreachKinds = buildContentionBreachKindsForCycle(breachInput, false)
 
     if (activeNode && (marathonTruthPulseDue || marathonTruth.marathonTruthActive)) {
       await runIndependentConnectPathPulseIfDue(
@@ -704,7 +698,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         activeNode,
         cursorConnectionCount,
         nowMs,
-        contentionBreachKinds,
+        independentContentionBreachKinds,
       )
       selectionBase.lastConnectPathPulseAtMs = lastConnectPathPulseAtMs
       selectionBase.connectPathPartitionDetected = lastConnectPathPartitionStale
@@ -824,7 +818,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       cursorConnectionCount,
       nowMs,
       activeNode,
-      { partitionLatchAgeMs, breachKinds: contentionBreachKinds },
+      { partitionLatchAgeMs, breachKinds: rescueContentionBreachKinds },
     )
     updateWarmthDeferStreak(cursorConnectionCount, candidate.trigger, dialResult.outcome)
     if (

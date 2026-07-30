@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  countMarathonFrozenQuicCursorConnections,
   formatMihomoQuicSilentStallLogLine,
   isMarathonQuIcConnectionFrozen,
   isMarathonQuIcCursorTransportConnection,
@@ -183,6 +184,28 @@ describe('mihomoQuicSilentStallCore R-17', () => {
     assert.equal(
       observations.find((row) => row.kind === 'aggregate')?.frozenQuicCursorCount,
       MIHOMO_QUIC_STALL_AGGREGATE_FROZEN_MIN,
+    )
+  })
+
+  it('countMarathonFrozenQuicCursorConnections counts byte-frozen QUIC cursor transports', () => {
+    const nowMs = 1_000_000
+    const trackedById = new Map<string, MihomoQuicStallTrackedConnection>()
+    const connection = quicConn({ id: 'c1', leaf: 'JP-VPS-TUIC' })
+    trackedById.set(connection.id, {
+      host: 'api2.cursor.sh',
+      network: 'udp',
+      upload: 100,
+      download: 200,
+      firstSeenAtMs: nowMs - 120_000,
+      lastBytesChangeAtMs: nowMs - MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS - 1,
+    })
+    assert.equal(
+      countMarathonFrozenQuicCursorConnections({
+        connections: [connection],
+        trackedById,
+        nowMs,
+      }),
+      1,
     )
   })
 

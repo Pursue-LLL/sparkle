@@ -28,6 +28,16 @@ describe('marathonTransportDialOrchestrator G10/G12 static', () => {
     assert.match(src, /runHy2TunnelVitalityIfDue/)
     assert.match(src, /hy2TunnelVitality/)
   })
+
+  it('marathonTransportDialOrchestrator wires R-24 contention breach SSOT', () => {
+    const src = readFileSync(
+      new URL('./marathonTransportDialOrchestrator.ts', import.meta.url),
+      'utf8',
+    )
+    assert.match(src, /buildMarathonContentionBreachKinds/)
+    assert.match(src, /getMarathonFrozenQuicCursorCount/)
+    assert.match(src, /lastMtdoDialAtMs = nowMs/)
+  })
 })
 
 // G10 gate #9 full MTDO cycle requires Electron runtime (orchestrator imports mihomo/networkStability).

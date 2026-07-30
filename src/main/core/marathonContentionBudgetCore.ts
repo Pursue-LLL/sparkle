@@ -44,6 +44,56 @@ export type MarathonContentionBudgetDecision =
   | { outcome: 'allow'; reason: MarathonContentionBudgetAllowReason }
   | { outcome: 'deny'; reason: 'green_cap'; remainingMs: number }
 
+/** Inputs for R-24 breach SSOT — routine token_gap/connect_stream_gap are intentionally excluded. */
+export interface MarathonContentionBreachInput {
+  pulseContractBreach: boolean
+  connectPathPartitionDetected: boolean
+  connectPartitionPresent: boolean
+  latencyDeltaRescueEligible: boolean
+  silentGenerationEndPresent: boolean
+  coldResumePresent: boolean
+  tokenGapRescueIneffective: boolean
+  frozenQuicCursorCount: number
+}
+
+export interface BuildMarathonContentionBreachKindsOptions {
+  /** Pulse contract breach bypass applies only to the 60s independent observability pulse. */
+  forIndependentPulse: boolean
+}
+
+export function buildMarathonContentionBreachKinds(
+  input: MarathonContentionBreachInput,
+  options: BuildMarathonContentionBreachKindsOptions,
+): MarathonContentionBreachKind[] {
+  const kinds: MarathonContentionBreachKind[] = []
+  if (options.forIndependentPulse && input.pulseContractBreach) {
+    kinds.push('pulse_contract_breach')
+  }
+  if (input.connectPathPartitionDetected) {
+    kinds.push('partition_stale_connect_path')
+    kinds.push('connect_path_partition')
+  }
+  if (input.connectPartitionPresent) {
+    kinds.push('connect_partition')
+  }
+  if (input.latencyDeltaRescueEligible) {
+    kinds.push('latency_delta_rescue')
+  }
+  if (input.silentGenerationEndPresent) {
+    kinds.push('silent_generation_end')
+  }
+  if (input.coldResumePresent) {
+    kinds.push('cold_resume')
+  }
+  if (input.tokenGapRescueIneffective) {
+    kinds.push('token_gap_rescue_ineffective')
+  }
+  if (input.frozenQuicCursorCount > 0) {
+    kinds.push('frozen_quic_cursor')
+  }
+  return kinds
+}
+
 export function isMarathonConnectPathGreen(delayMs: number | null | undefined): boolean {
   return (
     typeof delayMs === 'number' &&

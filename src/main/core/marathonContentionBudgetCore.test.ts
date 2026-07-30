@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   MARATHON_CONTENTION_GREEN_DELAY_MS,
   MARATHON_CONTENTION_GREEN_OBSERVABILITY_CAP_MS,
+  buildMarathonContentionBreachKinds,
   evaluateMarathonContentionBudget,
   formatMarathonContentionBudgetLogLine,
   hasMarathonContentionBreach,
@@ -92,12 +93,91 @@ describe('marathonContentionBudgetCore', () => {
     }
   })
 
+  it('breach bypasses green cap for rescue dial when token_gap_rescue_ineffective', () => {
+    const decision = evaluateMarathonContentionBudget({
+      nowMs,
+      lastAuthoritativeConnectPathDelayMs: 291,
+      lastObservabilityDialAtMs: nowMs - 10_000,
+      breachKinds: ['token_gap_rescue_ineffective'],
+      independentPulse: false,
+      dialTrigger: 'token_gap',
+    })
+    assert.equal(decision.outcome, 'allow')
+    if (decision.outcome === 'allow') {
+      assert.equal(decision.reason, 'rescue_with_breach')
+    }
+  })
+
+  it('buildMarathonContentionBreachKinds excludes routine token_gap and connect_stream_gap', () => {
+    const kinds = buildMarathonContentionBreachKinds(
+      {
+        pulseContractBreach: false,
+        connectPathPartitionDetected: false,
+        connectPartitionPresent: false,
+        latencyDeltaRescueEligible: false,
+        silentGenerationEndPresent: false,
+        coldResumePresent: false,
+        tokenGapRescueIneffective: false,
+        frozenQuicCursorCount: 0,
+      },
+      { forIndependentPulse: false },
+    )
+    assert.deepEqual(kinds, [])
+  })
+
+  it('buildMarathonContentionBreachKinds includes pulse_contract only for independent pulse', () => {
+    const input = {
+      pulseContractBreach: true,
+      connectPathPartitionDetected: false,
+      connectPartitionPresent: false,
+      latencyDeltaRescueEligible: false,
+      silentGenerationEndPresent: false,
+      coldResumePresent: false,
+      tokenGapRescueIneffective: false,
+      frozenQuicCursorCount: 0,
+    }
+    assert.deepEqual(
+      buildMarathonContentionBreachKinds(input, { forIndependentPulse: true }),
+      ['pulse_contract_breach'],
+    )
+    assert.deepEqual(buildMarathonContentionBreachKinds(input, { forIndependentPulse: false }), [])
+  })
+
+  it('buildMarathonContentionBreachKinds wires frozen_quic_cursor', () => {
+    const kinds = buildMarathonContentionBreachKinds(
+      {
+        pulseContractBreach: false,
+        connectPathPartitionDetected: false,
+        connectPartitionPresent: false,
+        latencyDeltaRescueEligible: false,
+        silentGenerationEndPresent: false,
+        coldResumePresent: false,
+        tokenGapRescueIneffective: false,
+        frozenQuicCursorCount: 3,
+      },
+      { forIndependentPulse: false },
+    )
+    assert.deepEqual(kinds, ['frozen_quic_cursor'])
+  })
+
+  it('denies token_gap rescue bundle pulse on green path without definitive breach', () => {
+    const decision = evaluateMarathonContentionBudget({
+      nowMs,
+      lastAuthoritativeConnectPathDelayMs: 291,
+      lastObservabilityDialAtMs: nowMs - 30_000,
+      breachKinds: [],
+      independentPulse: false,
+      dialTrigger: 'token_gap',
+    })
+    assert.equal(decision.outcome, 'deny')
+  })
+
   it('breach bypasses green cap for rescue dial trigger', () => {
     const decision = evaluateMarathonContentionBudget({
       nowMs,
       lastAuthoritativeConnectPathDelayMs: 291,
       lastObservabilityDialAtMs: nowMs - 10_000,
-      breachKinds: ['token_gap'],
+      breachKinds: ['connect_partition'],
       independentPulse: false,
       dialTrigger: 'token_gap',
     })
