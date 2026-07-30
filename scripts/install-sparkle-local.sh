@@ -31,6 +31,20 @@ launch_sparkle_via_finder() {
   osascript -e 'tell application "Finder" to open POSIX file "/Applications/Sparkle.app"' 2>/dev/null || true
 }
 
+wait_for_mihomo_after_install() {
+  local waited=0
+  local max_wait=60
+  while [[ $waited -lt $max_wait ]]; do
+    if pgrep -f '/Applications/Sparkle.app/Contents/Resources/sidecar/mihomo' >/dev/null 2>&1; then
+      log "mihomo core detected ${waited}s after GUI launch"
+      return 0
+    fi
+    sleep 3
+    waited=$((waited + 3))
+  done
+  log "WARN: mihomo not detected within ${max_wait}s — GUI startCore may still be running generateProfile"
+}
+
 print_gatekeeper_hint() {
   log ""
   log "Gatekeeper fallback: Finder → /Applications → Control+click Sparkle.app → Open → Open again."
@@ -131,12 +145,14 @@ launch_sparkle_via_finder
 sleep 5
 if pgrep -x Sparkle >/dev/null 2>&1; then
   log "Done. Sparkle $VER GUI running from /Applications"
+  wait_for_mihomo_after_install
 else
   log "WARN: GUI not running yet — retrying Finder launch..."
   launch_sparkle_via_finder
   sleep 5
   if pgrep -x Sparkle >/dev/null 2>&1; then
     log "Done. Sparkle $VER GUI running from /Applications"
+    wait_for_mihomo_after_install
   else
     log "WARN: GUI still not running."
     print_gatekeeper_hint
