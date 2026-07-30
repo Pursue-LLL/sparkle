@@ -1,6 +1,15 @@
 # Sparkle Bugfix Log
 
-> **2026-07-30 最新**：**BUG-2026-07-30-007** — `15e0c619` HY2 mass PING · Phase 6 R-30/31 · **BUG-2026-07-30-006** R-24 G4 @1.27.3
+> **2026-07-30 最新**：**BUG-2026-07-30-008** — R-27 upgrade 门控 since-line · **BUG-2026-07-30-007** `15e0c619` HY2 · **BUG-2026-07-30-006** @1.27.3
+
+### BUG-2026-07-30-008 · upgrade_post_install_gate_since_line (R-27)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-30 |
+| **症状** | `upgrade:mac` 安装成功但脚本 FAIL：`PostCoreBootstrap failed` — `tail -120` 扫到安装前旧失败行 |
+| **修复** | PostCoreBootstrap / Api2ProbePlane 门控改用 `BUG014_GATE_SINCE_LINE` 偏移 + 单测 |
+| **本地-only** | 见 BUGFIX §AI Agent「本地-only 升级口诀」 |
 
 ### BUG-2026-07-30-007 · v1.27.2 · hy2_mass_ping_split_brain_15e0c619 (Phase 6 R-30/31)
 
@@ -1058,7 +1067,14 @@ bash scripts/install-sparkle-local.sh
 | install 后 **不重签** | install/pkg 后二次 `codesign`（CDHash 变 · BUG-002） |
 | 定责读 triage 证据包 + A 时刻三源 | 用 B 时刻探针否定 A 时刻断连 |
 | **马拉松中禁止 `upgrade-sparkle-local.sh` / install**（conn≥12 或 quiesce ON 时脚本 FAIL） | 马拉松进行中 install Sparkle（会 kill mihomo → Connect ECONNRESET） |
-| 紧急 override 仅 `SPARKLE_FORCE_CORE_RESTART=1` | 无 override 强杀 core |
+| 紧急 override 仅 `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` | 无 override 强杀 core |
+
+**本地-only 升级口诀（无 Apple Developer · R-27）**：
+
+1. **等 cursor_conn=0** 再跑（或明确接受 override 风险）
+2. **只跑** `pnpm run upgrade:mac`（= vite build + asar 校验 + install + 门控）
+3. **新 CDHash 首次**：Finder → Control+点击 → 打开（仅一次；见 `~/.sparkle/last-sparkle-cdhash`）
+4. **验 4 项**：版本 · `pgrep -x Sparkle` · `/tmp/sparkle-mihomo-api.sock` · app-log `generateProfile step=done groups=22`
 
 **验证安装成功**：`defaults read … CFBundleShortVersionString` · `pgrep -x Sparkle` · `/tmp/sparkle-mihomo-api.sock` · app-log 含 `token_gap_nudge outcome=`（**≥1.26.64**）或 `token_gap_rescue_nudge`（成功 dial）。
 
