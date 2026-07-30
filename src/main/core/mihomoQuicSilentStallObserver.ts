@@ -7,9 +7,9 @@ import {
   createMihomoQuicStallTrackedConnection,
   countCursorConnectionsFromMihomo,
   formatMihomoQuicSilentStallLogLine,
-  isHy2QuIcCursorTransportConnection,
+  isMarathonQuIcCursorTransportConnection,
   mihomoQuicSilentStallDedupeKey,
-  resolveHy2LeafFromChains,
+  resolveMarathonQuIcLeafFromChains,
   scanMihomoQuicSilentStalls,
   shouldSkipMihomoQuicSilentStallEmit,
   updateMihomoQuicStallTrackedConnection,
@@ -33,10 +33,10 @@ function syncTrackedConnections(connections: readonly ControllerConnectionDetail
   const nowMs = Date.now()
   for (const connection of connections) {
     liveIds.add(connection.id)
-    if (!isHy2QuIcCursorTransportConnection(connection)) {
+    if (!isMarathonQuIcCursorTransportConnection(connection)) {
       continue
     }
-    const leaf = resolveHy2LeafFromChains(connection.chains ?? [])
+    const leaf = resolveMarathonQuIcLeafFromChains(connection.chains ?? [])
     if (!leaf) {
       continue
     }
@@ -90,8 +90,8 @@ export async function observeMihomoConnectionsForQuicSilentStall(
         error_detail: [
           `kind=${observation.kind}`,
           `stall_ms=${observation.stallMs}`,
-          `frozen_hy2_cursor=${observation.frozenHy2CursorCount}`,
-          `total_hy2_cursor=${observation.totalHy2CursorCount}`,
+          `frozen_quic_cursor=${observation.frozenQuicCursorCount}`,
+          `total_quic_cursor=${observation.totalQuicCursorCount}`,
           `cursor_conn=${observation.cursorConnectionCount}`,
           observation.host ? `host=${observation.host}` : '',
           observation.connectionId ? `connection_id=${observation.connectionId}` : '',

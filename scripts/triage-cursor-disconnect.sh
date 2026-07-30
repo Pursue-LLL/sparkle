@@ -425,6 +425,18 @@ collect_agent_transport_by_ts() {
   fi
 }
 
+write_quic_stall_signals_at_a() {
+  [[ -s "$OUT/sparkle-app-A-window.log" ]] || return 0
+  rg 'MihomoQuicSilentStall|frozen_quic_cursor|mihomo_quic_silent_stall|token_gap_rescue_ineffective|MarathonDataPlaneMutation|marathon_transport_preflight' \
+    "$OUT/sparkle-app-A-window.log" \
+    >"$OUT/sparkle-quic-stall-A-window.log" 2>/dev/null || true
+  if [[ -s "$OUT/sparkle-A-window-network-stability-events.jsonl" ]]; then
+    rg 'mihomo_quic_silent_stall|token_gap_rescue_ineffective|marathon_transport_preflight' \
+      "$OUT/sparkle-A-window-network-stability-events.jsonl" \
+      >"$OUT/sparkle-quic-stall-events-A-window.jsonl" 2>/dev/null || true
+  fi
+}
+
 write_disconnect_facts() {
   [[ -f "$OUT/renderer-disconnect-context.txt" ]] || return 0
   {
@@ -441,6 +453,14 @@ write_disconnect_facts() {
       echo ""
       echo "# failed Cursor dials @ A minute"
       cat "$OUT/core-A-failed-cursor-dials.log"
+    fi
+    if [[ -s "$OUT/sparkle-quic-stall-A-window.log" ]]; then
+      echo ""
+      echo "# R-17/18/19/22 signals @ A (frozen_quic_cursor / rescue ineffective / data-plane guard)"
+      cat "$OUT/sparkle-quic-stall-A-window.log"
+    elif [[ -s "$OUT/sparkle-app-A-window.log" ]]; then
+      echo ""
+      echo "# R-17 frozen_quic_cursor @ A: 0 lines — if QUIC marathon, check Sparkle ≥1.26.97 or HY2-only R-16 blind spot"
     fi
   } >"$OUT/disconnect-facts.txt"
 }
@@ -466,7 +486,7 @@ collect_app_core_at_a() {
         [[ -n "$p" ]] || continue
         local p_esc="${p//-/\\-}"
         rg "${p_esc}" "$f" \
-          | rg 'CursorTransportHealth|L0|L1|hung|VpsL4Probe|Triangulation|defer|protocol upgrade|mihomoChangeProxy|hung_scan_heartbeat' \
+          | rg 'CursorTransportHealth|L0|L1|hung|VpsL4Probe|Triangulation|defer|protocol upgrade|mihomoChangeProxy|hung_scan_heartbeat|MihomoQuicSilentStall|frozen_quic_cursor|token_gap_rescue_ineffective|MarathonDataPlaneMutation|marathon_transport_preflight|marathon_connect_path_pulse' \
           >>"$OUT/sparkle-app-A-window.log" 2>/dev/null || true
       done < <(expand_utc_minute_prefixes "$utc_prefix")
     fi
@@ -543,8 +563,8 @@ write_report_skeleton() {
     fi
     if [[ -s "$OUT/core-A-cursor-hy2.log" ]]; then
       local hy2_burst
-      hy2_burst="$(rg -c 'HY2|hysteria' "$OUT/core-A-cursor-hy2.log" 2>/dev/null || echo 0)"
-      echo "- core @ A HY2-related lines: ${hy2_burst} (see \`core-A-cursor-hy2.log\`)"
+      hy2_burst="$(rg -c 'HY2|hysteria|TUIC|frozen_quic_cursor|MihomoQuicSilentStall' "$OUT/core-A-cursor-hy2.log" 2>/dev/null || echo 0)"
+      echo "- core @ A HY2/TUIC/QUIC-stall lines: ${hy2_burst} (see \`core-A-cursor-hy2.log\` · \`sparkle-quic-stall-A-window.log\`)"
     fi
     if [[ -s "$OUT/app-log-blindspot.txt" ]]; then
       echo "- app-log: \`$(cat "$OUT/app-log-blindspot.txt" | head -1)\`"
@@ -604,6 +624,7 @@ fi
 
 collect_sparkle_jsonl_at_a "$INCIDENT_UTC"
 collect_app_core_at_a "$INCIDENT_LOCAL" "$INCIDENT_UTC"
+write_quic_stall_signals_at_a
 collect_agent_transport_by_ts
 write_disconnect_facts
 collect_mihomo_state

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post-install verification: VPS provider split and retired JP Reality transport.
+# Post-install verification: VPS provider split (JP four canonical leaves).
 # Exit 0 = PASS, non-zero = FAIL (do not claim fix until this passes).
 set -euo pipefail
 
@@ -50,18 +50,15 @@ base_id = vps_id[: -len("-vps")]
 vps_leaves = providers[vps_id].get("proxies") or []
 commercial = providers.get(base_id, {}).get("proxies") or []
 
-if len(vps_leaves) != 6:
-    sys.exit(f"vps provider {vps_id} has {len(vps_leaves)} leaves, want 6")
+if len(vps_leaves) != 4:
+    sys.exit(f"vps provider {vps_id} has {len(vps_leaves)} leaves, want 4")
 
 vps_names = {p.get("name") for p in vps_leaves}
 expected = {
-    "JP-VPS-HY2", "JP-VPS-TLS", "JP-VPS-TUIC",
-    "KR-VPS-HY2", "KR-VPS-Reality", "KR-VPS-TUIC",
+    "JP-VPS-Reality", "JP-VPS-TLS", "JP-VPS-HY2", "JP-VPS-TUIC",
 }
-if not expected.issubset(vps_names):
-    sys.exit(f"missing canonical VPS nodes in {vps_id}: {sorted(vps_names)}")
-if "JP-VPS-Reality" in vps_names:
-    sys.exit(f"retired JP-VPS-Reality reappeared in {vps_id}")
+if vps_names != expected:
+    sys.exit(f"canonical VPS nodes mismatch in {vps_id}: got {sorted(vps_names)} want {sorted(expected)}")
 
 for name in vps_names:
     if name and "VPS" in name and name in {p.get("name") for p in commercial}:

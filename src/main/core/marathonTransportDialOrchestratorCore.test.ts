@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   MTDO_COALESCE_MS,
+  MTDO_OBSERVABILITY_BUNDLE_MS,
   MTDO_CONNECT_PATH_PULSE_INTERVAL_MS,
   selectMarathonTransportDialTrigger,
   shouldCoalesceMarathonTransportDial,
@@ -46,7 +47,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
     const base = {
       nowMs,
       cursorConnectionCount: 80,
-      lastDialAtMs: nowMs - MTDO_COALESCE_MS + 1,
+      lastDialAtMs: nowMs - MTDO_OBSERVABILITY_BUNDLE_MS + 1,
       lastConnectPathPulseAtMs: 0,
       latencyDeltaHigh: false,
       latencyDeltaRescueEligible: false,

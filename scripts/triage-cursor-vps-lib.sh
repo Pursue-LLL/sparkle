@@ -315,6 +315,8 @@ write_log_matrix() {
     echo "| agent-transport @ A | sparkle-A-window-agent-transport-failures.jsonl | $(test -s "$OUT/sparkle-A-window-agent-transport-failures.jsonl" 2>/dev/null && echo yes || echo no) | Guard may not write HTTP resume |"
     echo "| agent-transport by RID | sparkle-agent-transport-by-rid.jsonl | $(test -s "$OUT/sparkle-agent-transport-by-rid.jsonl" 2>/dev/null && echo yes || echo no) | |"
     echo "| app CTHC @ A | sparkle-app-A-window.log | $(test -s "$OUT/sparkle-app-A-window.log" 2>/dev/null && echo yes || echo no) | see app-log-blindspot.txt |"
+    echo "| R-17 QUIC stall @ A | sparkle-quic-stall-A-window.log | $(test -s "$OUT/sparkle-quic-stall-A-window.log" 2>/dev/null && echo yes || echo no) | frozen_quic_cursor · ≥1.26.97 |"
+    echo "| R-17 events @ A | sparkle-quic-stall-events-A-window.jsonl | $(test -s "$OUT/sparkle-quic-stall-events-A-window.jsonl" 2>/dev/null && echo yes || echo no) | network-stability-events |"
     echo "| core @ A local +08 | core-A-cursor-hy2.log | $(test -s "$OUT/core-A-cursor-hy2.log" 2>/dev/null && echo yes || echo no) | filter ${INCIDENT_LOCAL:-n/a} |"
     echo "| mihomo VPS history | mihomo-vps-history-last8.txt | $(test -s "$OUT/mihomo-vps-history-last8.txt" 2>/dev/null && echo yes || echo no) | UI 测速 history[-8] |"
     echo "| VPS V5.2 | vps-v52-summary.txt | $(test -s "$OUT/vps-v52-summary.txt" 2>/dev/null && echo yes || echo no) | bypass TUN |"

@@ -41,6 +41,10 @@ export function setHy2TunnelVitalityDialOverrideForTests(
   testHy2TunnelVitalityDialOverride = override
 }
 
+export function getLastHy2TunnelVitalityAtMs(): number {
+  return lastHy2TunnelVitalityAtMs
+}
+
 export function getLastHy2TunnelVitalityAtMsForTests(): number {
   return lastHy2TunnelVitalityAtMs
 }

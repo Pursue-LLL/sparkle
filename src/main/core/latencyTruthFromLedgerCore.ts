@@ -37,10 +37,15 @@ export function isVpsBodyBenchmarkLedgerRow(row: Api2ProbeLedgerRow): boolean {
   )
 }
 
+export const MAC_FULL_PATH_LATENCY_METHODS = new Set<Api2ProbeLedgerRow['method']>([
+  MAC_FULL_PATH_LATENCY_METHOD,
+  'marathon_connect_path_pulse',
+])
+
 export function isMacFullPathLatencyLedgerRow(row: Api2ProbeLedgerRow): boolean {
   return (
     row.scope === 'active' &&
-    row.method === MAC_FULL_PATH_LATENCY_METHOD &&
+    MAC_FULL_PATH_LATENCY_METHODS.has(row.method) &&
     row.ok &&
     row.latency_ms > 0 &&
     row.authoritative !== false

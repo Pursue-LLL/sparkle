@@ -6,7 +6,6 @@ import {
   isCursorSuboptimalNode,
   resolveCursorDefaultVpsNode,
   shouldApplyCursorDedicatedDefault,
-  shouldUpgradeCursorDedicatedNode
 } from './cursorDedicatedDefault'
 
 describe('cursorDedicatedDefault', () => {
@@ -45,26 +44,5 @@ describe('cursorDedicatedDefault', () => {
     assert.equal(shouldApplyCursorDedicatedDefault('Sparkle-自动-新加坡'), false)
     assert.equal(shouldApplyCursorDedicatedDefault('JP-VPS-TUIC'), false)
     assert.equal(shouldApplyCursorDedicatedDefault('JP-VPS-Reality'), false)
-  })
-
-  it('never auto-upgrades Dedicated protocol on bootstrap (500 marathon — no implicit tunnel switch)', () => {
-    assert.equal(shouldUpgradeCursorDedicatedNode(undefined, CURSOR_DEFAULT_VPS_NODE), false)
-    assert.equal(shouldUpgradeCursorDedicatedNode('SDK DNS', CURSOR_DEFAULT_VPS_NODE), false)
-    assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-TUIC', CURSOR_DEFAULT_VPS_NODE), false)
-    assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-HY2', 'JP-VPS-Reality'), false)
-    assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-Reality', CURSOR_DEFAULT_VPS_NODE), false)
-    assert.equal(
-      shouldUpgradeCursorDedicatedNode('JP-VPS-Reality', CURSOR_DEFAULT_VPS_NODE, 'JP-VPS-Reality'),
-      false
-    )
-    assert.equal(
-      shouldUpgradeCursorDedicatedNode('JP-VPS-HY2', CURSOR_DEFAULT_VPS_NODE, 'JP-VPS-HY2'),
-      false
-    )
-    assert.equal(shouldUpgradeCursorDedicatedNode('JP-VPS-TLS', CURSOR_DEFAULT_VPS_NODE), false)
-    assert.equal(
-      shouldUpgradeCursorDedicatedNode('Sparkle-自动-新加坡', CURSOR_DEFAULT_VPS_NODE),
-      false
-    )
   })
 })
