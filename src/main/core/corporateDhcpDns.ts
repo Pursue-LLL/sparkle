@@ -23,7 +23,7 @@ export async function readDhcpPrivateDnsServers(): Promise<string[]> {
   }
 
   try {
-    const { stdout } = await execFileAsync('ipconfig', ['getpacket', device])
+    const { stdout } = await execFileAsync('ipconfig', ['getpacket', device], { timeout: 3000 })
     return parseDhcpDnsServersFromIpconfig(stdout)
   } catch {
     return []

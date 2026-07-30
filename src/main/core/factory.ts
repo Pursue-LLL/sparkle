@@ -31,11 +31,23 @@ import {
   removeNonSubscriptionProxyGroups,
   rewriteMissingRuleProxyGroupTargets
 } from './profileGroupNormalize'
+import { ensureCustomProxyGroups } from './customProxyGroups'
+import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
+import { resolveEffectiveRegionPriority } from './regionPriority'
+import { ensureVpsDirectBypass } from './vpsDirectBypass'
+import { injectCursorDomainRules } from './cursorRuleInjection'
+import { ensureCorporateDirectRules, ensureCorporateDnsPolicy } from './corporateDirectRules'
+import { ensureFakeIpRoutingIntegrity } from './fakeIpRoutingIntegrity'
+import { ensureDnsFallbackIntegrity, ensureTunStrictRoute } from './dnsFallbackIntegrity'
+import { applyHysteria2ProxiesQuicStability } from './hysteria2QuicStability'
+import { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } from './vlessVisionMuxGuardCore'
 import { showNotification } from '../utils/notification'
 import {
   CURSOR_DEDICATED_GROUP_NAME
 } from './cursorProxyGroup'
 import { appendAppLog } from '../utils/log'
+import { performance } from 'node:perf_hooks'
+import { readFile } from 'fs/promises'
 
 let cursorDedicatedGroupRenameNotified = false
 
@@ -45,7 +57,79 @@ let runtimeConfigStr: string,
   overrideProfileStr: string,
   runtimeConfig: MihomoConfig
 
+let generateProfileChain: Promise<void> = Promise.resolve()
+let generateProfileLastStep = 'idle'
+
+const GENERATE_PROFILE_WALL_CLOCK_MS = 60_000
+
+async function logGenerateProfileStep(step: string, startedAtMs: number): Promise<void> {
+  generateProfileLastStep = step
+  const elapsedMs = Math.round(performance.now() - startedAtMs)
+  await appendAppLog(`[Factory]: generateProfile step=${step} elapsed_ms=${elapsedMs}\n`)
+}
+
+/** Read merged work/config.yaml when in-memory runtimeConfig is empty (post-install / hung regen). */
+export async function loadRuntimeConfigFromDisk(): Promise<MihomoConfig | null> {
+  try {
+    const { diffWorkDir = false } = await getAppConfig()
+    const { current } = await getProfileConfig()
+    const configPath = mihomoWorkConfigPath(diffWorkDir ? current : 'work')
+    const raw = await readFile(configPath, 'utf-8')
+    const parsed = parseYaml<MihomoConfig>(raw)
+    return typeof parsed === 'object' && parsed ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** Populate in-memory runtime from disk when regen failed or was skipped. */
+export async function hydrateRuntimeConfigFromDiskIfEmpty(): Promise<boolean> {
+  const groupCount = (runtimeConfig?.['proxy-groups'] as unknown[] | undefined)?.length ?? 0
+  if (groupCount > 0) {
+    return false
+  }
+  const disk = await loadRuntimeConfigFromDisk()
+  if (!disk) {
+    return false
+  }
+  runtimeConfig = disk
+  runtimeConfigStr = stringifyYaml(disk)
+  await appendAppLog(
+    `[Factory]: hydrate_runtime_from_disk groups=${(disk['proxy-groups'] as unknown[] | undefined)?.length ?? 0}\n`
+  )
+  return true
+}
+
 export async function generateProfile(): Promise<void> {
+  const run = async (): Promise<void> => {
+    generateProfileLastStep = 'queued'
+    await Promise.race([
+      generateProfileImpl(),
+      new Promise<void>((_, reject) => {
+        setTimeout(() => {
+          reject(
+            new Error(
+              `generateProfile wall-clock timeout after ${GENERATE_PROFILE_WALL_CLOCK_MS}ms last_step=${generateProfileLastStep}`
+            )
+          )
+        }, GENERATE_PROFILE_WALL_CLOCK_MS)
+      })
+    ])
+  }
+  const next = generateProfileChain.then(run, run)
+  generateProfileChain = next.catch(async (error) => {
+    const message = error instanceof Error ? error.message : String(error)
+    await appendAppLog(
+      `[Factory]: generateProfile failed err=${message} last_step=${generateProfileLastStep}\n`
+    )
+    await hydrateRuntimeConfigFromDiskIfEmpty()
+  })
+  await next
+}
+
+async function generateProfileImpl(): Promise<void> {
+  const stepStartedAtMs = performance.now()
+  await logGenerateProfileStep('begin', stepStartedAtMs)
   const { current } = await getProfileConfig()
   const { diffWorkDir = false, controlDns = true, controlSniff = true } = await getAppConfig()
   const currentProfileConfig = await getProfile(current)
@@ -53,6 +137,7 @@ export async function generateProfile(): Promise<void> {
   currentProfileStr = stringifyYaml(currentProfileConfig)
   const currentProfile = await overrideProfile(current, currentProfileConfig)
   overrideProfileStr = stringifyYaml(currentProfile)
+  await logGenerateProfileStep('override_profile', stepStartedAtMs)
   const controledMihomoConfig = await getControledMihomoConfig()
 
   const configToMerge = JSON.parse(JSON.stringify(controledMihomoConfig))
@@ -72,8 +157,10 @@ export async function generateProfile(): Promise<void> {
 
     if (proxies.length > 0) {
       await setupProfileProviders(current, proxies)
+      await logGenerateProfileStep('setup_profile_providers', stepStartedAtMs)
       const baseConfig = generateBaseConfigWithProvider(currentProfile, current)
       profile = deepMerge(JSON.parse(JSON.stringify(baseConfig)), configToMerge)
+      await logGenerateProfileStep('merge_provider_base', stepStartedAtMs)
     } else {
       profile = deepMerge(JSON.parse(JSON.stringify(currentProfile)), configToMerge)
     }
@@ -82,10 +169,6 @@ export async function generateProfile(): Promise<void> {
   }
 
   if (profile.proxies && Array.isArray(profile.proxies)) {
-    const { applyHysteria2ProxiesQuicStability } = await import('./hysteria2QuicStability')
-    const { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } = await import(
-      './vlessVisionMuxGuardCore'
-    )
     const guarded = applyVlessVisionMuxGuard(
       applyHysteria2ProxiesQuicStability(profile.proxies as unknown[])
     )
@@ -100,12 +183,12 @@ export async function generateProfile(): Promise<void> {
   }
 
   await cleanProfile(profile, controlDns, controlSniff)
+  await logGenerateProfileStep('clean_profile', stepStartedAtMs)
   dedupeProxyGroupProviderUse(profile)
   const subscriptionGroupNames = collectSubscriptionGroupNames(currentProfile)
   const leafProxyNames = (extractProxies(currentProfile) as { name?: string }[])
     .map((proxy) => proxy.name)
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
-  const { ensureCustomProxyGroups } = await import('./customProxyGroups')
   const providerProfileId = current && current !== 'default' ? current : undefined
   const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
@@ -122,37 +205,41 @@ export async function generateProfile(): Promise<void> {
   }
   rewriteMissingRuleProxyGroupTargets(profile)
   removeNonSubscriptionProxyGroups(profile, subscriptionGroupNames)
-  const { ensureSelectGroupsDefaultToAutoSwitch } = await import('./defaultAutoSwitchProxy')
   const { proxySwitchPriority = [] } = await getAppConfig()
-  const { resolveEffectiveRegionPriority } = await import('./regionPriority')
   ensureSelectGroupsDefaultToAutoSwitch(profile, providerProfileId, {
     leafProxyNames,
     regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority)
   })
-  const { ensureVpsDirectBypass } = await import('./vpsDirectBypass')
+  await logGenerateProfileStep('auto_switch_groups', stepStartedAtMs)
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
+  await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)
   const { cursorBidiOptimize = true, cursorProxyAppPathPrefixes } = await getAppConfig()
   if (cursorBidiOptimize !== false) {
-    const { injectCursorDomainRules } = await import('./cursorRuleInjection')
     injectCursorDomainRules(profile, cursorProxyAppPathPrefixes ?? [])
   }
-  const { ensureCorporateDirectRules, ensureCorporateDnsPolicy } = await import('./corporateDirectRules')
+  await logGenerateProfileStep('cursor_rules', stepStartedAtMs)
   ensureCorporateDirectRules(profile)
   await ensureCorporateDnsPolicy(profile)
-  const { ensureFakeIpRoutingIntegrity } = await import('./fakeIpRoutingIntegrity')
+  await logGenerateProfileStep('corporate_dns', stepStartedAtMs)
   ensureFakeIpRoutingIntegrity(profile)
-  const { ensureDnsFallbackIntegrity, ensureTunStrictRoute } = await import('./dnsFallbackIntegrity')
   ensureDnsFallbackIntegrity(profile)
   ensureTunStrictRoute(profile)
+  await logGenerateProfileStep('integrity_patches', stepStartedAtMs)
 
   runtimeConfig = profile
   runtimeConfigStr = stringifyYaml(profile)
+  await logGenerateProfileStep('stringify_runtime', stepStartedAtMs)
   if (diffWorkDir) {
     await prepareProfileWorkDir(current)
+    await logGenerateProfileStep('prepare_work_dir', stepStartedAtMs)
   }
   await writeFile(
     diffWorkDir ? mihomoWorkConfigPath(current) : mihomoWorkConfigPath('work'),
     runtimeConfigStr
+  )
+  await logGenerateProfileStep(
+    `done groups=${(profile['proxy-groups'] as unknown[] | undefined)?.length ?? 0}`,
+    stepStartedAtMs
   )
 }
 

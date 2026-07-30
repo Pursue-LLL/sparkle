@@ -1,6 +1,26 @@
 # Sparkle Bugfix Log
 
-> **2026-07-30 最新**：**BUG-2026-07-30-003** — R-24 contention breach closure @ **1.26.99** · **BUG-2026-07-30-002** R-23 @1.26.98 · **BUG-2026-07-30-001** R-17–22 @1.26.97
+> **2026-07-30 最新**：**BUG-2026-07-30-005** — R-26 generateProfile guard @ **1.27.2** · **BUG-2026-07-30-004** R-25 @1.27.1
+
+### BUG-2026-07-30-005 · v1.27.2 · generate_profile_wall_clock_guard (R-26)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-30 — pkg **1.27.2** |
+| **症状** | mutex 首 call hang → 30min 全局阻塞 startCore；fail 后 runtime 仍空 |
+| **修复** | 60s wall-clock timeout + last_step · fail→hydrate disk · install 60s mihomo 探测 |
+| **证据** | app-log 09:29–09:59 vps 后无 log 直至杀进程 |
+
+### BUG-2026-07-30-004 · v1.27.1 · post_install_generate_profile_ui_groups_orphan (R-25)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-30 — pkg **1.27.1** |
+| **症状** | marathon force install 后 GUI **仅 GLOBAL** · `work/config.yaml` mtime 冻结 · app-log 反复 `[Provider]: vless_vision_mux_guard` 无 `[Factory]: generateProfile step=done` |
+| **PRIMARY 根因** | ① `generateProfile()` 并发/卡死 → `runtimeConfig` 未写入 → `mihomoGroups()` 只匹配 GLOBAL ② install 脚本 kill service 后 GUI `startCore` 被 guard 阻断，core 孤儿 |
+| **修复内容** | R-25 ① `generateProfile` 串行 mutex + 分步 elapsed_ms 日志 ② `mihomoGroups` disk fallback（`work/config.yaml` 22 groups）③ DHCP/DNS resolve 3s timeout ④ 待 install 后 core bootstrap |
+| **证据** | app-log:13899-13912 Provider×N 无 Factory done · disk config groups=22 · mihomoApi.ts:206 runtime empty → UI GLOBAL-only |
+| **验收** | 重启后 UI 显示 22 组 · app-log 出现 `generateProfile step=done groups=22` |
 
 ### BUG-2026-07-30-003 · v1.26.99 · marathon_contention_breach_closure_r24 (R-24)
 

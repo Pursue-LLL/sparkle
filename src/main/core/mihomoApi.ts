@@ -4,7 +4,7 @@ import { mainWindow } from '..'
 import WebSocket from 'ws'
 import { tray } from '../resolve/tray'
 import { calcTraffic } from '../utils/calc'
-import { getRuntimeConfig } from './factory'
+import { getRuntimeConfig, hydrateRuntimeConfigFromDiskIfEmpty, loadRuntimeConfigFromDisk } from './factory'
 import { floatingWindow } from '../resolve/floatingWindow'
 import { mihomoIpcPath, serviceIpcPath } from '../utils/dirs'
 import { publishMihomoLog } from '../utils/log'
@@ -204,8 +204,18 @@ export const mihomoGroups = async (): Promise<ControllerMixedGroup[]> => {
   const resolveMembers = (memberNames: string[]) =>
     resolveGroupMemberProxies(memberNames, proxies.proxies, providerLookup)
   const runtime = await getRuntimeConfig()
+  let runtimeGroupDefs =
+    (runtime?.['proxy-groups'] as { name: string; url?: string }[] | undefined) ?? []
+  if (runtimeGroupDefs.length === 0) {
+    const diskRuntime = await loadRuntimeConfigFromDisk()
+    runtimeGroupDefs =
+      (diskRuntime?.['proxy-groups'] as { name: string; url?: string }[] | undefined) ?? []
+    if (runtimeGroupDefs.length > 0) {
+      await hydrateRuntimeConfigFromDiskIfEmpty()
+    }
+  }
   const groups: ControllerMixedGroup[] = []
-  runtime?.['proxy-groups']?.forEach((group: { name: string; url?: string }) => {
+  runtimeGroupDefs.forEach((group: { name: string; url?: string }) => {
     const { name, url } = group
     if (proxies.proxies[name] && 'all' in proxies.proxies[name] && !proxies.proxies[name].hidden) {
       const newGroup = proxies.proxies[name]

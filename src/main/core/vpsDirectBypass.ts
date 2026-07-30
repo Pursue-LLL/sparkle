@@ -1,6 +1,20 @@
 import dns from 'node:dns'
 
 const IPV4_PATTERN = /^(\d{1,3}\.){3}\d{1,3}$/
+const VPS_DNS_RESOLVE_TIMEOUT_MS = 3000
+
+async function resolve4WithTimeout(host: string): Promise<string[]> {
+  try {
+    return await Promise.race([
+      dns.promises.resolve4(host),
+      new Promise<string[]>((_, reject) => {
+        setTimeout(() => reject(new Error('dns resolve timeout')), VPS_DNS_RESOLVE_TIMEOUT_MS)
+      })
+    ])
+  } catch {
+    return []
+  }
+}
 
 export const VPS_SSH_HOST_ALIASES = ['jp-vps'] as const
 
@@ -67,7 +81,7 @@ export async function collectVpsServerIps(proxies: unknown[]): Promise<string[]>
         }
       } else {
         try {
-          const resolved = await dns.promises.resolve4(server)
+          const resolved = await resolve4WithTimeout(server)
           for (const ip of resolved) {
             if (isPublicIpv4(ip)) {
               ips.add(ip)

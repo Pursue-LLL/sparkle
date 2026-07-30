@@ -2,13 +2,21 @@
 // [OUTPUT] syncMarathonQuiesceIfNeeded · isMarathonQuiesceProxyHealthPaused · getMarathonQuiesceSnapshot
 // [POS] P9 + R-24 CB-3：conn≥12 quiesce ON/OFF；health-check.enable 热 patch + mihomo reload。
 
+import { getProfileConfig } from '../config'
+import { getAppConfig } from '../config/app'
+import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import { appendAppLog } from '../utils/log'
+import {
+  patchRuntimeProxyProviderHealthCheckEnable,
+} from './factory'
 import {
   advanceMarathonQuiesceState,
   createInitialMarathonQuiesceState,
   isMarathonQuiesceActive,
   type MarathonQuiesceState,
 } from './marathonQuiesceCore'
+import { reloadMihomoConfigFromDisk } from './mihomoApi'
+import { refreshMarathonCoreRestartGuardStateFile } from './marathonCoreRestartGuard'
 
 let quiesceState: MarathonQuiesceState = createInitialMarathonQuiesceState()
 let lastObservedCursorConn = 0
@@ -37,9 +45,6 @@ async function applyMarathonQuiesceHealthCheckPatch(
   cursorConnectionCount: number,
 ): Promise<void> {
   try {
-    const { getProfileConfig, getAppConfig } = await import('../config')
-    const { patchRuntimeProxyProviderHealthCheckEnable } = await import('./factory')
-    const { reloadMihomoConfigFromDisk } = await import('./mihomoApi')
     const { current } = await getProfileConfig()
     const { diffWorkDir = false } = await getAppConfig()
     const changed = await patchRuntimeProxyProviderHealthCheckEnable(current, enable, diffWorkDir)
@@ -52,7 +57,6 @@ async function applyMarathonQuiesceHealthCheckPatch(
         ` data_plane_action=${changed ? 'reload' : 'none'}\n`,
     )
   } catch (error) {
-    const { formatUnknownErrorForLog } = await import('../utils/formatUnknownErrorForLog')
     await appendAppLog(
       `[MarathonQuiesce]: health_check_patch_failed enable=${enable ? 1 : 0}` +
         ` cursor_conn=${cursorConnectionCount}` +
@@ -88,7 +92,6 @@ export async function syncMarathonQuiesceIfNeeded(
 async function refreshMarathonCoreRestartGuardStateAfterQuiesce(
   cursorConnectionCount: number,
 ): Promise<void> {
-  const { refreshMarathonCoreRestartGuardStateFile } = await import('./marathonCoreRestartGuard')
   await refreshMarathonCoreRestartGuardStateFile({
     quiesceActive: isMarathonQuiesceActive(quiesceState),
     cursorConnectionCount,
