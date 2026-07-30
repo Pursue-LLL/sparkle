@@ -1,11 +1,5 @@
 # Sparkle Bugfix Log
 
-> **2026-07-30 最新**：**BUG-2026-07-30-002** — marathon probe contention · TLS 07:06 · **R-23 待授权** · **BUG-2026-07-30-001** R-17–22 @1.26.97
-
-### BUG-2026-07-30-002 · v1.26.97 · marathon_probe_contention_amplifies_cursor_disconnect (R-23)
-
-| 字段 | 内容 |
-| --- | --- |
 > **2026-07-30 最新**：**BUG-2026-07-30-003** — R-24 contention breach closure @ **1.26.99** · **BUG-2026-07-30-002** R-23 @1.26.98 · **BUG-2026-07-30-001** R-17–22 @1.26.97
 
 ### BUG-2026-07-30-003 · v1.26.99 · marathon_contention_breach_closure_r24 (R-24)

@@ -35,7 +35,8 @@
 | `MarathonDialTolerance` | Cursor 连接 ≥12 时 VPS Reality/HY2 leaf **dial timeout 5s→45s**（热更新 provider，不切节点、不关连接） |
 | `transport_pair + api2geo` | ledger 同时探 `api2.cursor.sh` + `api2geo.cursor.sh`；api2 绿但 api2geo 红 → `transport_partition_stale`（**只观测，不 failover**） |
 | `session_transport_nudge` | HY2 且 cursor_conn≥12 时每 **40s** api2+api2geo 短探针（**保活，非 failover**） |
-| **P9 Marathon Quiesce** | conn≥12：`health-check.enable=false` + 暂停 `proxyHealthMonitor`（**quiesce 全周期含 hysteresis**）+ UI 过滤 delay=0 + **Marathon 静默** badge（**1.26.53+** · **2.1 @1.26.56**） |
+| **P9 Marathon Quiesce** | conn≥12：`health-check.enable=false` 热 patch + mihomo reload + 暂停 `proxyHealthMonitor`（**quiesce 全周期含 hysteresis**）+ UI 过滤 delay=0 + **Marathon 静默** badge（**R-24 @1.26.99**） |
+| **R-24 Contention Budget** | green 基线 ≤1 triple-pulse/5min · rescue bundle pulse deny 用 cached · `[MarathonContentionBudget] outcome=deny`（**1.26.99+**） |
 | **P9 Phase 2 Dial Plane** | `shouldAllowObservabilityDial` · block `/healthcheck` API @ quiesce · probe_cycle defer · warmup/marketplace skip · Tray last-successful · nudge → ledger · **柱图剔除 nudge**（**1.26.56+**） |
 | **P10 MarathonCoreRestartGuard** | quiesce active 或 conn≥12：**block core cold shutdown** + install/upgrade PRE-gate · `[CoreLifecycle]` reason log · override `SPARKLE_FORCE_CORE_RESTART=1`（**1.26.58+**） |
 | **P13 MTCP Rescue/Warmth** | `MarathonWarmthTrigger` · conn≥80 **warmth defer · rescue 永不 defer** · rescue bypass P12 dial budget（**1.26.63+**） |

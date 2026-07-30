@@ -43,7 +43,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描；**L0–L3 marathon hard-disable**（conn≥12/quiesce）；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan |
 | `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a** ~85min 段轮换检测 @ hung_scan · `[SegmentHandoff] outcome=due phase=detect_only`（execute 在 Guard312 WB） |
 | `marathonStreamRegistryCore.ts` / `marathonTransportDialReader.ts`       | §22 active RID registry · pendingTool 门控 |
-| `marathonTransportDialOrchestratorCore.ts` / `marathonTransportDialOrchestrator.ts` | §22 MTDO · **P15/P16**：独立 60s pulse · synthetic partition · `latency_delta_rescue` · ultra_conn 观测 |
+| `marathonTransportDialOrchestratorCore.ts` / `marathonTransportDialOrchestrator.ts` | §22 MTDO · **P15/P16/R-24**：独立 60s pulse · rescue bundle 分流 breach · `MarathonContentionBudget` deny |
+| `marathonContentionBudgetCore.ts` | **R-23/R-24** green 基线 observability cap · `buildMarathonContentionBreachKinds` definitive breach SSOT |
 | `latencyDeltaGateCore.ts`                                               | §22 Mac 全路径 vs VPS 本体 P50 delta 告警（defer warmth only） |
 | `mihomoProbeCoordinator.ts`                                             | 全局 mihomo delay 槽（max 2）与商业 batch 并发 cap                                                                                                                    |
 | `marathonObservabilityDialBudgetCore.ts` / `marathonObservabilityDialBudgetQueueCore.ts` / `marathonObservabilityDialBudget.ts` | **P12** conn≥12/quiesce observability dial 单槽串行（QueueCore 无 Electron 依赖） |

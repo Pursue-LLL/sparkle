@@ -37,6 +37,7 @@ describe('marathonTransportDialOrchestrator G10/G12 static', () => {
     assert.match(src, /buildMarathonContentionBreachKinds/)
     assert.match(src, /getMarathonFrozenQuicCursorCount/)
     assert.match(src, /lastMtdoDialAtMs = nowMs/)
+    assert.match(src, /executed: false/)
   })
 })
 
