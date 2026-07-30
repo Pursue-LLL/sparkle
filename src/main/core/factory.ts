@@ -138,7 +138,7 @@ export async function generateProfile(): Promise<void> {
   }
   const { ensureCorporateDirectRules, ensureCorporateDnsPolicy } = await import('./corporateDirectRules')
   ensureCorporateDirectRules(profile)
-  ensureCorporateDnsPolicy(profile)
+  await ensureCorporateDnsPolicy(profile)
   const { ensureFakeIpRoutingIntegrity } = await import('./fakeIpRoutingIntegrity')
   ensureFakeIpRoutingIntegrity(profile)
   const { ensureDnsFallbackIntegrity, ensureTunStrictRoute } = await import('./dnsFallbackIntegrity')
