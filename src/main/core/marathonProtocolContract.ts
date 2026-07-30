@@ -6,6 +6,7 @@ import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import {
   evaluateMarathonProtocolColdStartGate,
   formatMarathonProtocolColdStartGateLogLine,
+  formatMarathonProtocolLateStartLogLine,
   formatMarathonProtocolSwitchBlockedLogLine,
   MARATHON_PROTOCOL_COLD_START_GATE_COOLDOWN_MS,
   type MarathonProtocolSwitchBlockReason,
@@ -13,9 +14,11 @@ import {
 import { evaluateMarathonProtocolSwitchDecision } from './marathonProtocolContractCore'
 
 let lastColdStartGatePromptAtMs = 0
+let coldStartGatePromptCount = 0
 
 export function resetMarathonProtocolContractForTests(): void {
   lastColdStartGatePromptAtMs = 0
+  coldStartGatePromptCount = 0
 }
 
 export interface MarathonProtocolSwitchBlockResult {
@@ -96,9 +99,13 @@ export async function runMarathonProtocolColdStartGateIfDue(
   }
 
   const nowMs = Date.now()
-  if (nowMs - lastColdStartGatePromptAtMs < MARATHON_PROTOCOL_COLD_START_GATE_COOLDOWN_MS) {
+  if (
+    coldStartGatePromptCount > 0 &&
+    nowMs - lastColdStartGatePromptAtMs < MARATHON_PROTOCOL_COLD_START_GATE_COOLDOWN_MS
+  ) {
     return
   }
+  coldStartGatePromptCount += 1
   lastColdStartGatePromptAtMs = nowMs
 
   const { appendAppLog } = await import('../utils/log')
@@ -108,6 +115,36 @@ export async function runMarathonProtocolColdStartGateIfDue(
   if (accepted) {
     await executeMarathonProtocolColdStartUpgrade(gate.activeNode, gate.recommendedNode)
   }
+}
+
+export async function notifyMarathonStartedOnSuboptimalLeafIfNeeded(
+  cursorConnectionCount: number,
+  activeNode: string,
+): Promise<void> {
+  const trimmed = activeNode.trim()
+  if (!trimmed || cursorConnectionCount <= 0) {
+    return
+  }
+  const { isCursorSuboptimalNode } = await import('./cursorDedicatedDefault')
+  if (!isCursorSuboptimalNode(trimmed)) {
+    return
+  }
+  const { appendAppLog } = await import('../utils/log')
+  await appendAppLog(
+    formatMarathonProtocolLateStartLogLine({
+      activeNode: trimmed,
+      cursorConnectionCount,
+    }),
+  )
+  const { appendNetworkStabilityEvent } = await import('./networkStabilityMonitor')
+  await appendNetworkStabilityEvent({
+    ts: new Date().toISOString(),
+    kind: 'transport_recovery',
+    probe_ok: true,
+    recovery_action: 'none',
+    hung_connection_count: cursorConnectionCount,
+    error_detail: `marathon_started_on_suboptimal_leaf node=${trimmed}`,
+  })
 }
 
 export async function logMarathonProtocolSwitchBlocked(input: {
