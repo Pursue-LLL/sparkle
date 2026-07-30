@@ -39,17 +39,19 @@ describe('corporateDirectRules', () => {
     assert.equal(rules[6], 'MATCH,PROXY')
   })
 
-  it('adds system nameserver policy for corporate intranet domains', () => {
+  it('adds office nameserver policy for corporate intranet domains', async () => {
     const profile = {
       dns: { enable: true, 'nameserver-policy': { '+.cursor.sh': ['tls://223.5.5.5'] } }
     } as unknown as MihomoConfig
 
-    ensureCorporateDnsPolicy(profile)
+    await ensureCorporateDnsPolicy(profile, {
+      servers: ['10.200.150.212', '10.200.150.211']
+    })
 
     const policy = (profile.dns as MihomoDNSConfig)['nameserver-policy'] as Record<string, string[]>
     assert.deepEqual(policy['+.neibu.koolearn.com'], ['10.200.150.212', '10.200.150.211'])
     assert.deepEqual(policy['+.koolearn.com'], ['10.200.150.212', '10.200.150.211'])
-    assert.deepEqual(policy['+.staff.neworiental.org'], ['system'])
+    assert.deepEqual(policy['+.staff.neworiental.org'], ['10.200.150.212', '10.200.150.211'])
     assert.deepEqual(policy['+.cursor.sh'], ['tls://223.5.5.5'])
   })
 })

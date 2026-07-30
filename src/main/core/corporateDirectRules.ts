@@ -8,13 +8,12 @@ const CORPORATE_DIRECT_RULES = [
   'DOMAIN-KEYWORD,neibu.koolearn.com,DIRECT'
 ] as const
 
-/** Intranet DNS — office DHCP servers (Sparkle TUN replaces system DNS with 223.5.5.5). */
-export const CORPORATE_NAMESERVER_POLICY = {
-  '+.koolearn.com': ['10.200.150.212', '10.200.150.211'],
-  '+.neibu.koolearn.com': ['10.200.150.212', '10.200.150.211'],
-  '+.staff.neworiental.org': ['10.200.150.212', '10.200.150.211'],
-  '+.staff.xdf.cn': ['10.200.150.212', '10.200.150.211']
-} as const satisfies Record<string, readonly string[]>
+const CORPORATE_NAMESERVER_SUFFIXES = [
+  '+.koolearn.com',
+  '+.neibu.koolearn.com',
+  '+.staff.neworiental.org',
+  '+.staff.xdf.cn'
+] as const
 
 function hasRule(rules: string[], candidate: string): boolean {
   return rules.some((entry) => {
@@ -33,22 +32,40 @@ export function ensureCorporateDirectRules(profile: MihomoConfig): void {
   ;(profile as MihomoConfig).rules = [...additions, ...existing]
 }
 
-/** Route corporate domains through macOS system DNS (VPN/internal search-domain aware). */
-export function ensureCorporateDnsPolicy(profile: MihomoConfig): void {
-  if (profile.dns?.enable !== true) {
-    return
-  }
-
+function applyCorporateNameserverPolicy(profile: MihomoConfig, servers: readonly string[]): void {
   const dns = profile.dns as MihomoDNSConfig
   const existing = {
     ...((dns['nameserver-policy'] as Record<string, string[]> | undefined) ?? {})
   }
 
-  for (const [domain, servers] of Object.entries(CORPORATE_NAMESERVER_POLICY)) {
-    if (!(domain in existing)) {
-      existing[domain] = [...servers]
-    }
+  for (const suffix of CORPORATE_NAMESERVER_SUFFIXES) {
+    existing[suffix] = [...servers]
   }
 
   dns['nameserver-policy'] = existing
+}
+
+async function resolveCorporateNameserverList(): Promise<string[]> {
+  const { getAppConfig } = await import('../config')
+  const { originDNS } = await getAppConfig()
+  const { readDhcpPrivateDnsServers } = await import('./corporateDhcpDns')
+  const { resolveCorporateNameservers } = await import('./corporateDnsCore')
+
+  return resolveCorporateNameservers({
+    originDns: originDNS,
+    dhcpDns: await readDhcpPrivateDnsServers()
+  })
+}
+
+/** Route corporate domains through office resolvers (originDNS → DHCP → fallback). */
+export async function ensureCorporateDnsPolicy(
+  profile: MihomoConfig,
+  options?: { servers?: readonly string[] }
+): Promise<void> {
+  if (profile.dns?.enable !== true) {
+    return
+  }
+
+  const servers = options?.servers ?? (await resolveCorporateNameserverList())
+  applyCorporateNameserverPolicy(profile, servers)
 }
