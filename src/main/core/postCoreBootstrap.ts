@@ -54,6 +54,13 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
     if (!switched) {
       await appendAppLog('[PostCoreBootstrap]: Cursor dedicated VPS default unchanged or skipped\n')
     }
+    const groups = await mihomoGroups()
+    const { CURSOR_DEDICATED_GROUP_NAME } = await import('./cursorProxyGroup')
+    const cursorGroup = groups?.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
+    if (cursorGroup?.now) {
+      const { runMarathonProtocolColdStartGateIfDue } = await import('./marathonProtocolContract')
+      await runMarathonProtocolColdStartGateIfDue(cursorGroup.now, 0)
+    }
   } catch (error) {
     await appendAppLog(
       `[PostCoreBootstrap]: Cursor dedicated VPS default failed: ${error instanceof Error ? error.message : String(error)}\n`

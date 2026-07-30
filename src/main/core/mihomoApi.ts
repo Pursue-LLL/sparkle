@@ -31,7 +31,7 @@ import {
 } from './mihomoProxyDelayCore'
 import { formatMarathonProviderMutationBlockedLogLine } from './marathonDataPlaneMutationGuardCore'
 
-export type MihomoChangeProxySource = 'auto' | 'manual' | 'bootstrap'
+export type MihomoChangeProxySource = 'auto' | 'manual' | 'bootstrap' | 'protocol_contract'
 
 export interface MihomoChangeProxyOptions {
   /** Manual/bootstrap switches bypass Cursor api2 failover defer. Default: auto. */
@@ -304,35 +304,69 @@ export const mihomoChangeProxy = async (
   options: MihomoChangeProxyOptions = {}
 ): Promise<boolean> => {
   const source = options.source ?? 'auto'
+  let previousCursorNode = ''
 
-  if (source === 'auto') {
-    const { isCursorSelectorGroupName } = await import('./cursorProxyGroup')
-    if (isCursorSelectorGroupName(group)) {
-      const groups = await mihomoGroups()
-      const targetGroup = groups?.find((item) => item.name === group)
-      const current = targetGroup?.now
-      if (current && current !== proxy) {
-        const { shouldDeferCursorFailover } = await import('./networkStabilityMonitor')
-        if (await shouldDeferCursorFailover(current)) {
-          const { appendAppLog } = await import('../utils/log')
-          await appendAppLog(
-            `[mihomoChangeProxy]: defer auto switch ${group} "${current}" → "${proxy}" — api2 reachable\n`
-          )
-          return false
-        }
+  const { isCursorSelectorGroupName } = await import('./cursorProxyGroup')
+  const isCursorGroup = isCursorSelectorGroupName(group)
+  if (isCursorGroup) {
+    const groups = await mihomoGroups()
+    const targetGroup = groups?.find((item) => item.name === group)
+    const current = targetGroup?.now ?? ''
+    previousCursorNode = current
+    if (current !== proxy) {
+      const {
+        evaluateMarathonProtocolSwitchBlock,
+        logMarathonProtocolSwitchBlocked,
+      } = await import('./marathonProtocolContract')
+      const block = await evaluateMarathonProtocolSwitchBlock({
+        group,
+        fromNode: current,
+        toNode: proxy,
+        source,
+      })
+      if (block.blocked) {
+        await logMarathonProtocolSwitchBlocked({
+          group,
+          fromNode: current,
+          toNode: proxy,
+          source,
+          block,
+        })
+        return false
       }
+    }
+  }
+
+  if (source === 'auto' && isCursorGroup && previousCursorNode && previousCursorNode !== proxy) {
+    const { shouldDeferCursorFailover } = await import('./networkStabilityMonitor')
+    if (await shouldDeferCursorFailover(previousCursorNode)) {
+      const { appendAppLog } = await import('../utils/log')
+      await appendAppLog(
+        `[mihomoChangeProxy]: defer auto switch ${group} "${previousCursorNode}" → "${proxy}" — api2 reachable\n`
+      )
+      return false
     }
   }
 
   const instance = await getAxios()
   await instance.put(`/proxies/${encodeURIComponent(group)}`, { name: proxy })
 
-  if (source === 'manual') {
-    const { isCursorSelectorGroupName } = await import('./cursorProxyGroup')
-    if (isCursorSelectorGroupName(group)) {
-      const { writeCursorDedicatedManualSelection } = await import('./cursorDedicatedSelectionCore')
-      await writeCursorDedicatedManualSelection(proxy)
-    }
+  if ((source === 'manual' || source === 'protocol_contract') && isCursorGroup) {
+    const { writeCursorDedicatedManualSelection } = await import('./cursorDedicatedSelectionCore')
+    await writeCursorDedicatedManualSelection(proxy)
+  }
+
+  if (source === 'protocol_contract' && previousCursorNode && previousCursorNode !== proxy) {
+    const { appendAppLog } = await import('../utils/log')
+    const { formatMarathonProtocolUpgradeLogLine } = await import('./marathonProtocolContractCore')
+    await appendAppLog(
+      formatMarathonProtocolUpgradeLogLine({
+        group,
+        fromNode: previousCursorNode,
+        toNode: proxy,
+        source,
+      }),
+    )
   }
 
   return true

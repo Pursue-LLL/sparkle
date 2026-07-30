@@ -52,12 +52,13 @@ export function formatMarathonTransportPreflightLogLine(
 ): string {
   const outcome = result.quicLeafActive ? 'quic_leaf_active' : 'tcp_or_trusted_leaf'
   const risk = result.splitBrainRiskClass === 'split_brain_class' ? 1 : 0
+  const gate = result.splitBrainRiskClass === 'split_brain_class' ? 'escalate' : 'none'
   return (
     `[MarathonTransportPreflight]: outcome=${outcome}` +
     ` protocol=${result.protocolClass}` +
     ` node=${result.activeNode}` +
     ` risk=split_brain_class:${risk}` +
-    ` cursor_conn=${result.cursorConnectionCount}` +
-    ` observe_only=true\n`
+    ` gate=${gate}` +
+    ` cursor_conn=${result.cursorConnectionCount}\n`
   )
 }

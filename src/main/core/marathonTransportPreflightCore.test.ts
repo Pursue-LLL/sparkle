@@ -22,7 +22,7 @@ describe('marathonTransportPreflightCore R-19', () => {
     assert.equal(result.quicLeafActive, true)
     assert.equal(result.splitBrainRiskClass, 'split_brain_class')
     assert.match(formatMarathonTransportPreflightLogLine(result), /outcome=quic_leaf_active/)
-    assert.match(formatMarathonTransportPreflightLogLine(result), /observe_only=true/)
+    assert.match(formatMarathonTransportPreflightLogLine(result), /gate=escalate/)
   })
 
   it('marks trusted TLS leaf as low risk', () => {

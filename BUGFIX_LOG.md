@@ -6,14 +6,14 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **TRIAGE-DEFINITIVE** @ 2026-07-30 · **R-31 IMPLEMENTED** @ 1.27.3 · **R-30 待授权** · SSOT：`open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md` **§M.0.11** |
+| **状态** | **TRIAGE-DEFINITIVE** @ 2026-07-30 · **R-31 + R-30 IMPLEMENTED** @ 1.27.3 · SSOT：`open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md` **§M.0.11** |
 | **症状** | RID `15e0c619-3b0b-463f-acd3-b4857d122497` · `[unavailable] PING timed out` · attempt=6 重试耗尽 |
 | **关联产品** | Sparkle **1.27.2** · Cursor **3.13.25** · active leaf **JP-VPS-HY2** · cursor_conn **17–21** · 马拉松 ~43min |
 | **PRIMARY 根因** | **L3** — HY2 QUIC 长流 silent stall → **mass PING**（6 RID 同秒）· split-brain（api2 316ms 绿 + partition=1） |
 | **证据（definitive）** | ① jsonl `proxyNode=JP-VPS-HY2` mass @ `1785412790*` ② Structured `19:59:53` PING timed out ③ app-log `PartitionMassPingSync affected_rid_count=6` ④ `connect_partition_nudge outcome=executed` 但 RID 仍死 ⑤ VPS sing-box @ A **零 inbound error** ⑥ `last_server_sent_heartbeat_ago_ms=30355` @ 19:31 第一波 |
 | **NOT** | max-steps-cap · L4 VPS 宕 · L2 Sparkle mutation · Cursor 随机断流 · Sparkle TUN 加税（mac_p50≈316ms） |
 | **为何 R-17–24 仍复发** | R-19 **observe_only** · operator 手选 HY2 马拉松 · R-18 未覆盖 mass_ping rescue 路径 |
-| **修复方案** | **§M.0.11 Phase 6**：R-30 冷启动 Protocol Contract（待授权）· R-31 **MassPingRescueIneffective**（`connectPartitionRescueIneffectiveCore.ts` + MTDO wiring @ 1.27.3） |
+| **修复方案** | **§M.0.11 Phase 6**：R-30 **Marathon Protocol Contract**（`marathonProtocolContractCore.ts` + mihomoChangeProxy gate + cold-start dialog @ 1.27.3）· R-31 **MassPingRescueIneffective**（同上） |
 | **Operator** | 冷启动前 **JP-VPS-TLS**（非赛中切换） |
 | **triage bundle** | `~/Desktop/cursor-triage-15e0c619-20260730T200505/` |
 

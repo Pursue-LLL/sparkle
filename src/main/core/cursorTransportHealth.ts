@@ -481,6 +481,10 @@ async function runHungConnectionScanCycle(): Promise<void> {
     const activeNode = await resolveCursorDedicatedActiveNode()
     await syncAgentTransportFailuresFromCursorLogs({ proxyNodeFallback: activeNode })
     await runMarathonSessionWarmthIfDue(rows.length)
+    if (rows.length === 0 && activeNode) {
+      const { runMarathonProtocolColdStartGateIfDue } = await import('./marathonProtocolContract')
+      await runMarathonProtocolColdStartGateIfDue(activeNode, 0)
+    }
     const hungIds = selectHungCursorConnectionsToClose(rows)
     if (hungIds.length === 0) {
       const nowMs = Date.now()

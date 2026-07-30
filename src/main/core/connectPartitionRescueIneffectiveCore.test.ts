@@ -57,20 +57,20 @@ describe('connectPartitionRescueIneffectiveCore R-31', () => {
     assert.equal(observation, undefined)
   })
 
-  it('does not flag ineffective before min elapsed window', () => {
+  it('does not flag ineffective when short path partition is stale', () => {
     const nowMs = 10_000_000
     const observation = evaluateConnectPartitionRescueIneffective({
       record: {
-        executedAtMs: nowMs - 2_000,
+        executedAtMs: nowMs - 30_000,
         outcome: 'executed',
         staleRequestIds: ['rid-1'],
-        pingFailureCountAtRescue: 3,
+        pingFailureCountAtRescue: 5,
         connectPathPartitionStale: false,
       },
       nowMs,
-      pingFailureCount: 5,
+      pingFailureCount: 6,
       staleRequestIds: ['rid-1'],
-      connectPathPartitionStale: false,
+      connectPathPartitionStale: true,
     })
     assert.equal(observation, undefined)
   })
