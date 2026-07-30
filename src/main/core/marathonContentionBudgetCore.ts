@@ -16,6 +16,7 @@ export type MarathonContentionBreachKind =
   | 'partition_stale_connect_path'
   | 'connect_path_partition'
   | 'token_gap_rescue_ineffective'
+  | 'connect_partition_rescue_ineffective'
   | 'frozen_quic_cursor'
   | 'connect_partition'
   | 'latency_delta_rescue'
@@ -51,6 +52,7 @@ export interface MarathonContentionBreachInput {
   silentGenerationEndPresent: boolean
   coldResumePresent: boolean
   tokenGapRescueIneffective: boolean
+  connectPartitionRescueIneffective: boolean
   frozenQuicCursorCount: number
 }
 
@@ -85,6 +87,9 @@ export function buildMarathonContentionBreachKinds(
   }
   if (input.tokenGapRescueIneffective) {
     kinds.push('token_gap_rescue_ineffective')
+  }
+  if (input.connectPartitionRescueIneffective) {
+    kinds.push('connect_partition_rescue_ineffective')
   }
   if (input.frozenQuicCursorCount > 0) {
     kinds.push('frozen_quic_cursor')

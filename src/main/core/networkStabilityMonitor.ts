@@ -87,6 +87,8 @@ type NetworkStabilityKind =
   | 'path_change'
   | 'nat_stale_suspect'
   | 'mihomo_quic_silent_stall'
+  | 'token_gap_rescue_ineffective'
+  | 'connect_partition_rescue_ineffective'
 
 export interface NetworkStabilityEvent {
   ts: string

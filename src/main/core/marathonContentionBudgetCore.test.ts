@@ -108,6 +108,39 @@ describe('marathonContentionBudgetCore', () => {
     }
   })
 
+  it('breach bypasses green cap for rescue dial when connect_partition_rescue_ineffective', () => {
+    const decision = evaluateMarathonContentionBudget({
+      nowMs,
+      lastAuthoritativeConnectPathDelayMs: 291,
+      lastObservabilityDialAtMs: nowMs - 10_000,
+      breachKinds: ['connect_partition_rescue_ineffective'],
+      independentPulse: false,
+      dialTrigger: 'connect_partition',
+    })
+    assert.equal(decision.outcome, 'allow')
+    if (decision.outcome === 'allow') {
+      assert.equal(decision.reason, 'rescue_with_breach')
+    }
+  })
+
+  it('buildMarathonContentionBreachKinds wires connect_partition_rescue_ineffective', () => {
+    const kinds = buildMarathonContentionBreachKinds(
+      {
+        pulseContractBreach: false,
+        connectPathPartitionDetected: false,
+        connectPartitionPresent: false,
+        latencyDeltaRescueEligible: false,
+        silentGenerationEndPresent: false,
+        coldResumePresent: false,
+        tokenGapRescueIneffective: false,
+        connectPartitionRescueIneffective: true,
+        frozenQuicCursorCount: 0,
+      },
+      { forIndependentPulse: false },
+    )
+    assert.deepEqual(kinds, ['connect_partition_rescue_ineffective'])
+  })
+
   it('buildMarathonContentionBreachKinds excludes routine token_gap and connect_stream_gap', () => {
     const kinds = buildMarathonContentionBreachKinds(
       {
@@ -118,6 +151,7 @@ describe('marathonContentionBudgetCore', () => {
         silentGenerationEndPresent: false,
         coldResumePresent: false,
         tokenGapRescueIneffective: false,
+        connectPartitionRescueIneffective: false,
         frozenQuicCursorCount: 0,
       },
       { forIndependentPulse: false },
@@ -134,6 +168,7 @@ describe('marathonContentionBudgetCore', () => {
       silentGenerationEndPresent: false,
       coldResumePresent: false,
       tokenGapRescueIneffective: false,
+      connectPartitionRescueIneffective: false,
       frozenQuicCursorCount: 0,
     }
     assert.deepEqual(
@@ -153,6 +188,7 @@ describe('marathonContentionBudgetCore', () => {
         silentGenerationEndPresent: false,
         coldResumePresent: false,
         tokenGapRescueIneffective: false,
+        connectPartitionRescueIneffective: false,
         frozenQuicCursorCount: 3,
       },
       { forIndependentPulse: false },

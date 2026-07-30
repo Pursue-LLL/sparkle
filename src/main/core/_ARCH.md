@@ -45,6 +45,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `marathonStreamRegistryCore.ts` / `marathonTransportDialReader.ts`       | §22 active RID registry · pendingTool 门控 |
 | `marathonTransportDialOrchestratorCore.ts` / `marathonTransportDialOrchestrator.ts` | §22 MTDO · **P15/P16/R-24**：独立 60s pulse · rescue bundle 分流 breach · `MarathonContentionBudget` deny |
 | `marathonContentionBudgetCore.ts` | **R-23/R-24** green 基线 observability cap · `buildMarathonContentionBreachKinds` definitive breach SSOT |
+| `tokenGapRescueIneffectiveCore.ts` | **R-18** token_gap rescue executed but max_gap persists + short path green → `[TokenGapRescueIneffective]` |
+| `connectPartitionRescueIneffectiveCore.ts` | **R-31** connect_partition rescue executed but mass PING persists + short path green → `[ConnectPartitionRescueIneffective]` |
 | `latencyDeltaGateCore.ts`                                               | §22 Mac 全路径 vs VPS 本体 P50 delta 告警（defer warmth only） |
 | `mihomoProbeCoordinator.ts`                                             | 全局 mihomo delay 槽（max 2）与商业 batch 并发 cap                                                                                                                    |
 | `marathonObservabilityDialBudgetCore.ts` / `marathonObservabilityDialBudgetQueueCore.ts` / `marathonObservabilityDialBudget.ts` | **P12** conn≥12/quiesce observability dial 单槽串行（QueueCore 无 Electron 依赖） |
