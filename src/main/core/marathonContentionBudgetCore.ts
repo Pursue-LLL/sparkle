@@ -1,6 +1,6 @@
-// [INPUT] marathonTransportDialOrchestratorCore rescue triggers
-// [OUTPUT] evaluateMarathonContentionBudget · isMarathonConnectPathGreen
-// [POS] R-23 SSOT: green baseline observability cap — data plane supremacy during marathon.
+// [INPUT] marathonTransportDialOrchestratorCore rescue triggers · marathonSSETruthCore pulse contract
+// [OUTPUT] evaluateMarathonContentionBudget · buildMarathonContentionBreachKinds · isMarathonConnectPathGreen
+// [POS] R-23/R-24 SSOT: green baseline observability cap; definitive breach kinds for cap bypass.
 
 import { isMarathonTransportDialRescueTrigger } from './marathonTransportDialOrchestratorCore'
 import type { MarathonTransportDialTrigger } from './marathonTransportDialOrchestratorCore'
@@ -20,9 +20,7 @@ export type MarathonContentionBreachKind =
   | 'connect_partition'
   | 'latency_delta_rescue'
   | 'silent_generation_end'
-  | 'token_gap'
   | 'cold_resume'
-  | 'connect_stream_gap'
 
 export interface MarathonContentionBudgetInput {
   nowMs: number

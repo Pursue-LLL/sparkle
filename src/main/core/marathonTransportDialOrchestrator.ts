@@ -1,6 +1,6 @@
-// [INPUT] MTDO core · stream registry · HY2 keepalive · connect keepalive probes
+// [INPUT] MTDO core · stream registry · HY2 keepalive · marathonContentionBudgetCore · mihomoQuicSilentStallObserver
 // [OUTPUT] runMarathonTransportDialCycle · resetMarathonTransportDialOrchestratorForTests
-// [POS] MTDO executor: single in-flight hung_scan cycle · independent 60s connect_path pulse · cycle-local pulse reuse (P16).
+// [POS] MTDO executor: hung_scan cycle · independent 60s pulse · R-24 rescue/independent breach split.
 
 import { appendAppLog } from '../utils/log'
 import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
@@ -108,6 +108,11 @@ export interface ConnectPathPulseResult {
   api2DelayMs: number
   api2directDelayMs: number
   partitionStale: boolean
+}
+
+interface ConnectPathPulseEnsureResult {
+  pulse: ConnectPathPulseResult
+  executed: boolean
 }
 
 let testConnectPathPulseOverride:
@@ -316,9 +321,9 @@ async function ensureCycleConnectPathPulse(
     dialTrigger?: MarathonTransportDialCandidate['trigger']
     breachKinds: readonly MarathonContentionBreachKind[]
   },
-): Promise<ConnectPathPulseResult> {
+): Promise<ConnectPathPulseEnsureResult> {
   if (cycleConnectPathPulse) {
-    return cycleConnectPathPulse
+    return { pulse: cycleConnectPathPulse, executed: false }
   }
   const allowed = await shouldAllowConnectPathPulse({
     nowMs,
@@ -330,13 +335,13 @@ async function ensureCycleConnectPathPulse(
   if (!allowed) {
     const fallback = lastCachedConnectPathPulse ?? buildConnectPathPulseFallback()
     cycleConnectPathPulse = fallback
-    return fallback
+    return { pulse: fallback, executed: false }
   }
   const pulse = await executeConnectPathPulse(activeNode, cursorConnectionCount)
   cycleConnectPathPulse = pulse
   lastConnectPathPulseAtMs = nowMs
   lastConnectPathPartitionStale = pulse.partitionStale
-  return pulse
+  return { pulse, executed: true }
 }
 
 async function runIndependentConnectPathPulseIfDue(
@@ -359,11 +364,18 @@ async function runIndependentConnectPathPulseIfDue(
   }
 
   if (shouldRunIndependentConnectPathPulse(context)) {
-    const pulse = await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs, {
-      independentPulse: true,
-      breachKinds,
-    })
-    lastMtdoDialAtMs = nowMs
+    const { pulse, executed } = await ensureCycleConnectPathPulse(
+      activeNode,
+      cursorConnectionCount,
+      nowMs,
+      {
+        independentPulse: true,
+        breachKinds,
+      },
+    )
+    if (executed) {
+      lastMtdoDialAtMs = nowMs
+    }
     if (!pulse.partitionStale) {
       return
     }
