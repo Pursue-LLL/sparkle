@@ -94,9 +94,8 @@ describe('fakeIpRoutingIntegrity', () => {
     const filter = (profile.dns as MihomoDNSConfig)['fake-ip-filter'] ?? []
     assert.ok(filter.includes('+.lan'))
     assert.ok(filter.includes('+.cursor.sh'))
-    assert.ok(filter.includes('+.koolearn.com'))
-    assert.ok(filter.includes('+.neibu.koolearn.com'))
-    assert.ok(filter.includes('+.staff.neworiental.org'))
+    assert.equal(filter.includes('+.neibu.koolearn.com'), false)
+    assert.equal(filter.includes('+.koolearn.com'), false)
     assert.equal(filter.includes('+.cloudflare.com'), false)
   })
 })

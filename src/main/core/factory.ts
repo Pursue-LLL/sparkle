@@ -136,8 +136,9 @@ export async function generateProfile(): Promise<void> {
     const { injectCursorDomainRules } = await import('./cursorRuleInjection')
     injectCursorDomainRules(profile, cursorProxyAppPathPrefixes ?? [])
   }
-  const { ensureCorporateDirectRules } = await import('./corporateDirectRules')
+  const { ensureCorporateDirectRules, ensureCorporateDnsPolicy } = await import('./corporateDirectRules')
   ensureCorporateDirectRules(profile)
+  ensureCorporateDnsPolicy(profile)
   const { ensureFakeIpRoutingIntegrity } = await import('./fakeIpRoutingIntegrity')
   ensureFakeIpRoutingIntegrity(profile)
   const { ensureDnsFallbackIntegrity, ensureTunStrictRoute } = await import('./dnsFallbackIntegrity')
