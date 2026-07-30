@@ -8,12 +8,12 @@ const CORPORATE_DIRECT_RULES = [
   'DOMAIN-KEYWORD,neibu.koolearn.com,DIRECT'
 ] as const
 
-/** Intranet DNS via macOS resolver (VPN search-domain + internal records). */
+/** Intranet DNS — office DHCP servers (Sparkle TUN replaces system DNS with 223.5.5.5). */
 export const CORPORATE_NAMESERVER_POLICY = {
-  '+.koolearn.com': ['system'],
-  '+.neibu.koolearn.com': ['system'],
-  '+.staff.neworiental.org': ['system'],
-  '+.staff.xdf.cn': ['system']
+  '+.koolearn.com': ['10.200.150.212', '10.200.150.211'],
+  '+.neibu.koolearn.com': ['10.200.150.212', '10.200.150.211'],
+  '+.staff.neworiental.org': ['10.200.150.212', '10.200.150.211'],
+  '+.staff.xdf.cn': ['10.200.150.212', '10.200.150.211']
 } as const satisfies Record<string, readonly string[]>
 
 function hasRule(rules: string[], candidate: string): boolean {

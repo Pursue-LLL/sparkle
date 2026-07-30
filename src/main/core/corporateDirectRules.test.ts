@@ -47,8 +47,8 @@ describe('corporateDirectRules', () => {
     ensureCorporateDnsPolicy(profile)
 
     const policy = (profile.dns as MihomoDNSConfig)['nameserver-policy'] as Record<string, string[]>
-    assert.deepEqual(policy['+.neibu.koolearn.com'], ['system'])
-    assert.deepEqual(policy['+.koolearn.com'], ['system'])
+    assert.deepEqual(policy['+.neibu.koolearn.com'], ['10.200.150.212', '10.200.150.211'])
+    assert.deepEqual(policy['+.koolearn.com'], ['10.200.150.212', '10.200.150.211'])
     assert.deepEqual(policy['+.staff.neworiental.org'], ['system'])
     assert.deepEqual(policy['+.cursor.sh'], ['tls://223.5.5.5'])
   })
