@@ -170,3 +170,15 @@ export function formatMarathonProtocolUpgradeLogLine(input: {
     ` source=${input.source}\n`
   )
 }
+
+export function formatMarathonProtocolLateStartLogLine(input: {
+  activeNode: string
+  cursorConnectionCount: number
+}): string {
+  return (
+    `[MarathonProtocolContract]: outcome=marathon_started_on_suboptimal_leaf` +
+    ` node=${input.activeNode}` +
+    ` cursor_conn=${input.cursorConnectionCount}` +
+    ` gate_missed=1\n`
+  )
+}

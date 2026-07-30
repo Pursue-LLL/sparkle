@@ -55,6 +55,16 @@ describe('marathonTransportDialOrchestrator G10/G12 static', () => {
     assert.match(src, /evaluateMarathonProtocolSwitchBlock/)
     assert.match(src, /protocol_contract/)
   })
+
+  it('marathonQuiesce wires R-30 late-start on suboptimal leaf', () => {
+    const src = readFileSync(new URL('./marathonQuiesce.ts', import.meta.url), 'utf8')
+    assert.match(src, /notifyMarathonStartedOnSuboptimalLeafIfNeeded/)
+  })
+
+  it('confirmCursorProxySwitch defers to R-30 before manual confirm', () => {
+    const src = readFileSync(new URL('./confirmCursorProxySwitch.ts', import.meta.url), 'utf8')
+    assert.match(src, /evaluateMarathonProtocolSwitchBlock/)
+  })
 })
 
 // G10 gate #9 full MTDO cycle requires Electron runtime (orchestrator imports mihomo/networkStability).

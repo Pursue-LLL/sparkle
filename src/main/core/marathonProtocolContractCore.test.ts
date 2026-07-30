@@ -4,6 +4,7 @@ import {
   evaluateMarathonProtocolColdStartGate,
   evaluateMarathonProtocolSwitchDecision,
   formatMarathonProtocolColdStartGateLogLine,
+  formatMarathonProtocolLateStartLogLine,
   formatMarathonProtocolSwitchBlockedLogLine,
 } from './marathonProtocolContractCore'
 
@@ -157,5 +158,14 @@ describe('marathonProtocolContractCore R-30', () => {
     })
     assert.match(line, /switch_blocked/)
     assert.match(line, /marathon_truth_active=1/)
+  })
+
+  it('formatMarathonProtocolLateStartLogLine marks gate_missed', () => {
+    const line = formatMarathonProtocolLateStartLogLine({
+      activeNode: 'JP-VPS-HY2',
+      cursorConnectionCount: 4,
+    })
+    assert.match(line, /marathon_started_on_suboptimal_leaf/)
+    assert.match(line, /gate_missed=1/)
   })
 })

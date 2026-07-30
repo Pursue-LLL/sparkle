@@ -70,9 +70,21 @@ export async function syncMarathonQuiesceIfNeeded(
   cursorConnectionCount: number,
   nowMs: number = Date.now(),
 ): Promise<void> {
+  const previousConn = lastObservedCursorConn
   lastObservedCursorConn = cursorConnectionCount
   const transition = advanceMarathonQuiesceState(cursorConnectionCount, quiesceState, nowMs)
   quiesceState = transition.state
+
+  if (previousConn === 0 && cursorConnectionCount > 0) {
+    const { resolveCursorDedicatedActiveNode } = await import('./cursorHy2MarathonKeepalive')
+    const activeNode = await resolveCursorDedicatedActiveNode()
+    if (activeNode) {
+      const { notifyMarathonStartedOnSuboptimalLeafIfNeeded } = await import(
+        './marathonProtocolContract'
+      )
+      await notifyMarathonStartedOnSuboptimalLeafIfNeeded(cursorConnectionCount, activeNode)
+    }
+  }
 
   if (transition.entered) {
     await appendAppLog(

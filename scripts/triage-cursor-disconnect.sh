@@ -456,10 +456,26 @@ write_disconnect_facts() {
     fi
     if [[ -s "$OUT/sparkle-quic-stall-A-window.log" ]]; then
       echo ""
-      echo "# R-17/18/19/22 signals @ A (frozen_quic_cursor / rescue ineffective / data-plane guard)"
+      echo "# R-17/18/19/22/30/31 signals @ A"
       cat "$OUT/sparkle-quic-stall-A-window.log"
+      local rescue_ineffective=0
+      rescue_ineffective="$(rg -c 'ConnectPartitionRescueIneffective|TokenGapRescueIneffective' \
+        "$OUT/sparkle-quic-stall-A-window.log" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+      echo "RESCUE_INEFFECTIVE=${rescue_ineffective:-0}"
+      local protocol_gate=0
+      protocol_gate="$(rg -c 'MarathonProtocolContract.*gate_required|marathon_started_on_suboptimal_leaf' \
+        "$OUT/sparkle-quic-stall-A-window.log" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+      echo "MARATHON_PROTOCOL_GATE=${protocol_gate:-0}"
     elif [[ -s "$OUT/sparkle-app-A-window.log" ]]; then
       echo ""
+      local rescue_ineffective=0
+      rescue_ineffective="$(rg -c 'ConnectPartitionRescueIneffective|TokenGapRescueIneffective' \
+        "$OUT/sparkle-app-A-window.log" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+      echo "RESCUE_INEFFECTIVE=${rescue_ineffective:-0}"
+      local protocol_gate=0
+      protocol_gate="$(rg -c 'MarathonProtocolContract.*gate_required|marathon_started_on_suboptimal_leaf' \
+        "$OUT/sparkle-app-A-window.log" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+      echo "MARATHON_PROTOCOL_GATE=${protocol_gate:-0}"
       echo "# R-17 frozen_quic_cursor @ A: 0 lines — if QUIC marathon, check Sparkle ≥1.26.97 or HY2-only R-16 blind spot"
     fi
   } >"$OUT/disconnect-facts.txt"
@@ -486,7 +502,7 @@ collect_app_core_at_a() {
         [[ -n "$p" ]] || continue
         local p_esc="${p//-/\\-}"
         rg "${p_esc}" "$f" \
-          | rg 'CursorTransportHealth|L0|L1|hung|VpsL4Probe|Triangulation|defer|protocol upgrade|mihomoChangeProxy|hung_scan_heartbeat|MihomoQuicSilentStall|frozen_quic_cursor|token_gap_rescue_ineffective|connect_partition_rescue_ineffective|ConnectPartitionRescueIneffective|MarathonDataPlaneMutation|marathon_transport_preflight|marathon_connect_path_pulse' \
+          | rg 'CursorTransportHealth|L0|L1|hung|VpsL4Probe|Triangulation|defer|protocol upgrade|mihomoChangeProxy|hung_scan_heartbeat|MihomoQuicSilentStall|frozen_quic_cursor|token_gap_rescue_ineffective|connect_partition_rescue_ineffective|ConnectPartitionRescueIneffective|MarathonProtocolContract|marathon_started_on_suboptimal|MarathonDataPlaneMutation|marathon_transport_preflight|marathon_connect_path_pulse' \
           >>"$OUT/sparkle-app-A-window.log" 2>/dev/null || true
       done < <(expand_utc_minute_prefixes "$utc_prefix")
     fi
