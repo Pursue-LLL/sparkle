@@ -89,12 +89,29 @@ export async function runMarathonProtocolColdStartGateIfDue(
 ): Promise<void> {
   const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
   const truth = await resolveMarathonSSETruthNow(cursorConnectionCount)
+  const { readCursorDedicatedManualSelection } = await import('./cursorDedicatedSelectionCore')
+  const manualSelectionNode = await readCursorDedicatedManualSelection()
   const gate = evaluateMarathonProtocolColdStartGate({
     cursorConnectionCount,
     marathonTruthActive: truth.marathonTruthActive,
     activeNode,
+    manualSelectionNode,
   })
   if (!gate.required) {
+    if (
+      manualSelectionNode &&
+      manualSelectionNode.trim() === activeNode.trim()
+    ) {
+      const { isCursorSuboptimalNode } = await import('./cursorDedicatedDefault')
+      if (isCursorSuboptimalNode(activeNode)) {
+        const { appendAppLog } = await import('../utils/log')
+        await appendAppLog(
+          `[MarathonProtocolContract]: outcome=gate_skipped_manual_selection` +
+            ` node=${activeNode.trim()}` +
+            ` cursor_conn=${cursorConnectionCount}\n`,
+        )
+      }
+    }
     return
   }
 

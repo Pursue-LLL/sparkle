@@ -1,6 +1,16 @@
 # Sparkle Bugfix Log
 
-> **2026-07-30 最新**：**BUG-2026-07-30-008** — R-27 upgrade 门控 since-line · **BUG-2026-07-30-007** `15e0c619` HY2 · **BUG-2026-07-30-006** @1.27.3
+> **2026-07-30 最新**：**BUG-2026-07-30-009** R-32 operator manual HY2 switch · **BUG-2026-07-30-008** R-27 upgrade gate · **BUG-2026-07-30-007** `15e0c619` HY2
+
+### BUG-2026-07-30-009 · v1.27.4 · operator_manual_protocol_switch (R-32)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-30 |
+| **症状** | 操作者无法在 Sparkle UI 赛中手动切 JP-VPS-HY2；冷启动 gate 反复推回 TLS |
+| **修复** | R-32：`source=manual` 豁免 R-30 赛中锁；手选 suboptimal leaf 跳过 cold-start gate |
+| **仍保留** | auto/bootstrap 禁止回落 suboptimal；HY2↔TUIC↔Reality 横向仍 block |
+| **关联文件** | `marathonProtocolContractCore.ts` · `marathonProtocolContract.ts` · `confirmCursorProxySwitch.ts` |
 
 ### BUG-2026-07-30-008 · upgrade_post_install_gate_since_line (R-27)
 
