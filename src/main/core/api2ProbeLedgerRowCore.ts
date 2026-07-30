@@ -9,6 +9,7 @@ export type Api2ProbeMethod =
   | 'on_demand'
   | 'defer_check'
   | 'session_nudge'
+  | 'marathon_connect_path_pulse'
 
 export interface Api2ProbeLedgerRow {
   ts: string

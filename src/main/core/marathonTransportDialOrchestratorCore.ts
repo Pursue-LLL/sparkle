@@ -11,6 +11,8 @@ import {
 import type { MarathonStreamTokenGapSignal } from './cursorStreamTokenGapCore'
 
 export const MTDO_COALESCE_MS = 15_000
+/** R-21: warmth + vitality + pulse share one 60s observability slot (rescue exempt). */
+export const MTDO_OBSERVABILITY_BUNDLE_MS = 60_000
 export const MTDO_CONNECT_PATH_PULSE_INTERVAL_MS = 60_000
 export const MTDO_MARATHON_STREAM_MIN_AGE_MS = 1_800_000
 export const MTDO_ACTIVE_STREAM_MAX_GAP_MS = 120_000
@@ -207,10 +209,16 @@ export function shouldCoalesceMarathonTransportDial(
   if (context.lastDialAtMs <= 0) {
     return false
   }
-  if (context.nowMs - context.lastDialAtMs >= MTDO_COALESCE_MS) {
+  if (isRescueTrigger(candidate.trigger)) {
     return false
   }
-  return !isRescueTrigger(candidate.trigger)
+  const coalesceMs =
+    candidate.trigger === 'periodic_session' ||
+    candidate.trigger === 'high_latency_warmth' ||
+    candidate.trigger === 'marathon_connect_path_pulse'
+      ? MTDO_OBSERVABILITY_BUNDLE_MS
+      : MTDO_COALESCE_MS
+  return context.nowMs - context.lastDialAtMs < coalesceMs
 }
 
 export function isMarathonTransportDialRescueTrigger(

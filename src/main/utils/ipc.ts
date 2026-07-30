@@ -113,7 +113,7 @@ import {
   restartService
 } from '../service/manager'
 import { patchCoreProfile } from '../service/api'
-import { coreLogPath, findSystemMihomo, logDir } from './dirs'
+import { coreLogPath, ensureLogDir, findSystemMihomo, logDir } from './dirs'
 import {
   getRuntimeConfig,
   getRuntimeConfigStr,
@@ -187,6 +187,7 @@ async function patchAppConfigWithServiceSync(patch: Partial<AppConfig>): Promise
     return nextConfig
   }
 
+  ensureLogDir()
   void patchCoreProfile({
     log_path: coreLogPath(),
     save_logs: saveLogs,

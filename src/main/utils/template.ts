@@ -82,7 +82,7 @@ export const defaultConfig: AppConfig = {
   delayTestUseGroupApi: false,
   delayTestUrl: 'https://www.gstatic.com/generate_204',
   delayTestUrlScope: 'group',
-  showProxyDetailTooltip: false
+  showProxyDetailTooltip: true
 }
 
 export const defaultControledMihomoConfig: Partial<MihomoConfig> = {

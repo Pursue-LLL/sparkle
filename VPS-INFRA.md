@@ -6,21 +6,19 @@
 
 ## 服务器列表
 
-### KR-VPS (韩国首尔)
+### KR-VPS (韩国首尔) — 已退役
+
+> Sparkle 代码 SSOT（`vpsCanonicalNodes.ts` · `vpsL4ProbeCore.ts`）：**2026-07-24 起仅管理 JP-VPS**。KR 段保留作历史参考；SSH 不可达时跳过。
 
 | 项目 | 值 |
 |---|---|
 | IP | `<KR_VPS_IP>` |
 | 机房 | Vultr Seoul |
-| vCPU | 1 |
-| RAM | 1024 MB |
-| 存储 | 25 GB SSD |
-| OS | Ubuntu (Linux 7.0.0-22-generic) |
+| 状态 | **decommissioned**（Sparkle 不再纳入 canonical leaf / L4 probe） |
 
-**服务**（sing-box 单进程，2026-07-02 实测）:
+**历史服务**（2026-07-02 实测）:
 - **sing-box**（VLESS+REALITY :443 · Hysteria2 :8443 · TUIC :8444）
 - 节点订阅: `/root/sparkle-nodes.yaml`（KR-VPS-Reality / KR-VPS-HY2 / KR-VPS-TUIC）
-- 已退役: `xray`、`hysteria-server`（独立守护进程，inactive）
 
 ### JP-VPS (日本东京)
 
@@ -32,11 +30,14 @@
 | RAM | 1024 MB |
 | 存储 | 25 GB SSD |
 
-**服务**（sing-box 单进程，2026-07-02 实测）:
+**服务**（sing-box 单进程 + TLS canary 独立进程，2026-07-29）:
 - **sing-box**（VLESS+REALITY :443 · Hysteria2 :8443 · TUIC :8444）
-- 节点订阅: `/root/sparkle-nodes.yaml`（JP-VPS-Reality / JP-VPS-HY2 / JP-VPS-TUIC）
+- **sing-box-jp-tls-canary**（VLESS + LE TLS :18443 → 节点 **JP-VPS-TLS**；独立 systemd，与 Reality :443 不冲突）
+- 节点订阅: `/root/sparkle-nodes.yaml`（**JP-VPS-Reality / JP-VPS-TLS / JP-VPS-HY2 / JP-VPS-TUIC**）
+- Sparkle Cursor 默认 leaf：`JP-VPS-TLS`（`cursorDedicatedDefault.ts` · 标准 TCP/TLS，马拉松稳定性优先）
 - 内核调优: `/etc/sysctl.d/99-cursor-hy2.conf`（2026-07-02 补部署，与 KR 对齐）
 - 已退役: `xray`、`hysteria-server`（独立守护进程，inactive）
+- **已禁用（2026-07-29）**: `nginx` stream `:443` TLS 终结 + `sing-box-jp-vless-backend@18444` — 与 VLESS+Reality 客户端 **不兼容**（见 BUG-2026-07-29-033）
 
 ## SSH 登录
 
@@ -66,6 +67,7 @@ ssh -p <SSH_PORT> root@<JP_VPS_IP>
 | 8443/tcp | TCP | sing-box Hysteria2 |
 | 8443/udp | UDP | sing-box Hysteria2 (QUIC) |
 | 8444/udp | UDP | sing-box TUIC (QUIC) |
+| **18443/tcp** | TCP | **JP only**：sing-box-jp-tls-canary（JP-VPS-TLS） |
 | `<SSH_PORT>`/tcp | TCP | SSH |
 
 ## sing-box 配置（KR-VPS / JP-VPS）
@@ -102,9 +104,84 @@ ssh kr-vps 'bash -s' < scripts/vps-deploy/patch-hy2-in-quic-marathon.sh
 
 SSOT 常量：`src/main/core/cursorHy2MarathonKeepaliveCore.ts`（`hy2InQuicMarathonFields()`）。**1.13.14 生产最小集** = conntrack 3600 + `udp_timeout` 3600s；idle/keepalive 为 ≥1.14 增强项。新装 VPS 见 `migrate-to-singbox-only.sh` / `install-singbox-*.sh` 模板。
 
+### Reality :443 — 禁止 nginx TLS 终结（BUG-033）
+
+VLESS+Reality 客户端要求 **Reality 握手在 :443 由 sing-box 处理**。下列架构 **必然** 导致 `alive=false` / `SSL alert bad certificate` / vless backend EOF：
+
+```
+❌ 客户端(Reality) → nginx:443(LE 证书 TLS 终结) → 127.0.0.1:18444(纯 VLESS)
+✅ 客户端(Reality) → sing-box vless-reality-in :443
+```
+
+**验收**（维护后必做）：
+
+```bash
+ssh jp-vps 'ss -tlnp | grep :443'          # 必须是 sing-box，不是 nginx
+ssh jp-vps 'sing-box check -c /etc/sing-box/config.json'
+# Mac：mihomo provider 678a1sub001-vps 四 leaf alive=true
+```
+
+**恢复**：从 `/etc/sing-box/config.json.bak.*` 合并 `vless-reality-in` inbound；disable `/etc/nginx/stream-conf.d/jp-vless-tls.conf`；stop `sing-box-jp-vless-backend`；单次 `systemctl restart sing-box`。详见 `BUGFIX_LOG.md` BUG-2026-07-29-033。
+
+### JP-VPS-TLS :18443 — Cursor 马拉松标准 TLS leaf
+
+| 项 | 值 |
+|---|---|
+| 节点名 | **JP-VPS-TLS** |
+| 端口 | **18443/tcp** |
+| 进程 | `sing-box-jp-tls-canary.service` |
+| 配置 | `/etc/sing-box/jp-tls-canary.json` |
+| 协议 | VLESS + Let's Encrypt TLS（`server_name` = VPS IP） |
+| UUID | 与 JP-VPS-Reality 相同（canary 共用用户表） |
+
+**与 :443 的关系**
+
+```
+:443   → sing-box 主进程 vless-reality-in（JP-VPS-Reality）
+:18443 → sing-box-jp-tls-canary（JP-VPS-TLS，Sparkle Cursor 默认 leaf）
+```
+
+**禁止混淆**：nginx stream `:443` TLS 终结（BUG-033）≠ `:18443` canary。前者破坏 Reality；后者是独立生产 TLS 入口。
+
+**Sparkle override 示例**（必须用 `proxies+:`，见 BUG-034）：
+
+```yaml
+proxies+:
+  - name: JP-VPS-TLS
+    type: vless
+    server: <JP_VPS_IP>
+    port: 18443
+    uuid: <shared-uuid>
+    network: tcp
+    tls: true
+    udp: true
+    servername: <JP_VPS_IP>
+    client-fingerprint: chrome
+```
+
+**验收**：
+
+```bash
+ssh jp-vps 'systemctl is-active sing-box-jp-tls-canary && ss -tlnp | grep 18443'
+ssh jp-vps 'ufw status | grep 18443'   # 必须 ALLOW
+# Mac：mihomo provider 678a1sub001-vps 四 leaf alive=true（含 JP-VPS-TLS ~300ms）
+```
+
+### Sparkle override — VPS 节点必须用 `proxies+:`（BUG-034）
+
+yaml override 若写 bare `proxies:`，`factory.ts` `deepMerge(..., isOverride=true)` 会 **整表替换** 订阅节点，commercial provider 变空、代理页空白。VPS 追加写法：
+
+```yaml
+proxies+:
+  - name: JP-VPS-HY2
+    ...
+```
+
+详见 `BUGFIX_LOG.md` BUG-2026-07-29-034 · `src/main/utils/merge.ts` · `src/main/core/factory.ts`。
+
 ### 运维规范：禁止频繁 restart
 
-KR/JP 均为 **sing-box 单进程**（Reality :443 · HY2 :8443 · TUIC :8444 同进程）。  
+KR/JP 均为 **sing-box 单进程**（Reality :443 · HY2 :8443 · TUIC :8444 同进程）；JP 另有 **sing-box-jp-tls-canary@18443**（独立进程，restart 不影响主 sing-box 三路入站）。  
 **不要频繁执行 `systemctl restart sing-box`** — 一次 restart 会 **RST 所有进行中连接**（Reality / HY2 / TUIC 全部中断），包括：
 
 - Cursor Agent / Chat 的长连接 SSE

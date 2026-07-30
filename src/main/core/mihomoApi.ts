@@ -29,6 +29,7 @@ import {
   shouldRefreshProviderLeafBeforeDelay,
   type MihomoDelayPurpose,
 } from './mihomoProxyDelayCore'
+import { formatMarathonProviderMutationBlockedLogLine } from './marathonDataPlaneMutationGuardCore'
 
 export type MihomoChangeProxySource = 'auto' | 'manual' | 'bootstrap'
 
@@ -232,7 +233,24 @@ export const mihomoProxyProviders = async (): Promise<ControllerProxyProviders> 
   return await instance.get('/providers/proxies')
 }
 
-export const mihomoUpdateProxyProviders = async (name: string): Promise<void> => {
+export const mihomoUpdateProxyProviders = async (
+  name: string,
+  options?: { purpose?: MihomoDelayPurpose },
+): Promise<void> => {
+  const { evaluateMarathonProviderMutationBlock } = await import('./marathonDataPlaneMutationGuard')
+  const guard = await evaluateMarathonProviderMutationBlock(options?.purpose)
+  if (guard.blocked) {
+    const { appendAppLog } = await import('../utils/log')
+    await appendAppLog(
+      formatMarathonProviderMutationBlockedLogLine({
+        operation: 'provider_update',
+        providerName: name,
+        purpose: options?.purpose,
+        cursorConnectionCount: guard.cursorConnectionCount,
+      }),
+    )
+    return
+  }
   const instance = await getAxios()
   return await instance.put(`/providers/proxies/${encodeURIComponent(name)}`)
 }
@@ -319,6 +337,11 @@ async function refreshProviderLeafBeforeDelay(
   providerName: string,
   options: MihomoDelayOptions | undefined,
 ): Promise<void> {
+  const { evaluateMarathonProviderMutationBlock } = await import('./marathonDataPlaneMutationGuard')
+  const mutationGuard = await evaluateMarathonProviderMutationBlock(options?.purpose)
+  if (mutationGuard.blocked) {
+    return
+  }
   const refreshWithHealthcheck = shouldRefreshProviderLeafBeforeDelay(options?.purpose)
   if (refreshWithHealthcheck && !isMarathonRescueDelayPurpose(options?.purpose)) {
     const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
@@ -346,7 +369,7 @@ async function refreshProviderLeafBeforeDelay(
   }
 
   try {
-    await mihomoUpdateProxyProviders(providerName)
+    await mihomoUpdateProxyProviders(providerName, { purpose: options?.purpose })
   } catch {
     // Best-effort re-register provider leaves in /proxies before delay dial.
   }
@@ -404,7 +427,7 @@ async function mihomoProxyDelayFromProvider(
     await mihomoProviderHealthcheckDeduped(providerName)
   } catch {
     try {
-      await mihomoUpdateProxyProviders(providerName)
+      await mihomoUpdateProxyProviders(providerName, { purpose: options?.purpose })
     } catch {
       // Fall back to cached provider history when healthcheck fails.
     }

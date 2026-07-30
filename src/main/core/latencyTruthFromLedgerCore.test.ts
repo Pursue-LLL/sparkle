@@ -52,10 +52,21 @@ describe('latencyTruthFromLedgerCore', () => {
     )
   })
 
-  it('isMacFullPathLatencyLedgerRow accepts only scope=active transport_pair', () => {
+  it('isMacFullPathLatencyLedgerRow accepts transport_pair and marathon_connect_path_pulse', () => {
     assert.equal(
       isMacFullPathLatencyLedgerRow(
         row({ ts: '2026-07-24T06:00:00.000Z', scope: 'active', method: 'transport_pair', latency_ms: 296 }),
+      ),
+      true,
+    )
+    assert.equal(
+      isMacFullPathLatencyLedgerRow(
+        row({
+          ts: '2026-07-24T06:00:00.000Z',
+          scope: 'active',
+          method: 'marathon_connect_path_pulse',
+          latency_ms: 312,
+        }),
       ),
       true,
     )
@@ -65,6 +76,22 @@ describe('latencyTruthFromLedgerCore', () => {
       ),
       false,
     )
+  })
+
+  it('ledgerRowsToLatencyTruthSummary includes marathon_connect_path_pulse in mac path', () => {
+    const rows = [
+      row({ ts: '2026-07-24T06:00:00.000Z', scope: 'vps', node: 'JP-VPS', method: 'ssh_curl', latency_ms: 500 }),
+      row({
+        ts: '2026-07-24T06:02:00.000Z',
+        scope: 'active',
+        method: 'marathon_connect_path_pulse',
+        latency_ms: 293,
+      }),
+      row({ ts: '2026-07-24T06:03:00.000Z', scope: 'active', method: 'transport_pair', latency_ms: 300 }),
+    ]
+    const summary = ledgerRowsToLatencyTruthSummary(rows, 'JP-VPS-HY2')
+    assert.equal(summary.macFullPathSamples, 2)
+    assert.equal(summary.macFullPathP50, 296.5)
   })
 
   it('ledgerRowsToLatencyTruthSummary splits vps body vs mac full path per node', () => {

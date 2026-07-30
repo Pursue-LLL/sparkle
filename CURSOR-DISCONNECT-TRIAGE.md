@@ -57,7 +57,7 @@
 
 1. **除 `max-steps-cap` 等 Cursor 硬限外，Cursor 服务端不会无缘无故断开 SSE。** 报错几乎总有传输层原因。
 2. **同一时刻多路 Agent 同时断连 → 几乎一定是代理 / VPS / QUIC 隧道问题**，不是「服务端随机关流」。
-3. **HTTP api2 probe 全绿 ≠ Connect 长流正常。** 短探针 OK 时 gRPC 双向流仍可能已断（split-brain）；QUIC 中途断连 mihomo **无 error 日志** — **≥1.26.95** 读 `[MihomoQuicSilentStall]` + `network-stability-events.jsonl kind=mihomo_quic_silent_stall`（R-16 observe-only）。
+3. **HTTP api2 probe 全绿 ≠ Connect 长流正常。** 短探针 OK 时 gRPC 双向流仍可能已断（split-brain）；QUIC 中途断连 mihomo **无 error 日志** — **≥1.26.97** 读 `[MihomoQuicSilentStall]` + **`frozen_quic_cursor=`** + `network-stability-events.jsonl kind=mihomo_quic_silent_stall`（R-17 observe-only · TUIC+HY2 SSOT）；**≤1.26.96** 仅 HY2（R-16 半实现）。
 4. **IFM 会把 `WritableIterable is closed` 标为 `marathon-stream-closed`（cursor-server）**，但 `agent-transport-failures.jsonl` 中同类错误常带 `proxyNode: *-HY2`——**标签不可盲信**（Guard patch-363/364 已修正弹窗 classify；仍交叉 ledger）。
 5. **仅 `max-steps-cap` 可停止网络排查。** `marathon-stream-closed` 在 **<20min、多路并行、或 HY2/TUIC 节点** 时仍要继续 Step 3。
 6. **Sparkle L0 @ 60s hung 会误杀 Agent tool 暂停中的 Connect 流**（v1.26.33）；**v1.26.34+** 改为 **12min** 阈值 + 每 host 保留最新 **6** 条（v1.26.36，并行 Agent 保护）。若 A 时刻 app-log 有 `L0 closed N hung` 且运行 <12min → 定责 **Sparkle L0 误杀/过度清理**，非 Cursor Marathon cap。
@@ -382,16 +382,27 @@ CTHC 周期：**hung scan 30s**、**active probe 60s** → 窗口 **A ±60s** �
 
 ---
 
-## 6 节点 delay 数据源对照（必读，防口径错误）
+## VPS leaf delay 数据源对照（必读，防口径错误）
 
-用户 UI **「测速记录（mihomo）」** 是回答「6 节点 ms / 超时 / 是否 >500」时 **唯一** 与用户所见一致的数据源。代码：`proxy-detail-tooltip.tsx` → `proxy.history.slice(-8)`。
+**术语 SSOT**（`vpsCanonicalNodes.ts`）：当前 `{profileId}-vps` provider 含 **JP 四 leaf**（Reality / TLS / HY2 / TUIC）。KR 退役前为六 leaf；下文「VPS leaf 测速」均指该 provider 内 canonical leaf，与用户 UI 所见一致。
+
+用户 UI **节点详情弹窗**（`showProxyDetailTooltip`，默认 true）是回答「VPS leaf ms / 超时 / 是否 >500」时与用户所见对齐的首选入口。实现：`proxy-item.tsx` → `proxy-detail-tooltip.tsx`。
+
+柱图数据源（按优先级）：
+
+| 优先级 | 来源 | 标签 |
+|--------|------|------|
+| 1 | `getProviderDelayHistoryFromLedger` | Mac 全路径（`transport_pair`） |
+| 2 | mihomo `proxy.history[-8]`（marathon / nudge 过滤后） | 测速记录（mihomo） |
+
+弹窗另展示 **VPS 本体 P50** / **Mac 全路径 P50**（`getLatencyTruthSummaryForNode` · ledger 双轨 SSOT）。未开 `showProxyDetailTooltip` 时弹窗不渲染；CLI 对齐仍可用下方 provider history 脚本。
 
 | 数据源 | 路径 / API | 与 UI 一致？ | 正确用途 | **禁止误用** |
 |--------|-----------|-------------|----------|--------------|
-| **UI 测速记录** | mihomo `/providers/proxies` → leaf `history[-8]` | ✅ **是** | 6 节点 delay 定责；与用户对话对齐 | — |
+| **UI 测速记录 / 详情弹窗** | mihomo `/providers/proxies` → leaf `history[-8]`；弹窗可优先 ledger `transport_pair` | ✅ **是**（弹窗需 `showProxyDetailTooltip=true`） | VPS leaf delay 定责；与用户对话对齐 | — |
 | **events `vps_node_snapshots`** | `network-stability-events.jsonl`（CTHC hung_scan 附带） | ❌ **否** | A 时刻定责**单点快照**（每 30s） | **禁止**统计「>500ms 占比」或复述用户测速记录 |
 | **ledger `scope=active`** | `api2-probe-ledger.jsonl`（60s，当前 Cursor 选用节点） | ❌ 否 | split-brain / Guard / 长流探针 | 禁止代表 6 节点 health-check history |
-| **ledger `scope=vps`** | SSH curl L4（300s，KR/JP 各 1 点） | ❌ 否 | L4 出口定责（2 台 VPS） | 与 UI 6 节点 ms 不可比 |
+| **ledger `scope=vps`** | SSH curl L4（300s，**JP** 1 点） | ❌ 否 | L4 出口定责 | 与 UI VPS leaf ms 不可比 |
 
 ### 为何 `vps_node_snapshots` 会与 UI 对不上
 
@@ -440,7 +451,7 @@ for px in d.get('providers',{}).get(pid,{}).get('proxies',[]):
 
 **定责顺序：** 用户报「测速记录」→ 先 curl provider `{profileId}-vps` 的 `history[-8]` 对齐 UI → 再查 ledger @ A → `vps_node_snapshots` 仅作 A 时刻单点交叉，**不作** delay 分布统计。
 
-**v1.26.38+ provider 拆分：** 6 VPS 在独立 provider `{profileId}-vps`（仅 6 leaf，api2 health-check）；商用节点留在 `{profileId}`（generate_204）。UI 测速 batch 从 76 节点降为 6，尖峰显著减少。
+**v1.26.38+ provider 拆分：** VPS 在独立 provider `{profileId}-vps`（**当前 4 leaf**：JP Reality/TLS/HY2/TUIC · api2 health-check）；商用节点留在 `{profileId}`（generate_204）。UI 测速 batch 从 76 节点降为 canonical VPS leaf 数，尖峰显著减少。
 
 ---
 
@@ -481,7 +492,7 @@ for px in d.get('providers',{}).get(pid,{}).get('proxies',[]):
 ```
 L1  公司网 → 美国          Mac 直连 api2（不经 VPS）~1s 基线
 L2  Mac → Sparkle TUN      TUN / fake-ip / 路由
-L3  Mac → VPS 隧道         Reality / HY2 / TUIC（UI 测速主要反映 L2+L3+L4 握手）
+L3  Mac → VPS 隧道         Reality / **TLS** / HY2 / TUIC（UI 测速主要反映 L2+L3+L4 握手）
 L4  VPS sing-box → api2    SSH curl api2 ~500–620ms
 ```
 
@@ -490,31 +501,33 @@ L4  VPS sing-box → api2    SSH curl api2 ~500–620ms
 | VPS SSH curl OK，UI 仅 Reality 高 | **L3 Reality 隧道** |
 | VPS SSH curl OK，HY2 正常 Reality 高 | **L3 协议层**，不是 sing-box 挂 |
 | 6 节点同时 >1000ms | L1 公司网或 Cursor 全球（罕见） |
+| **4 JP leaf 同时 >1000ms** | 同上（当前 SSOT：`vpsCanonicalNodes.ts`） |
 | VPS curl 失败 | **L4** sing-box / VPS 出口 |
 | A 时刻 probe 全绿但断连 | **L3 QUIC 静默断流**（split-brain） |
 | **cursor_conn > 500** @ Marathon | **QUIC 饱和风险** — defer 预期 · **≠ VPS 宕** · 查 `UltraConnObservability` + VpsL4Probe |
 
 ---
 
-## 6 节点测速：仅用于定责，不推荐换节点
+## JP 四 leaf 测速：仅用于定责，不推荐换节点
 
-6 节点 = **KR/JP 两台 VPS × Reality/HY2/TUIC 三种协议**。同一台 VPS 上 sing-box 正常时，Mac 侧延迟/稳定性仍可能因**协议不同**而不同——这是排查依据，不是日常选型指南。
+**当前 SSOT**（`vpsCanonicalNodes.ts` · `vpsL4ProbeCore.ts`）：**JP-VPS × Reality / TLS / HY2 / TUIC 四种协议**（KR-VPS 已退役）。同一 VPS 上 sing-box 正常时，Mac 侧延迟/稳定性仍可能因**协议不同**而不同——这是排查依据，不是日常选型指南。
 
-**本手册不推荐具体节点。** 仅在定责需要区分「哪一层、哪条路径」时看 6 节点 A 时刻 history。
+**Cursor 马拉松默认 leaf**：`JP-VPS-TLS`（标准 TCP/TLS · `cursorDedicatedDefault.ts`）。HY2 延迟更低但 QUIC 长流有 split-brain 风险；Reality 负载下易尖峰。
 
-| A 时刻 6 节点 pattern | 定责 |
-|------------------------|------|
-| **6 个都高**（均 >500ms 或相对基线普涨） | L1 公司网或全局，不是单节点问题 |
-| **仅 KR 三个高**，JP 正常 | KR VPS 线路 / Mac→KR 路径（L3/L4 KR） |
-| **仅 JP 三个高**，KR 正常 | JP VPS 线路 / Mac→JP 路径 |
-| **仅 Reality 高**（KR+JP），HY2/TUIC 正常 | **L3 Reality 协议隧道**（实测可差 2–3 倍） |
-| **仅 HY2/TUIC 高**，Reality 正常 | **L3 UDP/QUIC 隧道** |
-| **6 个都正常**（如 326–439ms）但 A 时刻断连 | 不是「节点延迟」问题 → QUIC 长流瞬断 / split-brain |
-| VPS SSH curl 失败 | L4，与 6 节点 UI 无关 |
+**本手册不推荐具体节点。** 仅在定责需要区分「哪一层、哪条路径」时看 JP 四 leaf A 时刻 history。
 
-**实测证据（B 时刻复测，说明协议间确有差异，非推荐）：** 同一次 health-check 中 JP/KR Reality ~834–854ms，HY2 ~366–378ms；history 中 KR-Reality 曾尖峰 1452ms 而 HY2 同期 ~400ms。差异在 **L3 协议隧道**，不是 sing-box 进程挂掉。
+| A 时刻 JP 四 leaf pattern | 定责 |
+|---------------------------|------|
+| **4 个都高**（均 >500ms 或相对基线普涨） | L1 公司网或全局，不是单节点问题 |
+| **仅 Reality 高**，TLS/HY2/TUIC 正常 | **L3 Reality 协议隧道** |
+| **仅 HY2/TUIC 高**，Reality/TLS 正常 | **L3 UDP/QUIC 隧道** |
+| **仅 TLS 高**，其余正常 | **L3 :18443 canary** 或 UFW 18443 未开 |
+| **4 个都正常**（如 ~300ms）但 A 时刻断连 | 不是「节点延迟」问题 → QUIC 长流瞬断 / split-brain |
+| VPS SSH curl 失败 | L4，与 UI 四 leaf 无关 |
 
-若 VPS L4 正常且 6 节点 A 时刻均正常 → **继续查 split-brain / 并行 Agent / L0**，不要换节点。
+**历史（KR 仍在 profile 时）**：原「6 节点 = KR/JP × 三协议」定责表仍适用，但 Sparkle L4 probe 与 canonical snapshot 已不再纳入 KR。
+
+若 VPS L4 正常且 JP 四 leaf A 时刻均正常 → **继续查 split-brain / 并行 Agent / L0**，不要换节点。
 
 ---
 
@@ -527,7 +540,7 @@ Mac → [Reality|HY2|TUIC 入站] → sing-box → 同一 outbound → api2
               ↑ 6 节点差异（L3）           ↑ L4 curl 只测这里
 ```
 
-6 节点在 **VPS 出口（L4）共用同一 sing-box outbound**。SSH 在 VPS 上 `curl api2` **无法区分** Reality/HY2/TUIC，只能区分 **KR vs JP** 两台机器。
+6 节点在 **VPS 出口（L4）共用同一 sing-box outbound**（JP 主进程）。SSH 在 VPS 上 `curl api2` **无法区分** Reality/TLS/HY2/TUIC 入站协议，仅验证 L4 出口。
 
 **mihomo 为何能测出 6 个不同 ms？** 因为 health-check 在 **Mac 上**跑，对每个 leaf 节点单独发探测：选中 `KR-VPS-HY2` 就走 Mac→TUN→`141.164.43.229:8443` HY2 入站→sing-box→api2；选 `KR-VPS-Reality` 则走 `:443` Reality 入站。测的是 **不同入站协议 + Mac 到 VPS 的隧道**，不是 VPS 内部的 outbound curl。配置见 `override/c7sgvps01.yaml`（6 组 server/port/type）；代码见 `mihomoApi.ts` `/proxies/{name}/delay` + provider health-check。
 

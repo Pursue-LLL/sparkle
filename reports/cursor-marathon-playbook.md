@@ -14,11 +14,12 @@
 
 - [ ] `cursorBidiOptimize=true`（默认）
 - [ ] TUN 开；系统 HTTP 代理关（`cursorSysProxyLock`）
-- [ ] Cursor 域名走 `🎯 Cursor-专用` **Selector**（固定节点）
+- [ ] 代理页设置：`showProxyDetailTooltip` · `commercialNodeBenchmarkEnabled`（默认 true；旧 config 若为 false 需手动开）
+- [ ] Cursor 域名走 `🎯 Cursor 专用` **Selector**（赛前固定 leaf；**默认 `JP-VPS-TLS`** · 稳定性优先）
 - [ ] **禁止** Cursor 流量走 UrlTest / 自动选择 / 故障转移
 - [ ] 节点通过 **60s api2 短探测**（`api2.cursor.sh` HEAD；`network-stability-events.jsonl` kind:probe）
 - [ ] keep-alive-idle ≥ 3600s；fake-ip-filter 含 `+.cursor.sh` / `+.workers.dev`
-- [ ] VPS 维护：**禁止频繁** `systemctl restart sing-box`（单进程，restart 断所有 Reality/HY2/TUIC；见 `VPS-INFRA.md` §运维规范）
+- [ ] VPS 维护：**禁止频繁** `systemctl restart sing-box`（主进程 restart 断 Reality/HY2/TUIC；`:18443` TLS canary 为独立进程 · 见 `VPS-INFRA.md`）
 
 ## 赛中（marathon + parallel）
 

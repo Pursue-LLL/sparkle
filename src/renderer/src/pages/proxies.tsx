@@ -207,7 +207,7 @@ const Proxies: React.FC = () => {
     proxyDisplayLayout = 'double',
     groupDisplayLayout = 'double',
     showGroupSelectedProxy = false,
-    showProxyDetailTooltip = false,
+    showProxyDetailTooltip = true,
     proxyDisplayOrder = 'default',
     autoCloseConnection = false,
     closeMode = 'all',

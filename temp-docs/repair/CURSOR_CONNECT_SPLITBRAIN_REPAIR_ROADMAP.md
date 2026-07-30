@@ -1,24 +1,25 @@
-# Cursor Connect Split-Brain · 修复 Roadmap（Sparkle 仓索引）
+# Cursor 断连修复 · Sparkle 仓索引
 
-> **MTCP split-brain / P17–P29 唯一 SSOT**：`/Users/yululiu/projects/AI/open-perplexity/temp-docs/repair/CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md` **§29**
+> **唯一 Master SSOT**：`/Users/yululiu/projects/AI/open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md`（~3900 行 · 2026-07-30 整合）
 >
-> **Marathon 零中断 / L7 / P21–P23 / R-01–R-11 SSOT**：[`CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md`](./CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md) **§10–§17**（**禁止**另建同主题 roadmap）
->
-> **实施/发版以 open-perplexity SSOT §29 为准**。§27/§28 为分 plane 细节。
+> **禁止**在本仓复制 Master 全文。变更 §0–§29 / §29.11 请编辑 open-perplexity Master。
 
-## 最新（2026-07-28）
+## 文档分工
 
-- **§29 MTCP Phase 4** — 500 Included 终极方案（P19 Execution + P20 Stability · 一批次 · 十四门禁 · pkg 1.26.83+）
-- **P21 BUG-021** — `.DS_Store` ENOTDIR 致 MTDO 全灭 · **1.26.85** · 见 Marathon SSOT §11.1
-- **P22 段轮换** — 长段 silent EOF / 省 Continue · 见 Marathon SSOT §11.2 · **R-02**
-- **定责 c69260ad @14:47** — PRIMARY L7 segment cap + AMPLIFIER BUG-021 · 见 Marathon SSOT §10.1
-- **定责 c8346504 @15:41** — PRIMARY **L3** mass PING code=14 · rescue 滞后 · 见 open-perplexity SSOT **§29.10**
-- **定责 67699e2d @17:30（F 案）** — PRIMARY **L3** mass PING partition 余波 · AMPLIFIER 45GB vscdb · 见 Marathon SSOT **§10.5d + §11.8 P28**
-- **军师结论**：P21 未装 = §29 观测面 dead · 必须先 P21 再 soak §29 · **L7 用 P22 · L3 用 §29**
+| 主题 | SSOT |
+| --- | --- |
+| 事故注册表 · §M.0 · §29.11 `81afd4e9` · R-17–R-21 | open-perplexity **Master** |
+| MTCP §29 · Connect split-brain P12–P29 | Master **§0–§29**（原 Split-Brain 正文） |
+| Marathon 零中断 Mutation Kernel · P21–P27 · §10 定责 | Master **附录 A** + 本仓 [`CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md`](./CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md) 完整正文 |
+| L1 ghost / Cursor-2 intercept | Master **附录 B/C** |
+| 排查 SOP | 本仓根 [`CURSOR-DISCONNECT-TRIAGE.md`](../../CURSOR-DISCONNECT-TRIAGE.md) |
+| BUG 台账 | [`BUGFIX_LOG.md`](../../BUGFIX_LOG.md) **BUG-2026-07-30-001** |
+
+## 最新（2026-07-30）
+
+- **§29.11 TUIC silent stall · 81afd4e9** — L3 definitive · R-17/18/19 待授权 · Operator 赛前 **JP-VPS-TLS**
+- **Master 整合** — 原 7 份 Cursor roadmap 合并为单一 SSOT
 
 ## 关联
 
-| 文档 | 关系 |
-| --- | --- |
-| `CURSOR-DISCONNECT-TRIAGE.md` | 排查 SOP |
-| `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` | IDLE apply / 零 mutation 内核 |
+- open-perplexity 薄索引：`temp-docs/repair/CURSOR_CONNECT_SPLITBRAIN_REPAIR_ROADMAP.md` → Master

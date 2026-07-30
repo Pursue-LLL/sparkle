@@ -355,6 +355,25 @@ async function appendLog(target: LogTarget, content: LogContent): Promise<void> 
       await enforceLogFileSizeLimit(target, path, contentSize, maxLogFileSizeBytes)
     } catch (error) {
       await closeWriteStream(target)
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        (error as NodeJS.ErrnoException).code === 'ENOENT'
+      ) {
+        ensureLogDir()
+        await new Promise<void>((resolve, reject) => {
+          const stream = getWriteStream(target)
+          stream.write(content, (retryError) => {
+            if (retryError) {
+              reject(retryError)
+            } else {
+              resolve()
+            }
+          })
+        })
+        await enforceLogFileSizeLimit(target, path, contentSize, maxLogFileSizeBytes)
+        return
+      }
       throw error
     }
   })()

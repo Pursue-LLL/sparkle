@@ -2,7 +2,7 @@
 
 > **Public repo note**: 真实 IP、SSH 端口、密钥等敏感信息勿写入 git。本文档使用占位符；生产值请保存在私有运维文档或本地 override 中。
 
-本文档说明 KR-VPS（首尔）与 JP-VPS（东京）的三种「连接」方式。当前 Sparkle 架构下，两台 VPS **彼此不直连**，均由本地 Mac 上的 Sparkle/mihomo 分别接入。详见 [VPS-INFRA.md](./VPS-INFRA.md)。
+本文档说明 KR-VPS（首尔，**已退役**）与 JP-VPS（东京，**当前唯一 managed VPS**）的连接方式。Sparkle 代码 SSOT 仅管理 **JP-VPS 四 leaf**（`vpsCanonicalNodes.ts`）。详见 [VPS-INFRA.md](./VPS-INFRA.md)。
 
 ---
 
@@ -10,19 +10,19 @@
 
 ```
 Mac (Sparkle / mihomo TUN)
-  ├─ KR-VPS-Reality / HY2 / TUIC   (:443 / :8443 / :8444)
-  └─ JP-VPS-Reality / HY2 / TUIC   (:443 / :8443 / :8444)
-         ↓                              ↓
-    sing-box (首尔)                sing-box (东京)
-         ↓                              ↓
-      目标网站                        目标网站
+  └─ JP-VPS-Reality / TLS / HY2 / TUIC   (:443 / :18443 / :8443 / :8444)
+         ↓
+    sing-box (东京) + sing-box-jp-tls-canary (:18443)
+         ↓
+      目标网站
 ```
 
 | 连接类型 | 路径 | 当前是否已部署 |
 |----------|------|----------------|
-| 运维 SSH | 你 → 各台 VPS | ✅ 已部署 |
-| 客户端代理 | Mac → VPS → 互联网 | ✅ 已部署（Sparkle 主路径） |
-| VPS 互连 | KR ↔ JP 私有网络 | ❌ 需额外搭建 |
+| 运维 SSH | 你 → JP-VPS | ✅ 已部署 |
+| 客户端代理 | Mac → JP-VPS → 互联网 | ✅ 已部署（Sparkle 主路径） |
+| KR-VPS | 历史节点 | ❌ 已退役（2026-07-24） |
+| VPS 互连 | KR ↔ JP 私有网络 | ❌ 未部署 |
 
 ---
 
@@ -84,13 +84,14 @@ Mac 通过 Sparkle/mihomo 订阅 VPS 节点，流量路径为 **Mac → VPS sing
 
 ### 2.1 VPS 端
 
-每台 VPS 运行 sing-box 单进程，暴露三类 inbound：
+每台 VPS 运行 sing-box 单进程，暴露 inbound；JP 另有独立 TLS canary：
 
 | 协议 | 端口 | 节点名示例 |
 |------|------|------------|
-| VLESS + REALITY | 443/tcp | KR-VPS-Reality / JP-VPS-Reality |
-| Hysteria2 | 8443/tcp+udp | KR-VPS-HY2 / JP-VPS-HY2 |
-| TUIC | 8444/udp | KR-VPS-TUIC / JP-VPS-TUIC |
+| VLESS + REALITY | 443/tcp | JP-VPS-Reality |
+| VLESS + TLS (LE) | **18443/tcp** | **JP-VPS-TLS**（`sing-box-jp-tls-canary` · Cursor 默认 leaf） |
+| Hysteria2 | 8443/tcp+udp | JP-VPS-HY2 |
+| TUIC | 8444/udp | JP-VPS-TUIC |
 
 - 配置路径：`/etc/sing-box/config.json`
 - 节点订阅：`/root/sparkle-nodes.yaml`
@@ -105,6 +106,7 @@ Mac 通过 Sparkle/mihomo 订阅 VPS 节点，流量路径为 **Mac → VPS sing
 | 443 | tcp + udp | VLESS + REALITY |
 | 8443 | tcp + udp | Hysteria2 (QUIC) |
 | 8444 | udp | TUIC (QUIC) |
+| **18443** | tcp | **JP-VPS-TLS**（canary） |
 | `<SSH_PORT>` | tcp | SSH |
 
 ```bash
@@ -113,6 +115,7 @@ ufw allow 443/udp
 ufw allow 8443/tcp
 ufw allow 8443/udp
 ufw allow 8444/udp
+ufw allow 18443/tcp   # JP only — JP-VPS-TLS
 ufw allow <SSH_PORT>/tcp
 ufw enable
 ```
@@ -120,8 +123,8 @@ ufw enable
 ### 2.3 Mac 端（Sparkle）
 
 1. 启动 Sparkle，确保 mihomo TUN 模式生效
-2. 在代理列表中选择 KR 或 JP 节点（Reality 稳定性优先，Cursor 默认 `KR-VPS-Reality`）
-3. Cursor 专用组：`🎯 Cursor 3.1.15 专用`，探测 URL 为 `https://api2.cursor.sh`
+2. override 用 **`proxies+:`** 追加 JP 四 leaf（见 `VPS-INFRA.md` BUG-034）
+3. Cursor 专用组：`🎯 Cursor 专用`；**默认 leaf `JP-VPS-TLS`**（`cursorDedicatedDefault.ts`）；探测 URL `https://api2.cursor.sh`
 
 ### 2.4 运维禁忌
 
@@ -285,8 +288,8 @@ ssh jp-vps 'cat /root/sparkle-nodes.yaml'
 scp -P <SSH_PORT> scripts/vps-deploy/migrate-to-singbox-only.sh root@<VPS_IP>:/root/
 
 # 2. SSH 登录后执行（NODE_PREFIX 决定 Sparkle 节点名）
-#    general = Reality + HY2 + TUIC（三节点）
-#    cursor  = Reality + HY2（无 TUIC）
+#    general = Reality + TLS + HY2 + TUIC（四节点 · JP）
+#    cursor  = TLS 优先（JP-VPS-TLS 默认 leaf）
 ssh -p <SSH_PORT> root@<VPS_IP>
 bash /root/migrate-to-singbox-only.sh general KR-VPS   # 首尔示例
 # bash /root/migrate-to-singbox-only.sh general JP-VPS   # 东京示例

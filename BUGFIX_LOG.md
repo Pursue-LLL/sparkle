@@ -1,6 +1,81 @@
 # Sparkle Bugfix Log
 
-> **2026-07-29 最新**：**BUG-2026-07-29-032** — R-16 Mihomo QUIC silent stall observe-only · **1.26.95** · **BUG-031** P29 · **BUG-030** P28
+> **2026-07-30 最新**：**BUG-2026-07-30-001** — TUIC QUIC silent stall · 81afd4e9 · **R-17–22 IMPLEMENTED @1.26.97** · **待重启 soak**
+
+### BUG-2026-07-30-001 · v1.26.97 · tuic_quic_silent_stall_split_brain_81afd4e9 (R-17–22)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **TRIAGE-DEFINITIVE** @ 2026-07-30 · **FIX IMPLEMENTED** @ 2026-07-30 — pkg **1.26.97** · **待 operator 重启 Sparkle + 赛前 TLS soak** · SSOT：`open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md` **§29.11** |
+| **症状** | RID `81afd4e9-830e-48b7-9209-906eb350edec` · 用户可见 `WritableIterable is closed` · 马拉松 ~50–72min 后断 |
+| **关联产品** | Sparkle **1.26.96** · Cursor **3.1.15** · active leaf **JP-VPS-TUIC** · cursor_conn **18–28** |
+| **bug 存在版本** | Sparkle **≤1.26.96**（R-16 HY2-only stall · 无 TUIC byte-frozen 观测 · 无 rescue ineffective 诚实 metric） |
+| **修复目标版本** | Sparkle **1.26.97**（R-17 QUIC stall SSOT · R-18 token_gap_rescue_ineffective · R-19 marathon preflight · R-20 connect_path_pulse ledger · R-21 observability coalesce · R-22 marathon data-plane guard） |
+| **PRIMARY 根因** | **L3** — Mac→JP-VPS-TUIC QUIC 马拉松 Connect/SSE **长流 silent stall（split-brain）** → `server-eof` ×2 → attempt=4 `WritableIterable is closed` |
+| **证据（definitive）** | ① jsonl 全链 `proxyNode=JP-VPS-TUIC` · `reasonSub=http-sse-server-eof` / `tls-reset` ② A2 106s 内 4 RID 同 TUIC server-eof ③ app-log `partition_stale=0` + api2 243–506ms 绿 + **`max_gap_ms=4867477`** + stale_rids 含 81afd4e9 ④ `token_gap_nudge outcome=executed_on_stale_rid` 同窗 max_gap 仍 ~81min ⑤ VPS @ 16:22 UTC sing-box **557 tuic conn/min · 0 tuic error** · VpsL4Probe api2_ms=538 · conntrack **433/1048576** · uptime **10d**（ssh jp-vps 2026-07-30 复核）⑥ renderer A1 `gapSinceActivityMs=634` · `streamPrimarySub=server-eof` · durationMs=3035000 ⑦ ledger @ A窗：Mac session_nudge p50=**293ms** vs VPS ssh_curl p50=**538ms** → **delta=−245ms**（Sparkle TUN **未**加税）⑧ A1 断连前 1s ledger `15:03:45` session_nudge **292ms 全绿** |
+| **NOT** | max-steps-cap（81afd4e9 链无 maximum number of steps）· Cursor 服务端随机 · **VPS 机器/L4 宕机/节点慢** · sing-box tuic timeout 未配（udp_timeout=3600s 已配）· Sparkle L0 hung（hung=0）· Sparkle TUN 延迟加税（Mac 路径更快）· WritableIterable 为根因（是 terminal 非根因） |
+| **VPS 定责澄清** | **VPS 机器质量：无问题**（api2 538ms 稳定 · sing-box 0 tuic error @A）· **VPS 上 TUIC QUIC 传输协议 + Mac mihomo 长流路径：有问题**（L3 split-brain）— 属手册「代理/VPS 问题」大类，**非**「VPS 烂了/慢了」 |
+| **R-16 盲区** | `mihomoQuicSilentStallCore.ts` 仅 `/-HY2$/` · A 窗口 **0 行** `[MihomoQuicSilentStall] leaf=JP-VPS-TUIC` — **半实现 dead SSOT** |
+| **反复次数** | **split-brain 同族第 7+ 次**（HY2/TUIC QUIC 长流 · 短探针绿 · 2026-07-18 Reality → 2026-07-25 P8 → 2026-07-29 R-16 HY2-only → **本次 TUIC**） |
+| **为何反复** | ① stall 观测 HY2/TUIC SSOT 分裂 ② `executed_on_stale_rid` Goodhart ③ rescue 不能复活 dead SSE ④ operator 赛前仍可选 TUIC ⑤ `shouldUpgradeCursorDedicatedNode` 恒 false |
+| **修复方案** | **Master §M.0.5 + §M.0.6 + §29.11** · R-17–22 · observe + R-22 禁 marathon provider update |
+| **Operator 赛前** | 马拉松开始前 Cursor 专用 **JP-VPS-TLS :18443**（**TCP 长流**，同 VPS · 非 failover 换机器）— HY2/TUIC 均为 **QUIC/UDP 族**，不能当 TCP 替代 |
+| **Included 幽灵计次** | 00:22 TUIC 集群断连 → 13:13–13:40 多条 Included（resumeAction ghost + ab194449 L7 max-steps @7505959ms）— **transport 根因浪费计次**，非独立新事故 |
+| **先前修复是否有意义** | **有意义，未闭环**：P28 partition latch · P29 server-eof latch · R-16 HY2 stall 观测 · BUG-035 TLS leaf 恢复 · Reality :443 修复 — 均有效但 **R-16 仅 HY2**、operator 仍选 **TUIC**、rescue **不能复活 dead SSE** → 同族第 7+ 次复发。**不是白修**，是 **半闭环 + 协议选择错误** |
+| **遗漏（待编码）** | ~~R-17/18/19 代码 · triage grep 更新 · pkg 1.26.97 soak~~ → **已编码** · 35 单测 pass · triage `frozen_quic_cursor` grep 已加 · **待重启 + 1 场 TLS 马拉松 soak 验收** |
+| **踩坑（SSOT）** | ① TUIC/HY2 均为 **QUIC/UDP**，mihomo `[TCP]` 日志是 **内层** Cursor→api2，不是隧道协议 ② TUIC marathon = L3 split-brain 高风险类 ③ api2 绿 + max_gap>30min = 长流已死 ④ rescue executed ≠ 已修复 ⑤ **506ms 多为 api2geo 尖峰**，不是 TUN sustained 加税 ⑥ 马拉松应走 **JP-VPS-TLS（TCP）**，非 HY2/TUIC |
+| **triage bundle** | `~/Desktop/cursor-triage-81afd4e9-20260730T131518/` · IncidentBundle `@16:22:34` |
+
+### BUG-2026-07-29-035 · infra · jp_vps_tls_leaf_restore_ufw_18443
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED** @ 2026-07-29 21:31 CST |
+| **症状** | Sparkle override / provider 缺 **JP-VPS-TLS**；用户 Reality 665ms/超时，无法切回标准 TLS |
+| **根因** | ① `sing-box-jp-tls-canary@18443` 在跑但 **UFW 未开 18443** → Mac 外网不可达 ② override / `sparkle-nodes.yaml` 未含 TLS leaf ③ 文档仍写「三节点」与 `vpsCanonicalNodes.ts` 四 leaf SSOT 不一致 |
+| **修复** | ① `ufw allow 18443/tcp` ② override `proxies+` 追加 JP-VPS-TLS ③ `/root/sparkle-nodes.yaml` 同步 ④ hot-reload `678a1sub001-vps` provider |
+| **验收** | 四 leaf alive=true；JP-VPS-TLS delay **325ms**（第 2 轮 healthcheck）；`:18443` TLSv1.3 握手 OK |
+| **关联文件** | `VPS-INFRA.md` §JP-VPS-TLS · `VPS-CONNECT.md` · `vpsCanonicalNodes.ts` · `cursorDedicatedDefault.ts` |
+| **Sparkle 责任** | 无代码 bug；文档与 override 模板需对齐四 leaf + `proxies+` |
+
+### BUG-2026-07-29-034 · v1.26.96 · override_proxies_replace_wipes_commercial_provider
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED-USER-DATA** @ 2026-07-29 20:52 CST · Sparkle 代码未改（行为符合 `deepMerge` 设计） |
+| **症状** | 订阅恢复后 Sparkle 代理页 **机场节点空白**；`profiles/678a1sub001-proxies.yaml` 为 `proxies: []`；仅 3 个 VPS 可见 |
+| **关联产品** | Sparkle **1.26.96** · profile `678a1sub001` · override `c7sgvps01.yaml` |
+| **bug 存在版本** | Sparkle **全版本**（`factory.ts` `overrideProfile` 对 yaml override 使用 `deepMerge(..., isOverride=true)`） |
+| **修复时间** | **2026-07-29 20:52 CST**（用户数据）；**20:54** 重启后 provider 持久正确 |
+| **根因** | override 使用 `proxies:`（3 个 VPS）→ `deepMerge` **整表替换**订阅 85 节点 → `setupProfileProviders` 写入 commercial provider 为空 → UI 空白。每次 `generateProfile()` / 订阅刷新 **复现** |
+| **证据** | ① `678a1sub001-proxies.yaml` mtime 20:49:59 size=12 bytes ② `deepMerge` 数组默认 replace（`merge.ts:33-35`）③ 改 `proxies+:` 后 merge=88（85+3）④ 重启后 commercial=85 mihomo 加载正常 |
+| **修复** | `~/Library/Application Support/sparkle/override/c7sgvps01.yaml`：`proxies:` → **`proxies+:`**（追加 VPS，不覆盖订阅） |
+| **关联文件** | `src/main/core/factory.ts`（`overrideProfile`）· `src/main/utils/merge.ts` · `src/main/core/provider.ts`（`setupProfileProviders`） |
+| **遗漏** | ① Sparkle 代码层未自动 warn/reject 覆盖型 override ② 未加单测「VPS override 不得清空 commercial」③ Gist 同步未开 — 再丢数据风险 |
+| **反复次数** | **第 2 次**同类（2026-07-29 数据恢复写 override 时再次踩坑；7/18 前后 provider split 也可能触发类似空白） |
+| **为何反复** | ① override 模板默认写 `proxies:` ② `proxies+` 语法无 UI 提示 ③ 症状像「订阅丢失」实为 merge 语义 |
+| **踩坑（SSOT）** | **VPS override yaml 必须用 `proxies+:`**，禁止 bare `proxies:`；验证：`generateProfile` 后 commercial provider 行数 >0 |
+| **导致** | 无（修复后 85+3 节点；马拉松 HY2 未断） |
+
+### BUG-2026-07-29-033 · infra · jp_vps_nginx443_tls_terminator_breaks_reality
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED-VPS** @ 2026-07-29 21:17 CST · sing-box Reality 恢复监听 :443 |
+| **症状** | Sparkle UI：**JP-VPS-Reality** `alive=false` / 超时；**JP-VPS-TUIC** 偶发 5001ms；**JP-VPS-HY2** 正常 ~300ms；用户误判「三节点全挂 / Sparkle 加税」 |
+| **关联产品** | Sparkle **1.26.96** · JP-VPS `45.76.104.78` · override Reality 客户端配置未变 |
+| **bug 引入时间** | **2026-07-18**（JP TLS 迁移：`nginx stream ssl` 占 :443 + `sing-box-jp-vless-backend` @ 18444） |
+| **修复时间** | **2026-07-29 21:17 CST**（ssh jp-vps 恢复 `vless-reality-in` @ :443） |
+| **根因** | 客户端：**VLESS+Reality**（SNI=www.cloudflare.com）→ VPS：**nginx Let's Encrypt 普通 TLS 终结** → 127.0.0.1:18444 **纯 VLESS 无 Reality** → `SSL alert bad certificate (42)` → backend **EOF** |
+| **证据** | ① nginx `jp-vless-tls-error.log`：`bad certificate` SNI=www.cloudflare.com ② `jp-vless-backend.log`：`process connection → EOF` ③ 修复前 mihomo：Reality alive=false，HY2 alive=true ④ 修复后 Reality/TUIC/HY2 均 alive ~270–335ms ⑤ VPS `ss`：sing-box 监听 *:443 |
+| **修复步骤** | ① 从 `config.json.bak.20260716` merge `vless-reality-in` → `/etc/sing-box/config.json` ② disable `nginx/stream-conf.d/jp-vless-tls.conf` ③ stop `sing-box-jp-vless-backend` ④ `systemctl restart sing-box` ⑤ **保留** `sing-box-jp-tls-canary@18443`（LE 证书监测，与 Reality 不冲突）|
+| **关联文件** | VPS：`/etc/sing-box/config.json` · `/etc/nginx/stream-conf.d/jp-vless-tls.conf.disabled` · 文档：`VPS-INFRA.md`（新增禁止项） |
+| **Sparkle 责任** | **无** — LatencyTruth `high=0`；542ms 为马拉松 session_nudge 瞬态，非 TUN 税 |
+| **TUIC 5001ms** | **非独立 bug** — TUIC 8444 服务正常；api2 health-check 5s 上限 + 高负载时误报；Reality 修复后 TUIC ~295–670ms alive |
+| **反复次数** | **第 1 次正式记录**（7/18 迁移后 Reality 隐性死亡 **≥11 天**；HY2 8443 未受影响故马拉松可跑） |
+| **为何难发现** | ① 马拉松默认 **JP-VPS-HY2** ② Reality 死不影响 api2 ③ UI 超时像「节点挂」实为 **协议栈不匹配** |
+| **踩坑（SSOT）** | **:443 必须 sing-box `vless-reality-in` 直连**；**禁止** nginx TLS 终结 + 后端纯 VLESS；改 443 前 `sing-box check` + Reality 探测 |
+| **如何避免** | 部署 checklist：`ss -tlnp \| grep :443` 应为 **sing-box** 非 nginx；`ss -tlnp \| grep 18443` 应为 **sing-box**（TLS canary）；`ufw status \| grep 18443` 必须 ALLOW；`VpsL4Probe` + **四 leaf** mihomo health 同周期验收 |
 
 ### BUG-2026-07-29-032 · v1.26.95 · mihomo_quic_silent_stall_observer (R-16)
 

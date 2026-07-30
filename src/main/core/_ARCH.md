@@ -9,12 +9,12 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | 文件                                                                    | 职责                                                                                                                                                                  |
 | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `api2ProbePlane.ts`                                                     | 单一 bootstrap：active 60s + VPS L4 SSH 300s → api2-probe-ledger.jsonl                                                                                                |
-| `vpsL4ProbeCore.ts` / `vpsL4Probe.ts`                                   | VPS SSH curl（kr-vps/jp-vps，`ProxyCommand=none` + 公网 HostName 回退）→ ledger scope=vps                                                                             |
-| `canonicalVpsNodeSnapshotCore.ts`                                       | 从 provider history 采集 6 节点 snapshot（CTHC events）                                                                                                               |
-| `networkTriangulationDiagnosticCore.ts`                                 | 定责探测：KR/JP Reality + active Cursor 节点 + marketplace                                                                                                            |
+| `vpsL4ProbeCore.ts` / `vpsL4Probe.ts`                                   | VPS SSH curl（**jp-vps**，`ProxyCommand=none` + 公网 HostName 回退）→ ledger scope=vps                                                                             |
+| `canonicalVpsNodeSnapshotCore.ts`                                       | 从 provider history 采集 **JP 四 leaf** snapshot（CTHC events）                                                                                                       |
+| `networkTriangulationDiagnosticCore.ts`                                 | 定责探测：KR/JP Reality（KR 可选）+ active Cursor 节点 + marketplace                                                                                                  |
 | `api2ProbeLedgerCore.ts`                                                | api2 探针统一 ledger 读写（scope=active/vps/marathon）；**readRecentSessionNudgeAnchorsForNode**（P9n）；**readLatencyTruthSummaryForNode**（P13 Phase 2） |
 | `latencyTruthFromLedgerCore.ts`                                         | **P13 Phase 2** VPS 本体 vs Mac 全路径 P50 SSOT（scope=vps ssh_curl vs scope=active transport_pair） |
-| `vpsCanonicalNodes.ts`                                                  | **P13 Phase 2.1** `resolveVpsRegionFromLeafNode` · region→leaf fan-out SSOT |
+| `vpsCanonicalNodes.ts`                                                  | **SSOT** JP-VPS 四 leaf：Reality / TLS / HY2 / TUIC · KR 已退役（2026-07-24） |
 | `nodeQualityScore.ts`                                                   | 纯函数：Probe/Session 分层评分、badge 门槛常量                                                                                                                        |
 | `nodeProbeStats.ts`                                                     | ledger vps 样本聚合 → DerivedStats                                                                                                                                    |
 | `commercialNodeBenchmark.ts`                                            | 24h VPS 报告（ledger scope=vps SSH + active）、UI snapshot IPC                                                                                                        |
@@ -55,7 +55,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `proxyHealthMonitor.ts`                                                 | SG/TW/JP failover（🎯 Cursor 专用，api2 测速）；**Marathon quiesce active 全暂停**（含 exit hysteresis 60s）                                                         |
 | `mihomoApi.ts`                                                          | mihomo REST 封装（delay 经 mihomoProbeCoordinator gate **除 marathon_rescue** BUG-015；Resource not found → provider leaf BUG-012/014；L2 fake-ip flush BUG-013） |
 | `mihomoProxyDelayCore.ts`                                               | **BUG-012/014/015** isMihomoApiResourceNotFoundError · resolveProviderNameForLeaf · isMarathonRescueDelayPurpose · shouldBypassMihomoDelayProbeSlot |
-| `cursorDedicatedDefault.ts`                                             | 启动恢复手选；无手选时仅默认 `JP-VPS-TLS`，禁止自动回落 Reality/HY2/TUIC                                                                                              |
+| `cursorDedicatedDefault.ts`                                             | 启动恢复手选；无手选时默认 **`JP-VPS-TLS`**（trusted standard TLS）；Reality/HY2/TUIC 标 suboptimal，禁止自动回落 |
 | `providerHealthCheckCore.ts`                                            | 商用 provider health-check URL（generate_204）                                                                                                                        |
 | `vpsProviderSplitCore.ts`                                               | VPS/commercial partition；`{profileId}-vps` provider；api2 health-check                                                                                               |
 | `mihomoProviderDelayCore.ts` / `providerDelayHistoryDisplayCore.ts`            | provider leaf delay 历史：取最近成功样本；**P9n** 柱图剔除 session_nudge（ledger SSOT）                                                                               |
@@ -70,7 +70,7 @@ api2ProbePlane (PostCoreBootstrap 单一入口)
   → vpsL4Probe (300s SSH L4 curl → scope=vps)
   → ~/.sparkle/api2-probe-ledger.jsonl
       scope=active → Guard API探针列 / 代理裁决
-      scope=vps    → SSH L4 KR/JP（method=ssh_curl）+ nodeProbeStats
+      scope=vps    → SSH L4 **JP**（method=ssh_curl）+ nodeProbeStats
 
 cursorTransportHealth (hung_scan 30s / hung≥12min / keep-newest-6 / transport_recovery)
   → network-stability-events.jsonl + vps_node_snapshots（CTHC 单点：latest-success delay，≠ UI 测速记录 history[-8]）
@@ -92,7 +92,17 @@ cursorStructuredTransportIngestCore ← Cursor/logs Structured tail（P17）
 ## Badge 规则
 
 - VPS combined 第一 **且** 通过 gate：success≥95%、slow>500ms≤15%、jitter≤150ms
-- 未通过 gate → 无 UI badge（`markersByNode` 为空），tooltip 仍可通过 `scoresByNode` 查看指标
+- 未通过 gate → 无 UI badge（`markersByNode` 为空）；需 `commercialNodeBenchmarkEnabled=true`（默认 true）
+- 节点 hover 详情弹窗由 `showProxyDetailTooltip` 控制（默认 true）；见 [proxies/_ARCH.md](../../renderer/src/components/proxies/_ARCH.md)
+
+## App 配置路径
+
+| 路径 | 内容 |
+|------|------|
+| `~/Library/Application Support/sparkle/config.yaml` | UI 与行为开关（含上述 opt-in） |
+| `~/.sparkle/api2-probe-ledger.jsonl` | 探针 ledger（与 app 配置目录分离） |
+
+修改 `config.yaml` 后须完全退出并重启 Sparkle 方生效（主进程内存缓存）。
 
 ## 测试
 

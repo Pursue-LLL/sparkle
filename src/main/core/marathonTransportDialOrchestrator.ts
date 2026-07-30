@@ -52,6 +52,7 @@ import {
 import {
   MTDO_ACTIVE_STREAM_MAX_GAP_MS,
   MTDO_MARATHON_STREAM_MIN_AGE_MS,
+  MTDO_OBSERVABILITY_BUNDLE_MS,
   selectMarathonTransportDialTrigger,
   shouldCoalesceMarathonTransportDial,
   shouldRunIndependentConnectPathPulse,
@@ -84,6 +85,17 @@ import {
   resolvePartitionLatchCandidate,
   shouldArmPartitionLatchFromBlindSpot,
 } from './partitionLatchCore'
+import {
+  formatMarathonTransportPreflightLogLine,
+  resolveMarathonTransportPreflight,
+} from './marathonTransportPreflightCore'
+import {
+  evaluateTokenGapRescueIneffective,
+  formatTokenGapRescueIneffectiveLogLine,
+  shouldRecordTokenGapRescueExecution,
+  type TokenGapRescueExecutionRecord,
+} from './tokenGapRescueIneffectiveCore'
+import { isHy2TunnelVitalityPrePartitionRisk } from './hy2TunnelVitalityCore'
 
 export interface ConnectPathPulseResult {
   connectPathDelayMs: number
@@ -111,8 +123,12 @@ let consecutiveWarmthDeferredCount = 0
 let cycleConnectPathPulse: ConnectPathPulseResult | undefined
 let lastPartitionBlindSpotAtMs = 0
 let lastCursorLogPlaneAtMs = 0
+let lastMarathonTruthActiveForPreflight = false
+let lastTokenGapRescueRecord: TokenGapRescueExecutionRecord | undefined
+let lastTokenGapIneffectiveEmitAtMs = 0
 
 const CURSOR_LOG_PLANE_HEARTBEAT_MS = 60_000
+const TOKEN_GAP_INEFFECTIVE_EMIT_COOLDOWN_MS = 120_000
 
 export function resetMarathonTransportDialOrchestratorForTests(): void {
   lastMtdoDialAtMs = 0
@@ -124,6 +140,9 @@ export function resetMarathonTransportDialOrchestratorForTests(): void {
   cycleConnectPathPulse = undefined
   lastPartitionBlindSpotAtMs = 0
   lastCursorLogPlaneAtMs = 0
+  lastMarathonTruthActiveForPreflight = false
+  lastTokenGapRescueRecord = undefined
+  lastTokenGapIneffectiveEmitAtMs = 0
   testConnectPathPulseOverride = null
 }
 
@@ -180,6 +199,20 @@ async function executeConnectPathPulse(
       recovery_action: 'none',
       hung_connection_count: cursorConnectionCount,
       error_detail: `pulse api2=${api2DelayMs} connect_path=${connectPathDelayMs}`,
+    })
+  }
+  if (api2DelayMs > 0) {
+    const { appendApi2ProbeLedgerRow } = await import('./api2ProbeLedgerCore')
+    await appendApi2ProbeLedgerRow({
+      ts: new Date().toISOString(),
+      scope: 'active',
+      node: activeNode,
+      latency_ms: api2DelayMs,
+      ok: true,
+      authoritative: true,
+      method: 'marathon_connect_path_pulse',
+      probe_via: `mihomo_node:${activeNode}`,
+      error_detail: `pulse api2=${api2DelayMs} api2direct=${api2directDelayMs} connect_path=${connectPathDelayMs}`,
     })
   }
   return { connectPathDelayMs, api2DelayMs, api2directDelayMs, partitionStale }
@@ -462,6 +495,19 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     const registry: MarathonStreamRegistry = marathonSnapshot.registry
     const marathonTruth = marathonSnapshot.truth
 
+    if (
+      activeNode &&
+      marathonTruth.marathonTruthActive &&
+      !lastMarathonTruthActiveForPreflight
+    ) {
+      const preflight = resolveMarathonTransportPreflight({
+        activeNode,
+        cursorConnectionCount,
+      })
+      await appendAppLog(formatMarathonTransportPreflightLogLine(preflight))
+    }
+    lastMarathonTruthActiveForPreflight = marathonTruth.marathonTruthActive
+
     const tokenGapSuppressedPendingTool =
       tokenGapSignal != null &&
       isTokenGapSuppressedForPendingTool(
@@ -513,8 +559,50 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     }
 
     if (activeNode && marathonTruth.marathonTruthActive) {
-      const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
-      await runHy2TunnelVitalityIfDue(activeNode, cursorConnectionCount, nowMs, marathonTruth)
+      const { runHy2TunnelVitalityIfDue, getLastHy2TunnelVitalityAtMs } = await import(
+        './hy2TunnelVitality'
+      )
+      const vitalityGateInput = {
+        nowMs,
+        cursorConnectionCount,
+        lastVitalityAtMs: getLastHy2TunnelVitalityAtMs(),
+        activeNode,
+        marathonTruthActive: marathonTruth.marathonTruthActive,
+        maxParentChainAgeMs: marathonTruth.maxParentChainAgeMs,
+      }
+      const prePartitionRisk = isHy2TunnelVitalityPrePartitionRisk(vitalityGateInput)
+      const pulseRecentlyRan =
+        lastConnectPathPulseAtMs > 0 &&
+        nowMs - lastConnectPathPulseAtMs < MTDO_OBSERVABILITY_BUNDLE_MS
+      if (!pulseRecentlyRan || prePartitionRisk) {
+        await runHy2TunnelVitalityIfDue(activeNode, cursorConnectionCount, nowMs, marathonTruth)
+      }
+    }
+
+    if (tokenGapSignal) {
+      const ineffective = evaluateTokenGapRescueIneffective({
+        record: lastTokenGapRescueRecord,
+        nowMs,
+        maxGapMs: tokenGapSignal.maxGapMs,
+        staleRequestIds: tokenGapSignal.staleRequestIds,
+        partitionStale: lastConnectPathPartitionStale,
+        api2DelayMs: recentProbe?.latencyMs,
+      })
+      if (
+        ineffective &&
+        nowMs - lastTokenGapIneffectiveEmitAtMs >= TOKEN_GAP_INEFFECTIVE_EMIT_COOLDOWN_MS
+      ) {
+        lastTokenGapIneffectiveEmitAtMs = nowMs
+        await appendAppLog(formatTokenGapRescueIneffectiveLogLine(ineffective))
+        await appendNetworkStabilityEvent({
+          ts: new Date(nowMs).toISOString(),
+          kind: 'token_gap_rescue_ineffective',
+          probe_ok: true,
+          recovery_action: 'none',
+          hung_connection_count: cursorConnectionCount,
+          error_detail: `max_gap_ms=${ineffective.maxGapMs} stale_rids=${ineffective.staleRequestIds.slice(0, 3).join(',')}`,
+        })
+      }
     }
 
     let candidate = selectMarathonTransportDialTrigger(selectionBase)
@@ -587,6 +675,18 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       { partitionLatchAgeMs },
     )
     updateWarmthDeferStreak(cursorConnectionCount, candidate.trigger, dialResult.outcome)
+    if (
+      candidate.trigger === 'token_gap' &&
+      shouldRecordTokenGapRescueExecution(dialResult.outcome)
+    ) {
+      lastTokenGapRescueRecord = {
+        executedAtMs: nowMs,
+        outcome: dialResult.outcome,
+        maxGapMs: candidate.maxGapMs ?? tokenGapSignal?.maxGapMs ?? 0,
+        staleRequestIds: candidate.staleRequestIds ?? tokenGapSignal?.staleRequestIds ?? [],
+        partitionStale: lastConnectPathPartitionStale,
+      }
+    }
     if (candidate.trigger === 'connect_partition' && dialResult.outcome === 'executed') {
       clearPartitionLatch()
     }

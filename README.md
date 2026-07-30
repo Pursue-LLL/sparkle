@@ -222,6 +222,21 @@ pnpm run upgrade:mac
 
 完整 SSOT 见 [BUGFIX_LOG.md — Sparkle 本地安装](BUGFIX_LOG.md)。
 
+**升级后配置**：`~/Library/Application Support/sparkle/config.yaml` 通常保留；若目录被清空或首次安装，会写入 `src/main/utils/template.ts` 默认值。探针 ledger 与 marathon 事件在 **`~/.sparkle/`**（与 Application Support 分离），重装 app 一般不删。
+
+### 代理页 UI（Cursor 联调默认开启）
+
+以下功能默认 **开启**（`src/main/utils/template.ts`）；可在 **代理页 → 设置抽屉** 关闭：
+
+| 配置键 | 说明 |
+|--------|------|
+| `showProxyDetailTooltip` | hover 节点 **600ms** 显示详情弹窗 |
+| `showGroupSelectedProxy` | 代理组卡片显示当前选中子节点 |
+| `commercialNodeBenchmarkEnabled` | 24h benchmark 与 **Agent·稳定性** badge |
+| `rememberProxyGroupOpenState` | 记住代理组展开状态（默认关） |
+
+组件与数据流见 [src/renderer/src/components/proxies/_ARCH.md](src/renderer/src/components/proxies/_ARCH.md)。
+
 **Agent 稳定性**：安装 **≥1.26.77**（含 P17 Structured transport ingest + P16 ultra-conn rescue；UI build stamp Chip）。最低 **≥1.26.53**（P9 Marathon Quiesce）。**≥1.26.50**（token gap nudge · ~33s server EOF 窗口）。
 
 ### 常见问题

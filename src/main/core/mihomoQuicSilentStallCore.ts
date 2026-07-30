@@ -1,14 +1,14 @@
 // [INPUT] cursorCriticalTransportCore · cursorHy2MarathonKeepaliveCore
 // [OUTPUT] scanMihomoQuicSilentStalls · formatMihomoQuicSilentStallLogLine
-// [POS] R-16 SSOT — observe-only HY2/QUIC byte-frozen stall triage (no recovery, no failover).
+// [POS] R-17 SSOT — observe-only HY2/TUIC QUIC byte-frozen stall triage (no recovery, no failover).
 
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 import {
   CURSOR_HY2_MARATHON_CONN_THRESHOLD,
-  isHy2CursorNode,
+  isMarathonQuIcInboundCursorNode,
 } from './cursorHy2MarathonKeepaliveCore'
 
-/** Bytes unchanged this long on an aged HY2 Cursor flow → silent stall suspect. */
+/** Bytes unchanged this long on an aged QUIC Cursor flow → silent stall suspect. */
 export const MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS = 45_000
 
 /** Ignore brand-new flows — tool pauses can legitimately idle briefly. */
@@ -23,7 +23,7 @@ export const MIHOMO_QUIC_STALL_EMIT_COOLDOWN_MS = 120_000
 /** Aggregate window emit cooldown — correlates with mass PING partition precursors. */
 export const MIHOMO_QUIC_STALL_AGGREGATE_EMIT_COOLDOWN_MS = 60_000
 
-/** Frozen HY2 critical-host flows in one snapshot → aggregate stall window. */
+/** Frozen QUIC critical-host flows in one snapshot → aggregate stall window. */
 export const MIHOMO_QUIC_STALL_AGGREGATE_FROZEN_MIN = 5
 
 export const MIHOMO_QUIC_STALL_AGGREGATE_CONN_THRESHOLD = 80
@@ -48,8 +48,8 @@ export interface MihomoQuicSilentStallObservation {
   connAgeMs?: number
   upload?: number
   download?: number
-  frozenHy2CursorCount: number
-  totalHy2CursorCount: number
+  frozenQuicCursorCount: number
+  totalQuicCursorCount: number
   cursorConnectionCount: number
 }
 
@@ -58,17 +58,20 @@ export function resolveConnectionHost(connection: ControllerConnectionDetail): s
   return String(metadata.host ?? metadata.sniffHost ?? metadata.remoteDestination ?? '').trim()
 }
 
-export function resolveHy2LeafFromChains(chains: readonly string[]): string | undefined {
+export function resolveMarathonQuIcLeafFromChains(chains: readonly string[]): string | undefined {
   for (const chain of chains) {
-    if (isHy2CursorNode(chain)) {
-      return chain.trim()
+    const trimmed = chain.trim()
+    if (isMarathonQuIcInboundCursorNode(trimmed)) {
+      return trimmed
     }
   }
   return undefined
 }
 
-export function isHy2QuIcCursorTransportConnection(connection: ControllerConnectionDetail): boolean {
-  const leaf = resolveHy2LeafFromChains(connection.chains ?? [])
+export function isMarathonQuIcCursorTransportConnection(
+  connection: ControllerConnectionDetail,
+): boolean {
+  const leaf = resolveMarathonQuIcLeafFromChains(connection.chains ?? [])
   if (!leaf) {
     return false
   }
@@ -123,7 +126,7 @@ function parseConnectionStartMs(start: string | undefined, nowMs: number): numbe
   return Number.isFinite(parsed) ? parsed : nowMs
 }
 
-export function isHy2QuIcConnectionFrozen(
+export function isMarathonQuIcConnectionFrozen(
   connection: ControllerConnectionDetail,
   tracked: MihomoQuicStallTrackedConnection,
   nowMs: number,
@@ -168,25 +171,25 @@ export function scanMihomoQuicSilentStalls(input: {
   }
 
   const observations: MihomoQuicSilentStallObservation[] = []
-  let frozenHy2CursorCount = 0
-  let totalHy2CursorCount = 0
+  let frozenQuicCursorCount = 0
+  let totalQuicCursorCount = 0
   let dominantLeaf = 'unknown'
   let maxFrozenStallMs = 0
 
   for (const connection of input.connections) {
-    if (!isHy2QuIcCursorTransportConnection(connection)) {
+    if (!isMarathonQuIcCursorTransportConnection(connection)) {
       continue
     }
-    const leaf = resolveHy2LeafFromChains(connection.chains ?? []) ?? 'unknown'
-    totalHy2CursorCount += 1
+    const leaf = resolveMarathonQuIcLeafFromChains(connection.chains ?? []) ?? 'unknown'
+    totalQuicCursorCount += 1
     const tracked = input.trackedById.get(connection.id)
     if (!tracked) {
       continue
     }
-    if (!isHy2QuIcConnectionFrozen(connection, tracked, input.nowMs)) {
+    if (!isMarathonQuIcConnectionFrozen(connection, tracked, input.nowMs)) {
       continue
     }
-    frozenHy2CursorCount += 1
+    frozenQuicCursorCount += 1
     const stallMs = input.nowMs - tracked.lastBytesChangeAtMs
     if (stallMs > maxFrozenStallMs) {
       maxFrozenStallMs = stallMs
@@ -204,30 +207,30 @@ export function scanMihomoQuicSilentStalls(input: {
       connAgeMs,
       upload: tracked.upload,
       download: tracked.download,
-      frozenHy2CursorCount: 0,
-      totalHy2CursorCount: 0,
+      frozenQuicCursorCount: 0,
+      totalQuicCursorCount: 0,
       cursorConnectionCount: input.cursorConnectionCount,
     })
   }
 
   if (
     input.cursorConnectionCount >= MIHOMO_QUIC_STALL_AGGREGATE_CONN_THRESHOLD &&
-    frozenHy2CursorCount >= MIHOMO_QUIC_STALL_AGGREGATE_FROZEN_MIN
+    frozenQuicCursorCount >= MIHOMO_QUIC_STALL_AGGREGATE_FROZEN_MIN
   ) {
     observations.push({
       kind: 'aggregate',
       leaf: dominantLeaf,
       stallMs: maxFrozenStallMs,
-      frozenHy2CursorCount,
-      totalHy2CursorCount,
+      frozenQuicCursorCount,
+      totalQuicCursorCount,
       cursorConnectionCount: input.cursorConnectionCount,
     })
   }
 
   for (const observation of observations) {
     if (observation.kind === 'single') {
-      observation.frozenHy2CursorCount = frozenHy2CursorCount
-      observation.totalHy2CursorCount = totalHy2CursorCount
+      observation.frozenQuicCursorCount = frozenQuicCursorCount
+      observation.totalQuicCursorCount = totalQuicCursorCount
     }
   }
 
@@ -266,8 +269,8 @@ export function formatMihomoQuicSilentStallLogLine(
     `kind=${observation.kind}`,
     `leaf=${observation.leaf}`,
     `stall_ms=${observation.stallMs}`,
-    `frozen_hy2_cursor=${observation.frozenHy2CursorCount}`,
-    `total_hy2_cursor=${observation.totalHy2CursorCount}`,
+    `frozen_quic_cursor=${observation.frozenQuicCursorCount}`,
+    `total_quic_cursor=${observation.totalQuicCursorCount}`,
     `cursor_conn=${observation.cursorConnectionCount}`,
   ]
   if (observation.connectionId) {

@@ -21,15 +21,6 @@ export function shouldApplyCursorDedicatedDefault(current: string | undefined): 
   return !current || current === 'SDK DNS'
 }
 
-/** Never auto-upgrade Dedicated protocol (HY2/TUIC/Reality → TLS) on bootstrap — avoids implicit tunnel rebuild. */
-export function shouldUpgradeCursorDedicatedNode(
-  _current: string | undefined,
-  _targetNode: string,
-  _manualSelection?: string
-): boolean {
-  return false
-}
-
 export function resolveCursorDefaultVpsNode(available: ReadonlySet<string>): string | undefined {
   for (const node of CURSOR_PREFERRED_VPS_NODES) {
     if (available.has(node)) {
@@ -93,7 +84,7 @@ export async function applyCursorDedicatedVpsSelection(
     return false
   }
 
-  if (!shouldUpgradeCursorDedicatedNode(current, targetNode, manualSelection)) {
+  if (!shouldApplyCursorDedicatedDefault(current)) {
     return false
   }
 
