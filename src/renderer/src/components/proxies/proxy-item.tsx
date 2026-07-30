@@ -9,6 +9,8 @@ import {
   formatProxyDelayTooltip,
   latestSuccessfulProxyDelayHistoryEntry
 } from '@renderer/utils/proxy-delay-sample-age'
+import { getLatencyTruthSummaryForNode } from '@renderer/utils/ipc'
+import { isVpsCursorLeafNode } from '@renderer/utils/delay-test'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
 
 interface Props {
@@ -135,8 +137,36 @@ const ProxyItem: React.FC<Props> = (props) => {
     () => latestSuccessfulProxyDelayHistoryEntry(proxy.history),
     [proxy.history]
   )
-  const delay = delaySample?.delay ?? -1
-  const delaySampleTime = delaySample?.time
+  const [authoritativeMacDelayMs, setAuthoritativeMacDelayMs] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (isGroup(proxy) || !isVpsCursorLeafNode(proxy.name)) {
+      setAuthoritativeMacDelayMs(null)
+      return
+    }
+    let cancelled = false
+    void getLatencyTruthSummaryForNode(proxy.name)
+      .then((summary) => {
+        if (cancelled) {
+          return
+        }
+        const macP50 = summary?.macFullPathP50
+        if (typeof macP50 === 'number' && macP50 > 0) {
+          setAuthoritativeMacDelayMs(macP50)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAuthoritativeMacDelayMs(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [proxy])
+
+  const delay = authoritativeMacDelayMs ?? delaySample?.delay ?? -1
+  const delaySampleTime = authoritativeMacDelayMs != null ? undefined : delaySample?.time
 
   const [loading, setLoading] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)

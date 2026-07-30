@@ -1,6 +1,30 @@
 # Sparkle Bugfix Log
 
-> **2026-07-30 最新**：**BUG-2026-07-30-001** — TUIC QUIC silent stall · 81afd4e9 · **R-17–22 IMPLEMENTED @1.26.97** · **待重启 soak**
+> **2026-07-30 最新**：**BUG-2026-07-30-002** — marathon probe contention · TLS 07:06 · **R-23 待授权** · **BUG-2026-07-30-001** R-17–22 @1.26.97
+
+### BUG-2026-07-30-002 · v1.26.97 · marathon_probe_contention_amplifies_cursor_disconnect (R-23)
+
+| 字段 | 内容 |
+| --- | --- |
+> **2026-07-30 最新**：**BUG-2026-07-30-002** — probe contention · **R-23 IMPLEMENTED @1.26.98** · **BUG-2026-07-30-001** R-17–22 @1.26.97
+
+### BUG-2026-07-30-002 · v1.26.98 · marathon_probe_contention_amplifies_cursor_disconnect (R-23)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-30 — pkg **1.26.98** · **12/12 单测 PASS** · **待 upgrade + TLS soak** · SSOT：Master **§M.0.9** |
+| **修复内容** | **R-23** `marathonContentionBudgetCore.ts` — green 基线 ≤1 triple-pulse/5min · breach bypass · rescue bundle 禁 redundant pulse · UI VPS leaf 读 LatencyTruth mac_p50 |
+| **验收** | app-log `[MarathonContentionBudget] outcome=deny` 替代 26s/4 pulse · soak 40min server-eof=0 |
+| **症状** | 用户：探针显示 **500+/超时** 时常与 Cursor **重连**同窗 · TLS/Reality UI 频繁 >500 · 「没法给 Cursor 用」 |
+| **关联产品** | Sparkle **1.26.97** · dedicated **JP-VPS-TLS** @ 06:55 · cursor_conn **12–17** |
+| **PRIMARY 根因** | **L3 路径争用 + Plane 2 探针 burst 放大** — Cursor SSE + Analytics 短连 + **connect_path_pulse 26s 内 ×4** 同抢 mihomo→TLS :18443 队列 · **非** TLS 栈故障 · **非**巧合 |
+| **证据** | ① 07:04–05 connect_path **291ms** ×3 · LatencyTruth mac_p50=**292** delta=**−232ms** ② 07:06:10 FailureSync **先于** 07:06:30 pulse→**613ms** ③ 07:06:30–56 pulse **×4** ④ 07:08:55 pulse_contract_breach gap=120s ⑤ 07:17:41 **1014ms** ⑥ agent-transport-failures TLS **170** 条中 **168** 为 Analytics 幽灵（无 requestId）· 仅 **2** 条真 agent rid ⑦ 81afd4e9 **反证**：探针 262–423ms 绿 · SSE dead 3035000ms（split-brain） |
+| **NOT** | VPS 机器慢 · Sparkle TUN 加税（delta 负）· Reality/TLS 协议栈坏 · 需 failover 换节点 |
+| **修复方案** | **R-23 Contention Budget SSOT** — CB-1 green≤1 dial/5min · CB-2 breach-only full pulse · CB-3 marathon 停 VPS health-check · CB-4 UI=mac_p50 · CB-5 外部锚点 server-eof |
+| **反复次数** | **探针争用同族第 5+ 次**（P12 budget · R-21 coalesce · 均未限 pulse burst） |
+| **为何反复** | 观测平面与数据平面 **无 hard cap** · UI 读 health history 非 authoritative · 每版修观测 SSOT 但未闭合 **争用预算** |
+| **改完还会 bug 吗** | L3 争用类 **极低** · L7 max-steps **仍会** · CB 过严致 split-brain 盲 **低**（S15 breach 兜底）— 见 Master §M.0.9.4 |
+| **踩坑** | 探针红+重连同窗 **≠** 探针导致断连 · 常是 **同因** · 幽灵 tls-reset **不计次** 但造成「一直在重连」感知 |
 
 ### BUG-2026-07-30-001 · v1.26.97 · tuic_quic_silent_stall_split_brain_81afd4e9 (R-17–22)
 

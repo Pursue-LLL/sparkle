@@ -96,6 +96,11 @@ import {
   type TokenGapRescueExecutionRecord,
 } from './tokenGapRescueIneffectiveCore'
 import { isHy2TunnelVitalityPrePartitionRisk } from './hy2TunnelVitalityCore'
+import {
+  evaluateMarathonContentionBudget,
+  formatMarathonContentionBudgetLogLine,
+  type MarathonContentionBreachKind,
+} from './marathonContentionBudgetCore'
 
 export interface ConnectPathPulseResult {
   connectPathDelayMs: number
@@ -116,6 +121,9 @@ export function setConnectPathPulseOverrideForTests(
 
 let lastMtdoDialAtMs = 0
 let lastConnectPathPulseAtMs = 0
+let lastObservabilityDialAtMs = 0
+let lastAuthoritativeConnectPathDelayMs: number | null = null
+let lastCachedConnectPathPulse: ConnectPathPulseResult | undefined
 let lastConnectPathPartitionStale = false
 let lastLatencyDeltaHigh = false
 let consecutiveLatencyDeltaHighCycles = 0
@@ -133,6 +141,9 @@ const TOKEN_GAP_INEFFECTIVE_EMIT_COOLDOWN_MS = 120_000
 export function resetMarathonTransportDialOrchestratorForTests(): void {
   lastMtdoDialAtMs = 0
   lastConnectPathPulseAtMs = 0
+  lastObservabilityDialAtMs = 0
+  lastAuthoritativeConnectPathDelayMs = null
+  lastCachedConnectPathPulse = undefined
   lastConnectPathPartitionStale = false
   lastLatencyDeltaHigh = false
   consecutiveLatencyDeltaHighCycles = 0
@@ -158,6 +169,90 @@ function formatMtdoLogLine(
     }
   }
   return `${parts.join(' ')}\n`
+}
+
+function buildConnectPathPulseFallback(): ConnectPathPulseResult {
+  const delayMs = lastAuthoritativeConnectPathDelayMs ?? 0
+  return {
+    connectPathDelayMs: delayMs,
+    api2DelayMs: delayMs,
+    api2directDelayMs: delayMs,
+    partitionStale: lastConnectPathPartitionStale,
+  }
+}
+
+function collectMarathonContentionBreachKinds(options: {
+  truth: MarathonSSETruthResult
+  lastConnectPathPulseAtMs: number
+  nowMs: number
+  connectPathPartitionDetected: boolean
+  connectPartitionPresent: boolean
+  latencyDeltaRescueEligible: boolean
+  silentGenerationEndPresent: boolean
+  tokenGapPresent: boolean
+  coldResumePresent: boolean
+  connectStreamGapPresent: boolean
+  tokenGapRescueIneffective: boolean
+}): MarathonContentionBreachKind[] {
+  const kinds: MarathonContentionBreachKind[] = []
+  if (isPulseContractBreach(options.truth, options.lastConnectPathPulseAtMs, options.nowMs)) {
+    kinds.push('pulse_contract_breach')
+  }
+  if (options.connectPathPartitionDetected) {
+    kinds.push('partition_stale_connect_path')
+    kinds.push('connect_path_partition')
+  }
+  if (options.connectPartitionPresent) {
+    kinds.push('connect_partition')
+  }
+  if (options.latencyDeltaRescueEligible) {
+    kinds.push('latency_delta_rescue')
+  }
+  if (options.silentGenerationEndPresent) {
+    kinds.push('silent_generation_end')
+  }
+  if (options.tokenGapPresent) {
+    kinds.push('token_gap')
+  }
+  if (options.coldResumePresent) {
+    kinds.push('cold_resume')
+  }
+  if (options.connectStreamGapPresent) {
+    kinds.push('connect_stream_gap')
+  }
+  if (options.tokenGapRescueIneffective) {
+    kinds.push('token_gap_rescue_ineffective')
+  }
+  return kinds
+}
+
+async function shouldAllowConnectPathPulse(options: {
+  nowMs: number
+  cursorConnectionCount: number
+  independentPulse: boolean
+  dialTrigger?: MarathonTransportDialCandidate['trigger']
+  breachKinds: readonly MarathonContentionBreachKind[]
+}): Promise<boolean> {
+  const decision = evaluateMarathonContentionBudget({
+    nowMs: options.nowMs,
+    lastAuthoritativeConnectPathDelayMs: lastAuthoritativeConnectPathDelayMs,
+    lastObservabilityDialAtMs: lastObservabilityDialAtMs,
+    breachKinds: options.breachKinds,
+    dialTrigger: options.dialTrigger,
+    independentPulse: options.independentPulse,
+  })
+  if (decision.outcome === 'allow') {
+    return true
+  }
+  await appendAppLog(
+    formatMarathonContentionBudgetLogLine(decision, {
+      cursorConnectionCount: options.cursorConnectionCount,
+      independentPulse: options.independentPulse,
+      trigger: options.dialTrigger,
+      lastDelayMs: lastAuthoritativeConnectPathDelayMs,
+    }),
+  )
+  return false
 }
 
 async function executeConnectPathPulse(
@@ -215,16 +310,36 @@ async function executeConnectPathPulse(
       error_detail: `pulse api2=${api2DelayMs} api2direct=${api2directDelayMs} connect_path=${connectPathDelayMs}`,
     })
   }
-  return { connectPathDelayMs, api2DelayMs, api2directDelayMs, partitionStale }
+  lastObservabilityDialAtMs = Date.now()
+  lastAuthoritativeConnectPathDelayMs = connectPathDelayMs > 0 ? connectPathDelayMs : lastAuthoritativeConnectPathDelayMs
+  lastCachedConnectPathPulse = { connectPathDelayMs, api2DelayMs, api2directDelayMs, partitionStale }
+  return lastCachedConnectPathPulse
 }
 
 async function ensureCycleConnectPathPulse(
   activeNode: string,
   cursorConnectionCount: number,
   nowMs: number,
+  options: {
+    independentPulse: boolean
+    dialTrigger?: MarathonTransportDialCandidate['trigger']
+    breachKinds: readonly MarathonContentionBreachKind[]
+  },
 ): Promise<ConnectPathPulseResult> {
   if (cycleConnectPathPulse) {
     return cycleConnectPathPulse
+  }
+  const allowed = await shouldAllowConnectPathPulse({
+    nowMs,
+    cursorConnectionCount,
+    independentPulse: options.independentPulse,
+    dialTrigger: options.dialTrigger,
+    breachKinds: options.breachKinds,
+  })
+  if (!allowed) {
+    const fallback = lastCachedConnectPathPulse ?? buildConnectPathPulseFallback()
+    cycleConnectPathPulse = fallback
+    return fallback
   }
   const pulse = await executeConnectPathPulse(activeNode, cursorConnectionCount)
   cycleConnectPathPulse = pulse
@@ -239,6 +354,7 @@ async function runIndependentConnectPathPulseIfDue(
   activeNode: string,
   cursorConnectionCount: number,
   nowMs: number,
+  breachKinds: readonly MarathonContentionBreachKind[],
 ): Promise<void> {
   if (isPulseContractBreach(truth, context.lastConnectPathPulseAtMs, nowMs)) {
     await appendAppLog(
@@ -252,7 +368,10 @@ async function runIndependentConnectPathPulseIfDue(
   }
 
   if (shouldRunIndependentConnectPathPulse(context)) {
-    const pulse = await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
+    const pulse = await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs, {
+      independentPulse: true,
+      breachKinds,
+    })
     if (!pulse.partitionStale) {
       return
     }
@@ -298,7 +417,10 @@ async function executeDialPlan(
   cursorConnectionCount: number,
   nowMs: number,
   activeNode: string,
-  options?: { partitionLatchAgeMs?: number },
+  options?: {
+    partitionLatchAgeMs?: number
+    breachKinds?: readonly MarathonContentionBreachKind[]
+  },
 ): Promise<MarathonSessionKeepaliveResult | { outcome: 'executed' | 'skipped_weak_probe' }> {
   const staleRidLimit = candidate.trigger === 'connect_partition' ? 8 : 3
   const staleRids = candidate.staleRequestIds?.slice(0, staleRidLimit).join(',')
@@ -311,7 +433,11 @@ async function executeDialPlan(
   }
   const plan: MarathonTransportDialPlan = candidate.plan
   if (plan === 'connect_rescue_bundle') {
-    await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
+    await ensureCycleConnectPathPulse(activeNode, cursorConnectionCount, nowMs, {
+      independentPulse: false,
+      dialTrigger: candidate.trigger,
+      breachKinds: options?.breachKinds ?? [],
+    })
     const sessionResult = await executeMarathonRescueDial(cursorConnectionCount, {
       trigger: candidate.trigger,
       maxGapMs: candidate.maxGapMs,
@@ -546,6 +672,31 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       forceHighLatencyWarmth,
     }
 
+    const tokenGapRescueIneffective =
+      tokenGapSignal != null &&
+      evaluateTokenGapRescueIneffective({
+        record: lastTokenGapRescueRecord,
+        nowMs,
+        maxGapMs: tokenGapSignal.maxGapMs,
+        staleRequestIds: tokenGapSignal.staleRequestIds,
+        partitionStale: lastConnectPathPartitionStale,
+        api2DelayMs: recentProbe?.latencyMs,
+      }) != null
+
+    const contentionBreachKinds = collectMarathonContentionBreachKinds({
+      truth: marathonTruth,
+      lastConnectPathPulseAtMs,
+      nowMs,
+      connectPathPartitionDetected: lastConnectPathPartitionStale,
+      connectPartitionPresent: connectPartition != null,
+      latencyDeltaRescueEligible,
+      silentGenerationEndPresent: silentGenerationEnd != null,
+      tokenGapPresent: tokenGapSignal != null && !tokenGapSuppressedPendingTool,
+      coldResumePresent: coldResumeSignal != null,
+      connectStreamGapPresent: connectStreamGapSignal != null,
+      tokenGapRescueIneffective,
+    })
+
     if (activeNode && (marathonTruthPulseDue || marathonTruth.marathonTruthActive)) {
       await runIndependentConnectPathPulseIfDue(
         selectionBase,
@@ -553,6 +704,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         activeNode,
         cursorConnectionCount,
         nowMs,
+        contentionBreachKinds,
       )
       selectionBase.lastConnectPathPulseAtMs = lastConnectPathPulseAtMs
       selectionBase.connectPathPartitionDetected = lastConnectPathPartitionStale
@@ -672,7 +824,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       cursorConnectionCount,
       nowMs,
       activeNode,
-      { partitionLatchAgeMs },
+      { partitionLatchAgeMs, breachKinds: contentionBreachKinds },
     )
     updateWarmthDeferStreak(cursorConnectionCount, candidate.trigger, dialResult.outcome)
     if (
