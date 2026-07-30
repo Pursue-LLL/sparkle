@@ -427,7 +427,7 @@ collect_agent_transport_by_ts() {
 
 write_quic_stall_signals_at_a() {
   [[ -s "$OUT/sparkle-app-A-window.log" ]] || return 0
-  rg 'MihomoQuicSilentStall|frozen_quic_cursor|mihomo_quic_silent_stall|token_gap_rescue_ineffective|MarathonDataPlaneMutation|marathon_transport_preflight' \
+  rg 'MihomoQuicSilentStall|frozen_quic_cursor|mihomo_quic_silent_stall|token_gap_rescue_ineffective|MarathonDataPlaneMutation|marathon_transport_preflight|MarathonContentionBudget' \
     "$OUT/sparkle-app-A-window.log" \
     >"$OUT/sparkle-quic-stall-A-window.log" 2>/dev/null || true
   if [[ -s "$OUT/sparkle-A-window-network-stability-events.jsonl" ]]; then
