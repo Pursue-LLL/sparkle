@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { ensureCorporateDirectRules } from './corporateDirectRules'
+import { ensureCorporateDirectRules, ensureCorporateDnsPolicy } from './corporateDirectRules'
 
 describe('corporateDirectRules', () => {
   it('prepends staff.xdf.cn DIRECT rules before subscription rules', () => {
@@ -37,5 +37,19 @@ describe('corporateDirectRules', () => {
     assert.equal(rules[4], 'DOMAIN-KEYWORD,neibu.koolearn.com,DIRECT')
     assert.equal(rules[5], 'DOMAIN-SUFFIX,staff.xdf.cn,DIRECT')
     assert.equal(rules[6], 'MATCH,PROXY')
+  })
+
+  it('adds system nameserver policy for corporate intranet domains', () => {
+    const profile = {
+      dns: { enable: true, 'nameserver-policy': { '+.cursor.sh': ['tls://223.5.5.5'] } }
+    } as unknown as MihomoConfig
+
+    ensureCorporateDnsPolicy(profile)
+
+    const policy = (profile.dns as MihomoDNSConfig)['nameserver-policy'] as Record<string, string[]>
+    assert.deepEqual(policy['+.neibu.koolearn.com'], ['system'])
+    assert.deepEqual(policy['+.koolearn.com'], ['system'])
+    assert.deepEqual(policy['+.staff.neworiental.org'], ['system'])
+    assert.deepEqual(policy['+.cursor.sh'], ['tls://223.5.5.5'])
   })
 })
