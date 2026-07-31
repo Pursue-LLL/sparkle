@@ -481,6 +481,12 @@ export function shouldPersistTransportFailure(row: AgentTransportFailureRow): bo
   if (row.reasonSub === 'connect-silent-eof') {
     return (row.durationMs ?? 0) >= SILENT_EOF_MARATHON_MIN_DURATION_MS
   }
+  if (row.reasonSub === 'max-steps-cap' || row.reasonSub === 'max-steps') {
+    return true
+  }
+  if (/maximum number of steps/i.test(errMsg)) {
+    return true
+  }
   if (/PING timed out/i.test(errMsg) || connectCode === '14') {
     return true
   }
