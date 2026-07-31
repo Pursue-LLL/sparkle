@@ -1,6 +1,15 @@
 # Sparkle Bugfix Log
 
-> **2026-07-31 最新**：**BUG-2026-07-31-017** P28 MaxSteps SLO @ **1.28.0** · **BUG-016** · **BUG-015** R-34 · 文档同步 `_ARCH.md` + `CURSOR-DISCONNECT-TRIAGE.md` @ 2026-07-31
+> **2026-07-31 最新**：**R-34e** token gap snapshot retention @ **1.28.0** · **BUG-2026-07-31-017** P28 MaxSteps SLO · **BUG-016** · **BUG-015** R-34 · 文档同步 `_ARCH.md` + `CURSOR-DISCONNECT-TRIAGE.md` @ 2026-07-31
+
+### R-34e · token_gap_snapshot_retention @ 1.28.0（pre-ship）
+
+| 字段 | 内容 |
+| --- | --- |
+| **问题** | `marathonTransportDialOrchestrator.ts:650-652` — `tokenGapSignal==null` 时 instant zero → 五门 AND 缺 stale proof → 仍只 vitality_dial |
+| **修复** | `marathonTokenGapSnapshotRetentionCore.ts` — marathon active 时保留最近 180s stale proof |
+| **验证** | `marathonTokenGapSnapshotRetentionCore.test.ts` 5/5 pass |
+| **状态** | CODE-DONE · 待用户空窗 upgrade |
 
 ### BUG-2026-07-31-017 · v1.28.0 · p28_maxsteps_slo_rolling100 (Phase 8)
 
@@ -1322,6 +1331,10 @@ bash scripts/install-sparkle-local.sh
 | 必须 | 禁止 |
 | --- | --- |
 | `pnpm run upgrade:mac` 或 `bash scripts/upgrade-sparkle-local.sh` | 只跑 `electron-builder` 不先 `electron-vite build`（stale asar） |
+| **Stage-A**（vite 后 ~30s）：`pnpm run verify:bundle` 或自动 gate 扫 `out/main/*.js` | 只查 `out/main/index.js`（Vite code-split 后 R-34 可能在 chunk） |
+| **Stage-B**（打包后）：同一 SSOT 扫 `app.asar` 全部 `out/main/*.js` | 打包 10min 后才发现 marker 缺失 |
+| preflight / smoke 走 **path-based CLI**（不传 bundle 文本 argv） | inline `tsx -e` 塞 MB 级 bundle（ARG_MAX） |
+| service 模式 close smoke 优先 `sparkle-service.sock` | 只测 `/tmp/sparkle-mihomo-api.sock`（僵尸 socket ECONNREFUSED） |
 | 安装前 `rm -rf /Applications/Sparkle.app` 再 **整包 ditto** | ditto/cp **覆盖**旧 app（DYLD · BUG-003） |
 | 启动：`install-sparkle-local.sh` 内 Finder POSIX open | 双击 / `open -a` 作为 adhoc 新包首选（Gatekeeper exit=1 像闪退） |
 | 仅 `/Applications/Sparkle.app` 单路径 | `~/Applications/Sparkle.app` 并存（split-brain · BUG-001） |
@@ -1333,7 +1346,7 @@ bash scripts/install-sparkle-local.sh
 **本地-only 升级口诀（无 Apple Developer · R-27）**：
 
 1. **等 cursor_conn=0** 再跑（或明确接受 override 风险）
-2. **只跑** `pnpm run upgrade:mac`（= vite build + asar 校验 + install + 门控）
+2. **只跑** `pnpm run upgrade:mac`（= vite build + **Stage-A/B bundle gate** + install + 门控）；升级前可单独 `pnpm run verify:bundle`
 3. **新 CDHash 首次**：Finder → Control+点击 → 打开（仅一次；见 `~/.sparkle/last-sparkle-cdhash`）
 4. **验 4 项**：版本 · `pgrep -x Sparkle` · `/tmp/sparkle-mihomo-api.sock` · app-log `generateProfile step=done groups=22`
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /** CLI wrapper for upgradeSparkleAsarGateCore — used by upgrade-sparkle-local.sh */
-import asar from '@electron/asar'
+import { collectSparkleMainProcessAsarSource } from './sparkleMainAsarSourceCore.ts'
 import { assertSparkleMainAsarBundle } from './upgradeSparkleAsarGateCore.ts'
 
 const appAsar = process.argv[2]
@@ -9,18 +9,18 @@ if (!appAsar) {
   process.exit(1)
 }
 
-const mainRel = 'out/main/index.js'
 let src = ''
 try {
-  src = asar.extractFile(appAsar, mainRel).toString('utf8')
+  src = collectSparkleMainProcessAsarSource(appAsar)
 } catch (e) {
   const msg = e instanceof Error ? e.message : String(e)
-  console.error(`[verify-sparkle-main-asar] asar missing ${mainRel}:`, msg)
+  console.error(`[verify-sparkle-main-asar] ${msg}`)
   process.exit(1)
 }
 
 try {
   assertSparkleMainAsarBundle(src)
+  console.log(`[verify-sparkle-main-asar] OK stage=B asar=${appAsar}`)
 } catch (err) {
   console.error(`[upgrade-sparkle] ${err instanceof Error ? err.message : String(err)}`)
   process.exit(1)

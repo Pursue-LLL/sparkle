@@ -50,4 +50,12 @@ describe('upgradeSparkleAsarGateCore', () => {
       'foo.markCoreReadyAtMs(); require_log.appendAppLog("x"); frozen_surgical_prune mihomoCloseConnection'
     assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
   })
+
+  it('accepts R-34 markers in code-split chunk when index.js lacks them', () => {
+    const indexChunk =
+      'require_log.appendAppLog("x"); require_networkStartupGraceCore.markCoreReadyAtMs(); mihomoCloseConnection'
+    const stallChunk = 'close_frozen_connection frozen_surgical_prune maxStepsRateObserver'
+    const source = `${indexChunk}\n${stallChunk}`
+    assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
+  })
 })
