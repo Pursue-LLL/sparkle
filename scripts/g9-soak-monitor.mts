@@ -3,6 +3,10 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import {
+  evaluateG9SoakPass,
+  parseG9SoakMetrics,
+} from './g9SoakMonitorCore.ts'
 
 const LOG_DIR = path.join(homedir(), 'Library/Application Support/sparkle/logs')
 const SNAPSHOT_PATH = path.join(homedir(), '.sparkle', 'max-steps-rate-snapshot.jsonl')
@@ -29,9 +33,6 @@ function pickLastMatching(lines: string[], pattern: RegExp): string | null {
 }
 
 function readLatestSnapshotAttemptRate(): number | null {
-  if (!readFileSync) {
-    return null
-  }
   try {
     const text = readFileSync(SNAPSHOT_PATH, 'utf8')
     const lines = text.split('\n').filter((line) => line.trim())
@@ -54,25 +55,15 @@ function main(): void {
   const tail = readFileSync(logPath, 'utf8').split('\n').slice(-TAIL_LINES)
   const maxSteps = pickLastMatching(tail, /\[MaxStepsRate\]:/)
   const recovery = pickLastMatching(tail, /\[RecoveryHonesty\]:/)
-
-  const attemptEarlyDisconnect = maxSteps?.match(/attempts_early_disconnect=(\d+)/)?.[1] ?? 'unknown'
-  const attemptStarted = maxSteps?.match(/attempts_started=(\d+)/)?.[1] ?? 'unknown'
-  const attemptRateFromLog = maxSteps?.match(/attempt_rate_pct=([\d.]+)/)?.[1]
-  const attemptRatePct =
-    attemptRateFromLog != null ? Number(attemptRateFromLog) : readLatestSnapshotAttemptRate()
-  const recoveryOutcome = recovery?.match(/outcome=(\w+)/)?.[1] ?? 'unknown'
-
-  const pass =
-    attemptEarlyDisconnect === '0' &&
-    attemptRatePct !== null &&
-    attemptRatePct >= 90 &&
-    Number(attemptStarted) >= 10
+  const snapshotAttemptRate = readLatestSnapshotAttemptRate()
+  const metrics = parseG9SoakMetrics(maxSteps, recovery, snapshotAttemptRate)
+  const pass = evaluateG9SoakPass(metrics)
 
   console.log(`[G9Soak] log=${logPath}`)
   console.log(`[G9Soak] max_steps_rate=${maxSteps ?? 'missing'}`)
   console.log(`[G9Soak] recovery_honesty=${recovery ?? 'missing'}`)
   console.log(
-    `[G9Soak] summary attempts_started=${attemptStarted} attempts_early_disconnect=${attemptEarlyDisconnect} attempt_rate_pct=${attemptRatePct ?? 'missing'} recovery_outcome=${recoveryOutcome} pass=${pass ? '1' : '0'}`,
+    `[G9Soak] summary attempts_started=${metrics.attemptsStarted ?? 'unknown'} attempts_early_disconnect=${metrics.attemptsEarlyDisconnect ?? 'unknown'} attempt_rate_pct=${metrics.attemptRatePct ?? 'missing'} below_target_attempt=${metrics.belowTargetAttempt == null ? 'unknown' : metrics.belowTargetAttempt ? 1 : 0} recovery_outcome=${metrics.recoveryOutcome ?? 'unknown'} pass=${pass ? '1' : '0'}`,
   )
   if (process.env.G9_SOAK_STRICT === '1' && !pass) {
     process.exit(1)

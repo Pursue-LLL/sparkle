@@ -78,6 +78,16 @@ export function evaluateSparklePostUpgradePreflight(
     detail: maxStepsRateReady ? 'MaxStepsRate wired' : 'MaxStepsRate missing',
   })
 
+  const p28bAttemptReady =
+    input.mainAsarSource.includes('attempt_rate_pct') ||
+    input.mainAsarSource.includes('below_target_attempt') ||
+    /attempt_rate_pct=/.test(input.appLogTail)
+  checks.push({
+    id: 'p28b_attempt_rate',
+    ok: p28bAttemptReady,
+    detail: p28bAttemptReady ? 'P28b attempt SLO wired' : 'P28b attempt_rate_pct missing',
+  })
+
   const closeFnRegression = /mihomoCloseConnection is not a function/i.test(input.appLogTail)
   checks.push({
     id: 'no_close_fn_regression',
