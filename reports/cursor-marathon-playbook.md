@@ -1,6 +1,6 @@
 # Cursor Marathon 代理操作手册
 
-> SSOT 交叉引用：`open-perplexity/tools/CURSOR_500_GUARD_ROADMAP.md` §5.4  
+> SSOT：`open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md` §M.0.1 · 本文件 = operator checklist  
 > 代码证据：`src/main/core/confirmCursorProxySwitch.ts` · `cursorNetworkOptimize.ts` · `marathonTransportDialOrchestrator.ts`（P15–P16）
 
 ## 核心原则

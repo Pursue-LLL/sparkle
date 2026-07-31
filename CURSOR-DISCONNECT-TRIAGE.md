@@ -1,13 +1,6 @@
 # Cursor 断连排查手册
 
-> **文档地图（禁止平行 roadmap）**
->
-> | 类型 | 唯一 SSOT |
-> | --- | --- |
-> | **战略 / 批次 / 事故注册表 / Phase 5–8** | open-perplexity [`CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md`](../../AI/open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md) |
-> | **本手册** | 操作 SOP（Step 0→8 · §V5 · triage 脚本） |
-> | **BUG / 发版** | [`BUGFIX_LOG.md`](./BUGFIX_LOG.md) |
-> | **薄索引（勿写正文）** | [`temp-docs/repair/CURSOR_*`](./temp-docs/repair/) → 均指向 Master |
+> **文档地图** — 战略/批次/定责：open-perplexity [`CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md`](../../AI/open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md)（**唯一 SSOT，无平行 roadmap**）· 本文件 = 操作 SOP · [`BUGFIX_LOG.md`](./BUGFIX_LOG.md) = 版本台账 · [`reports/cursor-marathon-playbook.md`](./reports/cursor-marathon-playbook.md) = operator checklist
 
 当 Cursor Agent/Chat SSE 流中断时，按以下步骤逐层定位根因。
 

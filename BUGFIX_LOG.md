@@ -734,7 +734,7 @@
 
 > **2026-07-24 最新**：① **BUG-2026-07-24-015** — rescue bypass delay probe slot · **1.26.70** ② **BUG-2026-07-24-014** — quiesce bypass · **1.26.69** ③ **BUG-2026-07-24-013** — L2 fake-ip flush · **1.26.69**
 
-每次修复用户可感知 bug 后 **必须追加一条**。架构教训与 Cursor 代理操作手册见 [reports/cursor-marathon-playbook.md](reports/cursor-marathon-playbook.md)、[src/main/core/_ARCH.md](src/main/core/_ARCH.md)；本文件只做 **修复台账**（症状 → 根因 → 计划/实际修复 → 版本 → 证据）。
+每次修复用户可感知 bug 后 **必须追加一条**。架构见 open-perplexity **Master SSOT** · [`reports/cursor-marathon-playbook.md`](reports/cursor-marathon-playbook.md) · [`src/main/core/_ARCH.md`](src/main/core/_ARCH.md)；本文件只做 **修复台账**。
 
 ## 记录模板（复制追加）
 
