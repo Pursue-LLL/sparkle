@@ -1,6 +1,6 @@
 // [INPUT] HttpSegmentStartedSample from cursorSegmentHandoffCore
 // [OUTPUT] readMarathonSegmentCache · appendMarathonSegmentCache · mergeMarathonSegmentRecords
-// [POS] P24b: append-only ~/.sparkle/marathon-segments.v1.jsonl — immune to renderer log rotation.
+// [POS] P22b append-only ~/.sparkle/marathon-segments.v1.jsonl — immune to renderer log rotation.
 
 import { appendFile, mkdir, open, readFile, stat } from 'fs/promises'
 import { existsSync } from 'fs'

@@ -1,6 +1,27 @@
 # Sparkle Bugfix Log
 
-> **2026-07-31 最新**：**BUG-2026-07-31-011** R-33 QUIC stall recovery · **1.27.6** · **BUG-2026-07-31-010** P21
+> **2026-07-31 最新**：**BUG-2026-07-31-013** cursor path prefix migration wipe · **1.27.8** · **BUG-2026-07-31-012** · **1.27.7**
+
+### BUG-2026-07-31-013 · v1.27.8 · cursor_path_prefix_migration_wipe
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-31 |
+| **症状** | 用户设置 `cursorProxyAppPathPrefixes: [/Applications/Cursor-3.1.15.app]` 后，Sparkle 重启/重装即被清成 `[]`，`generateProfile` 回退全量 `PROCESS-NAME,Cursor*` |
+| **根因** | `migrateLegacyCursorDefaults` 误把 **唯一的** `Cursor-3.1.15.app` 前缀当作 legacy 硬编码迁移并清空 |
+| **修复** | 删除该清空分支 · 提取 `appCursorDefaultsCore.ts` · 单测锁定「显式前缀必须保留」 |
+| **回归** | `appCursorDefaultsCore.test.ts` · `cursorRuleInjection.test.ts` · `cursorPathPrefixProfileReloadCore.test.ts` |
+| **用户动作** | `upgrade:mac` → 1.27.8；`config.yaml` 保持 `cursorProxyAppPathPrefixes: [/Applications/Cursor-3.1.15.app]` |
+
+### BUG-2026-07-31-012 · v1.27.7 · cursor_path_scoped_dedicated_rules
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-31 |
+| **症状** | `cursorProxyAppPathPrefixes` 设为非空后，`stripUnscopedCursorDedicatedRules` 未移除 legacy `PROCESS-NAME,Cursor*` → 多 Cursor 副本仍争用 `🎯 Cursor 专用` leaf |
+| **修复** | `isUnscopedCursorDedicatedRuleParts` 同时剥离 `PROCESS-NAME` + naked DOMAIN 规则 · `patchAppConfig(cursorProxyAppPathPrefixes)` → `generateProfile` + `reloadMihomoConfigFromDisk` 即时生效 |
+| **回归** | `cursorRuleInjection.test.ts` |
+| **用户动作** | `config.yaml` 设 `cursorProxyAppPathPrefixes: [/Applications/Cursor-3.1.15.app]` · 1.27.7 后 UI/配置保存自动 reload · 当前已手动 patch + reload |
 
 ### BUG-2026-07-31-011 · v1.27.6 · mihomo_quic_stall_recovery (R-33)
 
@@ -394,12 +415,12 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | EXEC-CODE-DONE · SOAK-PENDING（execute 在 Guard312 WB **1.0.16**） |
-| **症状** | Jul28 14:47–14:50 c69260ad/cc6c19f8/11b777ba @ ~89–91min · 服务端 generation-ended silent EOF → 用户手动 Continue 烧 Included |
-| **关联产品** | Sparkle（检测）+ Guard312（execute） |
-| **bug 存在版本** | 无客户端段轮换 · 被动等 silent EOF |
-| **修复目标版本** | Sparkle **1.26.88–1.26.89**（P22a detect）· Guard312 **1.0.17**（P22b execute） |
-| **修复** | Sparkle `cursorSegmentHandoffCore.ts` @ hung_scan `phase=detect_only` · WB `c2-wb-025` queue+resumeChat @ ~85min |
+| **状态** | EXEC-CODE-DONE · SOAK-PENDING（execute：**patch-315 ssot-v2** @ Cursor-3.1.15 + c2-wb-025 @ Cursor-2） |
+| **症状** | Jul28 14:47–14:50 c69260ad/cc6c19f8/11b777ba @ ~89–91min · Jul31 02:19/02:33 bffe9764/7375edad @ ~106/120min HY2 QUIC silent EOF → ghost resume 烧 Included |
+| **关联产品** | Sparkle（detect + quic-stall-ssot.json）+ Guard patch-315（execute） |
+| **bug 存在版本** | 无客户端段轮换 · observe-only ghost resume · patch-315 QUIC reader dead（row.stall_ms） |
+| **修复目标版本** | Sparkle **1.27.5+**（P22b detect + ssot writer）· Guard **0.16.28+** patch-315 ssot-v2 |
+| **修复** | Sparkle `quicStallSsot.ts` + `cursorSegmentHandoff*` @ hung_scan · WB patch-315 queue+resumeChat @ ~85min（QUIC stall → ~75min）· pendingTool deferred |
 | **诚实边界** | 服务端 ~89min cap 无法 100% 消除；首跑须验 `[SegmentHandoff] outcome=executed phase=resume-chat-invoked` |
 | **踩坑** | Sparkle detect 与 WB execute **双轨独立**；仅 deploy WB 后 execute 生效 · `submitChat` eager bind 避免 service 未捕获 |
 | **SSOT** | Sparkle `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` §11.2 · Guard312 `segmentHandoffCore.mjs` |

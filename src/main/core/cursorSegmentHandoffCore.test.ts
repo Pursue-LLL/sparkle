@@ -2,12 +2,17 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { CURSOR_HY2_MARATHON_CONN_THRESHOLD } from './cursorHy2MarathonKeepaliveCore'
 import {
+  CURSOR_SEGMENT_HANDOFF_QUIC_STALL_FORCE_MS,
+  CURSOR_SEGMENT_HANDOFF_QUIC_STALL_MIN_SEGMENT_MS,
   CURSOR_SEGMENT_HANDOFF_TARGET_MS,
   detectSegmentHandoffDue,
+  isQuicStallHandoffTrigger,
   parseHttpSegmentStartedLine,
   parseSegmentTerminatedId,
+  resolveEffectiveHandoffTargetMs,
 } from './cursorSegmentHandoffCore'
 import { buildMarathonStreamRegistry } from './marathonStreamRegistryCore'
+import { mergeMarathonSegmentRecords } from './marathonSegmentCache'
 
 const HTTP_START_MS = 1_000_000
 const NOW_MS = HTTP_START_MS + CURSOR_SEGMENT_HANDOFF_TARGET_MS + 60_000
@@ -107,5 +112,82 @@ describe('cursorSegmentHandoffCore', () => {
       cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
     })
     assert.equal(due, undefined)
+  })
+
+  it('resolveEffectiveHandoffTargetMs lowers target when QUIC stall is active', () => {
+    const effective = resolveEffectiveHandoffTargetMs(CURSOR_SEGMENT_HANDOFF_TARGET_MS, {
+      maxStallMs: CURSOR_SEGMENT_HANDOFF_QUIC_STALL_FORCE_MS + 1,
+      frozenQuicCursorCount: 1,
+    })
+    assert.equal(effective, CURSOR_SEGMENT_HANDOFF_QUIC_STALL_MIN_SEGMENT_MS)
+  })
+
+  it('detects handoff due early on QUIC stall when segment exceeds min age', () => {
+    const segmentStartMs = NOW_MS - CURSOR_SEGMENT_HANDOFF_QUIC_STALL_MIN_SEGMENT_MS - 60_000
+    const segments = [
+      {
+        segmentId: 'seg-quic',
+        requestId: 'req-quic',
+        originalRequestId: 'orig-quic',
+        composerId: 'comp-quic',
+        actionCase: 'resumeAction',
+        httpStartMs: segmentStartMs,
+      },
+    ]
+    const registry = buildMarathonStreamRegistry(
+      [{ requestId: 'req-quic', activityMs: NOW_MS - 30_000 }],
+      [],
+      NOW_MS,
+      6 * 60 * 60_000,
+    )
+    const due = detectSegmentHandoffDue(segments, new Set(), registry, {
+      nowMs: NOW_MS,
+      cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      quicStallContext: {
+        maxStallMs: 210_011,
+        frozenQuicCursorCount: 1,
+      },
+    })
+    assert.ok(due)
+    assert.equal(due?.trigger, 'quic_stall')
+    assert.equal(due?.segmentId, 'seg-quic')
+    assert.ok(due!.segmentAgeMs >= CURSOR_SEGMENT_HANDOFF_QUIC_STALL_MIN_SEGMENT_MS)
+    assert.ok(due!.segmentAgeMs < CURSOR_SEGMENT_HANDOFF_TARGET_MS)
+  })
+
+  it('mergeMarathonSegmentRecords keeps cache segment when renderer tail rolled out', () => {
+    const cacheOnly = mergeMarathonSegmentRecords(
+      [
+        {
+          segmentId: 'seg-cache',
+          requestId: 'req-cache',
+          originalRequestId: 'orig-cache',
+          composerId: 'comp-cache',
+          actionCase: 'resumeAction',
+          httpStartMs: HTTP_START_MS,
+          recordedAtMs: HTTP_START_MS,
+        },
+      ],
+      [],
+    )
+    assert.equal(cacheOnly.length, 1)
+    assert.equal(cacheOnly[0]?.requestId, 'req-cache')
+  })
+
+  it('isQuicStallHandoffTrigger requires frozen cursor and stall threshold', () => {
+    assert.equal(
+      isQuicStallHandoffTrigger({
+        maxStallMs: CURSOR_SEGMENT_HANDOFF_QUIC_STALL_FORCE_MS,
+        frozenQuicCursorCount: 1,
+      }),
+      true,
+    )
+    assert.equal(
+      isQuicStallHandoffTrigger({
+        maxStallMs: CURSOR_SEGMENT_HANDOFF_QUIC_STALL_FORCE_MS - 1,
+        frozenQuicCursorCount: 1,
+      }),
+      false,
+    )
   })
 })

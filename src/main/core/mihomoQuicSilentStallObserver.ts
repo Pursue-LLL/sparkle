@@ -1,6 +1,6 @@
-// [INPUT] mihomoQuicSilentStallCore · networkStabilityMonitor · appendAppLog
-// [OUTPUT] observeMihomoConnectionsForQuicSilentStall
-// [POS] R-16/R-33 runtime — mihomo /connections WS hook + targeted stall recovery.
+// [INPUT] mihomoQuicSilentStallCore · quicStallSsot · networkStabilityMonitor · appendAppLog
+// [OUTPUT] observeMihomoConnectionsForQuicSilentStall · getMarathonMaxQuicStallMs
+// [POS] R-16/R-33 runtime — mihomo /connections WS hook; writes quic-stall-ssot.json for patch-315.
 
 import { appendAppLog } from '../utils/log'
 import {
@@ -96,6 +96,18 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     (max, observation) => Math.max(max, observation.stallMs),
     0,
   )
+
+  try {
+    const { writeQuicStallSsotSnapshot } = await import('./quicStallSsot')
+    await writeQuicStallSsotSnapshot({
+      maxStallMs: lastObservedMaxStallMs,
+      frozenQuicCursorCount: lastObservedFrozenQuicCursorCount,
+      cursorConnectionCount,
+      nowMs,
+    })
+  } catch {
+    // app-log + jsonl remain authoritative if atom write fails
+  }
 
   for (const observation of observations) {
     const dedupeKey = mihomoQuicSilentStallDedupeKey(observation)

@@ -171,8 +171,24 @@ function ipcErrorWrapper<T>( // eslint-disable-next-line @typescript-eslint/no-e
   }
 }
 
+import { shouldReloadProfileForAppConfigPatch } from '../core/cursorPathPrefixProfileReloadCore'
+
 async function patchAppConfigWithServiceSync(patch: Partial<AppConfig>): Promise<AppConfig> {
   const nextConfig = await patchAppConfig(await normalizeServiceModePatch(patch))
+
+  if (shouldReloadProfileForAppConfigPatch(patch)) {
+    try {
+      const { generateProfile } = await import('../core/factory')
+      const { reloadMihomoConfigFromDisk } = await import('../core/mihomoApi')
+      await generateProfile()
+      await reloadMihomoConfigFromDisk()
+      void appendAppLog(
+        `[AppConfig]: cursorProxyAppPathPrefixes profile regenerated prefixes=${JSON.stringify(nextConfig.cursorProxyAppPathPrefixes ?? [])}\n`
+      )
+    } catch (error) {
+      void appendAppLog(`[AppConfig]: cursorProxyAppPathPrefixes profile reload failed, ${error}\n`)
+    }
+  }
 
   if (!('saveLogs' in patch || 'maxLogFileSizeMB' in patch)) {
     return nextConfig

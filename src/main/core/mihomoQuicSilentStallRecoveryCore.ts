@@ -1,9 +1,10 @@
-// [INPUT] mihomoQuicSilentStallCore observations
+// [INPUT] mihomoQuicSilentStallCore observations · cursorHy2MarathonKeepaliveCore threshold
 // [OUTPUT] stall recovery gate + log formatter
-// [POS] R-33 SSOT — targeted HY2 vitality + single-connection close (no failover, no mass close).
+// [POS] R-33 SSOT — vitality dial; single-connection close only outside marathon (conn<12).
 
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import { MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS } from './mihomoQuicSilentStallCore'
+import { CURSOR_HY2_MARATHON_CONN_THRESHOLD } from './cursorHy2MarathonKeepaliveCore'
 
 /** Trigger lightweight connect_path vitality once byte-frozen threshold is met. */
 export const MIHOMO_QUIC_STALL_VITALITY_TRIGGER_MS = MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS
@@ -49,6 +50,9 @@ export function resolveMihomoQuicStallRecoveryPlan(input: {
   }
 
   if (observation.stallMs >= MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS) {
+    if (observation.cursorConnectionCount >= CURSOR_HY2_MARATHON_CONN_THRESHOLD) {
+      return { action: 'vitality_dial', reason: 'marathon_block_close_connection' }
+    }
     return { action: 'close_connection', reason: 'single_stall_exceeded_close_threshold' }
   }
 

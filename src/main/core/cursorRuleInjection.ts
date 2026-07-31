@@ -108,6 +108,14 @@ function isCursorDedicatedTrafficRuleParts(parts: readonly string[]): boolean {
   return false
 }
 
+function isUnscopedCursorDedicatedRuleParts(parts: readonly string[]): boolean {
+  if (parts[0] === 'PROCESS-NAME') {
+    return true
+  }
+
+  return isCursorDedicatedTrafficRuleParts(parts)
+}
+
 function isPathScopedCursorDedicatedRule(rule: string): boolean {
   const trimmed = rule.trim()
   if (trimmed.startsWith('AND,')) {
@@ -142,7 +150,7 @@ export function stripUnscopedCursorDedicatedRules(profile: MihomoConfig): void {
       return true
     }
 
-    return !isCursorDedicatedTrafficRuleParts(parts)
+    return !isUnscopedCursorDedicatedRuleParts(parts)
   }) as MihomoConfig['rules']
 }
 
