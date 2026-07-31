@@ -161,6 +161,9 @@ if [[ -n "$APP_LOG" ]]; then
     fi
     log "BUG-014 gate OK (no post-install Resource not found on rescue paths since line $BUG014_GATE_SINCE_LINE)"
   fi
+
+  log "Preflight 1.28.0 bundle (R-34 + G8 + close smoke)..."
+  bash "$ROOT/scripts/preflight-sparkle-1280.sh" || fail "preflight-sparkle-1280 failed — see report above"
 else
   log "WARN: no sparkle app-*.log yet — skip PostCoreBootstrap gate"
 fi

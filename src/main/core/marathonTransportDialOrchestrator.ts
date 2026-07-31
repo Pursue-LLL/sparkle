@@ -15,6 +15,7 @@ import {
 } from './cursorConnectStreamKeepaliveCore'
 import {
   formatMarathonRescueNudgeLogLine,
+  resolveRescueDialLogOutcome,
   shouldForceHy2MarathonSessionKeepaliveForHighLatency,
   type MarathonSessionKeepaliveResult,
 } from './cursorHy2MarathonKeepaliveCore'
@@ -640,6 +641,17 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     const registry: MarathonStreamRegistry = marathonSnapshot.registry
     const marathonTruth = marathonSnapshot.truth
 
+    if (tokenGapSignal) {
+      const { setMarathonTokenGapSnapshotForRecovery } = await import('./mihomoQuicSilentStallRecovery')
+      setMarathonTokenGapSnapshotForRecovery({
+        maxGapMs: tokenGapSignal.maxGapMs,
+        staleRequestIdCount: tokenGapSignal.staleRequestIds.length,
+      })
+    } else {
+      const { setMarathonTokenGapSnapshotForRecovery } = await import('./mihomoQuicSilentStallRecovery')
+      setMarathonTokenGapSnapshotForRecovery({ maxGapMs: 0, staleRequestIdCount: 0 })
+    }
+
     if (
       activeNode &&
       marathonTruth.marathonTruthActive &&
@@ -889,16 +901,40 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       { partitionLatchAgeMs, breachKinds: rescueContentionBreachKinds },
     )
     updateWarmthDeferStreak(cursorConnectionCount, candidate.trigger, dialResult.outcome)
+    const rescueLogOutcome =
+      candidate.trigger === 'token_gap' ||
+      candidate.trigger === 'silent_generation_end' ||
+      candidate.trigger === 'cold_resume'
+        ? resolveRescueDialLogOutcome(candidate.trigger, dialResult, {
+            maxGapMs: candidate.maxGapMs ?? tokenGapSignal?.maxGapMs,
+            staleRequestIdCount: candidate.staleRequestIdCount,
+            staleRids: (candidate.staleRequestIds ?? tokenGapSignal?.staleRequestIds ?? [])
+              .slice(0, 3)
+              .join(','),
+          })
+        : dialResult.outcome
     if (
       candidate.trigger === 'token_gap' &&
-      shouldRecordTokenGapRescueExecution(dialResult.outcome)
+      shouldRecordTokenGapRescueExecution(String(rescueLogOutcome))
     ) {
+      const maxGapMs = candidate.maxGapMs ?? tokenGapSignal?.maxGapMs ?? 0
+      const staleRequestIds =
+        candidate.staleRequestIds ?? tokenGapSignal?.staleRequestIds ?? []
       lastTokenGapRescueRecord = {
         executedAtMs: nowMs,
-        outcome: dialResult.outcome,
-        maxGapMs: candidate.maxGapMs ?? tokenGapSignal?.maxGapMs ?? 0,
-        staleRequestIds: candidate.staleRequestIds ?? tokenGapSignal?.staleRequestIds ?? [],
+        outcome: String(rescueLogOutcome),
+        maxGapMs,
+        staleRequestIds,
         partitionStale: lastConnectPathPartitionStale,
+      }
+      if (rescueLogOutcome === 'attempted_on_stale_rid') {
+        const { recordRecoveryHonestyAttempt } = await import('./mihomoQuicSilentStallRecovery')
+        recordRecoveryHonestyAttempt({
+          kind: 'token_gap_rescue',
+          attemptedAtMs: nowMs,
+          baselineMaxGapMs: maxGapMs,
+          staleRequestIds,
+        })
       }
     }
     if (

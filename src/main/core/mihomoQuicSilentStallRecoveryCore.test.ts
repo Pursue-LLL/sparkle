@@ -2,22 +2,22 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS,
-  MIHOMO_QUIC_STALL_RECOVERY_COOLDOWN_MS,
   resolveMihomoQuicStallRecoveryPlan,
 } from './mihomoQuicSilentStallRecoveryCore'
+import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 
-describe('mihomoQuicSilentStallRecoveryCore R-33', () => {
+describe('mihomoQuicSilentStallRecoveryCore R-34', () => {
   const baseObservation = {
     kind: 'single' as const,
     connectionId: 'conn-stall-1',
-    host: 'api2.cursor.sh',
+    host: 'api2direct.cursor.sh',
     leaf: 'JP-VPS-HY2',
     network: 'tcp',
     stallMs: 50_000,
     connAgeMs: 200_000,
     frozenQuicCursorCount: 3,
     totalQuicCursorCount: 10,
-    cursorConnectionCount: 20,
+    cursorConnectionCount: 33,
   }
 
   it('plans vitality dial for single stall below close threshold', () => {
@@ -30,60 +30,35 @@ describe('mihomoQuicSilentStallRecoveryCore R-33', () => {
     assert.equal(plan.reason, 'single_stall_vitality')
   })
 
-  it('plans close for single stall above close threshold when not marathon', () => {
+  it('plans close for frozen surgical prune when token gap proves stale', () => {
     const plan = resolveMihomoQuicStallRecoveryPlan({
       observation: {
         ...baseObservation,
-        cursorConnectionCount: 8,
         stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS + 1,
       },
+      tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
+      staleRequestIdCount: 1,
+      lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
     })
     assert.equal(plan.action, 'close_connection')
+    assert.equal(plan.reason, 'frozen_surgical_prune')
   })
 
-  it('blocks close_connection during marathon and uses vitality dial instead', () => {
+  it('blocks close during marathon when no token gap proof', () => {
     const plan = resolveMihomoQuicStallRecoveryPlan({
       observation: {
         ...baseObservation,
-        cursorConnectionCount: 20,
+        cursorConnectionCount: 33,
         stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS + 1,
       },
+      tokenGapMaxMs: 0,
+      staleRequestIdCount: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
     })
     assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'marathon_block_close_connection')
-  })
-
-  it('respects per-connection recovery cooldown', () => {
-    const nowMs = 1_000_000
-    const plan = resolveMihomoQuicStallRecoveryPlan({
-      observation: baseObservation,
-      lastRecoveryAtMsByConnectionId: new Map([
-        ['conn-stall-1', nowMs - MIHOMO_QUIC_STALL_RECOVERY_COOLDOWN_MS + 1_000],
-      ]),
-      nowMs,
-    })
-    assert.equal(plan.action, 'none')
-    assert.equal(plan.reason, 'recovery_cooldown')
-  })
-
-  it('plans vitality dial for aggregate frozen window', () => {
-    const plan = resolveMihomoQuicStallRecoveryPlan({
-      observation: {
-        kind: 'aggregate',
-        leaf: 'JP-VPS-HY2',
-        stallMs: 90_000,
-        frozenQuicCursorCount: 8,
-        totalQuicCursorCount: 20,
-        cursorConnectionCount: 90,
-      },
-      lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
-    })
-    assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'aggregate_frozen_quic')
+    assert.equal(plan.reason, 'no_token_gap_stale_proof')
   })
 })

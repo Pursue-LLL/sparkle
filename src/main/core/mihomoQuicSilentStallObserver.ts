@@ -4,6 +4,10 @@
 
 import { appendAppLog } from '../utils/log'
 import {
+  buildTransportLongevityTruth,
+  formatTransportLongevityTruthLogLine,
+} from './transportLongevityTruthCore'
+import {
   createMihomoQuicStallTrackedConnection,
   countCursorConnectionsFromMihomo,
   countMarathonFrozenQuicCursorConnections,
@@ -96,6 +100,46 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     (max, observation) => Math.max(max, observation.stallMs),
     0,
   )
+
+  const activeHy2Leaf =
+    resolveMarathonQuIcLeafFromChains(
+      connections.find((c) => isMarathonQuIcCursorTransportConnection(c))?.chains ?? [],
+    ) ?? 'JP-VPS-HY2'
+
+  try {
+    const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
+    const marathonTruth = await resolveMarathonSSETruthNow(cursorConnectionCount)
+    const longevitySnapshot = buildTransportLongevityTruth({
+      nowMs,
+      cursorConnectionCount,
+      marathonTruth,
+      connections,
+      trackedById,
+      activeHy2Leaf,
+      maxByteStallMs: lastObservedMaxStallMs,
+      frozenQuicCursorCount: lastObservedFrozenQuicCursorCount,
+    })
+    const trackedFirstSeenAtMsById = new Map<string, number>()
+    const trackedLastByteChangeAtMsById = new Map<string, number>()
+    for (const [id, tracked] of trackedById) {
+      trackedFirstSeenAtMsById.set(id, tracked.firstSeenAtMs)
+      trackedLastByteChangeAtMsById.set(id, tracked.lastBytesChangeAtMs)
+    }
+    const { setTransportLongevityContextForRecovery } = await import('./mihomoQuicSilentStallRecovery')
+    setTransportLongevityContextForRecovery({
+      snapshot: longevitySnapshot,
+      connections,
+      trackedFirstSeenAtMsById,
+      trackedLastByteChangeAtMsById,
+    })
+    const { writeTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
+    await writeTransportLongevityTruthSnapshot(longevitySnapshot)
+    if (cursorConnectionCount >= 12) {
+      await appendAppLog(formatTransportLongevityTruthLogLine(longevitySnapshot))
+    }
+  } catch {
+    // quic-stall-ssot remains authoritative if longevity write fails
+  }
 
   try {
     const { writeQuicStallSsotSnapshot } = await import('./quicStallSsot')

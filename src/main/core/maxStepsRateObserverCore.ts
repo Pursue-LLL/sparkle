@@ -1,9 +1,14 @@
-// [INPUT] MarathonSegmentCacheRecord · AgentTransportFailureRow
+// [INPUT] MarathonSegmentCacheRecord · AgentTransportFailureRow · ValidatedLedgerTerminalRow
 // [OUTPUT] computeMaxStepsRateSnapshot
 // [POS] P28 observe-only — max-steps terminal rate; primary SLO = rolling last 100 turns.
 
 import type { AgentTransportFailureRow } from './connectPartitionDetectCore'
 import type { MarathonSegmentCacheRecord } from './marathonSegmentCache'
+import {
+  isMaxStepsLedgerTerminal,
+  mergeTerminalsForMaxStepsRate,
+  type ValidatedLedgerTerminalRow,
+} from './validatedLedgerTerminalCore'
 
 export const MAX_STEPS_RATE_ROLLING_TURN_LIMIT = 100
 export const MAX_STEPS_RATE_AUX_WINDOW_MS = 86_400_000
@@ -26,6 +31,8 @@ export interface MaxStepsRateSnapshot {
   aux24h: MaxStepsRateWindowStats
   targetPct: number
   belowTarget: boolean
+  ledgerTerminalCount: number
+  ledgerMaxStepsInPrimary: number
 }
 
 export function isMaxStepsTerminalRow(row: AgentTransportFailureRow): boolean {
@@ -64,24 +71,6 @@ function collectTurnStarts(
     }
   }
   return startedByOriginal
-}
-
-function latestTerminalByOriginalRequestId(
-  rows: readonly AgentTransportFailureRow[],
-): Map<string, AgentTransportFailureRow> {
-  const latest = new Map<string, AgentTransportFailureRow>()
-  for (const row of rows) {
-    const originalRequestId = String(row.originalRequestId ?? row.requestId ?? '').trim()
-    if (!originalRequestId) {
-      continue
-    }
-    const ts = typeof row.ts === 'number' ? row.ts : 0
-    const prev = latest.get(originalRequestId)
-    if (!prev || ts >= (prev.ts ?? 0)) {
-      latest.set(originalRequestId, row)
-    }
-  }
-  return latest
 }
 
 function classifyTurns(
@@ -149,11 +138,12 @@ export function computeMaxStepsRateSnapshot(
   rollingLimit: number = MAX_STEPS_RATE_ROLLING_TURN_LIMIT,
   auxWindowMs: number = MAX_STEPS_RATE_AUX_WINDOW_MS,
   lookbackMs: number = MAX_STEPS_RATE_LOOKBACK_MS,
+  ledgerRows: readonly ValidatedLedgerTerminalRow[] = [],
 ): MaxStepsRateSnapshot {
   const lookbackSinceMs = nowMs - lookbackMs
   const auxSinceMs = nowMs - auxWindowMs
   const allStarts = collectTurnStarts(segments, lookbackSinceMs)
-  const terminals = latestTerminalByOriginalRequestId(failureRows)
+  const terminals = mergeTerminalsForMaxStepsRate(failureRows, ledgerRows)
 
   const rollingStarts = selectRollingTurnStarts(allStarts, rollingLimit)
   const auxStarts = collectTurnStarts(segments, auxSinceMs)
@@ -164,11 +154,28 @@ export function computeMaxStepsRateSnapshot(
   )
   const aux24h = buildWindowStats('24h', classifyTurns(auxStarts, terminals))
 
+  const ledgerLatestByOriginal = new Map<string, ValidatedLedgerTerminalRow>()
+  for (const row of ledgerRows) {
+    const prev = ledgerLatestByOriginal.get(row.originalRequestId)
+    if (!prev || row.ts >= prev.ts) {
+      ledgerLatestByOriginal.set(row.originalRequestId, row)
+    }
+  }
+  let ledgerMaxStepsInPrimary = 0
+  for (const originalRequestId of rollingStarts.keys()) {
+    const ledgerTerminal = ledgerLatestByOriginal.get(originalRequestId)
+    if (ledgerTerminal && isMaxStepsLedgerTerminal(ledgerTerminal)) {
+      ledgerMaxStepsInPrimary += 1
+    }
+  }
+
   return {
     primary,
     aux24h,
     targetPct: MAX_STEPS_RATE_TARGET_PCT,
     belowTarget: primary.startedTurns > 0 && primary.maxStepsRatePct < MAX_STEPS_RATE_TARGET_PCT,
+    ledgerTerminalCount: ledgerRows.length,
+    ledgerMaxStepsInPrimary,
   }
 }
 
@@ -183,6 +190,8 @@ export function formatMaxStepsRateLogLine(snapshot: MaxStepsRateSnapshot): strin
     ` early_disconnect=${p.earlyDisconnectTurns}` +
     ` in_progress=${p.inProgressTurns}` +
     ` rate_pct=${p.maxStepsRatePct.toFixed(1)}` +
+    ` ledger_terminals=${snapshot.ledgerTerminalCount}` +
+    ` ledger_max_steps_primary=${snapshot.ledgerMaxStepsInPrimary}` +
     ` window_h=24 started_24h=${a.startedTurns}` +
     ` max_steps_24h=${a.maxStepsTurns}` +
     ` early_disconnect_24h=${a.earlyDisconnectTurns}` +

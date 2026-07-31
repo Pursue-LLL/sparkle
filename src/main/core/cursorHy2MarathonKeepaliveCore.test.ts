@@ -238,7 +238,7 @@ test('formatMarathonRescueNudgeLogLine emits outcome SSOT for triage', async () 
     { outcome: 'executed', api2DelayMs: 120, api2geoDelayMs: 95 },
     { cursorConnectionCount: 80, maxGapMs: 22000, staleRids: 'rid-c' },
   )
-  assert.match(executed, /outcome=executed_on_stale_rid/)
+  assert.match(executed, /outcome=attempted_on_stale_rid/)
   assert.match(executed, /api2_delay_ms=120/)
   assert.match(executed, /api2geo_delay_ms=95/)
   const failed = formatMarathonRescueNudgeLogLine(

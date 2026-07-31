@@ -27,7 +27,11 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost/**Structured NAL** 同步 + proxyNode 回填）；**P27b** server-eof → `natStaleSuspectObserver` |
 | `natStaleSuspectObserverCore.ts` / `natStaleSuspectObserver.ts`         | **P27b** token_gap≥180s + api2 绿 + server-eof → `[NatStaleSuspect]` + jsonl `nat_stale_suspect`（observe-only，无 recovery） |
 | `hy2TunnelVitalityCore.ts` / `hy2TunnelVitality.ts`                       | **P27/R-33** HY2 隧道活性：常规 parent age≥30min · **stall recovery bypass**；日志 `[Hy2TunnelVitality]` / `[MihomoQuicStallRecovery]` |
-| `mihomoQuicSilentStallCore.ts` / `mihomoQuicSilentStallObserver.ts` / `mihomoQuicSilentStallRecovery*.ts` | **R-17/R-33** QUIC byte-frozen 检测 + 定向 vitality/单连接 close |
+| `mihomoQuicSilentStallCore.ts` / `mihomoQuicSilentStallObserver.ts` / `mihomoQuicSilentStallRecovery*.ts` | **R-17/R-34** QUIC byte-frozen 检测 + frozen surgical prune + parent rotation |
+| `transportLongevityTruthCore.ts` / `transportLongevityTruth.ts` | **R-34a** 三龄 SSOT（HTTP parent · HY2 outbound session · byte stall） |
+| `frozenSurgicalPruneCore.ts` | **R-34c** 五门 AND frozen connection prune（替代 marathon_block_close） |
+| `hy2ParentRotationCore.ts` | **R-34b** prune 后 aged HY2 UDP session 安全 refresh |
+| `recoveryHonestyCore.ts` | **R-34d** recovery success = max_gap 60s 内降 ≥50% |
 | `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | VPS leaf **bootstrap dial-timeout=45s**（provider 生成 SSOT）· 空闲 backfill · 赛中零 data-plane mutation · P20b IDLE gate 保留供历史测试 |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
@@ -42,8 +46,9 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `mihomoApiSocketWatchdog.ts`                                            | mihomo-api.sock ECONNREFUSED 时自动 `restartCore`（60s cooldown，startup grace 内跳过） |
 | `cursorCriticalTransportCore.ts`                                        | critical Cursor transport host SSOT（CTHC + Hygiene 共享）                                                                                                            |
 | `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描；**L0–L3 marathon hard-disable**（conn≥12/quiesce）；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan |
-| `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a/b** ~85min 段轮换 detect @ hung_scan · marathon-segments cache merge · QUIC stall early handoff · execute 由 **Guard patch-315**（Cursor-3.1.15）/ **c2-wb-025**（Cursor-2） |
-| `mihomoQuicSilentStallObserver.ts` / `mihomoQuicSilentStallRecovery.ts` | R-17 observe + **R-33** vitality dial；**conn≥12 禁止 close_connection**（handoff 优先） |
+| `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a/b** ~85min 段轮换 detect @ hung_scan · marathon-segments cache merge · QUIC stall early handoff · **Sparkle detect-only**；Guard patch-315 **observe-only**（无 execute） |
+| `maxStepsRateObserverCore.ts` / `maxStepsRateObserver.ts` | **P28** rolling100 max-steps 达成率 · `[MaxStepsRate]` @ hung_scan 5min · `~/.sparkle/max-steps-rate-snapshot.jsonl`（observe-only） |
+| `validatedLedgerTerminalCore.ts` / `validatedLedgerTerminalIngest.ts` | **G8 Plane F** — validated-ledger `stream_terminated` incremental ingest → MaxStepsRate SSOT merge |
 | `quicStallSsotCore.ts` / `quicStallSsot.ts`                               | **P22b** `~/.sparkle/quic-stall-ssot.json` atom — Sparkle writer · patch-315 reader SSOT |
 | `marathonSegmentCache.ts`                                                 | **P22b** append-only `marathon-segments.v1.jsonl` — immune to renderer log rotation |
 | `marathonStreamRegistryCore.ts` / `marathonTransportDialReader.ts`       | §22 active RID registry · pendingTool 门控 |
@@ -84,7 +89,7 @@ cursorTransportHealth (hung_scan 30s / hung≥12min / keep-newest-6 / transport_
   → network-stability-events.jsonl + vps_node_snapshots（CTHC 单点：latest-success delay，≠ UI 测速记录 history[-8]）
 ```
 
-## Transport 观测数据流（P16–P18）
+## Transport 观测数据流（P16–P18 · P28）
 
 ```
 agentTransportFailureSync → ~/.sparkle/agent-transport-failures.jsonl
@@ -95,6 +100,10 @@ cursorStructuredTransportIngestCore ← Cursor/logs Structured tail（P17）
   → marathonTransportDialOrchestrator
        ├ connect_partition / latency_delta_rescue（P16b · delta≥15s + 短 HTTP 绿）
        └ UltraConnObservability @ conn>500（P16c 节流日志）
+
+marathon-segments.v1.jsonl + agent-transport-failures.jsonl
+  → maxStepsRateObserver @ hung_scan（P28 · rolling100 max-steps rate · observe-only）
+  → ~/.sparkle/max-steps-rate-snapshot.jsonl
 ```
 
 ## Badge 规则

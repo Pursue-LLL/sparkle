@@ -76,6 +76,34 @@ test('computeMaxStepsRateSnapshot uses rolling100 primary and 24h aux', () => {
   assert.equal(snapshot.aux24h.maxStepsTurns, 1)
   assert.equal(snapshot.belowTarget, true)
   assert.equal(snapshot.targetPct, MAX_STEPS_RATE_TARGET_PCT)
+  assert.equal(snapshot.ledgerTerminalCount, 0)
+})
+
+test('computeMaxStepsRateSnapshot counts ledger max-steps when jsonl only has server-eof', () => {
+  const segments: MarathonSegmentCacheRecord[] = [
+    segment({ originalRequestId: 'turn-ledger' }),
+  ]
+  const failures: AgentTransportFailureRow[] = [
+    {
+      ts: nowMs - 5_000,
+      originalRequestId: 'turn-ledger',
+      reasonSub: 'server-eof',
+      errMsg: 'Stream ended',
+    },
+  ]
+  const ledgerRows = [
+    {
+      ts: nowMs - 4_000,
+      originalRequestId: 'turn-ledger',
+      isMaxSteps: true,
+      reason: 'Reached maximum number of steps',
+      willRetry: false,
+    },
+  ]
+  const snapshot = computeMaxStepsRateSnapshot(segments, failures, nowMs, undefined, undefined, undefined, ledgerRows)
+  assert.equal(snapshot.primary.maxStepsTurns, 1)
+  assert.equal(snapshot.primary.earlyDisconnectTurns, 0)
+  assert.equal(snapshot.ledgerMaxStepsInPrimary, 1)
 })
 
 test('rolling100 selects most recent turn starts only', () => {

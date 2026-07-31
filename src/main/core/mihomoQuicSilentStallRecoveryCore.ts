@@ -1,15 +1,18 @@
-// [INPUT] mihomoQuicSilentStallCore observations · cursorHy2MarathonKeepaliveCore threshold
-// [OUTPUT] stall recovery gate + log formatter
-// [POS] R-33 SSOT — vitality dial; single-connection close only outside marathon (conn<12).
+// [INPUT] frozenSurgicalPruneCore · mihomoQuicSilentStallCore observations
+// [OUTPUT] stall recovery log formatter · legacy plan alias for tests
+// [POS] R-33/R-34 constants + log format SSOT.
 
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import { MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS } from './mihomoQuicSilentStallCore'
-import { CURSOR_HY2_MARATHON_CONN_THRESHOLD } from './cursorHy2MarathonKeepaliveCore'
+import {
+  resolveFrozenSurgicalPrunePlan,
+  type FrozenSurgicalPruneAction,
+} from './frozenSurgicalPruneCore'
 
 /** Trigger lightweight connect_path vitality once byte-frozen threshold is met. */
 export const MIHOMO_QUIC_STALL_VITALITY_TRIGGER_MS = MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS
 
-/** Close one frozen critical-host flow after this stall duration (Cursor likely dead on this socket). */
+/** Close one frozen critical-host flow after this stall duration. */
 export const MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS = 120_000
 
 /** Per-connection recovery cooldown — avoid close/vitality storms on the same id. */
@@ -22,41 +25,34 @@ export interface MihomoQuicStallRecoveryPlan {
   reason: string
 }
 
+function mapFrozenAction(action: FrozenSurgicalPruneAction): MihomoQuicStallRecoveryAction {
+  if (action === 'close_frozen_connection') {
+    return 'close_connection'
+  }
+  if (action === 'vitality_dial') {
+    return 'vitality_dial'
+  }
+  return 'none'
+}
+
+/** @deprecated R-34 — use resolveFrozenSurgicalPrunePlan. Kept for unit test migration. */
 export function resolveMihomoQuicStallRecoveryPlan(input: {
   observation: MihomoQuicSilentStallObservation
   lastRecoveryAtMsByConnectionId: ReadonlyMap<string, number>
   nowMs: number
+  tokenGapMaxMs?: number
+  staleRequestIdCount?: number
+  lastGlobalPruneAtMs?: number
 }): MihomoQuicStallRecoveryPlan {
-  const { observation, nowMs } = input
-  if (observation.stallMs < MIHOMO_QUIC_STALL_VITALITY_TRIGGER_MS) {
-    return { action: 'none', reason: 'below_vitality_threshold' }
-  }
-
-  if (observation.kind === 'aggregate') {
-    return { action: 'vitality_dial', reason: 'aggregate_frozen_quic' }
-  }
-
-  const connectionId = observation.connectionId?.trim()
-  if (!connectionId) {
-    return { action: 'vitality_dial', reason: 'single_missing_connection_id' }
-  }
-
-  const lastRecoveryAtMs = input.lastRecoveryAtMsByConnectionId.get(connectionId)
-  if (
-    lastRecoveryAtMs != null &&
-    nowMs - lastRecoveryAtMs < MIHOMO_QUIC_STALL_RECOVERY_COOLDOWN_MS
-  ) {
-    return { action: 'none', reason: 'recovery_cooldown' }
-  }
-
-  if (observation.stallMs >= MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS) {
-    if (observation.cursorConnectionCount >= CURSOR_HY2_MARATHON_CONN_THRESHOLD) {
-      return { action: 'vitality_dial', reason: 'marathon_block_close_connection' }
-    }
-    return { action: 'close_connection', reason: 'single_stall_exceeded_close_threshold' }
-  }
-
-  return { action: 'vitality_dial', reason: 'single_stall_vitality' }
+  const plan = resolveFrozenSurgicalPrunePlan({
+    observation: input.observation,
+    tokenGapMaxMs: input.tokenGapMaxMs ?? 0,
+    staleRequestIdCount: input.staleRequestIdCount ?? 0,
+    lastGlobalPruneAtMs: input.lastGlobalPruneAtMs ?? 0,
+    lastRecoveryAtMsByConnectionId: input.lastRecoveryAtMsByConnectionId,
+    nowMs: input.nowMs,
+  })
+  return { action: mapFrozenAction(plan.action), reason: plan.reason }
 }
 
 export function formatMihomoQuicStallRecoveryLogLine(fields: {

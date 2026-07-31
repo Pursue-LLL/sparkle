@@ -1,6 +1,6 @@
 // [INPUT] cursorSegmentHandoffCore · marathonSegmentCache · marathonTransportDialReader · mihomoQuicSilentStallObserver
 // [OUTPUT] evaluateAndLogSegmentHandoffDue
-// [POS] P22 hung_scan detect-only — logs [SegmentHandoff] outcome=due phase=detect_only；execute 由 Guard patch-315 / c2-wb-025。
+// [POS] P22 hung_scan detect-only — logs [SegmentHandoff] outcome=due phase=detect_only；Guard patch-315 observe-only（无 execute）。
 
 import { appendAppLog } from '../utils/log'
 import {
