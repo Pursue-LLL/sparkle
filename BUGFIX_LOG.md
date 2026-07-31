@@ -11,7 +11,7 @@
 | **根因** | 缺 turn 级终态统计 · `agent-transport-failures.jsonl` 漏 max-steps · 无发版门禁 |
 | **修复** | `maxStepsRateObserverCore.ts` rolling100 主窗口 + 24h 辅指标 · `[MaxStepsRate]` @ hung_scan 5min · `~/.sparkle/max-steps-rate-snapshot.jsonl` · SSOT §M.0.13 Plane H |
 | **版本** | Sparkle **1.28.0**（与 R-34 同包） |
-| **遗漏（G8 DONE @1.28.0）** | `validatedLedgerTerminalCore.ts` + `validatedLedgerTerminalIngest.ts` incremental ingest → MaxStepsRate merge · 实机 **143 terminals / 1 max-steps** |
+| **遗漏（G8 DONE @1.28.0）** | G8a MaxStepsRate merge + G8b `validatedLedgerTerminalProjectionCore`→jsonl · 实机 143 terminals / 1 max-steps |
 | **装包门禁** | `upgradeSparkleAsarGateCore` R-34+close · `preflight-sparkle-1280.sh` · `sparkle-mihomo-close-smoke.mts` |
 | **90% 如何保证（诚实）** | R-34 打掉 L3 + G8 正确计量 + soak `rate_pct≥90` · 未 soak **不得声称达标** |
 | **为何以前修复没 SLO** | R-17–R-33 优化 rescue **executed** 内部指标 · 无 rolling100 外部锚点 · 07-31 实锤 0% max-steps |
@@ -78,7 +78,7 @@
 | 1 | **P0** | 未装包 = 零收益 | `/Applications/Sparkle.app` **1.27.9** · dist **1.27.9** · repo `buildStamp` **1.28.0** | 用户未空窗 upgrade | marathon 结束 **一次** `upgrade:mac` | `defaults read` → 1.28.0 |
 | 2 | **P0** | close 路径仅 Core 单测 | `mihomoQuicSilentStallRecovery.ts:7` static import 修 · **无** asar/runtime 集成测 · 07-31 生产 16× `is not a function` | 首次马拉松 prune | 补 runtime close smoke（G10） | soak 零 close err |
 | 3 | **P1** | 五门 AND 过严 → 仍只 vitality | `frozenSurgicalPruneCore.ts:64-65` 须 `tokenGap≥FORCE` **且** `staleRequestIdCount>0` · 07-31 `:13103` 有 gap 但 block 在 **旧** marathon_block | stall 大但 gap 未进 snapshot | 审计 snapshot 接线 · 放宽 gate 证据驱动 | soak：`close_frozen_connection` 出现且 gap↓ |
-| 4 | **P1** | MaxStepsRate 漏计 max-steps | G8 PENDING · `maxStepsRateObserverCore.ts` 仅 jsonl+segments · max-steps 常不在 jsonl | 达标误判 | Plane F validated-ledger | 人工 max-steps turn 对照 rate |
+| 4 | **P1** | MaxStepsRate 漏计 max-steps | **G8 DONE** · ledger ingest + jsonl projection + MaxStepsRate merge | 已闭环 | Plane F validated-ledger | grep `validated-ledger-projection` in jsonl |
 | 5 | **P1** | 18h parent 轮换半闭环 | BUG-015 Plane B · mihomo 层旁路 dial 待 upstream | parent_chain≥18h | hy2ParentRotation + 后续 upstream | longevity log 触发 rotation |
 | 6 | **P2** | 测试非 90% line coverage | `test:node-quality` **460 pass / 4 fail**（bundle guard 预存）· R-34 Core **12/12 pass** · **零** soak/E2E | 发版 | G9 40min soak 门禁 | early_disconnect=0 + rate≥90 |
 | 7 | **P2** | 误 close 活连接 | 五门：critical host + byte_frozen_proof 30s + global cooldown 60s | 极端 race | 已有 gate · RecoveryHonesty 60s | 无误杀 rid 证据 |
@@ -497,7 +497,7 @@
 | **P27 @ 案发现场** | `[Hy2TunnelVitality] outcome=executed` @ 09:29:12 — **在跑但不能阻止 mass PING**（§11.7 诚实边界） |
 | **ghost Included** | turn 已跑 ~1h40m · 利用率良好 · **Continue 同 RID 不新开 userMessage** |
 | **反复次数** | L3 mass PING code=14 族 **≥4 次/2 日**（c8346504 · 5d03320f · 15:49 wave · 17:29 wave） |
-| **关联 SSOT** | `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` **§10.5d** · `CURSOR-DISCONNECT-TRIAGE.md` |
+| **关联 SSOT** | open-perplexity `temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md` **§10.5d** · `CURSOR-DISCONNECT-TRIAGE.md` |
 | **修复路径** | ① operator VACUUM vscdb（P0 · 非 Sparkle）② Sparkle P28（BUG-030）③ 禁止 failover/减并行/L0 清连接 |
 
 ---
@@ -581,7 +581,7 @@
 | **修复目标版本** | Sparkle **1.26.89** |
 | **根因** | `executeTransportRecovery` 未与 `cursorConnectionHygieneCore.shouldSkipCursorConnectionHygieneClose` 对齐 |
 | **修复** | L0–L3 @ conn≥12 或 quiesce active → log disabled + no-op · 与 Hygiene marathon_guard 同阈值 |
-| **关联** | `cursorTransportHealth.ts` · `marathonQuiesce.ts` · Sparkle SSOT `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` §14 R-07 |
+| **关联** | `cursorTransportHealth.ts` · `marathonQuiesce.ts` · Sparkle SSOT open-perplexity `temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md` §14 R-07 |
 | **回归** | `cursorTransportHealthCore.test.ts` agent-stability-first · `cursorConnectionHygieneCore.test.ts` marathon skip |
 | **用户动作** | `upgrade:mac` @ cursor_conn=0 → app-log 马拉松窗口零 `L2 flushed all` / `L3 restarting` |
 | **踩坑** | 低 conn 非马拉松窗口 L2/L3 仍保留（TUN 真丢灾难路径）；与铁律 #5「马拉松禁杀连接」不冲突 |
@@ -627,7 +627,7 @@
 | **修复** | Sparkle `quicStallSsot.ts` + `cursorSegmentHandoff*` @ hung_scan · WB patch-315 queue+resumeChat @ ~85min（QUIC stall → ~75min）· pendingTool deferred |
 | **诚实边界** | 服务端 ~89min cap 无法 100% 消除；首跑须验 `[SegmentHandoff] outcome=executed phase=resume-chat-invoked` |
 | **踩坑** | Sparkle detect 与 WB execute **双轨独立**；仅 deploy WB 后 execute 生效 · `submitChat` eager bind 避免 service 未捕获 |
-| **SSOT** | Sparkle `CURSOR-MARATHON-ZERO-DISRUPTION-ROADMAP.md` §11.2 · Guard312 `segmentHandoffCore.mjs` |
+| **SSOT** | Sparkle open-perplexity `temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md` §11.2 · Guard312 `segmentHandoffCore.mjs` |
 
 > **2026-07-28 最新**：**BUG-2026-07-28-021** — Cursor/logs `.DS_Store` ENOTDIR 致 MTDO/rescue/hung_scan 全灭 · **1.26.85**（P21）
 
