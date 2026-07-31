@@ -1,5 +1,18 @@
 # Sparkle Bugfix Log
 
+> **2026-07-31 最新**：**BUG-2026-07-31-010** P21 bootstrap dial-timeout 45s SSOT · **1.27.5**
+
+### BUG-2026-07-31-010 · v1.27.5 · marathon_dial_tolerance_bootstrap_ssot (P21)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-31 |
+| **症状** | conn≥12 时 `memory_only_deferred target_timeout=45s data_plane_action=none` → mihomo 仍 5s dial-timeout → `connect_path_delay_ms=5000` 假失败 · Cursor 无效重试烧 Included |
+| **根因** | P20b 禁赛中 provider reload（Zero-Disruption 证据：provider reload 可 RST 活跃流）· 但 45s 从未落地 |
+| **修复** | P21：VPS leaf **bootstrap dial-timeout=45s** @ `extractProxies` · PostCoreBootstrap **idle-only** backfill + provider hot-update · 赛中仅 observability `ssot_active` |
+| **回归** | `marathonDialToleranceCore.test.ts` |
+| **用户动作** | `upgrade:mac` → 重启 Sparkle（conn=0 时 backfill）→ soak 验零 `memory_only_deferred` + 无 5000ms 尖峰 |
+
 > **2026-07-30 最新**：**BUG-2026-07-30-009** R-32 operator manual HY2 switch · **BUG-2026-07-30-008** R-27 upgrade gate · **BUG-2026-07-30-007** `15e0c619` HY2
 
 ### BUG-2026-07-30-009 · v1.27.4 · operator_manual_protocol_switch (R-32)

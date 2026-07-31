@@ -31,6 +31,30 @@ function applyDialTimeoutToProxy(
   return next
 }
 
+/** Bootstrap SSOT: VPS cursor leaves always use marathon-safe dial-timeout (no runtime threshold toggle). */
+export function ensureVpsCursorLeafBootstrapDialTimeout(
+  proxies: readonly unknown[],
+): { proxies: unknown[]; changed: boolean } {
+  let changed = false
+  const mapped = proxies.map((proxy) => {
+    if (typeof proxy !== 'object' || proxy === null) {
+      return proxy
+    }
+    const record = proxy as Record<string, unknown>
+    const name = String(record.name ?? '')
+    if (!isVpsCursorLeafNode(name) && !isHysteria2Proxy(record)) {
+      return proxy
+    }
+    const current = record['dial-timeout']
+    if (current === MARATHON_DIAL_TIMEOUT_MARATHON_SEC) {
+      return proxy
+    }
+    changed = true
+    return applyDialTimeoutToProxy(record, MARATHON_DIAL_TIMEOUT_MARATHON_SEC)
+  })
+  return { proxies: mapped, changed }
+}
+
 /** Apply marathon dial-timeout to VPS HY2/Reality/TUIC/TLS leaf proxies only. */
 export function applyMarathonDialToleranceToProxies(
   proxies: readonly unknown[],
@@ -57,4 +81,11 @@ export function applyMarathonDialToleranceToProxies(
   })
 
   return { proxies: mapped, changed, dialTimeoutSec }
+}
+
+export function shouldAllowMarathonDialToleranceBootstrapAtIdle(
+  cursorConnectionCount: number,
+  marathonTruthActive: boolean,
+): boolean {
+  return cursorConnectionCount === 0 && !marathonTruthActive
 }

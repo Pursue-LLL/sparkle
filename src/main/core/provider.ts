@@ -68,6 +68,7 @@ import {
   applyVlessVisionMuxGuard,
   summarizeVlessVisionMuxGuard
 } from './vlessVisionMuxGuardCore'
+import { ensureVpsCursorLeafBootstrapDialTimeout } from './marathonDialToleranceCore'
 import { partitionLeafProxies, resolveVpsProviderId } from './vpsProviderSplitCore'
 import { buildBaseConfigWithProviders } from './providerConfigCore'
 import { appendAppLog } from '../utils/log'
@@ -79,7 +80,13 @@ export { resolveVpsProviderId, partitionLeafProxies } from './vpsProviderSplitCo
  */
 export function extractProxies(config: MihomoConfig): unknown[] {
   const proxies = config.proxies || []
-  return applyVlessVisionMuxGuard(applyHysteria2ProxiesQuicStability(proxies))
+  const stabilized = applyVlessVisionMuxGuard(applyHysteria2ProxiesQuicStability(proxies))
+  const { commercial, vps } = partitionLeafProxies(stabilized)
+  if (vps.length === 0) {
+    return commercial
+  }
+  const vpsWithDialTimeout = ensureVpsCursorLeafBootstrapDialTimeout(vps)
+  return [...commercial, ...vpsWithDialTimeout.proxies]
 }
 
 async function logVlessVisionMuxGuard(proxies: unknown[]): Promise<void> {

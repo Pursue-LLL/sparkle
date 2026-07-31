@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   applyMarathonDialToleranceToProxies,
+  ensureVpsCursorLeafBootstrapDialTimeout,
   MARATHON_DIAL_TIMEOUT_MARATHON_SEC,
   MARATHON_DIAL_TIMEOUT_NORMAL_SEC,
+  shouldAllowMarathonDialToleranceBootstrapAtIdle,
   shouldEnableMarathonDialTolerance,
 } from './marathonDialToleranceCore'
 
@@ -12,6 +14,24 @@ describe('marathonDialToleranceCore', () => {
     { name: 'JP-VPS-HY2', type: 'hysteria2', server: '1.2.3.4' },
     { name: 'Commercial-1', type: 'ss', server: '9.9.9.9' },
   ]
+
+  it('bootstrap always sets marathon dial-timeout on VPS leaves', () => {
+    const result = ensureVpsCursorLeafBootstrapDialTimeout(proxies)
+    assert.equal(result.changed, true)
+    assert.equal(
+      (result.proxies[0] as Record<string, unknown>)['dial-timeout'],
+      MARATHON_DIAL_TIMEOUT_MARATHON_SEC,
+    )
+    assert.equal((result.proxies[1] as Record<string, unknown>)['dial-timeout'], undefined)
+    const again = ensureVpsCursorLeafBootstrapDialTimeout(result.proxies)
+    assert.equal(again.changed, false)
+  })
+
+  it('allows bootstrap idle apply only when conn=0 and marathon inactive', () => {
+    assert.equal(shouldAllowMarathonDialToleranceBootstrapAtIdle(0, false), true)
+    assert.equal(shouldAllowMarathonDialToleranceBootstrapAtIdle(1, false), false)
+    assert.equal(shouldAllowMarathonDialToleranceBootstrapAtIdle(0, true), false)
+  })
 
   it('enables marathon dial-timeout at conn>=12', () => {
     assert.equal(shouldEnableMarathonDialTolerance(11), false)
