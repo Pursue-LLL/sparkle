@@ -11,6 +11,10 @@ import {
   computeMaxStepsRateSnapshot,
   formatMaxStepsRateLogLine,
 } from './maxStepsRateObserverCore'
+import {
+  computeStreamAttemptMaxStepsRateSnapshot,
+  formatStreamAttemptMaxStepsRateLogSuffix,
+} from './streamAttemptMaxStepsRateCore'
 import { readMarathonSegmentCache } from './marathonSegmentCache'
 import { ingestValidatedLedgerTerminals } from './validatedLedgerTerminalIngest'
 
@@ -34,18 +38,19 @@ export async function logMaxStepsRateIfDue(nowMs: number = Date.now()): Promise<
   const failureRows = readAgentTransportJsonlTailRows()
   const ledgerRows = await ingestValidatedLedgerTerminals(nowMs)
   const snapshot = computeMaxStepsRateSnapshot(segments, failureRows, nowMs, undefined, undefined, undefined, ledgerRows)
-  if (snapshot.primary.startedTurns === 0 && snapshot.aux24h.startedTurns === 0) {
+  const attemptSnapshot = computeStreamAttemptMaxStepsRateSnapshot(ledgerRows, failureRows, segments, nowMs)
+  if (snapshot.primary.startedTurns === 0 && snapshot.aux24h.startedTurns === 0 && attemptSnapshot.primary.startedAttempts === 0) {
     return
   }
   lastLoggedAtMs = nowMs
-  const line = formatMaxStepsRateLogLine(snapshot)
+  const line = formatMaxStepsRateLogLine(snapshot, attemptSnapshot)
   await appendAppLog(line)
   try {
     const dir = join(homedir(), '.sparkle')
     await mkdir(dir, { recursive: true })
     await appendFile(
       maxStepsRateSnapshotPath(),
-      `${JSON.stringify({ ts: nowMs, ...snapshot })}\n`,
+      `${JSON.stringify({ ts: nowMs, ...snapshot, attempt: attemptSnapshot })}\n`,
       'utf8',
     )
   } catch {
