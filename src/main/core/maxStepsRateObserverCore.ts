@@ -10,6 +10,9 @@ import {
   type ValidatedLedgerTerminalRow,
 } from './validatedLedgerTerminalCore'
 
+import type { StreamAttemptMaxStepsRateSnapshot } from './streamAttemptMaxStepsRateCore'
+import { formatStreamAttemptMaxStepsRateLogSuffix } from './streamAttemptMaxStepsRateCore'
+
 export const MAX_STEPS_RATE_ROLLING_TURN_LIMIT = 100
 export const MAX_STEPS_RATE_AUX_WINDOW_MS = 86_400_000
 export const MAX_STEPS_RATE_TARGET_PCT = 90
@@ -179,9 +182,13 @@ export function computeMaxStepsRateSnapshot(
   }
 }
 
-export function formatMaxStepsRateLogLine(snapshot: MaxStepsRateSnapshot): string {
+export function formatMaxStepsRateLogLine(
+  snapshot: MaxStepsRateSnapshot,
+  attemptSnapshot?: StreamAttemptMaxStepsRateSnapshot,
+): string {
   const p = snapshot.primary
   const a = snapshot.aux24h
+  const attemptSuffix = attemptSnapshot ? formatStreamAttemptMaxStepsRateLogSuffix(attemptSnapshot) : ''
   return (
     `[MaxStepsRate]: window=${p.windowLabel}` +
     ` started=${p.startedTurns}` +
@@ -198,6 +205,7 @@ export function formatMaxStepsRateLogLine(snapshot: MaxStepsRateSnapshot): strin
     ` rate_pct_24h=${a.maxStepsRatePct.toFixed(1)}` +
     ` target_pct=${snapshot.targetPct}` +
     ` below_target=${snapshot.belowTarget ? 1 : 0}` +
+    attemptSuffix +
     ` cursor_app=3.1.15 observe_only=1\n`
   )
 }
