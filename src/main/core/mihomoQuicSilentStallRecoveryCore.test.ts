@@ -30,16 +30,31 @@ describe('mihomoQuicSilentStallRecoveryCore R-33', () => {
     assert.equal(plan.reason, 'single_stall_vitality')
   })
 
-  it('plans close for single stall above close threshold', () => {
+  it('plans close for single stall above close threshold when not marathon', () => {
     const plan = resolveMihomoQuicStallRecoveryPlan({
       observation: {
         ...baseObservation,
+        cursorConnectionCount: 8,
         stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS + 1,
       },
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
     })
     assert.equal(plan.action, 'close_connection')
+  })
+
+  it('blocks close_connection during marathon and uses vitality dial instead', () => {
+    const plan = resolveMihomoQuicStallRecoveryPlan({
+      observation: {
+        ...baseObservation,
+        cursorConnectionCount: 20,
+        stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS + 1,
+      },
+      lastRecoveryAtMsByConnectionId: new Map(),
+      nowMs: 1_000_000,
+    })
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'marathon_block_close_connection')
   })
 
   it('respects per-connection recovery cooldown', () => {

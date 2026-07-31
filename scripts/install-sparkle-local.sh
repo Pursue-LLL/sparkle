@@ -14,6 +14,65 @@ DEST="/Applications/Sparkle.app"
 USER_COPY="${HOME}/Applications/Sparkle.app"
 STATE_DIR="${HOME}/.sparkle"
 CDHASH_FILE="${STATE_DIR}/last-sparkle-cdhash"
+SPARKLE_CONFIG="${HOME}/Library/Application Support/sparkle/config.yaml"
+CURSOR_PREFIX_PRESERVE="${STATE_DIR}/install-preserve-cursor-path-prefixes.yaml"
+
+preserve_cursor_path_prefixes_before_quit() {
+  python3 - <<'PY'
+import yaml
+from pathlib import Path
+
+home = Path.home()
+cfg_paths = [
+    home / "Library/Application Support/sparkle/config.yaml",
+    home / "Library/Application Support/sparkle/config.yaml.backup",
+]
+prefixes: list[str] = []
+for path in cfg_paths:
+    if not path.exists():
+        continue
+    data = yaml.safe_load(path.read_text()) or {}
+    value = data.get("cursorProxyAppPathPrefixes") or []
+    if isinstance(value, list) and len(value) > 0:
+        prefixes = [str(item).strip() for item in value if str(item).strip()]
+        if prefixes:
+            break
+
+state = home / ".sparkle/install-preserve-cursor-path-prefixes.yaml"
+if prefixes:
+    state.write_text(yaml.safe_dump({"cursorProxyAppPathPrefixes": prefixes}, sort_keys=False))
+    print(f"[install-sparkle] preserved cursorProxyAppPathPrefixes={prefixes}", flush=True)
+else:
+    state.unlink(missing_ok=True)
+PY
+}
+
+restore_cursor_path_prefixes_after_launch() {
+  python3 - "$SPARKLE_CONFIG" "$CURSOR_PREFIX_PRESERVE" <<'PY'
+import sys
+import yaml
+from pathlib import Path
+
+cfg_path = Path(sys.argv[1])
+preserve_path = Path(sys.argv[2])
+if not preserve_path.exists() or not cfg_path.exists():
+    raise SystemExit(0)
+
+preserve = yaml.safe_load(preserve_path.read_text()) or {}
+wanted = preserve.get("cursorProxyAppPathPrefixes") or []
+if not isinstance(wanted, list) or len(wanted) == 0:
+    raise SystemExit(0)
+
+data = yaml.safe_load(cfg_path.read_text()) or {}
+current = data.get("cursorProxyAppPathPrefixes") or []
+if isinstance(current, list) and len(current) > 0:
+    raise SystemExit(0)
+
+data["cursorProxyAppPathPrefixes"] = wanted
+cfg_path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
+print(f"[install-sparkle] restored cursorProxyAppPathPrefixes={wanted}", flush=True)
+PY
+}
 
 fail() { echo "[install-sparkle] FAIL: $*" >&2; exit 1; }
 log() { echo "[install-sparkle] $*" >&2; }
@@ -63,6 +122,7 @@ source "$ROOT/scripts/lib/marathon-core-restart-guard.sh"
 export MARATHON_GUARD_ROOT="$ROOT"
 marathon_core_restart_guard_assert_idle "install-sparkle-local-pre-quit"
 marathon_core_restart_guard_capture_pre_quit_snapshot "install-sparkle-local-pre-quit"
+preserve_cursor_path_prefixes_before_quit
 
 SRC_CDHASH="$(get_cdhash "$SRC")"
 [[ -n "$SRC_CDHASH" ]] || fail "could not read CDHash from $SRC"
@@ -139,6 +199,7 @@ fi
 
 echo "$NEW_CDHASH" > "$CDHASH_FILE"
 marathon_guard_clear_pre_quit_snapshot
+restore_cursor_path_prefixes_after_launch || true
 log "Installed Sparkle $VER at $DEST (CDHash $NEW_CDHASH)"
 
 launch_sparkle_via_finder

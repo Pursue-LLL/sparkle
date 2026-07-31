@@ -42,7 +42,10 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `mihomoApiSocketWatchdog.ts`                                            | mihomo-api.sock ECONNREFUSED 时自动 `restartCore`（60s cooldown，startup grace 内跳过） |
 | `cursorCriticalTransportCore.ts`                                        | critical Cursor transport host SSOT（CTHC + Hygiene 共享）                                                                                                            |
 | `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描；**L0–L3 marathon hard-disable**（conn≥12/quiesce）；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan |
-| `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a** ~85min 段轮换检测 @ hung_scan · **P22b** marathon-segments cache merge + QUIC stall early handoff · `[SegmentHandoff] outcome=due phase=detect_only`（execute 在 Guard312 WB） |
+| `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a/b** ~85min 段轮换 detect @ hung_scan · marathon-segments cache merge · QUIC stall early handoff · execute 由 **Guard patch-315**（Cursor-3.1.15）/ **c2-wb-025**（Cursor-2） |
+| `mihomoQuicSilentStallObserver.ts` / `mihomoQuicSilentStallRecovery.ts` | R-17 observe + **R-33** vitality dial；**conn≥12 禁止 close_connection**（handoff 优先） |
+| `quicStallSsotCore.ts` / `quicStallSsot.ts`                               | **P22b** `~/.sparkle/quic-stall-ssot.json` atom — Sparkle writer · patch-315 reader SSOT |
+| `marathonSegmentCache.ts`                                                 | **P22b** append-only `marathon-segments.v1.jsonl` — immune to renderer log rotation |
 | `marathonStreamRegistryCore.ts` / `marathonTransportDialReader.ts`       | §22 active RID registry · pendingTool 门控 |
 | `marathonTransportDialOrchestratorCore.ts` / `marathonTransportDialOrchestrator.ts` | §22 MTDO · **P15/P16/R-24**：独立 60s pulse · rescue bundle 分流 breach · `MarathonContentionBudget` deny |
 | `marathonContentionBudgetCore.ts` | **R-23/R-24** green 基线 observability cap · `buildMarathonContentionBreachKinds` definitive breach SSOT |

@@ -66,44 +66,7 @@ function migrateLegacyEncryptedConfig(config: AppConfig): { config: AppConfig; m
   return { config: result, migrated }
 }
 
-/** Upgrade legacy Sparkle defaults to Cursor-optimized stability settings. */
-function migrateLegacyCursorDefaults(config: AppConfig): { config: AppConfig; migrated: boolean } {
-  const result = { ...config }
-  let migrated = false
-  const legacyCursorAppPathPrefix = '/Applications/Cursor-3.1.15.app'
-
-  if (result.autoProxySwitch === undefined) {
-    result.autoProxySwitch = true
-    migrated = true
-  }
-  if (result.autoCloseConnection === true) {
-    result.autoCloseConnection = false
-    migrated = true
-  }
-  if (result.proxyHealthCheckInterval === 120) {
-    result.proxyHealthCheckInterval = 60
-    migrated = true
-  }
-  if (result.cursorBidiOptimize === undefined) {
-    result.cursorBidiOptimize = true
-    migrated = true
-  }
-  if (result.cursorProxyAppPathPrefixes === undefined) {
-    result.cursorProxyAppPathPrefixes = []
-    migrated = true
-  } else if (
-    result.cursorProxyAppPathPrefixes.length === 1 &&
-    result.cursorProxyAppPathPrefixes[0] === legacyCursorAppPathPrefix
-  ) {
-    result.cursorProxyAppPathPrefixes = []
-    migrated = true
-  }
-  if (result.cursorSysProxyLock === undefined && result.cursorBidiOptimize !== false) {
-    result.cursorSysProxyLock = false
-  }
-
-  return { config: result, migrated }
-}
+import { migrateLegacyCursorDefaults } from './appCursorDefaultsCore'
 
 async function writeCurrentConfig(): Promise<void> {
   const previousPromise = writePromise
@@ -163,7 +126,9 @@ export function getAppConfigSync(): AppConfig {
     const raw = readFileSync(appConfigPath(), 'utf-8')
     const data = parseYaml<AppConfig>(raw)
     if (typeof data === 'object' && data !== null) {
-      return deepMerge({ ...defaultConfig }, migrateLegacyEncryptedConfig(data).config)
+      const migration = migrateLegacyEncryptedConfig(data)
+      const cursorMigration = migrateLegacyCursorDefaults(migration.config)
+      return deepMerge({ ...defaultConfig }, cursorMigration.config)
     }
     return defaultConfig
   } catch (e) {

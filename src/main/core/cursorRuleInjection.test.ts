@@ -138,6 +138,86 @@ describe('injectCursorDomainRules', () => {
     assert.ok(rules.includes('GEOIP,us,🚀 节点选择'))
   })
 
+  it('stripUnscopedCursorDedicatedRules removes legacy PROCESS-NAME dedicated rules', () => {
+    const profile = {
+      rules: [
+        `PROCESS-NAME,Cursor,${CURSOR_DEDICATED_GROUP_NAME}`,
+        `PROCESS-NAME,Cursor Helper,${CURSOR_DEDICATED_GROUP_NAME}`,
+        `AND,((DOMAIN,api2.cursor.sh),(PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/)),${CURSOR_DEDICATED_GROUP_NAME}`,
+        'GEOIP,us,🚀 节点选择'
+      ]
+    } as unknown as MihomoConfig
+
+    stripUnscopedCursorDedicatedRules(profile)
+
+    assert.deepEqual(ruleLines(profile), [
+      `AND,((DOMAIN,api2.cursor.sh),(PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/)),${CURSOR_DEDICATED_GROUP_NAME}`,
+      'GEOIP,us,🚀 节点选择'
+    ])
+  })
+
+  it('migrates generateProfile legacy rules to path-scoped rules on existing profile', () => {
+    const profile = {
+      'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['JP-VPS-HY2'] }],
+      rules: [
+        `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
+        `DOMAIN-SUFFIX,cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
+        `PROCESS-NAME,Cursor,${CURSOR_DEDICATED_GROUP_NAME}`,
+        `PROCESS-NAME,Cursor Helper,${CURSOR_DEDICATED_GROUP_NAME}`,
+        `PROCESS-NAME,Cursor Helper (Renderer),${CURSOR_DEDICATED_GROUP_NAME}`,
+        `PROCESS-NAME,Cursor Helper (Plugin),${CURSOR_DEDICATED_GROUP_NAME}`,
+        `PROCESS-NAME,Cursor Helper (GPU),${CURSOR_DEDICATED_GROUP_NAME}`,
+        'GEOIP,us,🚀 节点选择'
+      ]
+    } as unknown as MihomoConfig
+
+    injectCursorDomainRules(profile, ['/Applications/Cursor-3.1.15.app'])
+
+    const rules = ruleLines(profile)
+    const pathRegex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/'
+    assert.ok(rules.some((rule) => rule.includes(pathRegex)))
+    assert.ok(!rules.some((rule) => rule.startsWith('PROCESS-NAME,Cursor')))
+    assert.ok(!rules.some((rule) => rule === `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`))
+    assert.ok(rules.includes('GEOIP,us,🚀 节点选择'))
+  })
+
+  it('supports multiple configured Cursor app bundles', () => {
+    const profile = {
+      'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['JP-VPS-HY2'] }],
+      rules: ['MATCH,DIRECT']
+    } as unknown as MihomoConfig
+
+    injectCursorDomainRules(profile, [
+      '/Applications/Cursor-3.1.15.app',
+      '/Applications/Cursor-2.app'
+    ])
+
+    const rules = ruleLines(profile)
+    assert.ok(
+      rules.some((rule) =>
+        rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/')
+      )
+    )
+    assert.ok(
+      rules.some((rule) => rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/'))
+    )
+    assert.ok(!rules.some((rule) => rule.startsWith('PROCESS-NAME,')))
+  })
+
+  it('stripUnscopedCursorDedicatedRules keeps unrelated PROCESS-NAME rules', () => {
+    const profile = {
+      rules: [
+        'PROCESS-NAME,Arc,🚀 节点选择',
+        `PROCESS-NAME,Cursor,${CURSOR_DEDICATED_GROUP_NAME}`,
+        'GEOIP,us,DIRECT'
+      ]
+    } as unknown as MihomoConfig
+
+    stripUnscopedCursorDedicatedRules(profile)
+
+    assert.deepEqual(ruleLines(profile), ['PROCESS-NAME,Arc,🚀 节点选择', 'GEOIP,us,DIRECT'])
+  })
+
   it('stripUnscopedCursorDedicatedRules keeps path-scoped AND rules', () => {
     const profile = {
       rules: [

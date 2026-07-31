@@ -8,8 +8,43 @@ import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
 /** Proactive handoff target: ~85min before observed ~89–91min L7 silent EOF. */
 export const CURSOR_SEGMENT_HANDOFF_TARGET_MS = 5_100_000
 
+/** When HY2/TUIC byte-frozen stall exceeds this on an active marathon segment, hand off early. */
+export const CURSOR_SEGMENT_HANDOFF_QUIC_STALL_FORCE_MS = 90_000
+
+/** Min segment age before QUIC-stall-forced handoff (avoid churn on fresh ghost resume segments). */
+export const CURSOR_SEGMENT_HANDOFF_QUIC_STALL_MIN_SEGMENT_MS = 45 * 60_000
+
 /** Require meaningful stream activity within this window to prove segment is still healthy. */
 export const CURSOR_SEGMENT_HANDOFF_MAX_LAST_ACTIVITY_GAP_MS = 120_000
+
+export interface SegmentHandoffQuicStallContext {
+  maxStallMs: number
+  frozenQuicCursorCount: number
+}
+
+export function resolveEffectiveHandoffTargetMs(
+  targetAgeMs: number,
+  quicStallContext?: SegmentHandoffQuicStallContext,
+): number {
+  if (
+    !quicStallContext ||
+    quicStallContext.frozenQuicCursorCount < 1 ||
+    quicStallContext.maxStallMs < CURSOR_SEGMENT_HANDOFF_QUIC_STALL_FORCE_MS
+  ) {
+    return targetAgeMs
+  }
+  return Math.min(targetAgeMs, CURSOR_SEGMENT_HANDOFF_QUIC_STALL_MIN_SEGMENT_MS)
+}
+
+export function isQuicStallHandoffTrigger(quicStallContext?: SegmentHandoffQuicStallContext): boolean {
+  if (!quicStallContext) {
+    return false
+  }
+  return (
+    quicStallContext.frozenQuicCursorCount >= 1 &&
+    quicStallContext.maxStallMs >= CURSOR_SEGMENT_HANDOFF_QUIC_STALL_FORCE_MS
+  )
+}
 
 export interface HttpSegmentStartedSample {
   segmentId: string
@@ -30,6 +65,9 @@ export interface SegmentHandoffDueSignal {
   pendingToolCalls: number
   lastActivityMs: number
   lastActivityGapMs: number
+  /** age | quic_stall — why handoff fired. */
+  trigger: 'age' | 'quic_stall'
+  effectiveTargetMs: number
 }
 
 export function parseHttpSegmentStartedLine(line: string): HttpSegmentStartedSample | undefined {
@@ -120,9 +158,12 @@ export function detectSegmentHandoffDue(
     targetAgeMs?: number
     maxLastActivityGapMs?: number
     marathonConnThreshold?: number
+    quicStallContext?: SegmentHandoffQuicStallContext
   },
 ): SegmentHandoffDueSignal | undefined {
   const targetAgeMs = options.targetAgeMs ?? CURSOR_SEGMENT_HANDOFF_TARGET_MS
+  const effectiveTargetMs = resolveEffectiveHandoffTargetMs(targetAgeMs, options.quicStallContext)
+  const quicStallTrigger = isQuicStallHandoffTrigger(options.quicStallContext)
   const maxLastActivityGapMs =
     options.maxLastActivityGapMs ?? CURSOR_SEGMENT_HANDOFF_MAX_LAST_ACTIVITY_GAP_MS
   const marathonConnThreshold = options.marathonConnThreshold ?? CURSOR_HY2_MARATHON_CONN_THRESHOLD
@@ -149,7 +190,7 @@ export function detectSegmentHandoffDue(
       continue
     }
     const segmentAgeMs = Math.max(0, options.nowMs - segment.httpStartMs)
-    if (segmentAgeMs < targetAgeMs) {
+    if (segmentAgeMs < effectiveTargetMs) {
       continue
     }
 
@@ -166,6 +207,11 @@ export function detectSegmentHandoffDue(
       continue
     }
 
+    const trigger: SegmentHandoffDueSignal['trigger'] =
+      quicStallTrigger && segmentAgeMs >= CURSOR_SEGMENT_HANDOFF_QUIC_STALL_MIN_SEGMENT_MS
+        ? 'quic_stall'
+        : 'age'
+
     const signal: SegmentHandoffDueSignal = {
       segmentId: segment.segmentId,
       requestId: segment.requestId,
@@ -176,6 +222,8 @@ export function detectSegmentHandoffDue(
       pendingToolCalls: record.openToolCalls,
       lastActivityMs: record.lastActivityMs,
       lastActivityGapMs,
+      trigger,
+      effectiveTargetMs,
     }
 
     if (!best || signal.segmentAgeMs > best.segmentAgeMs) {

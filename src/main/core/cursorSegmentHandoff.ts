@@ -1,6 +1,6 @@
-// [INPUT] cursorSegmentHandoffCore · marathonTransportDialReader · appendAppLog
+// [INPUT] cursorSegmentHandoffCore · marathonSegmentCache · marathonTransportDialReader · mihomoQuicSilentStallObserver
 // [OUTPUT] evaluateAndLogSegmentHandoffDue
-// [POS] P22 hung_scan 观测层 — logs [SegmentHandoff] outcome=due phase=detect_only；execute 由 Guard312 c2-wb-025。
+// [POS] P22 hung_scan detect-only — logs [SegmentHandoff] outcome=due phase=detect_only；execute 由 Guard patch-315 / c2-wb-025。
 
 import { appendAppLog } from '../utils/log'
 import {
@@ -19,6 +19,14 @@ import {
   collectRendererActivitySamplesForMtdo,
   collectRendererToolAuditLinesForMtdo,
 } from './marathonTransportDialReader'
+import {
+  mergeMarathonSegmentRecords,
+  readMarathonSegmentCache,
+} from './marathonSegmentCache'
+import {
+  getMarathonFrozenQuicCursorCount,
+  getMarathonMaxQuicStallMs,
+} from './mihomoQuicSilentStallObserver'
 
 const RENDERER_TAIL_BYTES = 768_000
 const HANDOFF_LOG_COOLDOWN_MS = 600_000
@@ -53,9 +61,12 @@ export async function evaluateAndLogSegmentHandoffDue(
   nowMs: number = Date.now(),
 ): Promise<void> {
   const ifmLines = await collectRendererIfmEventLines()
-  const segments = ifmLines
+  const tailSegments = ifmLines
     .map(parseHttpSegmentStartedLine)
     .filter((sample): sample is NonNullable<typeof sample> => sample != null)
+  const cacheRecords = await readMarathonSegmentCache(nowMs)
+  const segments = mergeMarathonSegmentRecords(cacheRecords, tailSegments)
+
   const terminatedSegmentIds = new Set<string>()
   for (const line of ifmLines) {
     const segmentId = parseSegmentTerminatedId(line)
@@ -75,9 +86,15 @@ export async function evaluateAndLogSegmentHandoffDue(
     HANDOFF_REGISTRY_LOOKBACK_MS,
   )
 
+  const quicStallContext = {
+    maxStallMs: getMarathonMaxQuicStallMs(),
+    frozenQuicCursorCount: getMarathonFrozenQuicCursorCount(),
+  }
+
   const due = detectSegmentHandoffDue(segments, terminatedSegmentIds, registry, {
     nowMs,
     cursorConnectionCount,
+    quicStallContext,
   })
   if (!due) {
     return
@@ -90,11 +107,19 @@ export async function evaluateAndLogSegmentHandoffDue(
   lastHandoffLogAtBySegmentId.set(due.segmentId, nowMs)
 
   const targetMin = Math.round(CURSOR_SEGMENT_HANDOFF_TARGET_MS / 60_000)
+  const effectiveTargetMin = Math.round(due.effectiveTargetMs / 60_000)
   await appendAppLog(
-    `[SegmentHandoff]: outcome=due phase=detect_only segmentId=${due.segmentId}` +
+    `[SegmentHandoff]: outcome=due phase=detect_only trigger=${due.trigger}` +
+      ` segmentId=${due.segmentId}` +
       ` requestId=${due.requestId} originalRequestId=${due.originalRequestId}` +
       ` actionCase=${due.actionCase || 'unknown'} segmentAgeMs=${due.segmentAgeMs}` +
-      ` targetMin=${targetMin} pendingTool=${due.pendingToolCalls}` +
-      ` lastActivityGapMs=${due.lastActivityGapMs} cursor_conn=${cursorConnectionCount}\n`,
+      ` targetMin=${targetMin} effectiveTargetMin=${effectiveTargetMin}` +
+      ` pendingTool=${due.pendingToolCalls}` +
+      ` lastActivityGapMs=${due.lastActivityGapMs}` +
+      ` cursor_conn=${cursorConnectionCount}` +
+      ` frozen_quic=${quicStallContext.frozenQuicCursorCount}` +
+      ` max_stall_ms=${quicStallContext.maxStallMs}` +
+      ` cache_segments=${cacheRecords.length} tail_segments=${tailSegments.length}` +
+      ` merged_segments=${segments.length}\n`,
   )
 }
