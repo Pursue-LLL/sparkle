@@ -26,7 +26,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `transportObservabilityMergeCore.ts` / `partitionBlindSpotCore.ts`     | **P18** hot+jsonl dedupe · jsonl=0∧structured≥2 blind_spot 告警 |
 | `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost/**Structured NAL** 同步 + proxyNode 回填）；**P27b** server-eof → `natStaleSuspectObserver` |
 | `natStaleSuspectObserverCore.ts` / `natStaleSuspectObserver.ts`         | **P27b** token_gap≥180s + api2 绿 + server-eof → `[NatStaleSuspect]` + jsonl `nat_stale_suspect`（observe-only，无 recovery） |
-| `hy2TunnelVitalityCore.ts` / `hy2TunnelVitality.ts`                       | **P27** Mac outbound HY2 隧道活性：marathonTruthActive + parent age≥30min → 每 30s connect_path dial（purpose=`hy2_tunnel_vitality`）；日志 `[Hy2TunnelVitality] outcome=` SSOT |
+| `hy2TunnelVitalityCore.ts` / `hy2TunnelVitality.ts`                       | **P27/R-33** HY2 隧道活性：常规 parent age≥30min · **stall recovery bypass**；日志 `[Hy2TunnelVitality]` / `[MihomoQuicStallRecovery]` |
+| `mihomoQuicSilentStallCore.ts` / `mihomoQuicSilentStallObserver.ts` / `mihomoQuicSilentStallRecovery*.ts` | **R-17/R-33** QUIC byte-frozen 检测 + 定向 vitality/单连接 close |
 | `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | VPS leaf **bootstrap dial-timeout=45s**（provider 生成 SSOT）· 空闲 backfill · 赛中零 data-plane mutation · P20b IDLE gate 保留供历史测试 |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |

@@ -1,6 +1,6 @@
 // [INPUT] cursorCriticalTransportCore · cursorHy2MarathonKeepaliveCore
 // [OUTPUT] scanMihomoQuicSilentStalls · formatMihomoQuicSilentStallLogLine
-// [POS] R-17 SSOT — observe-only HY2/TUIC QUIC byte-frozen stall triage (no recovery, no failover).
+// [POS] R-17 SSOT — HY2/TUIC QUIC byte-frozen stall detection; R-33 recovery in mihomoQuicSilentStallRecovery.ts.
 
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 import {
@@ -285,7 +285,7 @@ export function formatMihomoQuicSilentStallLogLine(
   const parts = [
     '[MihomoQuicSilentStall]:',
     'outcome=observed',
-    'observe_only=true',
+    'recovery=R-33',
     `kind=${observation.kind}`,
     `leaf=${observation.leaf}`,
     `stall_ms=${observation.stallMs}`,

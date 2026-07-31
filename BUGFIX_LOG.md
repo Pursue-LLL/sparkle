@@ -1,5 +1,18 @@
 # Sparkle Bugfix Log
 
+> **2026-07-31 最新**：**BUG-2026-07-31-011** R-33 QUIC stall recovery · **1.27.6** · **BUG-2026-07-31-010** P21
+
+### BUG-2026-07-31-011 · v1.27.6 · mihomo_quic_stall_recovery (R-33)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-31 |
+| **症状** | R-17 `[MihomoQuicSilentStall] observe_only=true` 仅观测 · 单 QUIC/TCP 流 45–210s 无字节 · 探针仍绿 · split-brain 可致 mass ping |
+| **修复** | R-33：`stall≥45s` → HY2 vitality dial（`stallRecoveryBypass` 跳过 30min age gate）· `stall≥120s` → **单 connection close** + vitality · 日志 `[MihomoQuicStallRecovery]` |
+| **边界** | 不切 leaf · 不 mass close · aggregate 仅 vitality |
+| **回归** | `mihomoQuicSilentStallRecoveryCore.test.ts` · `hy2TunnelVitalityCore.test.ts` |
+| **用户动作** | 任务结束后 `upgrade:mac` 重启 Sparkle（**现在勿重启**） |
+
 > **2026-07-31 最新**：**BUG-2026-07-31-010** P21 bootstrap dial-timeout 45s SSOT · **1.27.5**
 
 ### BUG-2026-07-31-010 · v1.27.5 · marathon_dial_tolerance_bootstrap_ssot (P21)

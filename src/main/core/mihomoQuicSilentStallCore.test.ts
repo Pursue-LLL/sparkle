@@ -220,7 +220,7 @@ describe('mihomoQuicSilentStallCore R-17', () => {
     }
     assert.equal(mihomoQuicSilentStallDedupeKey(observation), 'aggregate:JP-VPS-TUIC')
     assert.equal(shouldSkipMihomoQuicSilentStallEmit(Date.now() - 1_000, Date.now(), observation), true)
-    assert.match(formatMihomoQuicSilentStallLogLine(observation), /observe_only=true/)
+    assert.match(formatMihomoQuicSilentStallLogLine(observation), /recovery=R-33/)
     assert.match(formatMihomoQuicSilentStallLogLine(observation), /frozen_quic_cursor=6/)
   })
 })
