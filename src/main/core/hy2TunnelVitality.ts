@@ -56,11 +56,17 @@ export function resetHy2TunnelVitalityStateForTests(): void {
   skipHy2TunnelVitalityAppLogForTests = false
 }
 
+export interface RunHy2TunnelVitalityOptions {
+  /** R-33: allow vitality during byte-frozen stall before parent chain reaches marathon age. */
+  stallRecoveryBypass?: boolean
+}
+
 export async function runHy2TunnelVitalityIfDue(
   activeNode: string,
   cursorConnectionCount: number,
   nowMs: number,
   truth: MarathonSSETruthResult,
+  options: RunHy2TunnelVitalityOptions = {},
 ): Promise<Hy2TunnelVitalityResult> {
   const gate: Parameters<typeof shouldRunHy2TunnelVitality>[0] = {
     nowMs,
@@ -69,6 +75,7 @@ export async function runHy2TunnelVitalityIfDue(
     activeNode,
     marathonTruthActive: truth.marathonTruthActive,
     maxParentChainAgeMs: truth.maxParentChainAgeMs,
+    stallRecoveryBypass: options.stallRecoveryBypass,
   }
 
   const prePartitionRisk = isHy2TunnelVitalityPrePartitionRisk(gate)

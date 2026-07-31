@@ -44,6 +44,22 @@ describe('hy2TunnelVitalityCore', () => {
     )
   })
 
+  it('allows stall recovery vitality before parent chain marathon age (R-33)', () => {
+    const nowMs = 50_000_000
+    assert.equal(
+      shouldRunHy2TunnelVitality({
+        nowMs,
+        cursorConnectionCount: 20,
+        lastVitalityAtMs: 0,
+        activeNode: 'JP-VPS-HY2',
+        marathonTruthActive: false,
+        maxParentChainAgeMs: 60_000,
+        stallRecoveryBypass: true,
+      }),
+      true,
+    )
+  })
+
   it('accelerates vitality interval under pre-partition risk (P28)', () => {
     const gate = {
       nowMs: 50_000_000,

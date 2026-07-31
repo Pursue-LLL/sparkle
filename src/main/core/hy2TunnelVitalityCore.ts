@@ -35,6 +35,8 @@ export interface Hy2TunnelVitalityGateInput {
   activeNode: string
   marathonTruthActive: boolean
   maxParentChainAgeMs: number
+  /** R-33: QUIC byte-frozen stall recovery bypasses 30min parent-chain age gate. */
+  stallRecoveryBypass?: boolean
 }
 
 export interface Hy2TunnelVitalityResult {
@@ -64,10 +66,13 @@ export function shouldRunHy2TunnelVitality(input: Hy2TunnelVitalityGateInput): b
   if (input.cursorConnectionCount < CURSOR_HY2_MARATHON_CONN_THRESHOLD) {
     return false
   }
-  if (!input.marathonTruthActive) {
+  if (!input.marathonTruthActive && !input.stallRecoveryBypass) {
     return false
   }
-  if (input.maxParentChainAgeMs < MTDO_MARATHON_STREAM_MIN_AGE_MS) {
+  if (
+    !input.stallRecoveryBypass &&
+    input.maxParentChainAgeMs < MTDO_MARATHON_STREAM_MIN_AGE_MS
+  ) {
     return false
   }
   const intervalMs = resolveHy2TunnelVitalityIntervalMs(input)
@@ -83,10 +88,13 @@ export function resolveHy2TunnelVitalitySkipReason(
   if (!isMarathonQuIcInboundCursorNode(input.activeNode)) {
     return 'skipped_no_quic_node'
   }
-  if (!input.marathonTruthActive) {
+  if (!input.marathonTruthActive && !input.stallRecoveryBypass) {
     return 'skipped_inactive'
   }
-  if (input.maxParentChainAgeMs < MTDO_MARATHON_STREAM_MIN_AGE_MS) {
+  if (
+    !input.stallRecoveryBypass &&
+    input.maxParentChainAgeMs < MTDO_MARATHON_STREAM_MIN_AGE_MS
+  ) {
     return 'skipped_below_marathon_age'
   }
   const intervalMs = resolveHy2TunnelVitalityIntervalMs(input)

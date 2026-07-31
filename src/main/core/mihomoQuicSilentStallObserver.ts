@@ -1,6 +1,6 @@
 // [INPUT] mihomoQuicSilentStallCore · networkStabilityMonitor · appendAppLog
 // [OUTPUT] observeMihomoConnectionsForQuicSilentStall
-// [POS] R-16 runtime — mihomo /connections WS hook (observe-only, zero recovery).
+// [POS] R-16/R-33 runtime — mihomo /connections WS hook + targeted stall recovery.
 
 import { appendAppLog } from '../utils/log'
 import {
@@ -23,17 +23,24 @@ const trackedById = new Map<string, MihomoQuicStallTrackedConnection>()
 const lastEmitAtByKey = new Map<string, number>()
 let lastScanAtMs = 0
 let lastObservedFrozenQuicCursorCount = 0
+let lastObservedMaxStallMs = 0
 
 export function resetMihomoQuicSilentStallObserverForTests(): void {
   trackedById.clear()
   lastEmitAtByKey.clear()
   lastScanAtMs = 0
   lastObservedFrozenQuicCursorCount = 0
+  lastObservedMaxStallMs = 0
 }
 
 /** Latest frozen QUIC Cursor transport count from the most recent stall scan (R-24 MTDO breach). */
 export function getMarathonFrozenQuicCursorCount(): number {
   return lastObservedFrozenQuicCursorCount
+}
+
+/** Max stall_ms observed on the most recent stall scan (P22b early handoff SSOT). */
+export function getMarathonMaxQuicStallMs(): number {
+  return lastObservedMaxStallMs
 }
 
 function syncTrackedConnections(connections: readonly ControllerConnectionDetail[]): void {
@@ -85,6 +92,10 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     nowMs,
     cursorConnectionCount,
   })
+  lastObservedMaxStallMs = observations.reduce(
+    (max, observation) => Math.max(max, observation.stallMs),
+    0,
+  )
 
   for (const observation of observations) {
     const dedupeKey = mihomoQuicSilentStallDedupeKey(observation)
@@ -94,6 +105,12 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     }
     lastEmitAtByKey.set(dedupeKey, nowMs)
     await appendAppLog(formatMihomoQuicSilentStallLogLine(observation))
+    try {
+      const { executeMihomoQuicStallRecoveryIfDue } = await import('./mihomoQuicSilentStallRecovery')
+      await executeMihomoQuicStallRecoveryIfDue(observation, nowMs)
+    } catch {
+      // detection log remains authoritative if recovery import fails
+    }
     try {
       const { appendNetworkStabilityEvent } = await import('./networkStabilityMonitor')
       await appendNetworkStabilityEvent({
