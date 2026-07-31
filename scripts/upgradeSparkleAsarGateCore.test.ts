@@ -10,7 +10,7 @@ describe('upgradeSparkleAsarGateCore', () => {
     const source = `
       require_log.appendAppLog("x");
       require_networkStartupGraceCore.markCoreReadyAtMs();
-      frozen_surgical_prune close_frozen_connection mihomoCloseConnection maxStepsRateObserver attempt_rate_pct below_target_attempt
+      frozen_surgical_prune close_frozen_connection mihomoCloseConnection maxStepsRateObserver attempt_rate_pct below_target_attempt marathon_sse_carrier_frozen_prune Hy2ParentSidecar proactive_parent_sidecar_dial
     `
     assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
     assert.doesNotThrow(() => assertSparkleMainAsarBundle(source))
@@ -47,14 +47,14 @@ describe('upgradeSparkleAsarGateCore', () => {
 
   it('accepts minified .markCoreReadyAtMs( pattern from Vite chunk export', () => {
     const source =
-      'foo.markCoreReadyAtMs(); require_log.appendAppLog("x"); frozen_surgical_prune mihomoCloseConnection attempt_rate_pct'
+      'foo.markCoreReadyAtMs(); require_log.appendAppLog("x"); frozen_surgical_prune mihomoCloseConnection attempt_rate_pct marathon_sse_carrier_frozen_prune Hy2ParentSidecar proactive_parent_sidecar_dial below_target_attempt'
     assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
   })
 
   it('accepts R-34 markers in code-split chunk when index.js lacks them', () => {
     const indexChunk =
       'require_log.appendAppLog("x"); require_networkStartupGraceCore.markCoreReadyAtMs(); mihomoCloseConnection'
-    const stallChunk = 'close_frozen_connection frozen_surgical_prune maxStepsRateObserver attempt_rate_pct below_target_attempt'
+    const stallChunk = 'close_frozen_connection frozen_surgical_prune maxStepsRateObserver attempt_rate_pct below_target_attempt marathon_sse_carrier_frozen_prune Hy2ParentSidecar proactive_parent_sidecar_dial'
     const source = `${indexChunk}\n${stallChunk}`
     assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
   })

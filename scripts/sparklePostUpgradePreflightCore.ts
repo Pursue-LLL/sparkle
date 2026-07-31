@@ -88,6 +88,16 @@ export function evaluateSparklePostUpgradePreflight(
     detail: p28bAttemptReady ? 'P28b attempt SLO wired' : 'P28b attempt_rate_pct missing',
   })
 
+  const r35Ready =
+    input.mainAsarSource.includes('marathon_sse_carrier_frozen_prune') &&
+    (input.mainAsarSource.includes('Hy2ParentSidecar') ||
+      input.mainAsarSource.includes('proactive_parent_sidecar_dial'))
+  checks.push({
+    id: 'r35_carrier_sidecar',
+    ok: r35Ready,
+    detail: r35Ready ? 'R-35 carrier prune + parent sidecar wired' : 'missing R-35 markers',
+  })
+
   const closeFnRegression = /mihomoCloseConnection is not a function/i.test(input.appLogTail)
   checks.push({
     id: 'no_close_fn_regression',

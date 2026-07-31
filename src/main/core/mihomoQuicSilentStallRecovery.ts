@@ -36,6 +36,18 @@ let latestTokenGapSnapshot: { maxGapMs: number; staleRequestIdCount: number } = 
   staleRequestIdCount: 0,
 }
 
+let latestMarathonRecoveryContext: {
+  marathonActive: boolean
+  registryMaxGapSinceActivityMs: number
+  httpParentChainAgeMs: number
+  outboundHy2SessionAgeMs: number
+} = {
+  marathonActive: false,
+  registryMaxGapSinceActivityMs: 0,
+  httpParentChainAgeMs: 0,
+  outboundHy2SessionAgeMs: 0,
+}
+
 let pendingRecoveryHonesty: RecoveryHonestyAttemptRecord | undefined
 
 let latestLongevitySnapshot: TransportLongevityTruthSnapshot | undefined
@@ -54,6 +66,12 @@ export function resetMihomoQuicSilentStallRecoveryForTests(): void {
   latestConnections = []
   latestTrackedFirstSeenAtMsById = new Map()
   latestTrackedLastByteChangeAtMsById = new Map()
+  latestMarathonRecoveryContext = {
+    marathonActive: false,
+    registryMaxGapSinceActivityMs: 0,
+    httpParentChainAgeMs: 0,
+    outboundHy2SessionAgeMs: 0,
+  }
 }
 
 export function setSkipMihomoQuicSilentStallRecoveryAppLogForTests(skip: boolean): void {
@@ -72,6 +90,20 @@ export function setMarathonTokenGapSnapshotForRecovery(snapshot: {
 
 export function recordRecoveryHonestyAttempt(record: RecoveryHonestyAttemptRecord): void {
   pendingRecoveryHonesty = record
+}
+
+export function setMarathonRecoveryContextForPrune(input: {
+  marathonActive: boolean
+  registryMaxGapSinceActivityMs: number
+  httpParentChainAgeMs?: number
+  outboundHy2SessionAgeMs?: number
+}): void {
+  latestMarathonRecoveryContext = {
+    marathonActive: input.marathonActive,
+    registryMaxGapSinceActivityMs: Math.max(0, input.registryMaxGapSinceActivityMs),
+    httpParentChainAgeMs: Math.max(0, input.httpParentChainAgeMs ?? 0),
+    outboundHy2SessionAgeMs: Math.max(0, input.outboundHy2SessionAgeMs ?? 0),
+  }
 }
 
 export function setTransportLongevityContextForRecovery(input: {
@@ -183,6 +215,28 @@ export async function evaluatePendingRecoveryHonestyIfDue(nowMs: number = Date.n
   pendingRecoveryHonesty = undefined
 }
 
+function buildRecoveryTriageLogFields(planReason: string): {
+  httpParentChainAgeMs: number
+  outboundHy2SessionAgeMs: number
+  registryMaxGapSinceActivityMs: number
+  tokenGapMaxMs: number
+  pruneDenialReason?: string
+} {
+  const pruneDenialReason =
+    planReason !== 'frozen_surgical_prune' && planReason !== 'marathon_sse_carrier_frozen_prune'
+      ? planReason
+      : undefined
+  return {
+    httpParentChainAgeMs:
+      latestLongevitySnapshot?.httpParentChainAgeMs ?? latestMarathonRecoveryContext.httpParentChainAgeMs,
+    outboundHy2SessionAgeMs:
+      latestLongevitySnapshot?.outboundHy2SessionAgeMs ?? latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
+    registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
+    tokenGapMaxMs: latestTokenGapSnapshot.maxGapMs,
+    pruneDenialReason,
+  }
+}
+
 export async function executeMihomoQuicStallRecoveryIfDue(
   observation: MihomoQuicSilentStallObservation,
   nowMs: number = Date.now(),
@@ -196,8 +250,13 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     lastGlobalPruneAtMs,
     lastRecoveryAtMsByConnectionId,
     nowMs,
+    marathonActive: latestMarathonRecoveryContext.marathonActive,
+    registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
+    httpParentChainAgeMs: latestLongevitySnapshot?.httpParentChainAgeMs ?? latestMarathonRecoveryContext.httpParentChainAgeMs,
+    outboundHy2SessionAgeMs: latestLongevitySnapshot?.outboundHy2SessionAgeMs ?? latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
   })
   const action = mapPruneActionToRecoveryAction(plan.action)
+  const triageFields = buildRecoveryTriageLogFields(plan.reason)
 
   if (plan.action === 'none') {
     await logRecovery(
@@ -210,6 +269,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         cursorConnectionCount: observation.cursorConnectionCount,
         connectionId: observation.connectionId,
         host: observation.host,
+        ...triageFields,
       }),
     )
     return action
@@ -234,6 +294,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         host: observation.host,
         vitalityDelayMs: vitality.delayMs,
         err: vitality.err,
+        ...triageFields,
       }),
     )
     return action
@@ -259,6 +320,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
       connectionId: observation.connectionId,
       host: observation.host,
       err: closed.err,
+      ...triageFields,
     }),
   )
   if (closed.ok) {

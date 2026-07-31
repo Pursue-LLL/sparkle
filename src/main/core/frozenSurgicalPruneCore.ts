@@ -6,6 +6,7 @@ import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import { MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS } from './mihomoQuicSilentStallCore'
+import { isMarathonSseCarrierStaleCandidate } from './marathonSseCarrierPruneCore'
 
 export const MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS = 120_000
 
@@ -27,6 +28,10 @@ export interface FrozenSurgicalPruneGateInput {
   lastGlobalPruneAtMs: number
   lastRecoveryAtMsByConnectionId: ReadonlyMap<string, number>
   nowMs: number
+  marathonActive?: boolean
+  registryMaxGapSinceActivityMs?: number
+  httpParentChainAgeMs?: number
+  outboundHy2SessionAgeMs?: number
 }
 
 export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInput): FrozenSurgicalPrunePlan {
@@ -51,6 +56,22 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
     nowMs - lastConnectionRecoveryAtMs < FROZEN_SURGICAL_PRUNE_CONNECTION_COOLDOWN_MS
   ) {
     return { action: 'none', reason: 'connection_recovery_cooldown' }
+  }
+
+  const marathonActive = input.marathonActive === true
+  const registryMaxGapSinceActivityMs = input.registryMaxGapSinceActivityMs ?? 0
+  const carrierCandidate = isMarathonSseCarrierStaleCandidate({
+    observation,
+    marathonActive,
+    tokenGapMaxMs: input.tokenGapMaxMs,
+    staleRequestIdCount: input.staleRequestIdCount,
+    registryMaxGapSinceActivityMs,
+  })
+  if (carrierCandidate && observation.stallMs >= MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
+    if (nowMs - input.lastGlobalPruneAtMs < FROZEN_SURGICAL_PRUNE_GLOBAL_COOLDOWN_MS) {
+      return { action: 'vitality_dial', reason: 'global_prune_cooldown' }
+    }
+    return { action: 'close_frozen_connection', reason: 'marathon_sse_carrier_frozen_prune' }
   }
 
   if (observation.stallMs >= MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS) {

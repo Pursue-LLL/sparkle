@@ -60,7 +60,7 @@ describe('frozenSurgicalPruneCore R-34c', () => {
     assert.equal(plan.reason, 'global_prune_cooldown')
   })
 
-  it('requires stall above close threshold', () => {
+  it('requires stall above close threshold for legacy 120s path', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: { ...baseObservation, stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS - 1 },
       tokenGapMaxMs: 60_000,
@@ -68,9 +68,30 @@ describe('frozenSurgicalPruneCore R-34c', () => {
       lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
+      marathonActive: false,
+      registryMaxGapSinceActivityMs: 0,
     })
     assert.equal(plan.action, 'vitality_dial')
     assert.equal(plan.reason, 'single_stall_vitality')
+  })
+
+  it('R-35b closes carrier at 47s stall with registry gap proof', () => {
+    const plan = resolveFrozenSurgicalPrunePlan({
+      observation: {
+        ...baseObservation,
+        stallMs: 47_000,
+        host: 'api2direct.cursor.sh',
+      },
+      tokenGapMaxMs: 0,
+      staleRequestIdCount: 0,
+      lastGlobalPruneAtMs: 0,
+      lastRecoveryAtMsByConnectionId: new Map(),
+      nowMs: 1_000_000,
+      marathonActive: true,
+      registryMaxGapSinceActivityMs: 20_000,
+    })
+    assert.equal(plan.action, 'close_frozen_connection')
+    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
   })
 
   it('07-31 stall_ms=213944 replay closes frozen connection under R-34 five-gate AND', () => {

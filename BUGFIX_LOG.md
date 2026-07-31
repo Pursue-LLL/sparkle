@@ -1,6 +1,38 @@
 # Sparkle Bugfix Log
 
-> **2026-07-31 最新**：**R-34e** token gap snapshot retention @ **1.28.0** · **BUG-2026-07-31-017** P28 MaxSteps SLO · **BUG-016** · **BUG-015** R-34 · 文档同步 `_ARCH.md` + `CURSOR-DISCONNECT-TRIAGE.md` @ 2026-07-31
+> **2026-07-31 最新**：**R-35 @1.28.1** Carrier Survival Closure · **BUG-2026-07-31-018** FIX CODE-DONE · **BUG-017** P28 · 文档 @ 2026-07-31
+
+### BUG-2026-07-31-018 · v1.28.0（已装）· composer_ab194449_b866a8f9_server_eof_2231 (R-34 半闭环复发 · 同族第 9+ 次)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **TRIAGE-DEFINITIVE** @ 2026-07-31 22:31 CST · **R-34 @1.28.0 已装但未闭环** · **FIX PENDING**（parent chain 4h 热换 + marathon SSE carrier 45s prune 门控） |
+| **发生版本** | Sparkle **1.28.0**（~19:17 CST upgrade 完成 · Preflight1280 8/8 PASS · hasP28b=true）· Cursor **3.1.15** · leaf **JP-VPS-HY2** |
+| **事故时间** | userMessage **20:33:57 CST**（Dashboard Included 行 **20:34** = 起点）· **A 断连 22:31:09 CST** · durationMs=**7031697**（≈117min）· 50.07M tok · $38.50 |
+| **RID / composer** | `b866a8f9-75ad-49a4-8062-b6d9a59203d3` · `ab194449-a760-40d1-af95-1b166096ece1` · attempt=**0** |
+| **PRIMARY 根因** | **L3** — Mac→JP-VPS-HY2 **HY2 马拉松 silent byte-freeze → HTTP SSE server-eof** · **25.5h 未轮换 parent chain**（`max_parent_chain_age_ms=92093505`）· split-brain（A 时刻 api2 pulse **315ms** 绿 · SSE dead） |
+| **NOT** | max-steps-cap（`isMaxSteps=false`）· Cursor 服务端随机 · VPS sing-box crash（jp-vps @14:31 **408 行 0 ERROR**）· Guard execute（observe-only） |
+| **R-34 为何仍失败（实锤）** | ① A-3min `MihomoQuicSilentStall` stall_ms=**46998**（47s）→ 仅 **vitality_dial**，未达 frozen_surgical_prune **120s** 阈值（`app-2026-7-31.log:33185-33187`）② 同马拉松 R-34 prune **有执行**（12:40–14:18 共 5 次）但 **未覆盖本 SSE carrier** ③ Plane E **18h parent rotation 半闭环** — chain 达 **25.5h** 仍无旁路热换（BUG-015 已知遗漏 #5） |
+| **证据链** | `agent-transport-failures.jsonl:2805` · `validated-ledger-terminals.v1.jsonl` · incident bundle `~/Desktop/cursor-incident-b866a8f9-2026-07-31T1431/` · VPS SSH jp-vps sing-box @14:29–14:31 |
+| **与 BUG-016/014 关系** | **同族第 9+ 次** split-brain/HY2 stall · BUG-016（13:40 @1.27.9 未装 R-34）· **本次 = R-34 装后首次 definitive 长跑复发** |
+| **反复次数** | HY2/TUIC server-eof 同族 **第 9+ 次** · R-34 相关 **第 2 次**（BUG-016 预期 fix · **018 装后仍断**） |
+| **遗漏（R-34 发版时已知未闭）** | ① parent_chain≥18h **mihomo 旁路 dial 未 upstream**（BUG-015 Plane B 半闭环）② prune 阈值 120s 对 **47s byte-freeze + 3min 后 SSE 死** 无效 ③ **零 G9 soak 通过** 即宣称 fix |
+| **待修复（下一版）** | ① marathon active + parent_chain_age>**4h** → **同节点** parent 热换（非 failover）② active SSE segment carrier：byte_frozen + stall≥**45s** → 允许 frozen_surgical_prune ③ G9 40min soak：`attempt_rate_pct≥90` |
+| **踩坑** | Dashboard **20:34** 是计费起点非断连时刻 · 短探针全绿 **不能** 否定 L3 · vitality_dial **不能** 替代 close frozen conn · 装 1.28.0 ≠ 同族消失 |
+| **验证方式** | G9 soak strict · `[MaxStepsRate] attempt_rate_pct≥90` · 零同窗 server-eof · parent_chain_age 日志 <4h during marathon |
+| **会导致什么** | 117min 马拉松中途断 · willRetry=true 可能 ghost Included（拦截 OFF 时 Guard 已 notify） |
+
+**结构反思（为何 R-34 装后仍复发）：**
+
+| 机制 | 问题 |
+| --- | --- |
+| **Goodhart 漂移** | R-17–R-33 优化 rescue executed / vitality_dial 计数；真实目标 **SSE carrier 存活** 无直接 SLO |
+| **半闭环发版** | Plane E 18h parent rotation 代码在、**mihomo 旁路 dial 未 upstream** → chain 25.5h 仍存活 |
+| **阈值与载体错位** | frozen_surgical_prune 120s 全局门控 · 47s byte-freeze 只触发 vitality · ** dying carrier ≠ pruned carrier** |
+| **验收真空** | 零 G9 soak 通过即 ship · rolling100 max-steps **0%** 未 blocking release |
+| **向上失明** | split-brain（api2 绿 + SSE dead）被短探针 PASS 掩盖 · triage 依赖事后 bundle 非 inline 告警 |
+
+**根治方向（非 Guard/拦截/failover）：** parent chain 4h 同节点热换 + marathon SSE carrier 45s prune + G9 soak strict gate。
 
 ### R-34e · token_gap_snapshot_retention @ 1.28.0（pre-ship）
 
@@ -9,7 +41,7 @@
 | **问题** | `marathonTransportDialOrchestrator.ts:650-652` — `tokenGapSignal==null` 时 instant zero → 五门 AND 缺 stale proof → 仍只 vitality_dial |
 | **修复** | `marathonTokenGapSnapshotRetentionCore.ts` — marathon active 时保留最近 180s stale proof |
 | **验证** | `marathonTokenGapSnapshotRetentionCore.test.ts` 5/5 pass |
-| **状态** | CODE-DONE · 待用户空窗 upgrade |
+| **状态** | CODE-DONE · **shipped @1.28.0** upgrade ~19:17 CST 2026-07-31 |
 
 ### BUG-2026-07-31-017 · v1.28.0 · p28_maxsteps_slo_rolling100 (Phase 8)
 
@@ -78,7 +110,7 @@
 4. **若 soak 失败** — 按 triage 手册继续打 **同一 rid 链** 的新机制，**不**再叠「又一个 vitality dial」。
 5. **与以前本质区别** — 以前优化 **内部 executed**；R-34 强制 **Connect token 恢复** 为唯一 success anchor。
 
-**反复统计（HY2/TUIC split-brain 同族）：** 自 BUG-2026-07-20-001 起 **第 8+ 次** triage · R-17–R-33 **6 个版本** partial fix · **0 次** soak 门禁通过。
+**反复统计（HY2/TUIC split-brain 同族）：** 自 BUG-2026-07-20-001 起 **第 9+ 次** triage · R-17–R-33 **6 个版本** partial fix · R-34 @1.28.0 **装后仍断 1 次**（BUG-018）· **0 次** soak 门禁通过。
 
 ### §2026-07-31 R-34 pre-ship 深度审计（@1.28.0 CODE · dist 仍 1.27.9）
 
@@ -105,7 +137,7 @@
 | 问题 | 答案 |
 | --- | --- |
 | 同 bug（marathon_block + close 坏） | **装 1.28.0 后不应复现**（机制已删/修） |
-| 同族（HY2 stall split-brain） | **可能**，若 18h parent 未轮换或五门过严 · 靠 soak 抓 |
+| 同族（HY2 stall split-brain） | **已复发** — BUG-018 @1.28.0 22:31 · parent 25.5h + 47s stall 仅 vitality · 见 BUG-018 |
 | 新 bug（prune 误伤） | **低概率**，有五门+cooldown · 需 RecoveryHonesty 监控 |
 | **100% 永不断连** | **不可能**（物理网络 + Cursor max-steps） |
 | **90% max-steps** | **可达** — 工程闭环：rate 可见 → 每个 early_disconnect triage → 修到达标 |
