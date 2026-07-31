@@ -66,6 +66,11 @@ export function formatMihomoQuicStallRecoveryLogLine(fields: {
   host?: string
   vitalityDelayMs?: number
   err?: string
+  pruneDenialReason?: string
+  httpParentChainAgeMs?: number
+  outboundHy2SessionAgeMs?: number
+  registryMaxGapSinceActivityMs?: number
+  tokenGapMaxMs?: number
 }): string {
   const parts = [
     '[MihomoQuicStallRecovery]:',
@@ -76,6 +81,21 @@ export function formatMihomoQuicStallRecoveryLogLine(fields: {
     `stall_ms=${fields.stallMs}`,
     `cursor_conn=${fields.cursorConnectionCount}`,
   ]
+  if (fields.pruneDenialReason) {
+    parts.push(`prune_denial_reason=${fields.pruneDenialReason}`)
+  }
+  if (fields.httpParentChainAgeMs != null) {
+    parts.push(`http_parent_chain_age_ms=${fields.httpParentChainAgeMs}`)
+  }
+  if (fields.outboundHy2SessionAgeMs != null) {
+    parts.push(`outbound_hy2_session_age_ms=${fields.outboundHy2SessionAgeMs}`)
+  }
+  if (fields.registryMaxGapSinceActivityMs != null) {
+    parts.push(`registry_max_gap_ms=${fields.registryMaxGapSinceActivityMs}`)
+  }
+  if (fields.tokenGapMaxMs != null) {
+    parts.push(`token_gap_max_ms=${fields.tokenGapMaxMs}`)
+  }
   if (fields.connectionId) {
     parts.push(`connection_id=${fields.connectionId}`)
   }

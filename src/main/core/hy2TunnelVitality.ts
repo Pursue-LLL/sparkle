@@ -12,6 +12,7 @@ import {
   shouldRunHy2TunnelVitality,
   type Hy2TunnelVitalityResult,
 } from './hy2TunnelVitalityCore'
+import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import { isHy2SessionDialInFlight } from './marathonSessionDialExecutorCore'
 
 let lastHy2TunnelVitalityAtMs = 0
@@ -59,6 +60,8 @@ export function resetHy2TunnelVitalityStateForTests(): void {
 export interface RunHy2TunnelVitalityOptions {
   /** R-33: allow vitality during byte-frozen stall before parent chain reaches marathon age. */
   stallRecoveryBypass?: boolean
+  /** R-35a: proactive parent sidecar dial — bypass not_due interval when session aged. */
+  sidecarDial?: boolean
 }
 
 export async function runHy2TunnelVitalityIfDue(
@@ -79,8 +82,12 @@ export async function runHy2TunnelVitalityIfDue(
   }
 
   const prePartitionRisk = isHy2TunnelVitalityPrePartitionRisk(gate)
+  const sidecarForce =
+    options.sidecarDial === true &&
+    gate.marathonTruthActive &&
+    gate.maxParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS
 
-  if (!shouldRunHy2TunnelVitality(gate)) {
+  if (!shouldRunHy2TunnelVitality(gate) && !sidecarForce) {
     const skipReason = resolveHy2TunnelVitalitySkipReason(gate)
     if (
       skipReason &&

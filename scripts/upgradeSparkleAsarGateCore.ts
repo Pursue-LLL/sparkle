@@ -12,6 +12,8 @@ export type SparkleMainAsarGateResult =
         | 'regression_marathon_block_close'
         | 'missing_mihomo_close_connection'
         | 'missing_p28b_attempt_rate'
+        | 'missing_r35_carrier_prune'
+        | 'missing_r35_parent_sidecar'
     }
 
 /** Vite minifies to `.markCoreReadyAtMs(` on chunk export — bare `markCoreReadyAtMs(` is BUG-2026-07-23-004. */
@@ -48,6 +50,15 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
   ) {
     return { ok: false, reason: 'missing_p28b_attempt_rate' }
   }
+  if (!mainSource.includes('marathon_sse_carrier_frozen_prune')) {
+    return { ok: false, reason: 'missing_r35_carrier_prune' }
+  }
+  if (
+    !mainSource.includes('Hy2ParentSidecar') &&
+    !mainSource.includes('proactive_parent_sidecar_dial')
+  ) {
+    return { ok: false, reason: 'missing_r35_parent_sidecar' }
+  }
 
   return { ok: true }
 }
@@ -63,6 +74,8 @@ export function assertSparkleMainAsarBundle(mainSource: string): void {
       regression_marathon_block_close: 'asar still contains marathon_block_close_connection regression',
       missing_mihomo_close_connection: 'asar missing mihomoCloseConnection — frozen prune close will fail at runtime',
       missing_p28b_attempt_rate: 'asar missing P28b attempt_rate_pct — G9 soak SLO metrics will not emit',
+      missing_r35_carrier_prune: 'asar missing R-35 marathon_sse_carrier_frozen_prune',
+      missing_r35_parent_sidecar: 'asar missing R-35 Hy2ParentSidecar proactive dial',
     }
     throw new Error(messages[result.reason])
   }

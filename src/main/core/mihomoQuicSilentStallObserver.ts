@@ -107,8 +107,8 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     ) ?? 'JP-VPS-HY2'
 
   try {
-    const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
-    const marathonTruth = await resolveMarathonSSETruthNow(cursorConnectionCount)
+    const { resolveMarathonSSETruthSnapshot } = await import('./marathonSSETruthRuntime')
+    const { truth: marathonTruth, registry } = await resolveMarathonSSETruthSnapshot(cursorConnectionCount)
     const longevitySnapshot = buildTransportLongevityTruth({
       nowMs,
       cursorConnectionCount,
@@ -132,6 +132,28 @@ export async function observeMihomoConnectionsForQuicSilentStall(
       trackedFirstSeenAtMsById,
       trackedLastByteChangeAtMsById,
     })
+    const { computeRegistryMaxGapSinceActivityMs } = await import('./marathonSseCarrierPruneCore')
+    const { setMarathonRecoveryContextForPrune } = await import('./mihomoQuicSilentStallRecovery')
+    setMarathonRecoveryContextForPrune({
+      marathonActive: marathonTruth.marathonTruthActive,
+      registryMaxGapSinceActivityMs: computeRegistryMaxGapSinceActivityMs(registry, nowMs),
+      httpParentChainAgeMs: longevitySnapshot.httpParentChainAgeMs,
+      outboundHy2SessionAgeMs: longevitySnapshot.outboundHy2SessionAgeMs,
+    })
+    try {
+      const { runHy2ParentSidecarIfDue } = await import('./hy2ParentSidecar')
+      await runHy2ParentSidecarIfDue({
+        snapshot: longevitySnapshot,
+        connections,
+        trackedFirstSeenAtMsById,
+        trackedLastByteChangeAtMsById,
+        marathonTruth,
+        cursorConnectionCount,
+        nowMs,
+      })
+    } catch {
+      // sidecar is best-effort; longevity truth remains authoritative
+    }
     const { writeTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
     await writeTransportLongevityTruthSnapshot(longevitySnapshot)
     if (cursorConnectionCount >= 12) {
