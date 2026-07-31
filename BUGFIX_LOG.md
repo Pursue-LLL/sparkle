@@ -1,6 +1,210 @@
 # Sparkle Bugfix Log
 
-> **2026-07-31 最新**：**BUG-2026-07-31-013** cursor path prefix migration wipe · **1.27.8** · **BUG-2026-07-31-012** · **1.27.7**
+> **2026-07-31 最新**：**BUG-2026-07-31-017** P28 MaxSteps SLO @ **1.28.0** · **BUG-016** · **BUG-015** R-34 · 文档同步 `_ARCH.md` + `CURSOR-DISCONNECT-TRIAGE.md` @ 2026-07-31
+
+### BUG-2026-07-31-017 · v1.28.0 · p28_maxsteps_slo_rolling100 (Phase 8)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ Sparkle `aaf8c9a` · **PENDING** `upgrade:mac`（2026-07-31 14:44 被 marathon guard 拦：cursor_conn=31） |
+| **症状** | 无 SLO 量化 · 07-31 磁盘现算 rolling100 **rate_pct=0.0%**（8 turn / 0 max-steps / 3 early_disconnect 全 server-eof）· 无法验收「90% 到 max-steps」 |
+| **根因** | 缺 turn 级终态统计 · `agent-transport-failures.jsonl` 漏 max-steps · 无发版门禁 |
+| **修复** | `maxStepsRateObserverCore.ts` rolling100 主窗口 + 24h 辅指标 · `[MaxStepsRate]` @ hung_scan 5min · `~/.sparkle/max-steps-rate-snapshot.jsonl` · SSOT §M.0.13 Plane H |
+| **版本** | Sparkle **1.28.0**（与 R-34 同包） |
+| **遗漏（G8 DONE @1.28.0）** | `validatedLedgerTerminalCore.ts` + `validatedLedgerTerminalIngest.ts` incremental ingest → MaxStepsRate merge · 实机 **143 terminals / 1 max-steps** |
+| **装包门禁** | `upgradeSparkleAsarGateCore` R-34+close · `preflight-sparkle-1280.sh` · `sparkle-mihomo-close-smoke.mts` |
+| **90% 如何保证（诚实）** | R-34 打掉 L3 + G8 正确计量 + soak `rate_pct≥90` · 未 soak **不得声称达标** |
+| **为何以前修复没 SLO** | R-17–R-33 优化 rescue **executed** 内部指标 · 无 rolling100 外部锚点 · 07-31 实锤 0% max-steps |
+| **反复次数** | SLO 体系 **第 1 次**（此前零定量验收） |
+| **踩坑** | 24h 窗口样本太少 → **rolling100** · jsonl-only 低估 max-steps → **G8 ledger SSOT 已接** |
+| **用户动作** | marathon 结束 cursor_conn=0 → `pnpm run upgrade:mac` → grep `[MaxStepsRate]` |
+
+### BUG-2026-07-31-016 · v1.27.9→**1.28.0** · composer_1c2e77de_server_eof_1340 (§M.0.12 子案)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **TRIAGE-DEFINITIVE** @ 2026-07-31 · **FIX IMPLEMENTED @1.28.0 R-34** · Sparkle **未装** |
+| **症状** | userMessage `1c2e77de` @ **11:57:56** · resume `73e46389` ~91min · **13:40:04** `server-eof` durationMs=5468403 · 幽灵 resume `d2e6a330` @13:41 · Dashboard Included 浪费 |
+| **关联** | BUG-014 同族（11:58 四路 batch）· 本条目为 **单路 definitive 时间链** |
+| **PRIMARY 根因** | **L3** — token_gap max **485389ms** @13:35 · `TokenGapRescueIneffective` · `mihomoCloseConnection is not a function` · VpsL4 @13:40:26 **api2_ok** |
+| **NOT** | max-steps-cap（全天零）· Cursor 随机 · patch-315 execute（零 `resume-chat-invoked`）· VPS 宕 |
+| **IFM 补丁** | 全程 `phase=detect_only` · execute **未触发** |
+| **Guard G6** | 2026-07-31 deploy observe-only · closure **15/15 PASS** · 待用户 **⌘Q** |
+| **修复** | R-34 Plane C/D/E（见 BUG-015） |
+| **反复次数** | HY2 stall 同族 **第 8+ 次**（延续 BUG-014） |
+| **为何本次 triage 更准** | 单 rid 完整链：marathon-segments + app.log L2722 + transport-failures · 非 Dashboard 分钟级误读 |
+| **用户动作** | ⌘Q 315 · marathon 结束后 upgrade Sparkle 1.28.0 |
+
+| **向上失明** | 真实目标应是 **parent QUIC 链健康 + Connect SSE 存活**；机械执行短 api2 dial / 禁 marathon close，未复审目标 |
+
+### §2026-07-31 R-34 vs R-17–R-33 — 以前为何没奏效 + 90% 如何保证
+
+**以前修复清单（均已在生产跑过，07-31 仍断）：**
+
+| 版本 | 改了什么 | 07-31 实锤为何无效 |
+| --- | --- | --- |
+| R-17~R-24 | partition latch / contention budget / deny pulse | 短探针绿、SSE 仍 dead；未碰 **马拉松 selective close** |
+| R-33 @1.27.6 | stall≥45s vitality · stall≥120s close | 马拉松内 **`marathon_block_close_connection`**（`:13103`）· close 路径 **`mihomoCloseConnection is not a function`**（日志 16 次） |
+| P28/P29 | partition/server-eof latch | solitary eof 不 arm · **不能复活** dead stream |
+| Guard 315 execute bin 漂移 | 声明 observe-only 磁盘含 execute | 07-31 **未触发** execute，但污染排查可信度 |
+
+**R-34 @1.28.0 打的是 A 时刻 proven 的三颗钉子（不是又一个 rescue 指标）：**
+
+| Plane | 机制 | 外部锚点（验收必须看） |
+| --- | --- | --- |
+| C | `frozenSurgicalPrune` — **删** marathon 全禁 close，只摘 `stall≥阈值` 单 conn | prune 后 **同一 rid token 恢复** 或 gap↓≥50%/60s |
+| C | static import 修 `mihomoCloseConnection` | 日志 **零** `is not a function` |
+| D | `RecoveryHonesty` — rescue `executed` 须 token_gap↓≥50% | **零** `TokenGapRescueIneffective` 同窗恶化 |
+| E | `transportLongevityTruth` 三龄 | parent_chain_age 超阈 **触发** rotation/prune，不靠短探针 |
+| H | P28 rolling100 MaxStepsRate | `rate_pct≥90` 或 soak `early_disconnect=0` |
+
+**90% 怎么「保证」——诚实表述（禁止过度承诺）：**
+
+1. **不是写进代码的常量** — 是 **发版 SLO + soak 门禁**；未跑过 G9 soak **不得声称达标**。
+2. **当前基线** — rolling100 **0%**（8 turn / 0 max-steps / 3 early_disconnect 全 server-eof）· 证明以前 **零定量验收**。
+3. **通过条件（全部满足才 ship 1.28.0 生产结论）**：
+   - 40min **4-way HY2 马拉松** soak：`early_disconnect=0`
+   - `[TokenGapRescueIneffective]` **=0**（或 rescue 后 60s 内 gap↓≥50%）
+   - `[MaxStepsRate] rolling100 rate_pct≥90` **或** 样本不足时至少 **连续 3 次 hung_scan rate≥90**
+4. **若 soak 失败** — 按 triage 手册继续打 **同一 rid 链** 的新机制，**不**再叠「又一个 vitality dial」。
+5. **与以前本质区别** — 以前优化 **内部 executed**；R-34 强制 **Connect token 恢复** 为唯一 success anchor。
+
+**反复统计（HY2/TUIC split-brain 同族）：** 自 BUG-2026-07-20-001 起 **第 8+ 次** triage · R-17–R-33 **6 个版本** partial fix · **0 次** soak 门禁通过。
+
+### §2026-07-31 R-34 pre-ship 深度审计（@1.28.0 CODE · dist 仍 1.27.9）
+
+| # | 严重 | 风险 | 证据 | 触发条件 | 纠偏 | 回归验证 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | **P0** | 未装包 = 零收益 | `/Applications/Sparkle.app` **1.27.9** · dist **1.27.9** · repo `buildStamp` **1.28.0** | 用户未空窗 upgrade | marathon 结束 **一次** `upgrade:mac` | `defaults read` → 1.28.0 |
+| 2 | **P0** | close 路径仅 Core 单测 | `mihomoQuicSilentStallRecovery.ts:7` static import 修 · **无** asar/runtime 集成测 · 07-31 生产 16× `is not a function` | 首次马拉松 prune | 补 runtime close smoke（G10） | soak 零 close err |
+| 3 | **P1** | 五门 AND 过严 → 仍只 vitality | `frozenSurgicalPruneCore.ts:64-65` 须 `tokenGap≥FORCE` **且** `staleRequestIdCount>0` · 07-31 `:13103` 有 gap 但 block 在 **旧** marathon_block | stall 大但 gap 未进 snapshot | 审计 snapshot 接线 · 放宽 gate 证据驱动 | soak：`close_frozen_connection` 出现且 gap↓ |
+| 4 | **P1** | MaxStepsRate 漏计 max-steps | G8 PENDING · `maxStepsRateObserverCore.ts` 仅 jsonl+segments · max-steps 常不在 jsonl | 达标误判 | Plane F validated-ledger | 人工 max-steps turn 对照 rate |
+| 5 | **P1** | 18h parent 轮换半闭环 | BUG-015 Plane B · mihomo 层旁路 dial 待 upstream | parent_chain≥18h | hy2ParentRotation + 后续 upstream | longevity log 触发 rotation |
+| 6 | **P2** | 测试非 90% line coverage | `test:node-quality` **460 pass / 4 fail**（bundle guard 预存）· R-34 Core **12/12 pass** · **零** soak/E2E | 发版 | G9 40min soak 门禁 | early_disconnect=0 + rate≥90 |
+| 7 | **P2** | 误 close 活连接 | 五门：critical host + byte_frozen_proof 30s + global cooldown 60s | 极端 race | 已有 gate · RecoveryHonesty 60s | 无误杀 rid 证据 |
+
+**三类结构性风险判定：**
+
+| 类型 | 判定 | 证据 | 校准动作 |
+| --- | --- | --- | --- |
+| **测量衰减** | **命中（P28）** | jsonl 漏 max-steps → rate 低估 | **先** G8 ledger **后** 信 rate |
+| **古德哈特** | **R-34 已纠** | `recoveryHonestyCore.ts:48-49` success=gap↓≥50%/60s | soak 看 `[RecoveryHonesty] outcome=success` |
+| **向上失明** | **R-34 已纠** | `frozenSurgicalPruneCore` 目标=摘僵死 conn 非刷 executed | 外部锚点=Connect token + rolling100 |
+
+**改完还会 bug 吗？诚实：**
+
+| 问题 | 答案 |
+| --- | --- |
+| 同 bug（marathon_block + close 坏） | **装 1.28.0 后不应复现**（机制已删/修） |
+| 同族（HY2 stall split-brain） | **可能**，若 18h parent 未轮换或五门过严 · 靠 soak 抓 |
+| 新 bug（prune 误伤） | **低概率**，有五门+cooldown · 需 RecoveryHonesty 监控 |
+| **100% 永不断连** | **不可能**（物理网络 + Cursor max-steps） |
+| **90% max-steps** | **可达** — 工程闭环：rate 可见 → 每个 early_disconnect triage → 修到达标 |
+
+### §2026-07-31 遗漏补遗审计（第二轮 · 按用户铁律逐项）
+
+| # | 先前遗漏/误判 | 真实证据 | 纠偏 |
+| --- | --- | --- | --- |
+| 1 | **TUN 延迟税** 未量化 | `[LatencyTruth]` @07-31：`mac_p50=301` `vps_p50=497` **`delta_ms=-194~−196`** `high=0` — **基线无 +200ms 税** | 监控 `delta_ms>+50` 告警；**勿与 pulse 尖峰混淆** |
+| 2 | **pulse 争用尖峰** 未单列 | `:13115` `connect_path_delay_ms=**720**` · ledger @06:55 `pulse api2=**670**` · 基线 301ms | 07-31 断连窗 **争用恶化** 非静态 TUN 税 · R-24 deny 已部分抑制 · soak 验 pulse 频率 |
+| 3 | **误杀健康连接** 路径未全扫 | `config.yaml`：**`cursorConnectionHygieneEnabled=false`** · **`autoCloseConnection=false`** · L1/L2 有 **marathon-disable** guard | **永久保持 hygiene OFF** · R-34 prune **五门 AND**（`:64-70` 须 byte_frozen+token_gap stale）· soak 验无误杀 rid |
+| 4 | **close 路径全量** | 除 R-34：`cursorTransportHealth` L1/L2 · `cursorConnectionHygiene` — 赛中 guard/已关 | 不改节点 · 不 mass close 活连接 |
+| 5 | **VPS 非节点因素** | parent_chain **≥18h**（`:12936` max_parent_chain_age_ms=149671005）· sing-box 马拉松 conn 堆积 · conntrack 历史低 | R-34 parent rotation · longevity truth · VPS sing-box 仅 **隧道刷新** 非切节点 |
+| 6 | **MaxStepsRate 漏计** | G8 validated-ledger 未接 | 装 1.28.0 后 **优先 G8** 再信 rate |
+
+**用户铁律对齐：**
+
+| 铁律 | 现状 | 交付动作 |
+| --- | --- | --- |
+| 不杀健康连接 | hygiene OFF · prune 五门 | soak 证明只摘 byte-frozen |
+| 最大化到 max-steps | rolling100=**0%** | P28 + G8 + 迭代 fix |
+| ≥90% max-steps | 硬指标 | soak 门禁未过不交付 |
+| 315 仅观测 | G6 PASS | ⌘Q 进内存 |
+| 不切节点 | 全程 JP-VPS-HY2 | parent rotation=同 leaf 新隧道 |
+
+### §踩坑经验 SSOT — 2026-07-31 四路 batch 沉淀（后续必读）
+
+**定责**
+
+1. Dashboard **分钟级时间戳 = 计费落账**，不是 userMessage 起点 · 定责必须 rid 级时间链（segments + jsonl + app.log A±60s）。
+2. 多路同时 `server-eof` @ 同窗 → **L3 代理/VPS**，不是 Cursor 随机 · 全天零 `max-steps-cap` 则继续查 L3。
+3. `VpsL4Probe api2_ok` + 短探针绿 **≠** Connect SSE 活 · split-brain 必须看 token_gap + stall_ms。
+
+**修复反模式（R-17–R-33 六版教训）**
+
+4. **禁止**用 rescue `executed` / vitality 294ms 绿作为 success — 外部锚点 = **Connect token 恢复** 或 **rolling100 max-steps**。
+5. **禁止**马拉松全禁 close（`marathon_block_close_connection`）— 应 **五门 AND 只摘 byte-frozen 单 conn**。
+6. **禁止** dynamic import close API 无 runtime 测 — 生产可 `mihomoCloseConnection is not a function`。
+7. **禁止**无 soak 门禁发版 — `early_disconnect=0` 或 `rate_pct≥90` 才关单。
+8. **禁止**把 Guard/拦截/Continue 当断连根因 — 315 须 observe-only · `verify-segment-handoff-closure.mjs` 每 deploy。
+
+**运维铁律（500 Included）**
+
+9. **hygiene OFF · autoCloseConnection false** 永久 — 误杀健康 SSE = 不可挽回次数浪费。
+10. **不切节点 · 不 failover · 不减并行 · 不拆 userMessage**。
+11. **LatencyTruth delta_ms>+50** 才认定 Sparkle 加税 · 600ms+ 尖峰先查 **pulse 争用** 非静态 TUN。
+12. **装包一次** — marathon 中禁止 cold restart Sparkle · dist 版本须与 `buildStamp` 一致。
+
+**文档/指标**
+
+13. **先 G8 validated-ledger 再信 MaxStepsRate** — jsonl 漏 max-steps 会测量衰减。
+14. `_ARCH.md` / `CURSOR-DISCONNECT-TRIAGE.md` 与代码同步 — 过时「conn≥12 禁止 close」「315 execute」会误导定责。
+15. 每个 BUG 条目必含：**发生版本 · 修复版本 · 反复次数 · 遗漏 · 验证方式**。
+
+**发版检查清单（复制用）**
+
+```
+□ upgrade:mac 后 defaults = buildStamp
+□ grep 无 marathon_block_close_connection（新 stall 窗）
+□ grep 无 mihomoCloseConnection is not a function（48h）
+□ [MaxStepsRate] rolling100 可见
+□ 315 closure verify 15/15 + ⌘Q 进内存
+□ 40min 4-way soak：early_disconnect=0 或 rate≥90
+□ 每个 early_disconnect 有 rid 级 triage 条目
+```
+
+### BUG-2026-07-31-015 · v1.28.0 · r34_transport_longevity_ssot (Phase 7)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX IMPLEMENTED** @ 2026-07-31 · **upgrade PENDING**（2026-07-31 14:44 marathon-core-restart-guard：cursor_conn=31 quiesce=1）· **dist 仍 1.27.9**（待空窗一次 build+install） |
+| **事故时间** | 触发案 BUG-014 @ **2026-07-31 11:58–13:40 CST** · 运行版本 **1.27.9** |
+| **修复版本** | **1.28.0**（`buildStamp.ts` · commit 待用户空窗 install） |
+| **交付文件** | `frozenSurgicalPruneCore.ts` · `recoveryHonestyCore.ts` · `transportLongevityTruthCore.ts` · `hy2ParentRotationCore.ts` · `mihomoQuicSilentStallRecoveryCore.ts`（删 marathon_block）· `maxStepsRateObserverCore.ts` |
+| **交付** | Plane A–E 见 §M.0.12 · 455/459 单测 pass |
+| **已知半闭环（诚实）** | Plane B「赛中 healthy 流存在时的 18h 旁路新 dial」需 mihomo 层支持 · 当前仅 prune 后 UDP refresh |
+| **补漏 @同版本** | token_gap snapshot 清零 · RecoveryHonesty 接 MTDO+hung_scan · P10b recent userMessage 段 block cold restart · natStale→prune snapshot · Hy2Vitality 三分龄日志 |
+| **仍待 G6** | mihomo 层赛中 18h 旁路新 dial（需 upstream）· wallClockIso · asar close 集成测 |
+
+### BUG-2026-07-31-014 · v1.27.9 · hy2_marathon_stall_r33_ineffective_4rid_1158 (split-brain 同族第 8+ 次)
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **TRIAGE-DEFINITIVE** @ 2026-07-31 · **FIX IMPLEMENTED @1.28.0**（R-34） |
+| **症状** | Dashboard **11:58** 四路 Included×1（composer `3dbdfb49`/`5b103c3f`/`ab194449`/`21419e13`）· userMessage **11:57:56–11:58:14** · **12:00–12:09** mass token_gap + resumeAction 风暴 · 烧 Included |
+| **关联产品** | Sparkle **1.27.9**（11:52:54 升级 cold restart）· Cursor **3.1.15** · leaf **JP-VPS-HY2** · cursor_conn **31–39** |
+| **PRIMARY 根因** | **L3** — Mac→JP-VPS-HY2 **21h 父链 QUIC silent stall**（`max_parent_chain_age_ms≈76.7M`）→ Connect token 断供 · **NOT** max-steps-cap · **NOT** VPS 宕（VpsL4 @11:58:58 api2_ms=478） |
+| **R-33 为何无效（实锤）** | `app-2026-7-31.log:13101-13103` @ **11:59:28 CST**：`stall_ms=213944` → `[MihomoQuicStallRecovery] outcome=executed action=vitality_dial reason=**marathon_block_close_connection** connect_path_delay_ms=**294**` → 短探针绿但长流仍死 · `13117-13118` @ **12:00:02**：`token_gap_nudge outcome=executed_on_stale_rid` stale_rids=`10a5d11f,1c2e77de` · `network-stability-events.jsonl` @ **12:01:58**：`token_gap_rescue_ineffective` max_gap_ms=188586 |
+| **R-33 生产缺陷（另案）** | @ **02:37:26** `MihomoQuicStallRecovery outcome=failed action=close_connection err=**TypeError: mihomoCloseConnection is not a function**` — 非马拉松 conn=28 时 close 路径 **运行时坏** · 仅 Core 单测、无 runtime/integration 测 |
+| **11:52 重装** | **独立事件**（`generateProfile` @11:52:54 · core restart @11:52:59）· 比 userMessage 早 6min · **不是** Dashboard 11:58 同一秒 · 可能削弱隧道状态但断连证据对齐 **12:00–12:02** |
+| **反复次数** | **split-brain/HY2 stall 同族第 8+ 次**（BUG-2026-07-20-001 起第 6 次 → TUIC 7+ → **本次 HY2 @1.27.9**） |
+| **为何 R-17–33 仍复发** | ① 每层只修 **一个时间尺度**（观测/短探针/rescue 日志）② **马拉松禁 close**（`marathon_block_close_connection`）③ **vitality/rescue 不能复活 dead Connect SSE** ④ **parent chain ≥18h 无旁路轮换** ⑤ R-33 close 路径 asar dynamic import 坏 ⑥ 无 E2E soak 门禁 |
+| **改完 R-33 还会 bug 吗** | **会** — 07-31 实锤 R-33 在马拉松内 **只能 vitality**，213s stall 未解 |
+| **待编码（R-34 SSOT）** | Master **§M.0.12 Phase 7** · ① Longevity Truth 三龄 ② Parent Rotation 18h 旁路 ③ Frozen Surgical Prune（删 marathon_block）④ Recovery Honesty 3.0 ⑤ static import + soak |
+| **结构性反思** | 见下方 **§2026-07-31 深度反思** |
+| **用户动作** | 确认 R-34 方案后编码 · 装包前勿 cold restart 马拉松 active |
+
+### §2026-07-31 深度反思 — 为何修了很多版仍复发？
+
+| 问题 | 结论（证据） |
+| --- | --- |
+| **功能有 bug 吗？** | **有。** R-33 马拉松路径设计性无效（`mihomoQuicSilentStallRecoveryCore.ts:52-55` marathon_block_close）+ close 路径生产坏（app-log 02:37 `mihomoCloseConnection is not a function`） |
+| **测试覆盖率 ≥90%？** | **否。** 无 `test:coverage` · `test:node-quality` **453 tests / 449 pass / 4 fail** · R-33 仅 5 条 Core 单测 · **零** runtime/asar/soak 测 |
+| **以后还会这个 bug 吗？** | **会**，直到 parent chain 轮换 + 马拉松 selective close + import 修复 |
+| **以后还会类似 bug 吗？** | **会**（QUIC split-brain 同族），除非闭环「长流真值」external anchor（Connect token 恢复），而非短 HTTP 探针 |
+| **测量衰减** | `executed_on_stale_rid` / `MihomoQuicStallRecovery outcome=executed` 内部指标变好，**12:01:58 rescue_ineffective** 外部锚点仍 fail |
+| **古德哈特** | R-33 优化「有 recovery 动作」指标，**真实目标**（Connect token 不断）未达成 — 11:59:28 vitality 294ms 绿 + 12:00 stale |
+| **向上失明** | 真实目标应是 **parent QUIC 链健康 + Connect SSE 存活**；机械执行短 api2 dial / 禁 marathon close，未复审目标 |
 
 ### BUG-2026-07-31-013 · v1.27.8 · cursor_path_prefix_migration_wipe
 

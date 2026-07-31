@@ -53,8 +53,11 @@
 | **P17 Structured ingest** | **1.26.77+**：`Cursor/logs` Structured tail + `originalRequestId` 归因；triage `p17-blind-spot.txt` |
 | `Connect partition` | mass PING/code-14 → `connect_partition` rescue nudge + outcome 日志（**5d03320f 类**） |
 | **VPS hy2-in QUIC** | conntrack 3600s + hy2-in **`udp_timeout: 3600s`**（sing-box **1.13.14+ 必做**）；`idle_timeout`/`keep_alive_period` 仅 **≥1.14**（`patch-hy2-in-quic-marathon.sh`）— **23bb8c85/a9722f2 EOF 类 L3 修复** |
-| **P22 Segment Handoff** | **1.27.6+** Sparkle detect + `~/.sparkle/quic-stall-ssot.json` · Guard **patch-315 ssot-v3** @ ~85min（QUIC stall → ~75min）`resumeChat(isAutoResume)` · **验收**：renderer `[SegmentHandoff] outcome=executed phase=resume-chat-invoked` · `node scripts/verify-segment-handoff-closure.mjs` |
-| **R-33 QUIC recovery** | stall≥120s **`close_connection` 仅 conn<12**；马拉松 conn≥12 仅 vitality dial（**不误杀健康 SSE**） |
+| **P22 Segment Handoff** | **1.27.6+** Sparkle **detect-only** + `~/.sparkle/quic-stall-ssot.json` · Guard patch-315 **observe-only**（**禁止** execute `resumeChat`）· 验收：`phase=detect_only` · `verify-segment-handoff-closure.mjs` 15/15 |
+| **R-34 Frozen Surgical Prune** | **1.28.0+** 五门 AND：stall≥120s + critical host + byte_frozen_proof + token_gap stale + cooldown → **单 conn close**（替代 marathon_block_close）· static import `mihomoCloseConnection` |
+| **R-34 Recovery Honesty** | rescue success = max_gap 60s 内降 ≥50% · `[RecoveryHonesty] outcome=success\|ineffective` |
+| **P28 MaxStepsRate** | **1.28.0+** rolling100 ≥90% SLO · `[MaxStepsRate] rate_pct=` @ hung_scan · `~/.sparkle/max-steps-rate-snapshot.jsonl` |
+| **R-33/R-34 QUIC recovery** | stall≥45s vitality · stall≥120s **frozen surgical prune**（五门，非 mass close）· `[MihomoQuicSilentStallRecovery]` |
 
 修复 Sparkle/Guard 时以上目标优先于「看起来干净」的 transport 清理。
 

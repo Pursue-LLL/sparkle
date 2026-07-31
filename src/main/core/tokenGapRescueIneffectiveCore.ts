@@ -24,7 +24,11 @@ export interface TokenGapRescueIneffectiveObservation {
 }
 
 export function shouldRecordTokenGapRescueExecution(outcome: string): boolean {
-  return outcome === 'executed_on_stale_rid' || outcome === 'executed'
+  return (
+    outcome === 'attempted_on_stale_rid' ||
+    outcome === 'executed_on_stale_rid' ||
+    outcome === 'executed'
+  )
 }
 
 export function evaluateTokenGapRescueIneffective(input: {

@@ -1,26 +1,89 @@
-// [INPUT] mihomoQuicSilentStallRecoveryCore · hy2TunnelVitality · mihomoApi
-// [OUTPUT] executeMihomoQuicStallRecoveryIfDue
-// [POS] R-33 runtime — stall-triggered vitality dial + optional single mihomo connection close.
+// [INPUT] mihomoQuicSilentStallRecoveryCore · hy2TunnelVitality · mihomoApi · frozenSurgicalPrune · recoveryHonesty
+// [OUTPUT] executeMihomoQuicStallRecoveryIfDue · token gap snapshot · recovery honesty eval
+// [POS] R-33/R-34 runtime — stall-triggered vitality + frozen surgical prune + parent rotation.
 
 import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import { appendAppLog } from '../utils/log'
+import { mihomoCloseConnection } from './mihomoApi'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import {
+  resolveHy2ParentRotationAfterPrunePlan,
+  type Hy2ParentRotationPlan,
+} from './hy2ParentRotationCore'
+import {
+  resolveFrozenSurgicalPrunePlan,
+  type FrozenSurgicalPruneAction,
+} from './frozenSurgicalPruneCore'
+import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
+import {
+  evaluateRecoveryHonesty,
+  formatRecoveryHonestyLogLine,
+  shouldEvaluateRecoveryHonesty,
+  type RecoveryHonestyAttemptRecord,
+} from './recoveryHonestyCore'
+import {
   formatMihomoQuicStallRecoveryLogLine,
-  resolveMihomoQuicStallRecoveryPlan,
   type MihomoQuicStallRecoveryAction,
 } from './mihomoQuicSilentStallRecoveryCore'
 
 const lastRecoveryAtMsByConnectionId = new Map<string, number>()
+let lastGlobalPruneAtMs = 0
+let lastHy2ParentRotationAtMs = 0
 let skipRecoveryAppLogForTests = false
+
+let latestTokenGapSnapshot: { maxGapMs: number; staleRequestIdCount: number } = {
+  maxGapMs: 0,
+  staleRequestIdCount: 0,
+}
+
+let pendingRecoveryHonesty: RecoveryHonestyAttemptRecord | undefined
+
+let latestLongevitySnapshot: TransportLongevityTruthSnapshot | undefined
+let latestConnections: readonly ControllerConnectionDetail[] = []
+let latestTrackedFirstSeenAtMsById = new Map<string, number>()
+let latestTrackedLastByteChangeAtMsById = new Map<string, number>()
 
 export function resetMihomoQuicSilentStallRecoveryForTests(): void {
   lastRecoveryAtMsByConnectionId.clear()
+  lastGlobalPruneAtMs = 0
+  lastHy2ParentRotationAtMs = 0
   skipRecoveryAppLogForTests = false
+  latestTokenGapSnapshot = { maxGapMs: 0, staleRequestIdCount: 0 }
+  pendingRecoveryHonesty = undefined
+  latestLongevitySnapshot = undefined
+  latestConnections = []
+  latestTrackedFirstSeenAtMsById = new Map()
+  latestTrackedLastByteChangeAtMsById = new Map()
 }
 
 export function setSkipMihomoQuicSilentStallRecoveryAppLogForTests(skip: boolean): void {
   skipRecoveryAppLogForTests = skip
+}
+
+export function setMarathonTokenGapSnapshotForRecovery(snapshot: {
+  maxGapMs: number
+  staleRequestIdCount: number
+}): void {
+  latestTokenGapSnapshot = {
+    maxGapMs: Math.max(0, snapshot.maxGapMs),
+    staleRequestIdCount: Math.max(0, snapshot.staleRequestIdCount),
+  }
+}
+
+export function recordRecoveryHonestyAttempt(record: RecoveryHonestyAttemptRecord): void {
+  pendingRecoveryHonesty = record
+}
+
+export function setTransportLongevityContextForRecovery(input: {
+  snapshot: TransportLongevityTruthSnapshot
+  connections: readonly ControllerConnectionDetail[]
+  trackedFirstSeenAtMsById: ReadonlyMap<string, number>
+  trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
+}): void {
+  latestLongevitySnapshot = input.snapshot
+  latestConnections = input.connections
+  latestTrackedFirstSeenAtMsById = new Map(input.trackedFirstSeenAtMsById)
+  latestTrackedLastByteChangeAtMsById = new Map(input.trackedLastByteChangeAtMsById)
 }
 
 async function logRecovery(line: string): Promise<void> {
@@ -56,7 +119,6 @@ async function runStallVitalityDial(
 
 async function closeStalledConnection(connectionId: string): Promise<{ ok: boolean; err?: string }> {
   try {
-    const { mihomoCloseConnection } = await import('./mihomoApi')
     await mihomoCloseConnection(connectionId)
     return { ok: true }
   } catch (error) {
@@ -71,20 +133,77 @@ function markRecovery(connectionId: string | undefined, nowMs: number): void {
   lastRecoveryAtMsByConnectionId.set(connectionId, nowMs)
 }
 
+function mapPruneActionToRecoveryAction(action: FrozenSurgicalPruneAction): MihomoQuicStallRecoveryAction {
+  if (action === 'close_frozen_connection') {
+    return 'close_connection'
+  }
+  if (action === 'vitality_dial') {
+    return 'vitality_dial'
+  }
+  return 'none'
+}
+
+async function maybeRunHy2ParentRotationAfterPrune(nowMs: number): Promise<void> {
+  if (!latestLongevitySnapshot || latestConnections.length === 0) {
+    return
+  }
+  const plan: Hy2ParentRotationPlan = resolveHy2ParentRotationAfterPrunePlan({
+    snapshot: latestLongevitySnapshot,
+    connections: latestConnections,
+    trackedFirstSeenAtMsById: latestTrackedFirstSeenAtMsById,
+    trackedLastByteChangeAtMsById: latestTrackedLastByteChangeAtMsById,
+    lastRotationAtMs: lastHy2ParentRotationAtMs,
+    nowMs,
+  })
+  if (plan.action !== 'close_udp_outbound' || !plan.udpConnectionId) {
+    return
+  }
+  const closed = await closeStalledConnection(plan.udpConnectionId)
+  lastHy2ParentRotationAtMs = nowMs
+  await logRecovery(
+    `[Hy2ParentRotation]: outcome=${closed.ok ? 'executed' : 'failed'} reason=${plan.reason}` +
+      ` udp_connection_id=${plan.udpConnectionId}` +
+      ` outbound_hy2_session_age_ms=${latestLongevitySnapshot.outboundHy2SessionAgeMs}` +
+      (closed.err ? ` err=${closed.err}` : '') +
+      `\n`,
+  )
+}
+
+export async function evaluatePendingRecoveryHonestyIfDue(nowMs: number = Date.now()): Promise<void> {
+  if (!shouldEvaluateRecoveryHonesty(pendingRecoveryHonesty, nowMs) || !pendingRecoveryHonesty) {
+    return
+  }
+  const evaluation = evaluateRecoveryHonesty({
+    record: pendingRecoveryHonesty,
+    nowMs,
+    currentMaxGapMs: latestTokenGapSnapshot.maxGapMs,
+    staleRequestIds: [],
+  })
+  await logRecovery(formatRecoveryHonestyLogLine(evaluation))
+  pendingRecoveryHonesty = undefined
+}
+
 export async function executeMihomoQuicStallRecoveryIfDue(
   observation: MihomoQuicSilentStallObservation,
   nowMs: number = Date.now(),
 ): Promise<MihomoQuicStallRecoveryAction> {
-  const plan = resolveMihomoQuicStallRecoveryPlan({
+  await evaluatePendingRecoveryHonestyIfDue(nowMs)
+
+  const plan = resolveFrozenSurgicalPrunePlan({
     observation,
+    tokenGapMaxMs: latestTokenGapSnapshot.maxGapMs,
+    staleRequestIdCount: latestTokenGapSnapshot.staleRequestIdCount,
+    lastGlobalPruneAtMs,
     lastRecoveryAtMsByConnectionId,
     nowMs,
   })
+  const action = mapPruneActionToRecoveryAction(plan.action)
+
   if (plan.action === 'none') {
     await logRecovery(
       formatMihomoQuicStallRecoveryLogLine({
         outcome: 'skipped',
-        action: plan.action,
+        action,
         reason: plan.reason,
         leaf: observation.leaf,
         stallMs: observation.stallMs,
@@ -93,7 +212,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         host: observation.host,
       }),
     )
-    return plan.action
+    return action
   }
 
   if (plan.action === 'vitality_dial') {
@@ -106,7 +225,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     await logRecovery(
       formatMihomoQuicStallRecoveryLogLine({
         outcome: vitality.ok ? 'executed' : 'failed',
-        action: plan.action,
+        action,
         reason: plan.reason,
         leaf: observation.leaf,
         stallMs: observation.stallMs,
@@ -117,15 +236,22 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         err: vitality.err,
       }),
     )
-    return plan.action
+    return action
   }
 
   const closed = await closeStalledConnection(observation.connectionId ?? '')
   markRecovery(observation.connectionId, nowMs)
+  lastGlobalPruneAtMs = nowMs
+  pendingRecoveryHonesty = {
+    kind: 'stall_prune',
+    attemptedAtMs: nowMs,
+    baselineMaxGapMs: latestTokenGapSnapshot.maxGapMs,
+    staleRequestIds: [],
+  }
   await logRecovery(
     formatMihomoQuicStallRecoveryLogLine({
       outcome: closed.ok ? 'executed' : 'failed',
-      action: plan.action,
+      action,
       reason: plan.reason,
       leaf: observation.leaf,
       stallMs: observation.stallMs,
@@ -136,7 +262,8 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     }),
   )
   if (closed.ok) {
+    await maybeRunHy2ParentRotationAfterPrune(nowMs)
     await runStallVitalityDial(observation.leaf, observation.cursorConnectionCount, nowMs)
   }
-  return plan.action
+  return action
 }

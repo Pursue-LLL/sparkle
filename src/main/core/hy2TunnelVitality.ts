@@ -119,6 +119,14 @@ export async function runHy2TunnelVitalityIfDue(
       connectPathDelayMs = typeof delayResult.delay === 'number' ? delayResult.delay : 0
     }
     lastHy2TunnelVitalityAtMs = nowMs
+    let outboundHy2SessionAgeMs: number | undefined
+    try {
+      const { readTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
+      const longevity = await readTransportLongevityTruthSnapshot()
+      outboundHy2SessionAgeMs = longevity?.outboundHy2SessionAgeMs
+    } catch {
+      outboundHy2SessionAgeMs = undefined
+    }
     await appendVitalityAppLog(
       formatHy2TunnelVitalityLogLine({
         outcome: 'executed',
@@ -126,6 +134,7 @@ export async function runHy2TunnelVitalityIfDue(
         node: activeNode,
         connectPathDelayMs,
         maxParentChainAgeMs: truth.maxParentChainAgeMs,
+        outboundHy2SessionAgeMs,
         prePartitionRisk,
       }),
     )

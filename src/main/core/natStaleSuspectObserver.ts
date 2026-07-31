@@ -9,6 +9,7 @@ import {
   natStaleSuspectDedupeKey,
   shouldSkipNatStaleSuspectDedupe,
 } from './natStaleSuspectObserverCore'
+import { NAT_STALE_SUSPECT_MIN_TOKEN_GAP_MS } from './hy2TunnelVitalityCore'
 
 const lastEmitByOriginalRequestId = new Map<string, number>()
 
@@ -83,5 +84,13 @@ export async function observeNatStaleSuspectFromTransportFailure(
   }
 
   await persistNatStaleSuspectObservation(observation)
+
+  if (observation.tokenGapMs >= NAT_STALE_SUSPECT_MIN_TOKEN_GAP_MS) {
+    const { setMarathonTokenGapSnapshotForRecovery } = await import('./mihomoQuicSilentStallRecovery')
+    setMarathonTokenGapSnapshotForRecovery({
+      maxGapMs: observation.tokenGapMs,
+      staleRequestIdCount: 1,
+    })
+  }
   return true
 }

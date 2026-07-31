@@ -12,6 +12,7 @@ import {
   formatMaxStepsRateLogLine,
 } from './maxStepsRateObserverCore'
 import { readMarathonSegmentCache } from './marathonSegmentCache'
+import { ingestValidatedLedgerTerminals } from './validatedLedgerTerminalIngest'
 
 const LOG_COOLDOWN_MS = 300_000
 
@@ -31,7 +32,8 @@ export async function logMaxStepsRateIfDue(nowMs: number = Date.now()): Promise<
   }
   const segments = await readMarathonSegmentCache(nowMs)
   const failureRows = readAgentTransportJsonlTailRows()
-  const snapshot = computeMaxStepsRateSnapshot(segments, failureRows, nowMs)
+  const ledgerRows = await ingestValidatedLedgerTerminals(nowMs)
+  const snapshot = computeMaxStepsRateSnapshot(segments, failureRows, nowMs, undefined, undefined, undefined, ledgerRows)
   if (snapshot.primary.startedTurns === 0 && snapshot.aux24h.startedTurns === 0) {
     return
   }

@@ -193,6 +193,7 @@ export type MarathonSessionKeepaliveOutcome =
 /** P27/R-B: triage SSOT — distinguish post-mortem rescue from live-path warmth. */
 export type MarathonRescueDialLogOutcome =
   | MarathonSessionKeepaliveOutcome
+  | 'attempted_on_stale_rid'
   | 'executed_on_stale_rid'
   | 'executed_on_live_rid'
 
@@ -214,7 +215,7 @@ export function resolveRescueDialLogOutcome(
     staleCount > 0 &&
     (fields.maxGapMs ?? 0) >= CURSOR_HY2_TOKEN_GAP_FORCE_MS
   ) {
-    return 'executed_on_stale_rid'
+    return 'attempted_on_stale_rid'
   }
   if (trigger === 'periodic_session' || trigger === 'high_latency_warmth') {
     return 'executed_on_live_rid'

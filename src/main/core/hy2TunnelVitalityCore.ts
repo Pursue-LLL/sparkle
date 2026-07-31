@@ -122,6 +122,7 @@ export function formatHy2TunnelVitalityLogLine(fields: {
   node: string
   connectPathDelayMs?: number
   maxParentChainAgeMs?: number
+  outboundHy2SessionAgeMs?: number
   prePartitionRisk?: boolean
   err?: string
 }): string {
@@ -135,7 +136,10 @@ export function formatHy2TunnelVitalityLogLine(fields: {
     parts.push('mode=pre_partition')
   }
   if (fields.maxParentChainAgeMs != null) {
-    parts.push(`max_parent_chain_age_ms=${fields.maxParentChainAgeMs}`)
+    parts.push(`http_parent_chain_age_ms=${fields.maxParentChainAgeMs}`)
+  }
+  if (fields.outboundHy2SessionAgeMs != null) {
+    parts.push(`outbound_hy2_session_age_ms=${fields.outboundHy2SessionAgeMs}`)
   }
   if (fields.connectPathDelayMs != null) {
     parts.push(`connect_path_delay_ms=${fields.connectPathDelayMs}`)

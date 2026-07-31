@@ -6,10 +6,11 @@ import {
 } from './upgradeSparkleAsarGateCore'
 
 describe('upgradeSparkleAsarGateCore', () => {
-  it('accepts linked networkStartupGraceCore.markCoreReadyAtMs call', () => {
+  it('accepts linked networkStartupGraceCore.markCoreReadyAtMs call with R-34 close wiring', () => {
     const source = `
       require_log.appendAppLog("x");
       require_networkStartupGraceCore.markCoreReadyAtMs();
+      frozen_surgical_prune close_frozen_connection mihomoCloseConnection maxStepsRateObserver
     `
     assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
     assert.doesNotThrow(() => assertSparkleMainAsarBundle(source))
@@ -27,14 +28,26 @@ describe('upgradeSparkleAsarGateCore', () => {
   })
 
   it('rejects stale bundle missing appendAppLog', () => {
-    const result = validateSparkleMainAsarBundle('markCoreReadyAtMs();')
+    const result = validateSparkleMainAsarBundle(
+      'markCoreReadyAtMs(); frozen_surgical_prune mihomoCloseConnection',
+    )
     assert.equal(result.ok, false)
     if (result.ok) throw new Error('expected failure')
     assert.equal(result.reason, 'stale_bundle')
   })
 
+  it('rejects marathon_block_close_connection regression', () => {
+    const source =
+      'appendAppLog frozen_surgical_prune mihomoCloseConnection .markCoreReadyAtMs( marathon_block_close_connection'
+    const result = validateSparkleMainAsarBundle(source)
+    assert.equal(result.ok, false)
+    if (result.ok) throw new Error('expected failure')
+    assert.equal(result.reason, 'regression_marathon_block_close')
+  })
+
   it('accepts minified .markCoreReadyAtMs( pattern from Vite chunk export', () => {
-    const source = 'foo.markCoreReadyAtMs(); require_log.appendAppLog("x");'
+    const source =
+      'foo.markCoreReadyAtMs(); require_log.appendAppLog("x"); frozen_surgical_prune mihomoCloseConnection'
     assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
   })
 })
