@@ -11,6 +11,7 @@ export type SparkleMainAsarGateResult =
         | 'missing_r34_frozen_prune'
         | 'regression_marathon_block_close'
         | 'missing_mihomo_close_connection'
+        | 'missing_p28b_attempt_rate'
     }
 
 /** Vite minifies to `.markCoreReadyAtMs(` on chunk export — bare `markCoreReadyAtMs(` is BUG-2026-07-23-004. */
@@ -41,6 +42,12 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
   ) {
     return { ok: false, reason: 'missing_mihomo_close_connection' }
   }
+  if (
+    !mainSource.includes('attempt_rate_pct') &&
+    !mainSource.includes('below_target_attempt')
+  ) {
+    return { ok: false, reason: 'missing_p28b_attempt_rate' }
+  }
 
   return { ok: true }
 }
@@ -55,6 +62,7 @@ export function assertSparkleMainAsarBundle(mainSource: string): void {
       missing_r34_frozen_prune: 'asar missing R-34 frozen_surgical_prune — stall recovery will block close',
       regression_marathon_block_close: 'asar still contains marathon_block_close_connection regression',
       missing_mihomo_close_connection: 'asar missing mihomoCloseConnection — frozen prune close will fail at runtime',
+      missing_p28b_attempt_rate: 'asar missing P28b attempt_rate_pct — G9 soak SLO metrics will not emit',
     }
     throw new Error(messages[result.reason])
   }
