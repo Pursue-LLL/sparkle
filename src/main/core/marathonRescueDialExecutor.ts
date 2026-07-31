@@ -27,6 +27,9 @@ export interface MarathonRescueDialRequest {
 }
 
 function shouldApplyRescueCooldown(trigger: MarathonWarmthTrigger, nowMs: number): boolean {
+  if (trigger === 'hy2_parent_sidecar') {
+    return false
+  }
   if (trigger === 'connect_partition' || trigger === 'latency_delta_rescue') {
     return false
   }
@@ -65,6 +68,7 @@ export async function executeMarathonRescueDial(
   }
 
   if (
+    trigger !== 'hy2_parent_sidecar' &&
     shouldDeferMarathonWarmth(cursorConnectionCount, trigger, {
       maxGapMs: request.maxGapMs,
       staleRequestIdCount: request.staleRequestIdCount,
@@ -74,11 +78,12 @@ export async function executeMarathonRescueDial(
   }
 
   const logKind = resolveMarathonWarmthLogKind(trigger)
+  const delayPurpose = trigger === 'hy2_parent_sidecar' ? 'hy2_parent_sidecar' : 'marathon_rescue'
   const result = await executeHy2SessionDialWithGuard({
     activeNode,
     cursorConnectionCount,
     nowMs,
-    delayOptions: { purpose: 'marathon_rescue' },
+    delayOptions: { purpose: delayPurpose },
     logKind,
     weakProbeLogPrefix: `${logKind}_weak`,
     forceOnWeakProbe: true,

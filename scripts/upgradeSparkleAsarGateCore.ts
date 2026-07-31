@@ -55,7 +55,8 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
   }
   if (
     !mainSource.includes('Hy2ParentSidecar') &&
-    !mainSource.includes('proactive_parent_sidecar_dial')
+    !mainSource.includes('proactive_parent_sidecar_dial') &&
+    !mainSource.includes('hy2_parent_sidecar')
   ) {
     return { ok: false, reason: 'missing_r35_parent_sidecar' }
   }

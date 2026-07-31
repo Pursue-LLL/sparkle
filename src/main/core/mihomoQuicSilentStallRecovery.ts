@@ -15,6 +15,7 @@ import {
   type FrozenSurgicalPruneAction,
 } from './frozenSurgicalPruneCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
+import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
 import {
   evaluateRecoveryHonesty,
   formatRecoveryHonestyLogLine,
@@ -41,11 +42,15 @@ let latestMarathonRecoveryContext: {
   registryMaxGapSinceActivityMs: number
   httpParentChainAgeMs: number
   outboundHy2SessionAgeMs: number
+  staleRequestIds: string[]
+  registry: MarathonStreamRegistry
 } = {
   marathonActive: false,
   registryMaxGapSinceActivityMs: 0,
   httpParentChainAgeMs: 0,
   outboundHy2SessionAgeMs: 0,
+  staleRequestIds: [],
+  registry: { records: new Map() },
 }
 
 let pendingRecoveryHonesty: RecoveryHonestyAttemptRecord | undefined
@@ -71,6 +76,8 @@ export function resetMihomoQuicSilentStallRecoveryForTests(): void {
     registryMaxGapSinceActivityMs: 0,
     httpParentChainAgeMs: 0,
     outboundHy2SessionAgeMs: 0,
+    staleRequestIds: [],
+    registry: { records: new Map() },
   }
 }
 
@@ -97,12 +104,16 @@ export function setMarathonRecoveryContextForPrune(input: {
   registryMaxGapSinceActivityMs: number
   httpParentChainAgeMs?: number
   outboundHy2SessionAgeMs?: number
+  staleRequestIds?: readonly string[]
+  registry?: MarathonStreamRegistry
 }): void {
   latestMarathonRecoveryContext = {
     marathonActive: input.marathonActive,
     registryMaxGapSinceActivityMs: Math.max(0, input.registryMaxGapSinceActivityMs),
     httpParentChainAgeMs: Math.max(0, input.httpParentChainAgeMs ?? 0),
     outboundHy2SessionAgeMs: Math.max(0, input.outboundHy2SessionAgeMs ?? 0),
+    staleRequestIds: [...(input.staleRequestIds ?? [])],
+    registry: input.registry ?? { records: new Map() },
   }
 }
 
@@ -215,16 +226,22 @@ export async function evaluatePendingRecoveryHonestyIfDue(nowMs: number = Date.n
   pendingRecoveryHonesty = undefined
 }
 
-function buildRecoveryTriageLogFields(planReason: string): {
+function buildRecoveryTriageLogFields(plan: {
+  reason: string
+  carrierRid?: string
+  staleProofKind?: string
+}): {
   httpParentChainAgeMs: number
   outboundHy2SessionAgeMs: number
   registryMaxGapSinceActivityMs: number
   tokenGapMaxMs: number
   pruneDenialReason?: string
+  carrierRid?: string
+  staleProofKind?: string
 } {
   const pruneDenialReason =
-    planReason !== 'frozen_surgical_prune' && planReason !== 'marathon_sse_carrier_frozen_prune'
-      ? planReason
+    plan.reason !== 'frozen_surgical_prune' && plan.reason !== 'marathon_sse_carrier_frozen_prune'
+      ? plan.reason
       : undefined
   return {
     httpParentChainAgeMs:
@@ -234,6 +251,8 @@ function buildRecoveryTriageLogFields(planReason: string): {
     registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
     tokenGapMaxMs: latestTokenGapSnapshot.maxGapMs,
     pruneDenialReason,
+    carrierRid: plan.carrierRid,
+    staleProofKind: plan.staleProofKind,
   }
 }
 
@@ -252,11 +271,13 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     nowMs,
     marathonActive: latestMarathonRecoveryContext.marathonActive,
     registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
+    registry: latestMarathonRecoveryContext.registry,
+    staleRequestIds: latestMarathonRecoveryContext.staleRequestIds,
     httpParentChainAgeMs: latestLongevitySnapshot?.httpParentChainAgeMs ?? latestMarathonRecoveryContext.httpParentChainAgeMs,
     outboundHy2SessionAgeMs: latestLongevitySnapshot?.outboundHy2SessionAgeMs ?? latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
   })
   const action = mapPruneActionToRecoveryAction(plan.action)
-  const triageFields = buildRecoveryTriageLogFields(plan.reason)
+  const triageFields = buildRecoveryTriageLogFields(plan)
 
   if (plan.action === 'none') {
     await logRecovery(

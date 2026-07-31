@@ -133,12 +133,23 @@ export async function observeMihomoConnectionsForQuicSilentStall(
       trackedLastByteChangeAtMsById,
     })
     const { computeRegistryMaxGapSinceActivityMs } = await import('./marathonSseCarrierPruneCore')
-    const { setMarathonRecoveryContextForPrune } = await import('./mihomoQuicSilentStallRecovery')
+    const { setMarathonRecoveryContextForPrune, setMarathonTokenGapSnapshotForRecovery } =
+      await import('./mihomoQuicSilentStallRecovery')
+    const { readMarathonStreamTokenGapSignal } = await import('./cursorStreamTokenGapReader')
+    const tokenGapSignal = await readMarathonStreamTokenGapSignal(cursorConnectionCount, nowMs)
+    if (tokenGapSignal) {
+      setMarathonTokenGapSnapshotForRecovery({
+        maxGapMs: tokenGapSignal.maxGapMs,
+        staleRequestIdCount: tokenGapSignal.staleRequestIds.length,
+      })
+    }
     setMarathonRecoveryContextForPrune({
       marathonActive: marathonTruth.marathonTruthActive,
       registryMaxGapSinceActivityMs: computeRegistryMaxGapSinceActivityMs(registry, nowMs),
       httpParentChainAgeMs: longevitySnapshot.httpParentChainAgeMs,
       outboundHy2SessionAgeMs: longevitySnapshot.outboundHy2SessionAgeMs,
+      staleRequestIds: tokenGapSignal?.staleRequestIds ?? [],
+      registry,
     })
     try {
       const { runHy2ParentSidecarIfDue } = await import('./hy2ParentSidecar')

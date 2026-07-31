@@ -4,7 +4,7 @@
 
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 
-/** Proactive sidecar dial when outbound HY2 UDP session exceeds this age during marathon. */
+/** Proactive sidecar dial when outbound HY2 UDP session OR HTTP parent chain exceeds this age. */
 export const HY2_PARENT_SIDECAR_DIAL_AGE_MS = 4 * 60 * 60 * 1000
 
 /** Proactive UDP outbound close only when no healthy inner flows remain. */
@@ -30,8 +30,11 @@ export function resolveHy2ParentSidecarDialPlan(input: {
   if (!input.marathonTruthActive) {
     return { action: 'none', reason: 'marathon_inactive' }
   }
-  if (input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS) {
-    return { action: 'none', reason: 'session_age_below_sidecar_threshold' }
+  if (
+    input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS &&
+    input.snapshot.httpParentChainAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS
+  ) {
+    return { action: 'none', reason: 'session_and_http_chain_below_sidecar_threshold' }
   }
   if (input.nowMs - input.lastSidecarDialAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS) {
     return { action: 'none', reason: 'sidecar_cooldown' }

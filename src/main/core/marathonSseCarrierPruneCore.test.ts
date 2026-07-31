@@ -2,12 +2,13 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   computeRegistryMaxGapSinceActivityMs,
-  isMarathonSseCarrierStaleCandidate,
+  MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS,
   MARATHON_SSE_CARRIER_REGISTRY_GAP_MS,
+  resolveMarathonSseCarrierPruneContext,
 } from './marathonSseCarrierPruneCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 
-describe('marathonSseCarrierPruneCore R-35b', () => {
+describe('marathonSseCarrierPruneCore R-35b′', () => {
   const observation = {
     kind: 'single' as const,
     connectionId: 'conn-carrier-1',
@@ -21,37 +22,97 @@ describe('marathonSseCarrierPruneCore R-35b', () => {
     cursorConnectionCount: 33,
   }
 
-  it('accepts registry gap proof at 47s stall', () => {
-    const ok = isMarathonSseCarrierStaleCandidate({
-      observation,
-      marathonActive: true,
-      tokenGapMaxMs: 0,
-      staleRequestIdCount: 0,
-      registryMaxGapSinceActivityMs: MARATHON_SSE_CARRIER_REGISTRY_GAP_MS + 1,
-    })
-    assert.equal(ok, true)
-  })
-
-  it('accepts token gap proof', () => {
-    const ok = isMarathonSseCarrierStaleCandidate({
+  it('maps carrier_rid from token gap stale list', () => {
+    const ctx = resolveMarathonSseCarrierPruneContext({
       observation,
       marathonActive: true,
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
-      staleRequestIdCount: 1,
-      registryMaxGapSinceActivityMs: 0,
+      staleRequestIds: ['rid-stale-1'],
+      registry: { records: new Map() },
+      nowMs: 1_000_000,
     })
-    assert.equal(ok, true)
+    assert.equal(ctx.eligible, true)
+    assert.equal(ctx.carrierRid, 'rid-stale-1')
+    assert.equal(ctx.staleProofKind, 'token_gap')
   })
 
-  it('rejects without stale proof (zero mis-kill)', () => {
-    const ok = isMarathonSseCarrierStaleCandidate({
+  it('maps carrier_rid from registry gap proof', () => {
+    const nowMs = 1_000_000
+    const ctx = resolveMarathonSseCarrierPruneContext({
       observation,
       marathonActive: true,
       tokenGapMaxMs: 0,
-      staleRequestIdCount: 0,
-      registryMaxGapSinceActivityMs: 0,
+      staleRequestIds: [],
+      registry: {
+        records: new Map([
+          [
+            'req-a',
+            {
+              requestId: 'req-a',
+              originalRequestId: 'rid-registry-1',
+              firstActivityMs: 900_000,
+              lastActivityMs: nowMs - MARATHON_SSE_CARRIER_REGISTRY_GAP_MS - 1,
+              openToolCalls: 0,
+            },
+          ],
+        ]),
+      },
+      nowMs,
     })
-    assert.equal(ok, false)
+    assert.equal(ctx.eligible, true)
+    assert.equal(ctx.carrierRid, 'rid-registry-1')
+    assert.equal(ctx.staleProofKind, 'registry_gap')
+  })
+
+  it('uses absolute byte stall proof at 90s without registry gap', () => {
+    const ctx = resolveMarathonSseCarrierPruneContext({
+      observation: { ...observation, stallMs: MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS },
+      marathonActive: true,
+      tokenGapMaxMs: 0,
+      staleRequestIds: [],
+      registry: {
+        records: new Map([
+          [
+            'req-a',
+            {
+              requestId: 'req-a',
+              originalRequestId: 'rid-abs-1',
+              firstActivityMs: 900_000,
+              lastActivityMs: 999_000,
+              openToolCalls: 1,
+            },
+          ],
+        ]),
+      },
+      nowMs: 1_000_000,
+    })
+    assert.equal(ctx.eligible, true)
+    assert.equal(ctx.staleProofKind, 'absolute_byte_stall')
+  })
+
+  it('rejects 47s stall without any stale proof (zero mis-kill)', () => {
+    const ctx = resolveMarathonSseCarrierPruneContext({
+      observation,
+      marathonActive: true,
+      tokenGapMaxMs: 0,
+      staleRequestIds: [],
+      registry: {
+        records: new Map([
+          [
+            'req-a',
+            {
+              requestId: 'req-a',
+              originalRequestId: 'rid-live',
+              firstActivityMs: 990_000,
+              lastActivityMs: 999_000,
+              openToolCalls: 1,
+            },
+          ],
+        ]),
+      },
+      nowMs: 1_000_000,
+    })
+    assert.equal(ctx.eligible, false)
   })
 
   it('computeRegistryMaxGapSinceActivityMs picks max gap', () => {
