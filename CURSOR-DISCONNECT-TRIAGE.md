@@ -1,5 +1,14 @@
 # Cursor 断连排查手册
 
+> **文档地图（禁止平行 roadmap）**
+>
+> | 类型 | 唯一 SSOT |
+> | --- | --- |
+> | **战略 / 批次 / 事故注册表 / Phase 5–8** | open-perplexity [`CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md`](../../AI/open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md) |
+> | **本手册** | 操作 SOP（Step 0→8 · §V5 · triage 脚本） |
+> | **BUG / 发版** | [`BUGFIX_LOG.md`](./BUGFIX_LOG.md) |
+> | **薄索引（勿写正文）** | [`temp-docs/repair/CURSOR_*`](./temp-docs/repair/) → 均指向 Master |
+
 当 Cursor Agent/Chat SSE 流中断时，按以下步骤逐层定位根因。
 
 > **敏感信息**：VPS IP、SSH 端口、密钥等勿写入 git。Step 1 使用占位符；真实值见本地 [VPS-CONNECT.md](./VPS-CONNECT.md) 或私有运维文档。
@@ -56,7 +65,7 @@
 | **P22 Segment Handoff** | **1.27.6+** Sparkle **detect-only** + `~/.sparkle/quic-stall-ssot.json` · Guard patch-315 **observe-only**（**禁止** execute `resumeChat`）· 验收：`phase=detect_only` · `verify-segment-handoff-closure.mjs` 15/15 |
 | **R-34 Frozen Surgical Prune** | **1.28.0+** 五门 AND：stall≥120s + critical host + byte_frozen_proof + token_gap stale + cooldown → **单 conn close**（替代 marathon_block_close）· static import `mihomoCloseConnection` |
 | **R-34 Recovery Honesty** | rescue success = max_gap 60s 内降 ≥50% · `[RecoveryHonesty] outcome=success\|ineffective` |
-| **P28 MaxStepsRate** | **1.28.0+** rolling100 ≥90% SLO · `[MaxStepsRate] rate_pct=` @ hung_scan · `~/.sparkle/max-steps-rate-snapshot.jsonl` |
+| **P28 MaxStepsRate** | **1.28.0+** rolling100 ≥90% SLO · `[MaxStepsRate] rate_pct=` @ hung_scan · **G8** ledger ingest · `ledger_terminals=` · `~/.sparkle/max-steps-rate-snapshot.jsonl` |
 | **R-33/R-34 QUIC recovery** | stall≥45s vitality · stall≥120s **frozen surgical prune**（五门，非 mass close）· `[MihomoQuicSilentStallRecovery]` |
 
 修复 Sparkle/Guard 时以上目标优先于「看起来干净」的 transport 清理。
