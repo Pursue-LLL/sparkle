@@ -10,7 +10,6 @@ import { readAgentTransportJsonlTailRows } from './connectPartitionReader'
 import {
   computeMaxStepsRateSnapshot,
   formatMaxStepsRateLogLine,
-  MAX_STEPS_RATE_WINDOW_MS,
 } from './maxStepsRateObserverCore'
 import { readMarathonSegmentCache } from './marathonSegmentCache'
 
@@ -32,13 +31,8 @@ export async function logMaxStepsRateIfDue(nowMs: number = Date.now()): Promise<
   }
   const segments = await readMarathonSegmentCache(nowMs)
   const failureRows = readAgentTransportJsonlTailRows()
-  const snapshot = computeMaxStepsRateSnapshot(
-    segments,
-    failureRows,
-    nowMs,
-    MAX_STEPS_RATE_WINDOW_MS,
-  )
-  if (snapshot.startedTurns === 0) {
+  const snapshot = computeMaxStepsRateSnapshot(segments, failureRows, nowMs)
+  if (snapshot.primary.startedTurns === 0 && snapshot.aux24h.startedTurns === 0) {
     return
   }
   lastLoggedAtMs = nowMs
