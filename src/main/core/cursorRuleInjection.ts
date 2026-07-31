@@ -7,6 +7,12 @@ import {
 /** Optional macOS bundle path prefixes for path-scoped AND rules (advanced; default routes all Cursor traffic). */
 export const DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES = [] as const
 
+/** When dedicated path prefixes are set, these bundles get path-scoped DIRECT for Cursor domains. */
+export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES = [
+  '/Applications/Cursor.app',
+  '/Applications/Cursor-2.app'
+] as const
+
 /** macOS / Electron Cursor outbound processes — legacy fallback when no app path prefixes. */
 export const CURSOR_PROCESS_NAMES = [
   'Cursor',
@@ -154,6 +160,28 @@ export function stripUnscopedCursorDedicatedRules(profile: MihomoConfig): void {
   }) as MihomoConfig['rules']
 }
 
+function injectPathScopedDirectFallbackRules(
+  prefix: string[],
+  existing: Set<string>,
+  appPathPrefixes: readonly string[]
+): void {
+  injectPathScopedRules(prefix, existing, 'DIRECT', appPathPrefixes)
+}
+
+function resolveDirectFallbackPathPrefixes(
+  dedicatedPathPrefixes: readonly string[],
+  explicitFallbackPathPrefixes: readonly string[] | undefined
+): string[] {
+  const dedicated = new Set(
+    dedicatedPathPrefixes.map((item) => item.trim()).filter((item) => item.length > 0)
+  )
+  const source =
+    explicitFallbackPathPrefixes !== undefined
+      ? explicitFallbackPathPrefixes
+      : DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES
+  return source.map((item) => item.trim()).filter((item) => item.length > 0 && !dedicated.has(item))
+}
+
 function injectPathScopedRules(
   prefix: string[],
   existing: Set<string>,
@@ -192,11 +220,13 @@ function injectPathScopedRules(
 /**
  * Prepend Cursor domain + process rules so Agent/Chat traffic uses a fixed Selector (never UrlTest).
  * Default (empty appPathPrefixes): all Cursor PROCESS-NAME + DOMAIN traffic → dedicated group.
- * Non-empty appPathPrefixes: path-scoped AND rules for specific .app bundles only.
+ * Non-empty appPathPrefixes: path-scoped AND rules for specific .app bundles → dedicated;
+ * other configured fallback bundles → path-scoped DIRECT (before subscription cursor.sh rules).
  */
 export function injectCursorDomainRules(
   profile: MihomoConfig,
-  appPathPrefixes: readonly string[] = DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES
+  appPathPrefixes: readonly string[] = DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES,
+  directFallbackPathPrefixes?: readonly string[]
 ): void {
   const groups = profile['proxy-groups'] as ControllerMixedGroup[] | undefined
   const mainGroup = resolveCursorStableSelectorGroup(groups ?? [])?.name
@@ -210,6 +240,11 @@ export function injectCursorDomainRules(
   if (normalizedPrefixes.length > 0) {
     stripUnscopedCursorDedicatedRules(profile)
     injectPathScopedRules(prefix, existing, mainGroup, normalizedPrefixes)
+    const fallbackPaths = resolveDirectFallbackPathPrefixes(
+      normalizedPrefixes,
+      directFallbackPathPrefixes
+    )
+    injectPathScopedDirectFallbackRules(prefix, existing, fallbackPaths)
   } else {
     injectLegacyProcessRules(prefix, existing, mainGroup)
   }
