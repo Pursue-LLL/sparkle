@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Post-apply closure verify for P22 segment handoff + quic-stall-ssot.
+ * Post-apply closure verify for P22 segment handoff observe-only + quic-stall-ssot.
  * Usage: node scripts/verify-segment-handoff-closure.mjs
  */
 import { existsSync, readFileSync } from 'node:fs'
@@ -28,16 +28,21 @@ if (!existsSync(WB)) {
 }
 
 const wb = readFileSync(WB, 'utf8')
-const patch = readFileSync(PATCH, 'utf8')
+const patch = existsSync(PATCH) ? readFileSync(PATCH, 'utf8') : ''
 
-expect('workbench segment-handoff-execute marker', wb.includes('ifm-patch-315 segment-handoff-execute'))
+expect('workbench segment-handoff-observe-only marker', wb.includes('ifm-patch-315 segment-handoff-observe-only'))
 expect('workbench activity-hook marker', wb.includes('ifm-patch-315 segment-handoff-activity-hook'))
-expect('workbench ssot-v3 marker', wb.includes('ifm-patch-315 segment-handoff-ssot-v3'))
+expect('workbench detect_only phase in handoff', wb.includes('phase:"detect_only"'))
+expect('workbench forbids execute marker', !wb.includes('ifm-patch-315 segment-handoff-execute'))
+expect(
+  'workbench forbids proactive resumeChat inject',
+  !wb.includes('function _ifmC2ExecuteProactiveSegmentHandoff('),
+)
 expect('workbench reads quic-stall-ssot.json', wb.includes('quic-stall-ssot.json'))
 expect('workbench ssot staleness gate', wb.includes('Date.now()-updatedAtMs>120000'))
 expect(
   'workbench pending-tool deferred log',
-  wb.includes('phase:"pending-tool"') || wb.includes("phase:'pending-tool'")
+  wb.includes('phase:"pending-tool"') || wb.includes("phase:'pending-tool'"),
 )
 const ssotReaderFn =
   wb.match(/function _ifm315ReadQuicStallSsot\(\)\{[\s\S]*?\}(?=function )/)?.[0] ?? ''
@@ -45,10 +50,14 @@ expect(
   'workbench handoff ssot reader uses atom only (no legacy jsonl stall_ms)',
   ssotReaderFn.includes('quic-stall-ssot.json') &&
     !ssotReaderFn.includes('network-stability-events.jsonl') &&
-    !ssotReaderFn.includes('stall_ms')
+    !ssotReaderFn.includes('stall_ms'),
 )
-expect('patch script defines ssot-v3 upgrade', patch.includes('patch315SegmentHandoffSsotV3Upgrade'))
-expect('patch script defines ssot-v2 upgrade', patch.includes('patch315SegmentHandoffSsotV2Upgrade'))
+
+if (patch) {
+  expect('patch script defines observe-only handoff', patch.includes('patch315SegmentHandoffObserveOnly'))
+  expect('patch script defines observe bridge', patch.includes('build315HandoffObserveBridgeSource'))
+  expect('patch script forbids execute in observe steps', !patch.includes('patch315SegmentHandoffExecute'))
+}
 
 if (existsSync(SSOT)) {
   try {
