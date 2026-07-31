@@ -193,4 +193,53 @@ describe('agentTransportFailureSync', () => {
 
     await rm(home, { recursive: true, force: true })
   })
+
+  it('projects validated-ledger max-steps terminal into sparkle jsonl (G8b)', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sparkle-ledger-projection-'))
+    process.env.HOME = home
+    const ledgerDir = join(home, 'ledger-fixture')
+    const ledgerPath = join(ledgerDir, 'validated-ledger.v1.jsonl')
+    const cachePath = join(home, '.sparkle', 'terminals.jsonl')
+    const checkpointPath = join(home, '.sparkle', 'checkpoint.json')
+    await mkdir(ledgerDir, { recursive: true })
+    const ts = 1_785_350_772_485
+    const line = JSON.stringify({
+      envelope: {
+        eventKind: 'stream_terminated',
+        occurredAtMs: ts,
+        requestId: 'a48a69a2-c162-48c2-82da-9199cc711081',
+        originalRequestId: '64cea77c-b041-4273-b3e5-f1325788fd8a',
+        composerId: 'ab194449-a760-40d1-af95-1b166096ece1',
+        payload: {
+          terminalMs: ts,
+          reason: '[internal] Reached maximum number of steps before turn ended',
+          streamPrimarySub: 'transport',
+          willRetry: false,
+          lastSseCase: 'stepCompleted',
+        },
+      },
+    })
+    await writeFile(ledgerPath, `${line}\n`, 'utf8')
+
+    const { setValidatedLedgerIngestPathsForTests, resetValidatedLedgerIngestPathsForTests } =
+      await import('./validatedLedgerTerminalIngest')
+    setValidatedLedgerIngestPathsForTests({ ledgerPath, cachePath, checkpointPath })
+    try {
+      const written = await syncAgentTransportFailuresFromCursorLogs({
+        sinceMs: ts - 60_000,
+        cursorDataDirs: [],
+        logWrites: false,
+      })
+      assert.equal(written, 1)
+      const jsonlPath = join(home, '.sparkle', 'agent-transport-failures.jsonl')
+      const row = JSON.parse((await readFile(jsonlPath, 'utf8')).trim()) as Record<string, unknown>
+      assert.equal(row.source, 'validated-ledger-projection')
+      assert.equal(row.reasonSub, 'max-steps-cap')
+      assert.equal(row.originalRequestId, '64cea77c-b041-4273-b3e5-f1325788fd8a')
+    } finally {
+      resetValidatedLedgerIngestPathsForTests()
+    }
+
+    await rm(home, { recursive: true, force: true })
+  })
 })
