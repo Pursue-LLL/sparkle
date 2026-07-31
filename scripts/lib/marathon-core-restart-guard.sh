@@ -22,6 +22,13 @@ marathon_guard_fail() {
 }
 
 marathon_guard_count_cursor_connections() {
+  if [[ -n "${MARATHON_GUARD_ROOT:-}" && -x "${MARATHON_GUARD_ROOT}/node_modules/.bin/tsx" ]]; then
+    local count=""
+    if count="$("${MARATHON_GUARD_ROOT}/node_modules/.bin/tsx" "${MARATHON_GUARD_ROOT}/scripts/marathon-mihomo-connections-count.mts" 2>/dev/null)"; then
+      echo "$count"
+      return 0
+    fi
+  fi
   python3 - "$MARATHON_GUARD_SOCK" <<'PY'
 import json, subprocess, sys
 
@@ -54,16 +61,14 @@ PY
 }
 
 marathon_guard_read_live_cursor_conn() {
-  if [[ ! -S "$MARATHON_GUARD_SOCK" ]]; then
-    echo ""
-    return 1
-  fi
   local cursor_conn=""
-  if ! cursor_conn="$(marathon_guard_count_cursor_connections 2>/dev/null || true)"; then
+  if cursor_conn="$(marathon_guard_count_cursor_connections 2>/dev/null || true)"; then
+    :
+  else
     echo ""
     return 1
   fi
-  if [[ "$cursor_conn" =~ ^curl_failed: ]]; then
+  if [[ -z "$cursor_conn" || "$cursor_conn" =~ ^curl_failed: ]]; then
     echo ""
     return 1
   fi

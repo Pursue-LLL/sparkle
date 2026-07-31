@@ -89,10 +89,10 @@ if ! pgrep -x Sparkle >/dev/null 2>&1; then
   fail "Sparkle not running after install — see install-sparkle log above"
 fi
 
-if [[ ! -S /tmp/sparkle-mihomo-api.sock ]]; then
-  log "WARN: mihomo socket not ready yet (may appear in ~10s)"
+if ! "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/sparkle-mihomo-close-smoke.mts" >/dev/null 2>&1; then
+  log "WARN: mihomo close API smoke not ready yet (direct or service path)"
 else
-  log "mihomo API socket OK"
+  log "mihomo close API OK (direct or service path)"
 fi
 
 # Marathon readiness gate — PostCoreBootstrap must succeed or CTHC/keepalive blind (BUG-004).

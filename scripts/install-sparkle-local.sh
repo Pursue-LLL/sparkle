@@ -121,9 +121,6 @@ print_gatekeeper_hint() {
 
 [[ -d "$SRC" ]] || fail "built app missing: $SRC (run: pnpm run build:mac)"
 
-log "Mihomo API socket hygiene (remove zombie direct socket if probe fails)..."
-"$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/sparkle-stale-mihomo-socket-hygiene.mts" || true
-
 if ! codesign --verify --deep --strict "$SRC" >/dev/null 2>&1; then
   fail "source app signature invalid — rebuild: pnpm run build:mac (afterSign deepSignMac.cjs)"
 fi
@@ -165,6 +162,9 @@ if pgrep -f "sparkle-service service run" >/dev/null 2>&1; then
   osascript -e 'do shell script "killall -9 sparkle-service 2>/dev/null || true" with administrator privileges' 2>/dev/null || true
   sleep 1
 fi
+
+log "Mihomo API socket hygiene (remove zombie direct socket if probe fails)..."
+"$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/sparkle-stale-mihomo-socket-hygiene.mts" || true
 
 marathon_guard_assert_pre_quit_snapshot_idle "install-sparkle-local-post-quit"
 

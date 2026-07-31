@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
 /** Remove zombie /tmp/sparkle-mihomo-api.sock before install when probe fails. */
+import { execFileSync } from 'node:child_process'
 import { existsSync, unlinkSync } from 'node:fs'
 import http from 'node:http'
 import {
@@ -54,6 +55,26 @@ async function main(): Promise<void> {
     console.log(`[sparkle-socket-hygiene] ${action}`)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
+    if (msg.includes('EACCES') || msg.includes('EPERM')) {
+      try {
+        execFileSync(
+          'osascript',
+          [
+            '-e',
+            `do shell script "rm -f '${SOCKET_PATH.replace(/'/g, "'\\''")}'" with administrator privileges`,
+          ],
+          { stdio: 'pipe' },
+        )
+        console.log(`[sparkle-socket-hygiene] ${action} (admin rm)`)
+        return
+      } catch (adminError) {
+        const adminMsg = adminError instanceof Error ? adminError.message : String(adminError)
+        console.error(
+          `[sparkle-socket-hygiene] WARN: admin remove failed for ${SOCKET_PATH}: ${adminMsg}`,
+        )
+        process.exit(0)
+      }
+    }
     console.error(`[sparkle-socket-hygiene] WARN: could not remove ${SOCKET_PATH}: ${msg}`)
     process.exit(0)
   }
