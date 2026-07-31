@@ -49,6 +49,19 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
   await initProfileUpdater()
 
   try {
+    const { countCursorConnections } = await import('./cursorConnectionHygiene')
+    const { ensureVpsProviderMarathonDialTimeoutBootstrapAtIdle } = await import(
+      './marathonDialTolerance'
+    )
+    const cursorConnAtBootstrap = await countCursorConnections().catch(() => 0)
+    await ensureVpsProviderMarathonDialTimeoutBootstrapAtIdle(cursorConnAtBootstrap)
+  } catch (error) {
+    await appendAppLog(
+      `[PostCoreBootstrap]: MarathonDialTolerance bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    )
+  }
+
+  try {
     const { applyCursorDedicatedVpsSelection } = await import('./cursorDedicatedDefault')
     const switched = await applyCursorDedicatedVpsSelection({ mihomoGroups, mihomoChangeProxy })
     if (!switched) {

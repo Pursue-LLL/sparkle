@@ -28,7 +28,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `natStaleSuspectObserverCore.ts` / `natStaleSuspectObserver.ts`         | **P27b** token_gap≥180s + api2 绿 + server-eof → `[NatStaleSuspect]` + jsonl `nat_stale_suspect`（observe-only，无 recovery） |
 | `hy2TunnelVitalityCore.ts` / `hy2TunnelVitality.ts`                       | **P27** Mac outbound HY2 隧道活性：marathonTruthActive + parent age≥30min → 每 30s connect_path dial（purpose=`hy2_tunnel_vitality`）；日志 `[Hy2TunnelVitality] outcome=` SSOT |
 | `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |
-| `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | 高并行时 VPS leaf dial-timeout 5s→45s · **P20b IDLE apply**（active stream/quiesce 期间 defer reload） |
+| `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | VPS leaf **bootstrap dial-timeout=45s**（provider 生成 SSOT）· 空闲 backfill · 赛中零 data-plane mutation · P20b IDLE gate 保留供历史测试 |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
 | `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默：conn≥12 暂停 proxyHealthMonitor + observability dial；**R-24** quiesce ON/OFF 热 patch `health-check.enable` + mihomo reload |
 | `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：quiesce active 或 conn≥12 时 block `stopCore`/`restartCore`；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate |
@@ -41,7 +41,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `mihomoApiSocketWatchdog.ts`                                            | mihomo-api.sock ECONNREFUSED 时自动 `restartCore`（60s cooldown，startup grace 内跳过） |
 | `cursorCriticalTransportCore.ts`                                        | critical Cursor transport host SSOT（CTHC + Hygiene 共享）                                                                                                            |
 | `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描；**L0–L3 marathon hard-disable**（conn≥12/quiesce）；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan |
-| `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a** ~85min 段轮换检测 @ hung_scan · `[SegmentHandoff] outcome=due phase=detect_only`（execute 在 Guard312 WB） |
+| `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a** ~85min 段轮换检测 @ hung_scan · **P22b** marathon-segments cache merge + QUIC stall early handoff · `[SegmentHandoff] outcome=due phase=detect_only`（execute 在 Guard312 WB） |
 | `marathonStreamRegistryCore.ts` / `marathonTransportDialReader.ts`       | §22 active RID registry · pendingTool 门控 |
 | `marathonTransportDialOrchestratorCore.ts` / `marathonTransportDialOrchestrator.ts` | §22 MTDO · **P15/P16/R-24**：独立 60s pulse · rescue bundle 分流 breach · `MarathonContentionBudget` deny |
 | `marathonContentionBudgetCore.ts` | **R-23/R-24** green 基线 observability cap · `buildMarathonContentionBreachKinds` definitive breach SSOT |
