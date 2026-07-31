@@ -35,6 +35,9 @@ marathon_core_restart_guard_assert_idle "upgrade-sparkle-local"
 
 pnpm exec electron-vite build
 
+log "Stage-A bundle gate (out/main, fail-fast before electron-builder)..."
+"$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/verify-sparkle-main-bundle.mts" "$ROOT/out/main"
+
 # Stale dist/mac-arm64 (e.g. interrupted packaging leaves Electron.app only) causes
 # @electron/osx-sign "Sparkle.app could not be found" — always clean before dir build.
 log "Cleaning $DIST_ARM64 (avoid stale Electron.app signing race)..."
@@ -62,7 +65,8 @@ if ! codesign --verify --deep --strict "$APP" >/dev/null 2>&1; then
   fail "dist app signature invalid after build — afterSign deepSignMac.cjs may have failed"
 fi
 
-# Guard against stale asar — SSOT: scripts/upgradeSparkleAsarGateCore.ts (+ unit tests)
+# Stage-B bundle gate — same SSOT collector as stage A (scripts/sparkleMainAsarSourceCore.ts)
+log "Stage-B bundle gate (app.asar, post electron-builder)..."
 "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/verify-sparkle-main-asar.mts" "$APP/Contents/Resources/app.asar"
 
 log "Build OK ($BUILT_VER). Installing..."

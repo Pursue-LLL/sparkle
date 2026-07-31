@@ -13,7 +13,6 @@ import {
   resolveConnectionHost,
   resolveMarathonQuIcLeafFromChains,
 } from './mihomoQuicSilentStallCore'
-import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 
 export const HY2_PARENT_ROTATION_COOLDOWN_MS = 300_000
 

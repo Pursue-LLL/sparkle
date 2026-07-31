@@ -46,6 +46,10 @@ import {
   type ConnectPartitionSignalWithSource,
 } from './connectPingStormCore'
 import {
+  resolveMarathonTokenGapRecoverySnapshot,
+  type MarathonTokenGapRecoverySnapshot,
+} from './marathonTokenGapSnapshotRetentionCore'
+import {
   hasActiveMarathonStream,
   isTokenGapSuppressedForPendingTool,
   type MarathonStreamRegistry,
@@ -151,6 +155,11 @@ let lastTokenGapRescueRecord: TokenGapRescueExecutionRecord | undefined
 let lastTokenGapIneffectiveEmitAtMs = 0
 let lastConnectPartitionRescueRecord: ConnectPartitionRescueExecutionRecord | undefined
 let lastConnectPartitionIneffectiveEmitAtMs = 0
+let lastTokenGapRecoverySnapshot: MarathonTokenGapRecoverySnapshot = {
+  maxGapMs: 0,
+  staleRequestIdCount: 0,
+}
+let lastTokenGapRecoverySnapshotAtMs = 0
 
 const CURSOR_LOG_PLANE_HEARTBEAT_MS = 60_000
 const TOKEN_GAP_INEFFECTIVE_EMIT_COOLDOWN_MS = 120_000
@@ -174,6 +183,8 @@ export function resetMarathonTransportDialOrchestratorForTests(): void {
   lastTokenGapIneffectiveEmitAtMs = 0
   lastConnectPartitionRescueRecord = undefined
   lastConnectPartitionIneffectiveEmitAtMs = 0
+  lastTokenGapRecoverySnapshot = { maxGapMs: 0, staleRequestIdCount: 0 }
+  lastTokenGapRecoverySnapshotAtMs = 0
   testConnectPathPulseOverride = null
 }
 
@@ -641,16 +652,22 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     const registry: MarathonStreamRegistry = marathonSnapshot.registry
     const marathonTruth = marathonSnapshot.truth
 
-    if (tokenGapSignal) {
-      const { setMarathonTokenGapSnapshotForRecovery } = await import('./mihomoQuicSilentStallRecovery')
-      setMarathonTokenGapSnapshotForRecovery({
-        maxGapMs: tokenGapSignal.maxGapMs,
-        staleRequestIdCount: tokenGapSignal.staleRequestIds.length,
-      })
-    } else {
-      const { setMarathonTokenGapSnapshotForRecovery } = await import('./mihomoQuicSilentStallRecovery')
-      setMarathonTokenGapSnapshotForRecovery({ maxGapMs: 0, staleRequestIdCount: 0 })
-    }
+    const tokenGapRecoveryResolution = resolveMarathonTokenGapRecoverySnapshot({
+      fresh: tokenGapSignal
+        ? {
+            maxGapMs: tokenGapSignal.maxGapMs,
+            staleRequestIdCount: tokenGapSignal.staleRequestIds.length,
+          }
+        : null,
+      marathonTruthActive: marathonTruth.marathonTruthActive,
+      retained: lastTokenGapRecoverySnapshot,
+      retainedAtMs: lastTokenGapRecoverySnapshotAtMs,
+      nowMs,
+    })
+    lastTokenGapRecoverySnapshot = tokenGapRecoveryResolution.snapshot
+    lastTokenGapRecoverySnapshotAtMs = tokenGapRecoveryResolution.retainedAtMs
+    const { setMarathonTokenGapSnapshotForRecovery } = await import('./mihomoQuicSilentStallRecovery')
+    setMarathonTokenGapSnapshotForRecovery(tokenGapRecoveryResolution.snapshot)
 
     if (
       activeNode &&
