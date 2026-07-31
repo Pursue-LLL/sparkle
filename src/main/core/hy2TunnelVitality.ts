@@ -62,6 +62,7 @@ export interface RunHy2TunnelVitalityOptions {
   stallRecoveryBypass?: boolean
   /** R-35a: proactive parent sidecar dial — bypass not_due interval when session aged. */
   sidecarDial?: boolean
+  outboundHy2SessionAgeMs?: number
 }
 
 export async function runHy2TunnelVitalityIfDue(
@@ -85,7 +86,8 @@ export async function runHy2TunnelVitalityIfDue(
   const sidecarForce =
     options.sidecarDial === true &&
     gate.marathonTruthActive &&
-    gate.maxParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS
+    (gate.maxParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS ||
+      (options.outboundHy2SessionAgeMs ?? 0) >= HY2_PARENT_SIDECAR_DIAL_AGE_MS)
 
   if (!shouldRunHy2TunnelVitality(gate) && !sidecarForce) {
     const skipReason = resolveHy2TunnelVitalitySkipReason(gate)

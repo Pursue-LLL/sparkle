@@ -71,6 +71,8 @@ export function formatMihomoQuicStallRecoveryLogLine(fields: {
   outboundHy2SessionAgeMs?: number
   registryMaxGapSinceActivityMs?: number
   tokenGapMaxMs?: number
+  carrierRid?: string
+  staleProofKind?: string
 }): string {
   const parts = [
     '[MihomoQuicStallRecovery]:',
@@ -95,6 +97,12 @@ export function formatMihomoQuicStallRecoveryLogLine(fields: {
   }
   if (fields.tokenGapMaxMs != null) {
     parts.push(`token_gap_max_ms=${fields.tokenGapMaxMs}`)
+  }
+  if (fields.carrierRid) {
+    parts.push(`carrier_rid=${fields.carrierRid}`)
+  }
+  if (fields.staleProofKind) {
+    parts.push(`stale_proof_kind=${fields.staleProofKind}`)
   }
   if (fields.connectionId) {
     parts.push(`connection_id=${fields.connectionId}`)

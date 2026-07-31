@@ -44,8 +44,11 @@ function resolveProactiveUdpClosePlan(input: {
   trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
   nowMs: number
 }): Hy2ParentSidecarPlan {
-  if (input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS) {
-    return { action: 'none', reason: 'session_age_below_proactive_rotate' }
+  if (
+    input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS &&
+    input.snapshot.httpParentChainAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS
+  ) {
+    return { action: 'none', reason: 'session_and_http_chain_below_proactive_rotate' }
   }
   if (input.nowMs - lastHy2ParentSidecarRotateAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS) {
     return { action: 'none', reason: 'proactive_rotate_cooldown' }
@@ -99,14 +102,11 @@ export async function runHy2ParentSidecarIfDue(input: {
     })
     if (dialPlan.action === 'sidecar_dial') {
       try {
-        const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
-        const result = await runHy2TunnelVitalityIfDue(
-          input.snapshot.activeHy2Leaf,
-          input.cursorConnectionCount,
+        const { executeMarathonRescueDial } = await import('./marathonRescueDialExecutor')
+        const result = await executeMarathonRescueDial(input.cursorConnectionCount, {
+          trigger: 'hy2_parent_sidecar',
           nowMs,
-          input.marathonTruth,
-          { stallRecoveryBypass: true, sidecarDial: true },
-        )
+        })
         lastHy2ParentSidecarDialAtMs = nowMs
         await appendSidecarLog(
           formatHy2ParentSidecarLogLine({
@@ -115,7 +115,7 @@ export async function runHy2ParentSidecarIfDue(input: {
             reason: dialPlan.reason,
             outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
             httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
-            connectPathDelayMs: result.connectPathDelayMs,
+            connectPathDelayMs: result.api2DelayMs,
             err: result.err,
           }),
         )

@@ -2,10 +2,10 @@
 // [OUTPUT] isMihomoApiResourceNotFoundError · resolveProviderNameForLeaf · isMarathonRescueDelayPurpose
 // [POS] mihomo /proxies/{leaf}/delay Resource not found → provider leaf refresh path (marathon rescue SSOT).
 
-export type MihomoDelayPurpose = 'default' | 'marathon_rescue' | 'user_explicit' | 'hy2_tunnel_vitality'
+export type MihomoDelayPurpose = 'default' | 'marathon_rescue' | 'user_explicit' | 'hy2_tunnel_vitality' | 'hy2_parent_sidecar'
 
 export function isMarathonRescueDelayPurpose(purpose: MihomoDelayPurpose | undefined): boolean {
-  return purpose === 'marathon_rescue'
+  return purpose === 'marathon_rescue' || purpose === 'hy2_parent_sidecar'
 }
 
 export function isHy2TunnelVitalityDelayPurpose(purpose: MihomoDelayPurpose | undefined): boolean {

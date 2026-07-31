@@ -31,6 +31,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `transportLongevityTruthCore.ts` / `transportLongevityTruth.ts` | **R-34a** 三龄 SSOT（HTTP parent · HY2 outbound session · byte stall） |
 | `frozenSurgicalPruneCore.ts` | **R-34c** 五门 AND frozen connection prune（替代 marathon_block_close） |
 | `hy2ParentRotationCore.ts` | **R-34b** prune 后 aged HY2 UDP session 安全 refresh |
+| `hy2ParentSidecarCore.ts` / `hy2ParentSidecar.ts` | **R-35a** proactive 4h parent sidecar dial + safe UDP refresh |
+| `marathonSseCarrierPruneCore.ts` | **R-35b** marathon SSE carrier 45s stale-proof prune gate |
 | `recoveryHonestyCore.ts` | **R-34d** recovery success = max_gap 60s 内降 ≥50% |
 | `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | VPS leaf **bootstrap dial-timeout=45s**（provider 生成 SSOT）· 空闲 backfill · 赛中零 data-plane mutation · P20b IDLE gate 保留供历史测试 |

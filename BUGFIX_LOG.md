@@ -6,7 +6,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **TRIAGE-DEFINITIVE** @ 2026-07-31 22:31 CST · **R-34 @1.28.0 已装但未闭环** · **FIX PENDING**（parent chain 4h 热换 + marathon SSE carrier 45s prune 门控） |
+| **状态** | **FIX CODE-DONE @1.28.1 R-35** · TRIAGE-DEFINITIVE @ 2026-07-31 22:31 · 待 marathon 空窗 upgrade + G9 strict soak |
 | **发生版本** | Sparkle **1.28.0**（~19:17 CST upgrade 完成 · Preflight1280 8/8 PASS · hasP28b=true）· Cursor **3.1.15** · leaf **JP-VPS-HY2** |
 | **事故时间** | userMessage **20:33:57 CST**（Dashboard Included 行 **20:34** = 起点）· **A 断连 22:31:09 CST** · durationMs=**7031697**（≈117min）· 50.07M tok · $38.50 |
 | **RID / composer** | `b866a8f9-75ad-49a4-8062-b6d9a59203d3` · `ab194449-a760-40d1-af95-1b166096ece1` · attempt=**0** |
@@ -17,7 +17,7 @@
 | **与 BUG-016/014 关系** | **同族第 9+ 次** split-brain/HY2 stall · BUG-016（13:40 @1.27.9 未装 R-34）· **本次 = R-34 装后首次 definitive 长跑复发** |
 | **反复次数** | HY2/TUIC server-eof 同族 **第 9+ 次** · R-34 相关 **第 2 次**（BUG-016 预期 fix · **018 装后仍断**） |
 | **遗漏（R-34 发版时已知未闭）** | ① parent_chain≥18h **mihomo 旁路 dial 未 upstream**（BUG-015 Plane B 半闭环）② prune 阈值 120s 对 **47s byte-freeze + 3min 后 SSE 死** 无效 ③ **零 G9 soak 通过** 即宣称 fix |
-| **待修复（下一版）** | ① marathon active + parent_chain_age>**4h** → **同节点** parent 热换（非 failover）② active SSE segment carrier：byte_frozen + stall≥**45s** → 允许 frozen_surgical_prune ③ G9 40min soak：`attempt_rate_pct≥90` |
+| **待修复（下一版）** | ~~parent 4h sidecar~~ · ~~SSE carrier 45s prune~~ · G9 40min soak：`attempt_rate_pct≥90` → **R-35 @1.28.1 CODE-DONE** |
 | **踩坑** | Dashboard **20:34** 是计费起点非断连时刻 · 短探针全绿 **不能** 否定 L3 · vitality_dial **不能** 替代 close frozen conn · 装 1.28.0 ≠ 同族消失 |
 | **验证方式** | G9 soak strict · `[MaxStepsRate] attempt_rate_pct≥90` · 零同窗 server-eof · parent_chain_age 日志 <4h during marathon |
 | **会导致什么** | 117min 马拉松中途断 · willRetry=true 可能 ghost Included（拦截 OFF 时 Guard 已 notify） |

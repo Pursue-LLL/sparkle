@@ -40,6 +40,20 @@ describe('hy2ParentSidecarCore R-35a', () => {
     assert.equal(plan.reason, 'marathon_inactive')
   })
 
+  it('triggers sidecar dial when HTTP parent chain aged even if outbound session is young', () => {
+    const plan = resolveHy2ParentSidecarDialPlan({
+      snapshot: {
+        ...baseSnapshot,
+        outboundHy2SessionAgeMs: 60_000,
+        httpParentChainAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 1,
+      },
+      marathonTruthActive: true,
+      lastSidecarDialAtMs: 0,
+      nowMs: 1_000_000,
+    })
+    assert.equal(plan.action, 'sidecar_dial')
+  })
+
   it('respects sidecar cooldown', () => {
     const plan = resolveHy2ParentSidecarDialPlan({
       snapshot: baseSnapshot,

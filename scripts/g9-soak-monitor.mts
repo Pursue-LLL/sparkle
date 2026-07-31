@@ -7,6 +7,7 @@ import {
   evaluateG9SoakPass,
   parseG9SoakMetrics,
 } from './g9SoakMonitorCore.ts'
+import { evaluateMaxStepsRateUpgradeGate } from './maxStepsRateUpgradeGateCore.ts'
 
 const LOG_DIR = path.join(homedir(), 'Library/Application Support/sparkle/logs')
 const SNAPSHOT_PATH = path.join(homedir(), '.sparkle', 'max-steps-rate-snapshot.jsonl')
@@ -58,14 +59,19 @@ function main(): void {
   const snapshotAttemptRate = readLatestSnapshotAttemptRate()
   const metrics = parseG9SoakMetrics(maxSteps, recovery, snapshotAttemptRate)
   const pass = evaluateG9SoakPass(metrics)
+  const upgradeGate = evaluateMaxStepsRateUpgradeGate({
+    maxStepsLogLine: maxSteps,
+    snapshotAttemptRatePct: snapshotAttemptRate,
+  })
 
   console.log(`[G9Soak] log=${logPath}`)
   console.log(`[G9Soak] max_steps_rate=${maxSteps ?? 'missing'}`)
   console.log(`[G9Soak] recovery_honesty=${recovery ?? 'missing'}`)
+  console.log(`[G9Soak] upgrade_gate=${upgradeGate.reason} allow=${upgradeGate.allowUpgrade ? 1 : 0}`)
   console.log(
     `[G9Soak] summary attempts_started=${metrics.attemptsStarted ?? 'unknown'} attempts_early_disconnect=${metrics.attemptsEarlyDisconnect ?? 'unknown'} attempt_rate_pct=${metrics.attemptRatePct ?? 'missing'} below_target_attempt=${metrics.belowTargetAttempt == null ? 'unknown' : metrics.belowTargetAttempt ? 1 : 0} recovery_outcome=${metrics.recoveryOutcome ?? 'unknown'} pass=${pass ? '1' : '0'}`,
   )
-  if (process.env.G9_SOAK_STRICT === '1' && !pass) {
+  if (process.env.G9_SOAK_STRICT === '1' && (!pass || !upgradeGate.allowUpgrade)) {
     process.exit(1)
   }
 }

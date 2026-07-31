@@ -76,6 +76,7 @@ describe('frozenSurgicalPruneCore R-34c', () => {
   })
 
   it('R-35b closes carrier at 47s stall with registry gap proof', () => {
+    const nowMs = 1_000_000
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: {
         ...baseObservation,
@@ -84,14 +85,31 @@ describe('frozenSurgicalPruneCore R-34c', () => {
       },
       tokenGapMaxMs: 0,
       staleRequestIdCount: 0,
+      staleRequestIds: [],
       lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
+      nowMs,
       marathonActive: true,
       registryMaxGapSinceActivityMs: 20_000,
+      registry: {
+        records: new Map([
+          [
+            'req-a',
+            {
+              requestId: 'req-a',
+              originalRequestId: 'rid-carrier',
+              firstActivityMs: 900_000,
+              lastActivityMs: nowMs - 20_000,
+              openToolCalls: 0,
+            },
+          ],
+        ]),
+      },
     })
     assert.equal(plan.action, 'close_frozen_connection')
     assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
+    assert.equal(plan.carrierRid, 'rid-carrier')
+    assert.equal(plan.staleProofKind, 'registry_gap')
   })
 
   it('07-31 stall_ms=213944 replay closes frozen connection under R-34 five-gate AND', () => {

@@ -6,7 +6,8 @@ import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import { MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS } from './mihomoQuicSilentStallCore'
-import { isMarathonSseCarrierStaleCandidate } from './marathonSseCarrierPruneCore'
+import { resolveMarathonSseCarrierPruneContext } from './marathonSseCarrierPruneCore'
+import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
 
 export const MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS = 120_000
 
@@ -19,6 +20,8 @@ export type FrozenSurgicalPruneAction = 'none' | 'vitality_dial' | 'close_frozen
 export interface FrozenSurgicalPrunePlan {
   action: FrozenSurgicalPruneAction
   reason: string
+  carrierRid?: string
+  staleProofKind?: string
 }
 
 export interface FrozenSurgicalPruneGateInput {
@@ -30,6 +33,8 @@ export interface FrozenSurgicalPruneGateInput {
   nowMs: number
   marathonActive?: boolean
   registryMaxGapSinceActivityMs?: number
+  registry?: MarathonStreamRegistry
+  staleRequestIds?: readonly string[]
   httpParentChainAgeMs?: number
   outboundHy2SessionAgeMs?: number
 }
@@ -59,19 +64,29 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
   }
 
   const marathonActive = input.marathonActive === true
-  const registryMaxGapSinceActivityMs = input.registryMaxGapSinceActivityMs ?? 0
-  const carrierCandidate = isMarathonSseCarrierStaleCandidate({
+  const carrierContext = resolveMarathonSseCarrierPruneContext({
     observation,
     marathonActive,
     tokenGapMaxMs: input.tokenGapMaxMs,
-    staleRequestIdCount: input.staleRequestIdCount,
-    registryMaxGapSinceActivityMs,
+    staleRequestIds: input.staleRequestIds ?? [],
+    registry: input.registry ?? { records: new Map() },
+    nowMs,
   })
-  if (carrierCandidate && observation.stallMs >= MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
+  if (carrierContext.eligible && observation.stallMs >= MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
     if (nowMs - input.lastGlobalPruneAtMs < FROZEN_SURGICAL_PRUNE_GLOBAL_COOLDOWN_MS) {
-      return { action: 'vitality_dial', reason: 'global_prune_cooldown' }
+      return {
+        action: 'vitality_dial',
+        reason: 'global_prune_cooldown',
+        carrierRid: carrierContext.carrierRid,
+        staleProofKind: carrierContext.staleProofKind,
+      }
     }
-    return { action: 'close_frozen_connection', reason: 'marathon_sse_carrier_frozen_prune' }
+    return {
+      action: 'close_frozen_connection',
+      reason: 'marathon_sse_carrier_frozen_prune',
+      carrierRid: carrierContext.carrierRid,
+      staleProofKind: carrierContext.staleProofKind,
+    }
   }
 
   if (observation.stallMs >= MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS) {

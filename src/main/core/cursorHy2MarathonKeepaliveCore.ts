@@ -100,6 +100,7 @@ export type MarathonWarmthTrigger =
   | 'marathon_connect_path_pulse'
   | 'periodic_session'
   | 'high_latency_warmth'
+  | 'hy2_parent_sidecar'
 
 const MARATHON_RESCUE_TRIGGERS: ReadonlySet<MarathonWarmthTrigger> = new Set([
   'connect_partition',
@@ -108,6 +109,7 @@ const MARATHON_RESCUE_TRIGGERS: ReadonlySet<MarathonWarmthTrigger> = new Set([
   'connect_path_partition',
   'token_gap',
   'cold_resume',
+  'hy2_parent_sidecar',
 ])
 
 export interface MarathonWarmthDeferContext {
@@ -140,6 +142,7 @@ export function shouldDeferMarathonWarmth(
     case 'silent_generation_end':
     case 'connect_path_partition':
     case 'marathon_connect_path_pulse':
+    case 'hy2_parent_sidecar':
       return false
     case 'token_gap':
       return !isTokenGapRescueEligible(
@@ -170,6 +173,8 @@ export function resolveMarathonWarmthLogKind(trigger: MarathonWarmthTrigger): st
       return 'token_gap_rescue_nudge'
     case 'cold_resume':
       return 'cold_resume_rescue_nudge'
+    case 'hy2_parent_sidecar':
+      return 'hy2_parent_sidecar_dial'
     case 'high_latency_warmth':
       return 'high_latency_force_nudge'
     case 'periodic_session':
