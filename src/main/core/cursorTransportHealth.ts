@@ -480,7 +480,19 @@ async function runHungConnectionScanCycle(): Promise<void> {
     const { resolveCursorDedicatedActiveNode } = await import('./cursorHy2MarathonKeepalive')
     const activeNode = await resolveCursorDedicatedActiveNode()
     await syncAgentTransportFailuresFromCursorLogs({ proxyNodeFallback: activeNode })
+    try {
+      const { logMaxStepsRateIfDue } = await import('./maxStepsRateObserver')
+      await logMaxStepsRateIfDue()
+    } catch {
+      // max-steps rate telemetry is observe-only
+    }
     await runMarathonSessionWarmthIfDue(rows.length)
+    try {
+      const { evaluatePendingRecoveryHonestyIfDue } = await import('./mihomoQuicSilentStallRecovery')
+      await evaluatePendingRecoveryHonestyIfDue()
+    } catch {
+      // recovery honesty is best-effort
+    }
     if (rows.length === 0 && activeNode) {
       const { runMarathonProtocolColdStartGateIfDue } = await import('./marathonProtocolContract')
       await runMarathonProtocolColdStartGateIfDue(activeNode, 0)
