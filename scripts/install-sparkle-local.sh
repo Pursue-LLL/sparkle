@@ -18,60 +18,68 @@ SPARKLE_CONFIG="${HOME}/Library/Application Support/sparkle/config.yaml"
 CURSOR_PREFIX_PRESERVE="${STATE_DIR}/install-preserve-cursor-path-prefixes.yaml"
 
 preserve_cursor_path_prefixes_before_quit() {
-  python3 - <<'PY'
-import yaml
-from pathlib import Path
+  node - <<'NODE'
+const fs = require('fs')
+const path = require('path')
+const yaml = require('yaml')
 
-home = Path.home()
-cfg_paths = [
-    home / "Library/Application Support/sparkle/config.yaml",
-    home / "Library/Application Support/sparkle/config.yaml.backup",
+const home = process.env.HOME
+const cfgPaths = [
+  path.join(home, 'Library/Application Support/sparkle/config.yaml'),
+  path.join(home, 'Library/Application Support/sparkle/config.yaml.backup')
 ]
-prefixes: list[str] = []
-for path in cfg_paths:
-    if not path.exists():
-        continue
-    data = yaml.safe_load(path.read_text()) or {}
-    value = data.get("cursorProxyAppPathPrefixes") or []
-    if isinstance(value, list) and len(value) > 0:
-        prefixes = [str(item).strip() for item in value if str(item).strip()]
-        if prefixes:
-            break
+let prefixes = []
+for (const cfgPath of cfgPaths) {
+  if (!fs.existsSync(cfgPath)) continue
+  const data = yaml.parse(fs.readFileSync(cfgPath, 'utf8')) || {}
+  const value = data.cursorProxyAppPathPrefixes
+  if (Array.isArray(value) && value.length > 0) {
+    prefixes = value.map((item) => String(item).trim()).filter(Boolean)
+    if (prefixes.length > 0) break
+  }
+}
 
-state = home / ".sparkle/install-preserve-cursor-path-prefixes.yaml"
-if prefixes:
-    state.write_text(yaml.safe_dump({"cursorProxyAppPathPrefixes": prefixes}, sort_keys=False))
-    print(f"[install-sparkle] preserved cursorProxyAppPathPrefixes={prefixes}", flush=True)
-else:
-    state.unlink(missing_ok=True)
-PY
+const state = path.join(home, '.sparkle/install-preserve-cursor-path-prefixes.yaml')
+if (prefixes.length > 0) {
+  fs.writeFileSync(state, yaml.stringify({ cursorProxyAppPathPrefixes: prefixes }))
+  console.error(`[install-sparkle] preserved cursorProxyAppPathPrefixes=${JSON.stringify(prefixes)}`)
+} else {
+  try {
+    fs.unlinkSync(state)
+  } catch {
+    // ignore
+  }
+}
+NODE
 }
 
 restore_cursor_path_prefixes_after_launch() {
-  python3 - "$SPARKLE_CONFIG" "$CURSOR_PREFIX_PRESERVE" <<'PY'
-import sys
-import yaml
-from pathlib import Path
+  node - "$SPARKLE_CONFIG" "$CURSOR_PREFIX_PRESERVE" <<'NODE'
+const fs = require('fs')
+const yaml = require('yaml')
 
-cfg_path = Path(sys.argv[1])
-preserve_path = Path(sys.argv[2])
-if not preserve_path.exists() or not cfg_path.exists():
-    raise SystemExit(0)
+const cfgPath = process.argv[2]
+const preservePath = process.argv[3]
+if (!fs.existsSync(preservePath) || !fs.existsSync(cfgPath)) {
+  process.exit(0)
+}
 
-preserve = yaml.safe_load(preserve_path.read_text()) or {}
-wanted = preserve.get("cursorProxyAppPathPrefixes") or []
-if not isinstance(wanted, list) or len(wanted) == 0:
-    raise SystemExit(0)
+const preserve = yaml.parse(fs.readFileSync(preservePath, 'utf8')) || {}
+const wanted = preserve.cursorProxyAppPathPrefixes
+if (!Array.isArray(wanted) || wanted.length === 0) {
+  process.exit(0)
+}
 
-data = yaml.safe_load(cfg_path.read_text()) or {}
-current = data.get("cursorProxyAppPathPrefixes") or []
-if isinstance(current, list) and len(current) > 0:
-    raise SystemExit(0)
+const data = yaml.parse(fs.readFileSync(cfgPath, 'utf8')) || {}
+const current = data.cursorProxyAppPathPrefixes
+if (Array.isArray(current) && current.length > 0) {
+  process.exit(0)
+}
 
-data["cursorProxyAppPathPrefixes"] = wanted
-cfg_path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
-print(f"[install-sparkle] restored cursorProxyAppPathPrefixes={wanted}", flush=True)
-PY
+data.cursorProxyAppPathPrefixes = wanted
+fs.writeFileSync(cfgPath, yaml.stringify(data))
+console.error(`[install-sparkle] restored cursorProxyAppPathPrefixes=${JSON.stringify(wanted)}`)
+NODE
 }
 
 fail() { echo "[install-sparkle] FAIL: $*" >&2; exit 1; }
