@@ -15,6 +15,8 @@ export interface ValidatedLedgerTerminalRow {
   willRetry?: boolean
   lastSseCase?: string
   isMaxSteps: boolean
+  durationMs?: number
+  attempt?: number
 }
 
 interface ValidatedLedgerEnvelope {
@@ -23,6 +25,7 @@ interface ValidatedLedgerEnvelope {
   requestId?: string
   originalRequestId?: string
   composerId?: string
+  attempt?: number
   payload?: {
     terminalKind?: string
     terminalMs?: number
@@ -31,6 +34,7 @@ interface ValidatedLedgerEnvelope {
     willRetry?: boolean
     lastSseCase?: string
     reasonSub?: string
+    durationMs?: number
   }
 }
 
@@ -101,6 +105,8 @@ export function parseValidatedLedgerTerminalLine(line: string): ValidatedLedgerT
     willRetry: payload.willRetry,
     lastSseCase: payload.lastSseCase,
     isMaxSteps,
+    durationMs: typeof payload.durationMs === 'number' ? payload.durationMs : undefined,
+    attempt: typeof envelope.attempt === 'number' ? envelope.attempt : undefined,
   }
 }
 
@@ -110,16 +116,28 @@ export function ledgerTerminalToFailureRow(row: ValidatedLedgerTerminalRow): Age
       ts: row.ts,
       originalRequestId: row.originalRequestId,
       requestId: row.requestId,
+      composerId: row.composerId,
+      reasonType: 'cursor-server',
       reasonSub: 'max-steps-cap',
       errMsg: row.reason ?? 'Reached maximum number of steps',
+      attempt: row.attempt,
+      durationMs: row.durationMs,
+      kind: 'validated_ledger_terminal',
     }
   }
+  const streamSub = String(row.streamPrimarySub ?? '').toLowerCase()
   return {
     ts: row.ts,
     originalRequestId: row.originalRequestId,
     requestId: row.requestId,
-    reasonSub: row.streamPrimarySub ?? row.terminalKind ?? 'ledger-terminal',
+    composerId: row.composerId,
+    reasonType: row.willRetry ? 'proxy-network' : 'cursor-server',
+    reasonSub: streamSub === 'server-eof' ? 'http-sse-server-eof' : streamSub || row.terminalKind || 'ledger-terminal',
     errMsg: row.reason,
+    streamPrimarySub: row.streamPrimarySub,
+    attempt: row.attempt,
+    durationMs: row.durationMs,
+    kind: 'validated_ledger_terminal',
   }
 }
 

@@ -13,6 +13,7 @@ import {
   shouldPersistTransportFailure,
   type AgentTransportFailureRow,
 } from './agentTransportFailureWriterCore'
+import { validatedLedgerTerminalDedupeKey } from './validatedLedgerTerminalProjectionCore'
 
 const RENDERER_TAIL_BYTES = 2_000_000
 const EXTHOST_TAIL_BYTES = 512_000
@@ -139,7 +140,17 @@ async function loadExistingDedupeKeys(sinceMs: number): Promise<Set<string>> {
       if (!Number.isFinite(ts) || ts < sinceMs) {
         continue
       }
-      keys.add(rowDedupeKey({ ts, requestId: String(raw.requestId ?? '') || undefined }))
+      const row: AgentTransportFailureRow = {
+        ts,
+        requestId: String(raw.requestId ?? '') || undefined,
+        originalRequestId: String(raw.originalRequestId ?? raw.requestId ?? '') || undefined,
+        reasonSub: String(raw.reasonSub ?? ''),
+      }
+      if (raw.source === 'validated-ledger-projection') {
+        keys.add(validatedLedgerTerminalDedupeKey(row))
+      } else {
+        keys.add(rowDedupeKey(row))
+      }
     } catch {
       continue
     }
@@ -167,7 +178,10 @@ export async function appendAgentTransportFailureRow(
     ...(row.durationMs !== undefined ? { durationMs: row.durationMs } : {}),
     ...(row.streamPrimarySub ? { streamPrimarySub: row.streamPrimarySub } : {}),
     ...(row.disconnectPhase ? { disconnectPhase: row.disconnectPhase } : {}),
-    source: 'sparkle-sync',
+    source:
+      row.kind === 'validated_ledger_terminal'
+        ? 'validated-ledger-projection'
+        : 'sparkle-sync',
   }
   await mkdir(join(homedir(), '.sparkle'), { recursive: true })
   await appendFile(sparkleAgentTransportPath(), `${JSON.stringify(payload)}\n`, 'utf8')
@@ -218,6 +232,30 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
       }
       for (const filePath of await listCursorStructuredLogFiles(cursorDataDir)) {
         await ingestLogTail(filePath, STRUCTURED_LOG_TAIL_BYTES)
+      }
+    }
+    const ledgerWritten = await (async () => {
+      const { projectValidatedLedgerTerminalsToJsonl } = await import(
+        './validatedLedgerTerminalProjectionCore'
+      )
+      return projectValidatedLedgerTerminalsToJsonl({
+        sinceMs,
+        seen,
+        appendRow: async (row) => {
+          await appendAgentTransportFailureRow(row, options?.proxyNodeFallback)
+          written += 1
+          writtenRows.push(row)
+        },
+      })
+    })()
+    if (ledgerWritten > 0 && options?.logWrites !== false) {
+      try {
+        const { appendAppLog } = await import('../utils/log')
+        await appendAppLog(
+          `[ValidatedLedgerProjection]: wrote ${ledgerWritten} terminal row(s) → ${sparkleAgentTransportPath()}\n`,
+        )
+      } catch {
+        // best-effort
       }
     }
     lastSyncFinishedAtMs = Date.now()
