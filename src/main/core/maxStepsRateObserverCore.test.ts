@@ -12,6 +12,7 @@ const nowMs = 1_700_000_000_000
 
 function segment(
   partial: Partial<MarathonSegmentCacheRecord> & Pick<MarathonSegmentCacheRecord, 'originalRequestId'>,
+  offsetMs = 0,
 ): MarathonSegmentCacheRecord {
   return {
     segmentId: partial.segmentId ?? `seg-${partial.originalRequestId}`,
@@ -19,8 +20,8 @@ function segment(
     originalRequestId: partial.originalRequestId,
     composerId: partial.composerId ?? 'composer-1',
     actionCase: partial.actionCase ?? 'userMessage',
-    httpStartMs: partial.httpStartMs ?? nowMs - 60_000,
-    recordedAtMs: partial.recordedAtMs ?? nowMs - 60_000,
+    httpStartMs: partial.httpStartMs ?? nowMs - 60_000 - offsetMs,
+    recordedAtMs: partial.recordedAtMs ?? nowMs - 60_000 - offsetMs,
   }
 }
 
@@ -36,7 +37,7 @@ test('isMaxStepsTerminalRow detects reasonSub and errMsg', () => {
   assert.equal(isMaxStepsTerminalRow({ ts: nowMs, reasonSub: 'server-eof' }), false)
 })
 
-test('computeMaxStepsRateSnapshot counts started turns and max-steps rate', () => {
+test('computeMaxStepsRateSnapshot uses rolling100 primary and 24h aux', () => {
   const segments: MarathonSegmentCacheRecord[] = [
     segment({ originalRequestId: 'turn-a' }),
     segment({ originalRequestId: 'turn-b' }),
@@ -46,7 +47,7 @@ test('computeMaxStepsRateSnapshot counts started turns and max-steps rate', () =
       actionCase: 'resumeAction',
       httpStartMs: nowMs - 30_000,
     }),
-    segment({ originalRequestId: 'turn-c' }),
+    segment({ originalRequestId: 'turn-c' }, 86_500_000),
   ]
   const failures: AgentTransportFailureRow[] = [
     {
@@ -63,13 +64,26 @@ test('computeMaxStepsRateSnapshot counts started turns and max-steps rate', () =
     },
   ]
 
-  const snapshot = computeMaxStepsRateSnapshot(segments, failures, nowMs, 86_400_000)
-  assert.equal(snapshot.startedTurns, 3)
-  assert.equal(snapshot.completedTurns, 2)
-  assert.equal(snapshot.maxStepsTurns, 1)
-  assert.equal(snapshot.earlyDisconnectTurns, 1)
-  assert.equal(snapshot.inProgressTurns, 1)
-  assert.equal(snapshot.maxStepsRatePct, 33.3)
+  const snapshot = computeMaxStepsRateSnapshot(segments, failures, nowMs)
+  assert.equal(snapshot.primary.windowLabel, 'rolling100')
+  assert.equal(snapshot.primary.startedTurns, 3)
+  assert.equal(snapshot.primary.completedTurns, 2)
+  assert.equal(snapshot.primary.maxStepsTurns, 1)
+  assert.equal(snapshot.primary.earlyDisconnectTurns, 1)
+  assert.equal(snapshot.primary.inProgressTurns, 1)
+  assert.equal(snapshot.primary.maxStepsRatePct, 33.3)
+  assert.equal(snapshot.aux24h.startedTurns, 2)
+  assert.equal(snapshot.aux24h.maxStepsTurns, 1)
   assert.equal(snapshot.belowTarget, true)
   assert.equal(snapshot.targetPct, MAX_STEPS_RATE_TARGET_PCT)
+})
+
+test('rolling100 selects most recent turn starts only', () => {
+  const segments: MarathonSegmentCacheRecord[] = []
+  for (let i = 0; i < 105; i += 1) {
+    segments.push(segment({ originalRequestId: `turn-${i}` }, i * 60_000))
+  }
+  const snapshot = computeMaxStepsRateSnapshot(segments, [], nowMs)
+  assert.equal(snapshot.primary.startedTurns, 100)
+  assert.equal(snapshot.primary.inProgressTurns, 100)
 })
