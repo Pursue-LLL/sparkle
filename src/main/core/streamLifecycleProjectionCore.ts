@@ -3,7 +3,6 @@
 // [POS] P10-1 projection — ledger/segment → lifecycle reducer input.
 
 import type { MarathonSegmentCacheRecord } from './marathonSegmentCache'
-import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
 import {
   buildStreamGenerationKey,
   reduceStreamLifecycleEvents,
@@ -119,11 +118,10 @@ export function isOriginalRequestTerminalInLifecycle(
   return terminalOriginalRequestIds.has(originalRequestId.trim())
 }
 
-/** P10-1: lifecycle SSOT for marathon stream active — registry retained only for open-tool state. */
+/** P10-1: lifecycle SSOT for marathon stream active — no legacy registry dual-read. */
 export function hasActiveMarathonStreamFromLifecycle(
   lifecycleState: ReadonlyMap<string, StreamGenerationState>,
   terminalOriginalRequestIds: ReadonlySet<string>,
-  registry: MarathonStreamRegistry,
   nowMs: number,
   options: {
     minStreamAgeMs: number
@@ -147,18 +145,6 @@ export function hasActiveMarathonStreamFromLifecycle(
       continue
     }
     if (nowMs - generation.lastActivityAtMs! <= options.maxLastActivityGapMs) {
-      return true
-    }
-  }
-  for (const record of registry.records.values()) {
-    if (record.openToolCalls <= 0) {
-      continue
-    }
-    if (terminalOriginalRequestIds.has(record.originalRequestId.trim())) {
-      continue
-    }
-    const streamAgeMs = nowMs - record.firstActivityMs
-    if (streamAgeMs >= options.minStreamAgeMs) {
       return true
     }
   }

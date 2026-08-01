@@ -117,7 +117,6 @@ describe('streamLifecycleProjectionCore P10-1', () => {
     const active = hasActiveMarathonStreamFromLifecycle(
       lifecycleState,
       terminalIds,
-      { records: new Map() },
       8_000,
       { minStreamAgeMs: 1_000, maxLastActivityGapMs: 10_000 },
     )

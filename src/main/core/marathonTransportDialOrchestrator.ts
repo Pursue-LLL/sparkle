@@ -774,7 +774,6 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     const marathonStreamActive = hasActiveMarathonStreamFromLifecycle(
       lifecycleState,
       terminalOriginalRequestIds,
-      registry,
       nowMs,
       {
         minStreamAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS,
