@@ -49,6 +49,7 @@ function main(): void {
     'src/main/core/p10ReplayGateCore.test.ts',
     'src/main/core/p10FaultInjectionGateCore.test.ts',
     'src/main/core/p10FullMatrixGateCore.test.ts',
+    'src/main/core/p10ActiveUnknownMutationNegativeGateCore.test.ts',
     'src/main/core/dialCapabilityInventoryCore.test.ts',
   ]
   console.log('[P10CodeGate]: running §M.0.15.11.8 full matrix tests')
