@@ -78,13 +78,10 @@ async function main(): Promise<void> {
     maxTunP95TaxMs: 100,
   }
   const capturedAtIso = new Date().toISOString()
-  const artifactBody = {
-    meta: { capturedAtIso, target: TARGET_URL, mixedPort: MIXED_PORT, rawTun: tun, rawMixed: mixed },
-    payload,
-  }
-  const serialized = JSON.stringify(artifactBody, null, 2)
-  const sha256 = createHash('sha256').update(serialized).digest('hex')
-  const artifact: P10MeasurementArtifact<P10TunLatencyFixture> = {
+  const artifact: P10MeasurementArtifact<P10TunLatencyFixture> & {
+    rawTunMs?: number[]
+    rawMixedMs?: number[]
+  } = {
     meta: {
       schemaVersion: 'p10-measurement-artifact.v1',
       capturedAtIso,
@@ -94,14 +91,20 @@ async function main(): Promise<void> {
       node: process.env.P10_ACTIVE_LEAF ?? 'JP-VPS-HY2',
     },
     payload,
+    rawTunMs: tun,
+    rawMixedMs: mixed,
   }
+  const serialized = JSON.stringify(artifact, null, 2)
+  const sha256Final = createHash('sha256').update(serialized).digest('hex')
+  artifact.meta.sha256 = sha256Final
+  const serializedFinal = JSON.stringify(artifact, null, 2)
   mkdirSync(ARTIFACT_DIR, { recursive: true })
   const artifactPath = join(ARTIFACT_DIR, `tun-latency-${capturedAtIso.replace(/[:.]/g, '-')}.json`)
-  writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8')
+  writeFileSync(artifactPath, `${serializedFinal}\n`, 'utf8')
   const tunMod = await import(pathToFileURL(join(ROOT, 'src/main/core/p10TunLatencyGateCore.ts')).href)
   const gate = tunMod.runP10TunLatencyGate({ artifact })
   console.log(`[P10CaptureTunLatency]: artifact ${artifactPath}`)
-  console.log(`[P10CaptureTunLatency]: sha256=${sha256}`)
+  console.log(`[P10CaptureTunLatency]: sha256=${sha256Final}`)
   console.log(
     `[P10CaptureTunLatency]: tun p50=${payload.tun.p50Ms} mixed p50=${payload.mixedPort.p50Ms} tax p50=${gate.p50TaxMs}`,
   )
