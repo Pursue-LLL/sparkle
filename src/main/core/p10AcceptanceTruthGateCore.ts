@@ -61,11 +61,12 @@ export function discoverInstalledGuardVersions(extensionRoots: readonly string[]
       continue
     }
     for (const entry of readDirSafe(root)) {
-      if (!entry.startsWith('example-tool-')) {
+      const match = entry.match(/(?:^local\.)?example-tool-(\d+\.\d+\.\d+)$/)
+      if (!match) {
         continue
       }
       const pkgPath = join(root, entry, 'package.json')
-      const version = readPackageVersion(pkgPath)
+      const version = readPackageVersion(pkgPath) ?? match[1]
       if (version) {
         versions.add(version)
       }
