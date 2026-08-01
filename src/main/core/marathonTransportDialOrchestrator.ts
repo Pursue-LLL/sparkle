@@ -56,7 +56,7 @@ import {
 } from './marathonStreamRegistryCore'
 import { readMarathonSegmentCache } from './marathonSegmentCache'
 import { ingestValidatedLedgerTerminals } from './validatedLedgerTerminalIngest'
-import { resolveTerminalOriginalRequestIds } from './streamLifecycleProjectionCore'
+import { resolveTerminalOriginalRequestIdsFromEvents } from './streamLifecycleProjectionCore'
 import {
   MTDO_ACTIVE_STREAM_MAX_GAP_MS,
   MTDO_MARATHON_STREAM_MIN_AGE_MS,
@@ -759,16 +759,18 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       ledgerTerminals,
     })
     const persistedLifecycleEvents = readStreamLifecycleJournalTail()
-    mergeStreamLifecycleJournalEvents(persistedLifecycleEvents, projectedLifecycleEvents)
+    const mergedLifecycleEvents = mergeStreamLifecycleJournalEvents(
+      persistedLifecycleEvents,
+      projectedLifecycleEvents,
+    )
     const persistedIds = new Set(persistedLifecycleEvents.map((event) => event.eventId))
     const newLifecycleEvents = projectedLifecycleEvents.filter(
       (event) => !persistedIds.has(event.eventId),
     )
     appendStreamLifecycleJournalEvents(newLifecycleEvents)
-    const terminalOriginalRequestIds = resolveTerminalOriginalRequestIds({
-      segments: marathonSegments,
-      ledgerTerminals,
-    })
+    const terminalOriginalRequestIds = resolveTerminalOriginalRequestIdsFromEvents(
+      mergedLifecycleEvents,
+    )
 
     const selectionBase: MarathonTransportDialSelectionContext = {
       nowMs,

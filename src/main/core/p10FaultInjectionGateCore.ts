@@ -2,7 +2,11 @@
 // [OUTPUT] runP10FaultInjectionGate
 // [POS] P10-6 fault matrix skeleton — event reorder/drop must not corrupt lifecycle or admission.
 
-import { reduceStreamLifecycleEvents, type StreamLifecycleEvent } from './streamLifecycleTruthCore'
+import {
+  countTerminalRecoveryCandidates,
+  reduceStreamLifecycleEvents,
+  type StreamLifecycleEvent,
+} from './streamLifecycleTruthCore'
 import {
   createInitialDialAdmissionState,
   markDialAdmissionOutcome,
@@ -92,6 +96,92 @@ export function runP10FaultInjectionGate(): P10FaultInjectionGateResult {
     name: 'admission_duplicate_after_ineffective',
     ok: first.admitted && !second.admitted,
     detail: second.reason,
+  })
+
+  const parallelEvents: StreamLifecycleEvent[] = [
+    {
+      eventId: 'start:a:1000',
+      sequence: 1,
+      occurredAtMs: 1000,
+      rendererBootId: 'boot-p',
+      composerId: 'comp-a',
+      originalRequestId: 'orig-a',
+      segmentRequestId: 'req-a',
+      generation: 0,
+      kind: 'physical_start',
+    },
+    {
+      eventId: 'start:b:1100',
+      sequence: 2,
+      occurredAtMs: 1100,
+      rendererBootId: 'boot-p',
+      composerId: 'comp-b',
+      originalRequestId: 'orig-b',
+      segmentRequestId: 'req-b',
+      generation: 0,
+      kind: 'physical_start',
+    },
+    {
+      eventId: 'terminal:b:5000',
+      sequence: 3,
+      occurredAtMs: 5000,
+      rendererBootId: 'boot-p',
+      composerId: 'comp-b',
+      originalRequestId: 'orig-b',
+      segmentRequestId: 'req-b',
+      generation: 0,
+      kind: 'terminal',
+      terminalKind: 'server_eof',
+    },
+    {
+      eventId: 'start:c:1200',
+      sequence: 4,
+      occurredAtMs: 1200,
+      rendererBootId: 'boot-p',
+      composerId: 'comp-c',
+      originalRequestId: 'orig-c',
+      segmentRequestId: 'req-c',
+      generation: 0,
+      kind: 'physical_start',
+    },
+  ]
+  const parallelState = reduceStreamLifecycleEvents(parallelEvents)
+  const recoveryCandidates = countTerminalRecoveryCandidates(parallelState)
+  const terminalB = parallelState.get('comp-b|orig-b|0')?.phase === 'terminal'
+  const activeA = parallelState.get('comp-a|orig-a|0')?.phase === 'active'
+  const activeC = parallelState.get('comp-c|orig-c|0')?.phase === 'active'
+  cases.push({
+    name: 'parallel_composers_terminal_isolated',
+    ok: terminalB && activeA && activeC && recoveryCandidates === 2,
+    detail: `recovery_candidates=${recoveryCandidates}`,
+  })
+
+  let parallelAdmission = createInitialDialAdmissionState()
+  const incidents = ['inc-a', 'inc-b']
+  const admitted: string[] = []
+  for (const incident of incidents) {
+    const decision = resolveDialAdmission(parallelAdmission, {
+      dialId: `pd-${incident}`,
+      class: 'active_recovery',
+      caller: 'parallel-test',
+      incidentGeneration: incident,
+      submittedAtMs: Date.now(),
+    })
+    if (decision.admitted) {
+      admitted.push(incident)
+      parallelAdmission = decision.nextState
+      parallelAdmission = markDialAdmissionOutcome(
+        parallelAdmission,
+        `pd-${incident}`,
+        incident,
+        'SUCCESS',
+      )
+    }
+  }
+  cases.push({
+    name: 'parallel_composer_admission_independent_incidents',
+    ok: admitted.length === 2,
+    detail: `admitted=${admitted.join(',')}`,
   })
 
   const ok = cases.every((item) => item.ok)
