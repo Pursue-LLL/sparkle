@@ -28,9 +28,11 @@ export interface MaxStepsRateWindowStats {
   startedTurns: number
   completedTurns: number
   maxStepsTurns: number
+  resourceExhaustedTurns: number
   earlyDisconnectTurns: number
   inProgressTurns: number
   maxStepsRatePct: number
+  resourceExhaustedRatePct: number
 }
 
 export interface MaxStepsRateSnapshot {
@@ -49,6 +51,19 @@ export function isMaxStepsTerminalRow(row: AgentTransportFailureRow): boolean {
   }
   const errMsg = String(row.errMsg ?? '')
   return /maximum number of steps/i.test(errMsg)
+}
+
+/** Transport mislabel — L3 disconnect wrapped as resource_exhausted (9480ace0-class). */
+export function isResourceExhaustedTerminalRow(row: AgentTransportFailureRow): boolean {
+  if (isMaxStepsTerminalRow(row)) {
+    return false
+  }
+  const reasonSub = String(row.reasonSub ?? '').toLowerCase()
+  if (reasonSub === 'resource-exhausted' || reasonSub === 'resource_exhausted') {
+    return true
+  }
+  const errMsg = String(row.errMsg ?? '')
+  return /resource_exhausted/i.test(errMsg)
 }
 
 function isTurnStartSegment(record: MarathonSegmentCacheRecord): boolean {
@@ -83,8 +98,9 @@ function collectTurnStarts(
 function classifyTurns(
   startedByOriginal: ReadonlyMap<string, MarathonSegmentCacheRecord>,
   terminals: ReadonlyMap<string, AgentTransportFailureRow>,
-): Omit<MaxStepsRateWindowStats, 'windowLabel' | 'maxStepsRatePct'> {
+): Omit<MaxStepsRateWindowStats, 'windowLabel' | 'maxStepsRatePct' | 'resourceExhaustedRatePct'> {
   let maxStepsTurns = 0
+  let resourceExhaustedTurns = 0
   let earlyDisconnectTurns = 0
   let completedTurns = 0
 
@@ -98,6 +114,9 @@ function classifyTurns(
       maxStepsTurns += 1
     } else {
       earlyDisconnectTurns += 1
+      if (isResourceExhaustedTerminalRow(terminal)) {
+        resourceExhaustedTurns += 1
+      }
     }
   }
 
@@ -106,6 +125,7 @@ function classifyTurns(
     startedTurns,
     completedTurns,
     maxStepsTurns,
+    resourceExhaustedTurns,
     earlyDisconnectTurns,
     inProgressTurns: Math.max(0, startedTurns - completedTurns),
   }
@@ -117,12 +137,13 @@ function pct(maxStepsTurns: number, startedTurns: number): number {
 
 function buildWindowStats(
   label: string,
-  counts: Omit<MaxStepsRateWindowStats, 'windowLabel' | 'maxStepsRatePct'>,
+  counts: Omit<MaxStepsRateWindowStats, 'windowLabel' | 'maxStepsRatePct' | 'resourceExhaustedRatePct'>,
 ): MaxStepsRateWindowStats {
   return {
     windowLabel: label,
     ...counts,
     maxStepsRatePct: pct(counts.maxStepsTurns, counts.startedTurns),
+    resourceExhaustedRatePct: pct(counts.resourceExhaustedTurns, counts.startedTurns),
   }
 }
 
@@ -217,6 +238,8 @@ export function formatMaxStepsRateLogLine(
     ` started_turns=${p.startedTurns}` +
     ` max_steps_turns=${p.maxStepsTurns}` +
     ` rate_pct_turn=${p.maxStepsRatePct.toFixed(1)}` +
+    ` resource_exhausted_turns=${p.resourceExhaustedTurns}` +
+    ` rate_pct_resource_exhausted=${p.resourceExhaustedRatePct.toFixed(1)}` +
     ` ledger_terminals=${snapshot.ledgerTerminalCount}` +
     ` window_h=24 started_24h=${a.startedTurns}` +
     ` max_steps_24h=${a.maxStepsTurns}` +

@@ -5,6 +5,7 @@ import type { MarathonSegmentCacheRecord } from './marathonSegmentCache'
 import {
   computeMaxStepsRateSnapshot,
   isMaxStepsTerminalRow,
+  isResourceExhaustedTerminalRow,
   MAX_STEPS_RATE_TARGET_PCT,
 } from './maxStepsRateObserverCore'
 
@@ -37,6 +38,25 @@ test('isMaxStepsTerminalRow detects reasonSub and errMsg', () => {
   assert.equal(isMaxStepsTerminalRow({ ts: nowMs, reasonSub: 'server-eof' }), false)
 })
 
+test('isResourceExhaustedTerminalRow detects transport mislabel without counting max-steps', () => {
+  assert.equal(
+    isResourceExhaustedTerminalRow({ ts: nowMs, errMsg: '[resource_exhausted] Error' }),
+    true,
+  )
+  assert.equal(
+    isResourceExhaustedTerminalRow({ ts: nowMs, reasonSub: 'resource-exhausted' }),
+    true,
+  )
+  assert.equal(
+    isResourceExhaustedTerminalRow({
+      ts: nowMs,
+      reasonSub: 'max-steps-cap',
+      errMsg: 'Reached maximum number of steps',
+    }),
+    false,
+  )
+})
+
 test('computeMaxStepsRateSnapshot uses rolling100 primary and 24h aux', () => {
   const segments: MarathonSegmentCacheRecord[] = [
     segment({ originalRequestId: 'turn-a' }),
@@ -62,18 +82,32 @@ test('computeMaxStepsRateSnapshot uses rolling100 primary and 24h aux', () => {
       reasonSub: 'server-eof',
       errMsg: 'Stream ended',
     },
+    {
+      ts: nowMs - 3_000,
+      originalRequestId: 'turn-d',
+      reasonSub: 'resource-exhausted',
+      errMsg: '[resource_exhausted] Error',
+    },
   ]
 
-  const snapshot = computeMaxStepsRateSnapshot(segments, failures, nowMs)
+  const segmentsWithD = [
+    ...segments,
+    segment({ originalRequestId: 'turn-d' }),
+  ]
+
+  const snapshot = computeMaxStepsRateSnapshot(segmentsWithD, failures, nowMs)
   assert.equal(snapshot.primary.windowLabel, 'rolling100')
-  assert.equal(snapshot.primary.startedTurns, 3)
-  assert.equal(snapshot.primary.completedTurns, 2)
+  assert.equal(snapshot.primary.startedTurns, 4)
+  assert.equal(snapshot.primary.completedTurns, 3)
   assert.equal(snapshot.primary.maxStepsTurns, 1)
-  assert.equal(snapshot.primary.earlyDisconnectTurns, 1)
+  assert.equal(snapshot.primary.resourceExhaustedTurns, 1)
+  assert.equal(snapshot.primary.earlyDisconnectTurns, 2)
   assert.equal(snapshot.primary.inProgressTurns, 1)
-  assert.equal(snapshot.primary.maxStepsRatePct, 33.3)
-  assert.equal(snapshot.aux24h.startedTurns, 2)
+  assert.equal(snapshot.primary.maxStepsRatePct, 25)
+  assert.equal(snapshot.primary.resourceExhaustedRatePct, 25)
+  assert.equal(snapshot.aux24h.startedTurns, 3)
   assert.equal(snapshot.aux24h.maxStepsTurns, 1)
+  assert.equal(snapshot.aux24h.resourceExhaustedTurns, 1)
   assert.equal(snapshot.belowTarget, true)
   assert.equal(snapshot.targetPct, MAX_STEPS_RATE_TARGET_PCT)
   assert.equal(snapshot.ledgerTerminalCount, 0)
