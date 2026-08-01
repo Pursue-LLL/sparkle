@@ -75,21 +75,22 @@ describe('frozenSurgicalPruneCore R-34c', () => {
     assert.equal(plan.reason, 'single_stall_vitality')
   })
 
-  it('P10-2 blocks all data-plane mutation while marathon active', () => {
+  it('P10-2 blocks legacy generic prune while marathon active (carrier path exempt)', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
-      observation: baseObservation,
+      observation: { ...baseObservation, stallMs: 85_000 },
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
       staleRequestIdCount: 2,
       lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
       marathonActive: true,
+      registry: { records: new Map() },
     })
     assert.equal(plan.action, 'none')
     assert.equal(plan.reason, 'marathon_active_zero_data_plane_mutation')
   })
 
-  it('R-35b defers carrier prune while marathon active (P10-2 zero mutation)', () => {
+  it('R-35b carrier prune allowed during marathon when registry proves stale SSE', () => {
     const nowMs = 1_000_000
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: {
@@ -120,8 +121,56 @@ describe('frozenSurgicalPruneCore R-34c', () => {
         ]),
       },
     })
-    assert.equal(plan.action, 'none')
-    assert.equal(plan.reason, 'marathon_active_zero_data_plane_mutation')
+    assert.equal(plan.action, 'close_frozen_connection')
+    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
+    assert.equal(plan.carrierRid, 'rid-carrier')
+    assert.equal(plan.staleProofKind, 'registry_gap')
+  })
+
+  it('9480ace0-class: token_gap stale during marathon closes carrier conn not legacy path', () => {
+    const plan = resolveFrozenSurgicalPrunePlan({
+      observation: {
+        ...baseObservation,
+        stallMs: 47_000,
+        host: 'api2direct.cursor.sh',
+      },
+      tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
+      staleRequestIdCount: 1,
+      staleRequestIds: ['9480ace0-4dfd-4bf5-99e0-0f9ee5639d67'],
+      lastGlobalPruneAtMs: 0,
+      lastRecoveryAtMsByConnectionId: new Map(),
+      nowMs: 1_000_000,
+      marathonActive: true,
+      registryMaxGapSinceActivityMs: 0,
+      registry: { records: new Map() },
+    })
+    assert.equal(plan.action, 'close_frozen_connection')
+    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
+    assert.equal(plan.carrierRid, '9480ace0-4dfd-4bf5-99e0-0f9ee5639d67')
+    assert.equal(plan.staleProofKind, 'token_gap')
+  })
+
+  it('9480ace0 replay: token_gap stale with marathonTruth false prefers carrier over legacy prune', () => {
+    const plan = resolveFrozenSurgicalPrunePlan({
+      observation: {
+        ...baseObservation,
+        stallMs: 210_995,
+        host: 'api2.cursor.sh',
+        connectionId: 'c8ed1237-a515-41c3-b4ed-5b0c92eb6e86',
+      },
+      tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 50_000,
+      staleRequestIdCount: 2,
+      staleRequestIds: ['9480ace0-4dfd-4bf5-99e0-0f9ee5639d67', 'e7b65ffd-607b-4d59-b48e-1e2776005364'],
+      lastGlobalPruneAtMs: 0,
+      lastRecoveryAtMsByConnectionId: new Map(),
+      nowMs: 1_000_000,
+      marathonActive: false,
+      registryMaxGapSinceActivityMs: 0,
+      registry: { records: new Map() },
+    })
+    assert.equal(plan.action, 'close_frozen_connection')
+    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
+    assert.equal(plan.carrierRid, '9480ace0-4dfd-4bf5-99e0-0f9ee5639d67')
   })
 
   it('07-31 stall_ms=213944 replay closes frozen connection under R-34 five-gate AND', () => {
