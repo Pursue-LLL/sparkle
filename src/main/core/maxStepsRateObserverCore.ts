@@ -12,6 +12,10 @@ import {
 
 import type { StreamAttemptMaxStepsRateSnapshot } from './streamAttemptMaxStepsRateCore'
 import { formatStreamAttemptMaxStepsRateLogSuffix } from './streamAttemptMaxStepsRateCore'
+import {
+  formatPhysicalMaxStepsRateLogSuffix,
+  type PhysicalMaxStepsRateSnapshot,
+} from './physicalMaxStepsRateCore'
 
 export const MAX_STEPS_RATE_ROLLING_TURN_LIMIT = 100
 export const MAX_STEPS_RATE_AUX_WINDOW_MS = 86_400_000
@@ -185,19 +189,30 @@ export function computeMaxStepsRateSnapshot(
 export function formatMaxStepsRateLogLine(
   snapshot: MaxStepsRateSnapshot,
   attemptSnapshot?: StreamAttemptMaxStepsRateSnapshot,
+  physicalSnapshot?: PhysicalMaxStepsRateSnapshot,
 ): string {
   const p = snapshot.primary
   const a = snapshot.aux24h
   const attemptSuffix = attemptSnapshot ? formatStreamAttemptMaxStepsRateLogSuffix(attemptSnapshot) : ''
+  const physicalSuffix = physicalSnapshot ? formatPhysicalMaxStepsRateLogSuffix(physicalSnapshot) : ''
   const sloBelowTarget =
-    attemptSnapshot != null
-      ? attemptSnapshot.belowTarget
-      : snapshot.belowTarget
+    physicalSnapshot?.valid === true
+      ? physicalSnapshot.belowTarget
+      : attemptSnapshot != null
+        ? attemptSnapshot.belowTarget
+        : snapshot.belowTarget
   const sloTargetPct =
-    attemptSnapshot != null ? attemptSnapshot.targetPct : snapshot.targetPct
+    physicalSnapshot?.valid === true
+      ? physicalSnapshot.targetPct
+      : attemptSnapshot != null
+        ? attemptSnapshot.targetPct
+        : snapshot.targetPct
+  const sloInvalid =
+    physicalSnapshot != null && !physicalSnapshot.valid ? 1 : 0
   return (
     `[MaxStepsRate]:` +
     attemptSuffix +
+    physicalSuffix +
     ` window_turn=${p.windowLabel}` +
     ` started_turns=${p.startedTurns}` +
     ` max_steps_turns=${p.maxStepsTurns}` +
@@ -208,6 +223,7 @@ export function formatMaxStepsRateLogLine(
     ` rate_pct_24h=${a.maxStepsRatePct.toFixed(1)}` +
     ` slo_target_pct=${sloTargetPct}` +
     ` below_target_slo=${sloBelowTarget ? 1 : 0}` +
+    ` physical_slo_invalid=${sloInvalid}` +
     ` cursor_app=3.1.15 observe_only=1\n`
   )
 }
