@@ -24,3 +24,10 @@ export function shouldDeferAppConfigMihomoReload(
   }
   return false
 }
+
+/** Profile save hot-reload uses the same marathon lifecycle defer contract as app-config IPC. */
+export function shouldDeferProfileProviderReload(
+  snapshot: AppConfigMihomoReloadGuardSnapshot,
+): boolean {
+  return shouldDeferAppConfigMihomoReload(snapshot)
+}

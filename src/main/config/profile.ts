@@ -318,6 +318,24 @@ export async function setProfileStr(id: string, content: string): Promise<void> 
   await writeFile(profilePath(id), content, 'utf-8')
 
   if (current === id) {
+    try {
+      const { readMarathonCoreRestartGuardSnapshot } = await import('../core/marathonCoreRestartGuard')
+      const { getMarathonQuiesceSnapshot } = await import('../core/marathonQuiesce')
+      const { shouldDeferProfileProviderReload } = await import('../core/appConfigMihomoReloadGuardCore')
+      const guardSnapshot = await readMarathonCoreRestartGuardSnapshot()
+      const quiesceSnapshot = getMarathonQuiesceSnapshot()
+      if (
+        shouldDeferProfileProviderReload({
+          quiesceActive: quiesceSnapshot.active,
+          cursorConnectionCount: guardSnapshot.cursorConnectionCount,
+          recentActiveLifecycleStreamCount: guardSnapshot.recentActiveLifecycleStreamCount,
+        })
+      ) {
+        return
+      }
+    } catch {
+      // Fall through to legacy reload when guard snapshot unavailable.
+    }
     // Rebuild merged profile (subscription + global override VPS) then hot-reload provider.
     // Raw updateProvider() alone drops override leaf nodes on scheduled subscription refresh.
     try {

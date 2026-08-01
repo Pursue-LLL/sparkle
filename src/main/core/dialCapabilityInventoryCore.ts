@@ -107,7 +107,7 @@ export const P10_DIAL_CAPABILITY_INVENTORY: readonly DialCapabilityEntry[] = [
     sourcePath: 'config/profile.ts',
     capability: 'profile_save_provider_reload',
     requiredArbiter: false,
-    requiredPatterns: ['reloadMihomoProfileProviders'],
+    requiredPatterns: ['shouldDeferProfileProviderReload', 'reloadMihomoProfileProviders'],
   },
 ]
 
