@@ -18,7 +18,8 @@ export const MARATHON_CORE_RESTART_SEGMENT_LOOKBACK_MS = 30 * 60 * 1000
 export interface MarathonCoreRestartGuardSnapshot {
   quiesceActive: boolean
   cursorConnectionCount: number
-  recentMarathonUserMessageCount: number
+  /** P10-1 lifecycle journal — active non-terminal generations within lookback. */
+  recentActiveLifecycleStreamCount: number
   updatedAtMs: number
 }
 
@@ -62,11 +63,11 @@ export function shouldBlockMarathonCoreColdRestart(
     }
   }
 
-  if (snapshot.recentMarathonUserMessageCount > 0) {
+  if (snapshot.recentActiveLifecycleStreamCount > 0) {
     return {
       blocked: true,
       forceOverride: false,
-      reason: 'recent_marathon_user_message',
+      reason: 'recent_active_lifecycle_stream',
     }
   }
 
@@ -85,7 +86,7 @@ export function formatCoreLifecycleBlockedLog(
   return (
     `[CoreLifecycle]: core_cold_restart_blocked caller=${caller} reason=${decision.reason} ` +
     `quiesce=${snapshot.quiesceActive ? '1' : '0'} cursor_conn=${snapshot.cursorConnectionCount}` +
-    ` recent_user_message=${snapshot.recentMarathonUserMessageCount}\n`
+    ` recent_active_lifecycle=${snapshot.recentActiveLifecycleStreamCount}\n`
   )
 }
 
@@ -96,7 +97,7 @@ export function formatCoreLifecycleScheduledLog(
   return (
     `[CoreLifecycle]: core_cold_restart_scheduled caller=${caller} ` +
     `quiesce=${snapshot.quiesceActive ? '1' : '0'} cursor_conn=${snapshot.cursorConnectionCount}` +
-    ` recent_user_message=${snapshot.recentMarathonUserMessageCount}\n`
+    ` recent_active_lifecycle=${snapshot.recentActiveLifecycleStreamCount}\n`
   )
 }
 
@@ -107,6 +108,7 @@ export function buildMarathonCoreRestartGuardStateFilePayload(
   updatedAtMs: number
   quiesceActive: boolean
   cursorConnectionCount: number
+  recentActiveLifecycleStreamCount: number
   blockColdRestart: boolean
   forceOverride: boolean
   connThreshold: number
@@ -116,7 +118,7 @@ export function buildMarathonCoreRestartGuardStateFilePayload(
     updatedAtMs: snapshot.updatedAtMs,
     quiesceActive: snapshot.quiesceActive,
     cursorConnectionCount: snapshot.cursorConnectionCount,
-    recentMarathonUserMessageCount: snapshot.recentMarathonUserMessageCount,
+    recentActiveLifecycleStreamCount: snapshot.recentActiveLifecycleStreamCount,
     blockColdRestart: decision.blocked,
     forceOverride,
     connThreshold: MARATHON_QUIESCE_ENTER_CONN_THRESHOLD,

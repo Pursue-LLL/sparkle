@@ -197,6 +197,33 @@ export function runP10FaultInjectionGate(): P10FaultInjectionGateResult {
     detail: thirdParallel.reason,
   })
 
+  const duplicateTerminalEvents: StreamLifecycleEvent[] = [
+    ...baseLifecycleEvents(),
+    {
+      eventId: 'terminal:orig-f:5001',
+      sequence: 3,
+      occurredAtMs: 5001,
+      rendererBootId: 'boot-f',
+      composerId: 'comp-f',
+      originalRequestId: 'orig-f',
+      segmentRequestId: 'req-f',
+      generation: 0,
+      kind: 'terminal',
+      terminalKind: 'client_abort',
+    },
+  ]
+  const duplicateTerminalState = reduceStreamLifecycleEvents(duplicateTerminalEvents)
+  const duplicateStillTerminal =
+    duplicateTerminalState.get('comp-f|orig-f|0')?.phase === 'terminal' &&
+    duplicateTerminalState.get('comp-f|orig-f|0')?.terminalKind === 'server_eof'
+  cases.push({
+    name: 'lifecycle_duplicate_terminal_idempotent',
+    ok: duplicateStillTerminal,
+    detail: duplicateStillTerminal
+      ? 'first terminal wins'
+      : 'duplicate terminal corrupted lifecycle',
+  })
+
   const ok = cases.every((item) => item.ok)
   return { ok, cases }
 }
