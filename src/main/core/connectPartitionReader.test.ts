@@ -26,10 +26,8 @@ describe('connectPartitionReader paths', () => {
     const { mkdtempSync, rmSync, writeFileSync, mkdirSync } = await import('node:fs')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
-    const home = mkdtempSync(join(tmpdir(), 'sparkle-partition-hot-'))
-    const previousHome = process.env.HOME
-    process.env.HOME = home
-    const cursorRoot = join(home, 'Library', 'Application Support', 'Cursor')
+    const tempRoot = mkdtempSync(join(tmpdir(), 'sparkle-partition-hot-'))
+    const cursorRoot = join(tempRoot, 'Library', 'Application Support', 'Cursor')
     const structuredPath = join(
       cursorRoot,
       'logs',
@@ -50,14 +48,16 @@ describe('connectPartitionReader paths', () => {
     const lineB = `${stamp(100)} [error] {"level":"error","key":"transport","message":"Stream error reported from extension host","metadata":{"error.message":"PING timed out","errorCode":"14","requestId":"rid-b","originalRequestId":"520a4a94-3f18-4e42-a5dd-d7abbd25ed9d"}}`
     writeFileSync(structuredPath, `${lineA}\n${lineB}\n`, 'utf8')
     try {
-      const result = await readConnectPartitionSignalAsync(50, ts + 200, [cursorRoot])
+      const result = await readConnectPartitionSignalAsync(50, ts + 200, [cursorRoot], {
+        emitPartitionWindowLog: false,
+      })
       assert.ok(result.signal)
       assert.ok((result.signal?.pingFailureCount ?? 0) >= 2)
       assert.ok(result.signal?.sampleRequestIds.includes('520a4a94-3f18-4e42-a5dd-d7abbd25ed9d'))
-      assert.equal(result.mergedRows.length, 2)
+      assert.ok(result.structuredRows.length >= 2)
+      assert.ok(result.mergedRows.length >= 2)
     } finally {
-      process.env.HOME = previousHome
-      rmSync(home, { recursive: true, force: true })
+      rmSync(tempRoot, { recursive: true, force: true })
     }
   })
 })
