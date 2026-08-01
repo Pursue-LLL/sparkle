@@ -29,24 +29,24 @@ export async function readMarathonCoreRestartGuardSnapshot(
 ): Promise<MarathonCoreRestartGuardSnapshot> {
   const quiesceSnapshot = getMarathonQuiesceSnapshot()
   const cursorConnectionCount = await countCursorConnections().catch(() => 0)
-  let recentMarathonUserMessageCount = 0
+  let recentActiveLifecycleStreamCount = 0
   try {
-    const { readMarathonSegmentCache } = await import('./marathonSegmentCache')
-    const { countRecentMarathonUserMessageSegments } = await import(
-      './marathonCoreRestartGuardSegmentsCore'
+    const { readStreamLifecycleJournalTail } = await import('./streamLifecycleJournal')
+    const { countRecentActiveLifecycleStreams } = await import(
+      './marathonCoreRestartGuardLifecycleCore'
     )
-    const records = await readMarathonSegmentCache(nowMs)
-    recentMarathonUserMessageCount = countRecentMarathonUserMessageSegments({
-      records,
+    const events = readStreamLifecycleJournalTail()
+    recentActiveLifecycleStreamCount = countRecentActiveLifecycleStreams({
+      events,
       nowMs,
     })
   } catch {
-    recentMarathonUserMessageCount = 0
+    recentActiveLifecycleStreamCount = 0
   }
   return {
     quiesceActive: quiesceSnapshot.active,
     cursorConnectionCount,
-    recentMarathonUserMessageCount,
+    recentActiveLifecycleStreamCount,
     updatedAtMs: nowMs,
   }
 }
