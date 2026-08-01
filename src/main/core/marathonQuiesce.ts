@@ -1,6 +1,6 @@
 // [INPUT] marathonQuiesceCore · factory · mihomoApi · appendAppLog
 // [OUTPUT] syncMarathonQuiesceIfNeeded · isMarathonQuiesceProxyHealthPaused · getMarathonQuiesceSnapshot
-// [POS] P9 + R-24 CB-3：conn≥12 quiesce ON/OFF；health-check.enable 热 patch + mihomo reload。
+// [POS] P9 + P10-2：conn≥12 quiesce ON/OFF；runtime yaml 持久化 health-check.enable，禁止 mihomo reload。
 
 import { getProfileConfig } from '../config'
 import { getAppConfig } from '../config/app'
@@ -15,7 +15,6 @@ import {
   isMarathonQuiesceActive,
   type MarathonQuiesceState,
 } from './marathonQuiesceCore'
-import { reloadMihomoConfigFromDisk } from './mihomoApi'
 import { refreshMarathonCoreRestartGuardStateFile } from './marathonCoreRestartGuard'
 
 let quiesceState: MarathonQuiesceState = createInitialMarathonQuiesceState()
@@ -48,13 +47,11 @@ async function applyMarathonQuiesceHealthCheckPatch(
     const { current } = await getProfileConfig()
     const { diffWorkDir = false } = await getAppConfig()
     const changed = await patchRuntimeProxyProviderHealthCheckEnable(current, enable, diffWorkDir)
-    if (changed) {
-      await reloadMihomoConfigFromDisk()
-    }
     await appendAppLog(
       `[MarathonQuiesce]: health_check_enable=${enable ? 1 : 0}` +
         ` cursor_conn=${cursorConnectionCount}` +
-        ` data_plane_action=${changed ? 'reload' : 'none'}\n`,
+        ` data_plane_action=${changed ? 'yaml_persist_only' : 'none'}` +
+        ` reload=0\n`,
     )
   } catch (error) {
     await appendAppLog(

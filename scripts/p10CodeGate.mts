@@ -9,6 +9,7 @@ function main(): void {
   const tests = [
     'src/main/core/p10ReplayGateCore.test.ts',
     'src/main/core/p10FaultInjectionGateCore.test.ts',
+    'src/main/core/dialCapabilityInventoryCore.test.ts',
   ]
   console.log('[P10CodeGate]: running frozen replay + fault injection tests')
   const result = spawnSync('npx', ['tsx', '--test', ...tests], {

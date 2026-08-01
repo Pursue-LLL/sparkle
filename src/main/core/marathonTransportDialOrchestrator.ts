@@ -284,11 +284,35 @@ async function shouldAllowConnectPathPulse(options: {
 async function executeConnectPathPulse(
   activeNode: string,
   cursorConnectionCount: number,
+  nowMs: number,
 ): Promise<ConnectPathPulseResult> {
   if (testConnectPathPulseOverride) {
     return testConnectPathPulseOverride(activeNode, cursorConnectionCount)
   }
+  const incidentGeneration = `connect_path_pulse:${activeNode}:${Math.floor(nowMs / 60_000)}`
+  const dialId = `connect_path_pulse:${incidentGeneration}:${nowMs}`
+  const { admitDialIntent, completeDialIntent } = await import('./dialAdmissionArbiter')
+  const admission = admitDialIntent({
+    dialId,
+    class: 'active_recovery',
+    caller: 'marathonTransportDialOrchestrator.connectPathPulse',
+    incidentGeneration,
+    node: activeNode,
+    submittedAtMs: nowMs,
+  })
+  if (!admission.admitted) {
+    await appendAppLog(
+      formatMtdoLogLine('marathon_connect_path_pulse', 'skipped_admission', {
+        cursor_conn: cursorConnectionCount,
+        node: activeNode,
+        reason: admission.reason,
+      }),
+    )
+    return lastCachedConnectPathPulse ?? buildConnectPathPulseFallback()
+  }
   const rescueDelayOptions = { purpose: 'marathon_rescue' as const }
+  let admissionOutcome: 'SUCCESS' | 'INEFFECTIVE' | 'INCONCLUSIVE' = 'INCONCLUSIVE'
+  try {
   const [api2directResult, api2Result, connectPathResult] = await Promise.all([
     mihomoProxyDelay(activeNode, API2DIRECT_PROBE_TARGET, rescueDelayOptions),
     mihomoProxyDelay(activeNode, API2_PROBE_TARGET, rescueDelayOptions),
@@ -336,10 +360,24 @@ async function executeConnectPathPulse(
       error_detail: `pulse api2=${api2DelayMs} api2direct=${api2directDelayMs} connect_path=${connectPathDelayMs}`,
     })
   }
-  lastObservabilityDialAtMs = Date.now()
+  lastObservabilityDialAtMs = nowMs
   lastAuthoritativeConnectPathDelayMs = connectPathDelayMs > 0 ? connectPathDelayMs : lastAuthoritativeConnectPathDelayMs
   lastCachedConnectPathPulse = { connectPathDelayMs, api2DelayMs, api2directDelayMs, partitionStale }
+  admissionOutcome = connectPathDelayMs > 0 || api2DelayMs > 0 ? 'SUCCESS' : 'INEFFECTIVE'
   return lastCachedConnectPathPulse
+  } catch (error) {
+    await appendAppLog(
+      formatMtdoLogLine('marathon_connect_path_pulse', 'failed', {
+        cursor_conn: cursorConnectionCount,
+        node: activeNode,
+        err: String(error),
+      }),
+    )
+    admissionOutcome = 'INCONCLUSIVE'
+    return lastCachedConnectPathPulse ?? buildConnectPathPulseFallback()
+  } finally {
+    completeDialIntent(dialId, incidentGeneration, admissionOutcome)
+  }
 }
 
 async function ensureCycleConnectPathPulse(
@@ -367,7 +405,7 @@ async function ensureCycleConnectPathPulse(
     cycleConnectPathPulse = fallback
     return { pulse: fallback, executed: false }
   }
-  const pulse = await executeConnectPathPulse(activeNode, cursorConnectionCount)
+  const pulse = await executeConnectPathPulse(activeNode, cursorConnectionCount, nowMs)
   cycleConnectPathPulse = pulse
   lastConnectPathPulseAtMs = nowMs
   lastConnectPathPartitionStale = pulse.partitionStale
