@@ -3,7 +3,10 @@ import { describe, it } from 'node:test'
 import {
   buildStreamLifecycleEventsFromSources,
   filterStaleRequestIdsForStreamLifecycle,
+  hasActiveMarathonStreamFromLifecycle,
+  reduceLifecycleStateFromEvents,
   resolveTerminalOriginalRequestIds,
+  resolveTerminalOriginalRequestIdsFromEvents,
 } from './streamLifecycleProjectionCore'
 
 describe('streamLifecycleProjectionCore P10-1', () => {
@@ -74,5 +77,50 @@ describe('streamLifecycleProjectionCore P10-1', () => {
     assert.equal(events.length, 2)
     assert.equal(events[0]?.kind, 'physical_start')
     assert.equal(events[1]?.kind, 'terminal')
+  })
+
+  it('hasActiveMarathonStreamFromLifecycle ignores terminal generations', () => {
+    const events = buildStreamLifecycleEventsFromSources({
+      segments: [
+        {
+          segmentId: 'seg-1',
+          requestId: 'req-1',
+          originalRequestId: 'orig-terminated',
+          composerId: 'comp-a',
+          actionCase: 'userMessage',
+          httpStartMs: 1_000,
+          recordedAtMs: 1_000,
+        },
+        {
+          segmentId: 'seg-2',
+          requestId: 'req-2',
+          originalRequestId: 'orig-active',
+          composerId: 'comp-b',
+          actionCase: 'userMessage',
+          httpStartMs: 2_000,
+          recordedAtMs: 2_000,
+        },
+      ],
+      ledgerTerminals: [
+        {
+          ts: 5_000,
+          originalRequestId: 'orig-terminated',
+          requestId: 'req-1',
+          composerId: 'comp-a',
+          isMaxSteps: false,
+          terminalKind: 'server_eof',
+        },
+      ],
+    })
+    const lifecycleState = reduceLifecycleStateFromEvents(events)
+    const terminalIds = resolveTerminalOriginalRequestIdsFromEvents(events)
+    const active = hasActiveMarathonStreamFromLifecycle(
+      lifecycleState,
+      terminalIds,
+      { records: new Map() },
+      8_000,
+      { minStreamAgeMs: 1_000, maxLastActivityGapMs: 10_000 },
+    )
+    assert.equal(active, true)
   })
 })
