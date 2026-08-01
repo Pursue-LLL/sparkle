@@ -109,4 +109,62 @@ describe('streamLifecycleTruthCore P10-1', () => {
     assert.equal(state.get(gen0)?.phase, 'terminal')
     assert.equal(state.get(gen1)?.phase, 'active')
   })
+
+  it('renderer reboot starts new generation without reviving terminal gen-0', () => {
+    const state = reduceStreamLifecycleEvents([
+      baseEvent({
+        sequence: 1,
+        rendererBootId: 'boot-old',
+        kind: 'physical_start',
+      }),
+      baseEvent({
+        sequence: 2,
+        rendererBootId: 'boot-old',
+        kind: 'terminal',
+        terminalKind: 'server_eof',
+      }),
+      baseEvent({
+        sequence: 3,
+        rendererBootId: 'boot-new',
+        generation: 1,
+        segmentRequestId: 'seg-reboot',
+        kind: 'physical_start',
+        occurredAtMs: 5_000,
+      }),
+    ])
+    const gen0 = buildStreamGenerationKey({
+      composerId: 'composer-a',
+      originalRequestId: 'orig-a',
+      generation: 0,
+    })
+    const gen1 = buildStreamGenerationKey({
+      composerId: 'composer-a',
+      originalRequestId: 'orig-a',
+      generation: 1,
+    })
+    assert.equal(state.get(gen0)?.phase, 'terminal')
+    assert.equal(state.get(gen1)?.phase, 'active')
+    assert.equal(isStreamGenerationRecoveryEligible(state, gen0), false)
+    assert.equal(isStreamGenerationRecoveryEligible(state, gen1), true)
+  })
+
+  it('duplicate terminal events are idempotent', () => {
+    const state = reduceStreamLifecycleEvents([
+      baseEvent({ sequence: 1, kind: 'physical_start' }),
+      baseEvent({ sequence: 2, kind: 'terminal', terminalKind: 'max_steps' }),
+      baseEvent({
+        sequence: 3,
+        kind: 'terminal',
+        terminalKind: 'turn_ended',
+        occurredAtMs: 3_000,
+      }),
+    ])
+    const key = buildStreamGenerationKey({
+      composerId: 'composer-a',
+      originalRequestId: 'orig-a',
+      generation: 0,
+    })
+    assert.equal(state.get(key)?.phase, 'terminal')
+    assert.equal(state.get(key)?.terminalKind, 'max_steps')
+  })
 })
