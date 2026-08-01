@@ -50,13 +50,16 @@ import {
   type MarathonTokenGapRecoverySnapshot,
 } from './marathonTokenGapSnapshotRetentionCore'
 import {
-  hasActiveMarathonStream,
   isTokenGapSuppressedForPendingTool,
   type MarathonStreamRegistry,
 } from './marathonStreamRegistryCore'
 import { readMarathonSegmentCache } from './marathonSegmentCache'
 import { ingestValidatedLedgerTerminals } from './validatedLedgerTerminalIngest'
-import { resolveTerminalOriginalRequestIdsFromEvents } from './streamLifecycleProjectionCore'
+import {
+  hasActiveMarathonStreamFromLifecycle,
+  reduceLifecycleStateFromEvents,
+  resolveTerminalOriginalRequestIdsFromEvents,
+} from './streamLifecycleProjectionCore'
 import {
   MTDO_ACTIVE_STREAM_MAX_GAP_MS,
   MTDO_MARATHON_STREAM_MIN_AGE_MS,
@@ -732,10 +735,6 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         tokenGapSignal.staleRequestIds,
         tokenGapSignal.maxGapMs,
       )
-    const marathonStreamActive = hasActiveMarathonStream(registry, nowMs, {
-      minStreamAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS,
-      maxLastActivityGapMs: MTDO_ACTIVE_STREAM_MAX_GAP_MS,
-    })
     const marathonTruthPulseDue = marathonTruth.pulseContractDue
 
     const recentProbe = getRecentCursorProbe()
@@ -770,6 +769,17 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     appendStreamLifecycleJournalEvents(newLifecycleEvents)
     const terminalOriginalRequestIds = resolveTerminalOriginalRequestIdsFromEvents(
       mergedLifecycleEvents,
+    )
+    const lifecycleState = reduceLifecycleStateFromEvents(mergedLifecycleEvents)
+    const marathonStreamActive = hasActiveMarathonStreamFromLifecycle(
+      lifecycleState,
+      terminalOriginalRequestIds,
+      registry,
+      nowMs,
+      {
+        minStreamAgeMs: MTDO_MARATHON_STREAM_MIN_AGE_MS,
+        maxLastActivityGapMs: MTDO_ACTIVE_STREAM_MAX_GAP_MS,
+      },
     )
 
     const selectionBase: MarathonTransportDialSelectionContext = {
