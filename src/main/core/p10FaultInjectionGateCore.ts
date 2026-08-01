@@ -157,31 +157,44 @@ export function runP10FaultInjectionGate(): P10FaultInjectionGateResult {
   })
 
   let parallelAdmission = createInitialDialAdmissionState()
-  const incidents = ['inc-a', 'inc-b']
-  const admitted: string[] = []
-  for (const incident of incidents) {
-    const decision = resolveDialAdmission(parallelAdmission, {
-      dialId: `pd-${incident}`,
-      class: 'active_recovery',
-      caller: 'parallel-test',
-      incidentGeneration: incident,
-      submittedAtMs: Date.now(),
-    })
-    if (decision.admitted) {
-      admitted.push(incident)
-      parallelAdmission = decision.nextState
-      parallelAdmission = markDialAdmissionOutcome(
-        parallelAdmission,
-        `pd-${incident}`,
-        incident,
-        'SUCCESS',
-      )
-    }
-  }
+  const firstParallel = resolveDialAdmission(parallelAdmission, {
+    dialId: 'pd-inc-a',
+    class: 'active_recovery',
+    caller: 'parallel-test',
+    incidentGeneration: 'inc-a',
+    submittedAtMs: 1,
+  })
+  parallelAdmission = firstParallel.nextState
+  const secondParallel = resolveDialAdmission(parallelAdmission, {
+    dialId: 'pd-inc-b',
+    class: 'active_recovery',
+    caller: 'parallel-test',
+    incidentGeneration: 'inc-b',
+    submittedAtMs: 2,
+  })
   cases.push({
-    name: 'parallel_composer_admission_independent_incidents',
-    ok: admitted.length === 2,
-    detail: `admitted=${admitted.join(',')}`,
+    name: 'global_control_inflight_blocks_cross_incident_dial',
+    ok: firstParallel.admitted && !secondParallel.admitted,
+    detail: secondParallel.reason,
+  })
+
+  parallelAdmission = markDialAdmissionOutcome(
+    parallelAdmission,
+    'pd-inc-a',
+    'inc-a',
+    'SUCCESS',
+  )
+  const thirdParallel = resolveDialAdmission(parallelAdmission, {
+    dialId: 'pd-inc-b2',
+    class: 'active_recovery',
+    caller: 'parallel-test',
+    incidentGeneration: 'inc-b',
+    submittedAtMs: 3,
+  })
+  cases.push({
+    name: 'parallel_composer_admission_after_prior_control_complete',
+    ok: thirdParallel.admitted,
+    detail: thirdParallel.reason,
   })
 
   const ok = cases.every((item) => item.ok)

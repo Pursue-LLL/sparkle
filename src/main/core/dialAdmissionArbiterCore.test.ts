@@ -54,6 +54,27 @@ describe('dialAdmissionArbiterCore P10-2', () => {
     assert.equal(second.reason, 'single_inflight_per_incident')
   })
 
+  it('blocks second active_recovery while global control dial is in-flight', () => {
+    let state = createInitialDialAdmissionState()
+    const first = resolveDialAdmission(state, {
+      dialId: 'd7',
+      class: 'active_recovery',
+      caller: 'mtdo',
+      incidentGeneration: 'inc-a',
+      submittedAtMs: 1,
+    })
+    state = first.nextState
+    const second = resolveDialAdmission(state, {
+      dialId: 'd8',
+      class: 'active_recovery',
+      caller: 'hy2TunnelVitality',
+      incidentGeneration: 'inc-b',
+      submittedAtMs: 2,
+    })
+    assert.equal(second.admitted, false)
+    assert.equal(second.reason, 'global_control_inflight')
+  })
+
   it('closes incident generation after INEFFECTIVE outcome', () => {
     let state = createInitialDialAdmissionState()
     const admitted = resolveDialAdmission(state, {

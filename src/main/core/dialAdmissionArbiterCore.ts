@@ -69,6 +69,17 @@ export function resolveDialAdmission(
     }
   }
   if (
+    intent.class === 'active_recovery' &&
+    state.inFlightDialId != null &&
+    state.inFlightIncidentGeneration !== intent.incidentGeneration
+  ) {
+    return {
+      admitted: false,
+      reason: 'global_control_inflight',
+      nextState: state,
+    }
+  }
+  if (
     state.inFlightDialId != null &&
     state.inFlightIncidentGeneration === intent.incidentGeneration
   ) {
