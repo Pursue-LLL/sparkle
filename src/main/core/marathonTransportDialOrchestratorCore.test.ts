@@ -28,7 +28,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       },
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
-      marathonStreamActive: true,
+      marathonStreamActive: false,
       marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
       terminalOriginalRequestIds: new Set(['rid-terminal']),
@@ -60,7 +60,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       },
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
-      marathonStreamActive: true,
+      marathonStreamActive: false,
       marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
@@ -78,7 +78,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       latencyDeltaRescueEligible: false,
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
-      marathonStreamActive: true,
+      marathonStreamActive: false,
       marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     }
@@ -115,7 +115,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       },
       connectPathPartitionDetected: true,
       tokenGapSuppressedPendingTool: false,
-      marathonStreamActive: true,
+      marathonStreamActive: false,
       marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
@@ -134,7 +134,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
         latencyDeltaRescueEligible: false,
         connectPathPartitionDetected: false,
         tokenGapSuppressedPendingTool: false,
-        marathonStreamActive: true,
+        marathonStreamActive: false,
         marathonTruthPulseDue: false,
         forceHighLatencyWarmth: false,
       }),
@@ -142,7 +142,31 @@ describe('marathonTransportDialOrchestratorCore', () => {
     )
   })
 
-  it('runs independent connect path pulse every 60s when marathon stream active', () => {
+  it('P10-2 defers all dial triggers while marathon lifecycle stream active', () => {
+    const nowMs = 10_000_000
+    const candidate = selectMarathonTransportDialTrigger({
+      nowMs,
+      cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      lastDialAtMs: 0,
+      lastConnectPathPulseAtMs: 0,
+      latencyDeltaHigh: false,
+      latencyDeltaRescueEligible: false,
+      tokenGap: {
+        maxGapMs: 25_000,
+        staleRequestIds: ['rid-a'],
+        lookbackMs: 180_000,
+        cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      },
+      connectPathPartitionDetected: false,
+      tokenGapSuppressedPendingTool: false,
+      marathonStreamActive: true,
+      marathonTruthPulseDue: true,
+      forceHighLatencyWarmth: false,
+    })
+    assert.equal(candidate, undefined)
+  })
+
+  it('runs independent connect path pulse when lifecycle stream inactive', () => {
     const nowMs = 10_000_000
     assert.equal(
       shouldRunIndependentConnectPathPulse({
@@ -154,11 +178,31 @@ describe('marathonTransportDialOrchestratorCore', () => {
       latencyDeltaRescueEligible: false,
         connectPathPartitionDetected: false,
         tokenGapSuppressedPendingTool: false,
-        marathonStreamActive: true,
+        marathonStreamActive: false,
       marathonTruthPulseDue: true,
         forceHighLatencyWarmth: false,
       }),
       true,
+    )
+  })
+
+  it('P10-2 blocks independent pulse while marathon lifecycle stream active', () => {
+    const nowMs = 10_000_000
+    assert.equal(
+      shouldRunIndependentConnectPathPulse({
+        nowMs,
+        cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+        lastDialAtMs: 0,
+        lastConnectPathPulseAtMs: nowMs - MTDO_CONNECT_PATH_PULSE_INTERVAL_MS,
+        latencyDeltaHigh: false,
+        latencyDeltaRescueEligible: false,
+        connectPathPartitionDetected: false,
+        tokenGapSuppressedPendingTool: false,
+        marathonStreamActive: true,
+        marathonTruthPulseDue: true,
+        forceHighLatencyWarmth: false,
+      }),
+      false,
     )
   })
 
@@ -180,7 +224,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
         },
         connectPathPartitionDetected: false,
         tokenGapSuppressedPendingTool: false,
-        marathonStreamActive: true,
+        marathonStreamActive: false,
       marathonTruthPulseDue: true,
         forceHighLatencyWarmth: false,
       }),
@@ -205,7 +249,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       },
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
-      marathonStreamActive: true,
+      marathonStreamActive: false,
       marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
@@ -223,7 +267,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       latencyDeltaRescueEligible: true,
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
-      marathonStreamActive: true,
+      marathonStreamActive: false,
       marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })
@@ -241,7 +285,7 @@ describe('marathonTransportDialOrchestratorCore', () => {
       latencyDeltaRescueEligible: false,
       connectPathPartitionDetected: false,
       tokenGapSuppressedPendingTool: false,
-      marathonStreamActive: true,
+      marathonStreamActive: false,
       marathonTruthPulseDue: true,
       forceHighLatencyWarmth: false,
     })

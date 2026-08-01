@@ -102,10 +102,20 @@ export function resolveMarathonTransportDialPlan(
   }
 }
 
+/** P10-2: zero data-plane dial/rescue/pulse while lifecycle reports active marathon stream. */
+export function shouldDeferMarathonTransportDialForActiveLifecycle(
+  context: MarathonTransportDialSelectionContext,
+): boolean {
+  return context.marathonStreamActive
+}
+
 /** P24: independent 60s cadence — gated on MarathonSSETruth parent-chain age, not registry tail age. */
 export function shouldRunIndependentConnectPathPulse(
   context: MarathonTransportDialSelectionContext,
 ): boolean {
+  if (shouldDeferMarathonTransportDialForActiveLifecycle(context)) {
+    return false
+  }
   if (context.cursorConnectionCount < CURSOR_HY2_MARATHON_CONN_THRESHOLD) {
     return false
   }
@@ -142,6 +152,9 @@ function applyLifecycleFilterToCandidate(
 export function selectMarathonTransportDialTrigger(
   context: MarathonTransportDialSelectionContext,
 ): MarathonTransportDialCandidate | undefined {
+  if (shouldDeferMarathonTransportDialForActiveLifecycle(context)) {
+    return undefined
+  }
   const candidates: MarathonTransportDialCandidate[] = []
 
   if (context.connectPartition) {
