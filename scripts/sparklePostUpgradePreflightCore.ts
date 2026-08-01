@@ -91,7 +91,8 @@ export function evaluateSparklePostUpgradePreflight(
   const r35Ready =
     input.mainAsarSource.includes('marathon_sse_carrier_frozen_prune') &&
     (input.mainAsarSource.includes('Hy2ParentSidecar') ||
-      input.mainAsarSource.includes('proactive_parent_sidecar_dial'))
+      input.mainAsarSource.includes('proactive_parent_sidecar_dial') ||
+      input.mainAsarSource.includes('hy2_parent_sidecar'))
   checks.push({
     id: 'r35_carrier_sidecar',
     ok: r35Ready,

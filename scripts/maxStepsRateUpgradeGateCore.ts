@@ -48,10 +48,16 @@ function parseFloatField(line: string | null, field: string): number | null {
 export function evaluateMaxStepsRateUpgradeGate(
   input: MaxStepsRateUpgradeGateInput,
 ): MaxStepsRateUpgradeGateResult {
-  const attemptsStarted = parseIntField(input.maxStepsLogLine, 'attempts_started')
+  const attemptsStarted =
+    parseIntField(input.maxStepsLogLine, 'cursor_requests_started') ??
+    parseIntField(input.maxStepsLogLine, 'attempts_started')
   const attemptRatePct =
-    parseFloatField(input.maxStepsLogLine, 'attempt_rate_pct') ?? input.snapshotAttemptRatePct
-  const belowTargetRaw = input.maxStepsLogLine?.match(/below_target_attempt=(\d+)/)?.[1]
+    parseFloatField(input.maxStepsLogLine, 'cursor_request_rate_pct') ??
+    parseFloatField(input.maxStepsLogLine, 'attempt_rate_pct') ??
+    input.snapshotAttemptRatePct
+  const belowTargetRaw =
+    input.maxStepsLogLine?.match(/below_target_cursor_request=(\d+)/)?.[1] ??
+    input.maxStepsLogLine?.match(/below_target_attempt=(\d+)/)?.[1]
   const belowTarget = belowTargetRaw === '1'
 
   if (attemptsStarted == null || attemptsStarted < G9_SOAK_MIN_ATTEMPTS) {

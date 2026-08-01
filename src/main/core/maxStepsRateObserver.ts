@@ -39,7 +39,7 @@ export async function logMaxStepsRateIfDue(nowMs: number = Date.now()): Promise<
   const ledgerRows = await ingestValidatedLedgerTerminals(nowMs)
   const snapshot = computeMaxStepsRateSnapshot(segments, failureRows, nowMs, undefined, undefined, undefined, ledgerRows)
   const attemptSnapshot = computeStreamAttemptMaxStepsRateSnapshot(ledgerRows, failureRows, segments, nowMs)
-  if (snapshot.primary.startedTurns === 0 && snapshot.aux24h.startedTurns === 0 && attemptSnapshot.primary.startedAttempts === 0) {
+  if (attemptSnapshot.primary.startedAttempts === 0 && snapshot.primary.startedTurns === 0 && snapshot.aux24h.startedTurns === 0) {
     return
   }
   lastLoggedAtMs = nowMs

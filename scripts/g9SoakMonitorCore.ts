@@ -45,12 +45,22 @@ export function parseG9SoakMetrics(
   recoveryLogLine: string | null,
   snapshotAttemptRatePct: number | null,
 ): G9SoakMonitorMetrics {
+  const cursorRateFromLog = parseFloatField(maxStepsLogLine, 'cursor_request_rate_pct')
   const attemptRateFromLog = parseFloatField(maxStepsLogLine, 'attempt_rate_pct')
-  const belowTargetRaw = maxStepsLogLine?.match(/below_target_attempt=(\d+)/)?.[1]
+  const attemptRatePct = cursorRateFromLog ?? attemptRateFromLog ?? snapshotAttemptRatePct
+  const belowTargetRaw =
+    maxStepsLogLine?.match(/below_target_cursor_request=(\d+)/)?.[1] ??
+    maxStepsLogLine?.match(/below_target_attempt=(\d+)/)?.[1]
+  const requestsStarted =
+    parseIntField(maxStepsLogLine, 'cursor_requests_started') ??
+    parseIntField(maxStepsLogLine, 'attempts_started')
+  const requestsEarlyDisconnect =
+    parseIntField(maxStepsLogLine, 'cursor_requests_early_disconnect') ??
+    parseIntField(maxStepsLogLine, 'attempts_early_disconnect')
   return {
-    attemptsStarted: parseIntField(maxStepsLogLine, 'attempts_started'),
-    attemptsEarlyDisconnect: parseIntField(maxStepsLogLine, 'attempts_early_disconnect'),
-    attemptRatePct: attemptRateFromLog ?? snapshotAttemptRatePct,
+    attemptsStarted: requestsStarted,
+    attemptsEarlyDisconnect: requestsEarlyDisconnect,
+    attemptRatePct,
     belowTargetAttempt:
       belowTargetRaw === '1' ? true : belowTargetRaw === '0' ? false : null,
     recoveryOutcome: recoveryLogLine?.match(/outcome=(\w+)/)?.[1] ?? null,

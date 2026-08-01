@@ -189,23 +189,25 @@ export function formatMaxStepsRateLogLine(
   const p = snapshot.primary
   const a = snapshot.aux24h
   const attemptSuffix = attemptSnapshot ? formatStreamAttemptMaxStepsRateLogSuffix(attemptSnapshot) : ''
+  const sloBelowTarget =
+    attemptSnapshot != null
+      ? attemptSnapshot.belowTarget
+      : snapshot.belowTarget
+  const sloTargetPct =
+    attemptSnapshot != null ? attemptSnapshot.targetPct : snapshot.targetPct
   return (
-    `[MaxStepsRate]: window=${p.windowLabel}` +
-    ` started=${p.startedTurns}` +
-    ` completed=${p.completedTurns}` +
-    ` max_steps=${p.maxStepsTurns}` +
-    ` early_disconnect=${p.earlyDisconnectTurns}` +
-    ` in_progress=${p.inProgressTurns}` +
-    ` rate_pct=${p.maxStepsRatePct.toFixed(1)}` +
+    `[MaxStepsRate]:` +
+    attemptSuffix +
+    ` window_turn=${p.windowLabel}` +
+    ` started_turns=${p.startedTurns}` +
+    ` max_steps_turns=${p.maxStepsTurns}` +
+    ` rate_pct_turn=${p.maxStepsRatePct.toFixed(1)}` +
     ` ledger_terminals=${snapshot.ledgerTerminalCount}` +
-    ` ledger_max_steps_primary=${snapshot.ledgerMaxStepsInPrimary}` +
     ` window_h=24 started_24h=${a.startedTurns}` +
     ` max_steps_24h=${a.maxStepsTurns}` +
-    ` early_disconnect_24h=${a.earlyDisconnectTurns}` +
     ` rate_pct_24h=${a.maxStepsRatePct.toFixed(1)}` +
-    ` target_pct=${snapshot.targetPct}` +
-    ` below_target=${snapshot.belowTarget ? 1 : 0}` +
-    attemptSuffix +
+    ` slo_target_pct=${sloTargetPct}` +
+    ` below_target_slo=${sloBelowTarget ? 1 : 0}` +
     ` cursor_app=3.1.15 observe_only=1\n`
   )
 }
