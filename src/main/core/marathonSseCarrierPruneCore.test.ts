@@ -36,6 +36,20 @@ describe('marathonSseCarrierPruneCore R-35b′', () => {
     assert.equal(ctx.staleProofKind, 'token_gap')
   })
 
+  it('9480ace0-class: token_gap stale eligible even when marathonTruth lagging false', () => {
+    const ctx = resolveMarathonSseCarrierPruneContext({
+      observation,
+      marathonActive: false,
+      tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 5_000,
+      staleRequestIds: ['9480ace0-4dfd-4bf5-99e0-0f9ee5639d67'],
+      registry: { records: new Map() },
+      nowMs: 1_000_000,
+    })
+    assert.equal(ctx.eligible, true)
+    assert.equal(ctx.carrierRid, '9480ace0-4dfd-4bf5-99e0-0f9ee5639d67')
+    assert.equal(ctx.staleProofKind, 'token_gap')
+  })
+
   it('maps carrier_rid from registry gap proof', () => {
     const nowMs = 1_000_000
     const ctx = resolveMarathonSseCarrierPruneContext({

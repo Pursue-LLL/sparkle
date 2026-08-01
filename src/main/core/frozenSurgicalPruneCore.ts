@@ -41,10 +41,7 @@ export interface FrozenSurgicalPruneGateInput {
 
 export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInput): FrozenSurgicalPrunePlan {
   const { observation, nowMs } = input
-
-  if (input.marathonActive === true) {
-    return { action: 'none', reason: 'marathon_active_zero_data_plane_mutation' }
-  }
+  const marathonActive = input.marathonActive === true
 
   if (observation.stallMs < MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
     return { action: 'none', reason: 'below_vitality_threshold' }
@@ -67,7 +64,6 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
     return { action: 'none', reason: 'connection_recovery_cooldown' }
   }
 
-  const marathonActive = input.marathonActive === true
   const carrierContext = resolveMarathonSseCarrierPruneContext({
     observation,
     marathonActive,
@@ -91,6 +87,11 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
       carrierRid: carrierContext.carrierRid,
       staleProofKind: carrierContext.staleProofKind,
     }
+  }
+
+  // P10-2: block generic legacy prune during marathon; carrier path above is the allowed exception.
+  if (marathonActive) {
+    return { action: 'none', reason: 'marathon_active_zero_data_plane_mutation' }
   }
 
   if (observation.stallMs >= MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS) {

@@ -151,7 +151,7 @@ export function runP10ActiveUnknownMutationNegativeGate(): P10ActiveUnknownMutat
       const source = readFileSync(join(coreDir, 'frozenSurgicalPruneCore.ts'), 'utf8')
       return source.includes('marathon_active_zero_data_plane_mutation')
     })(),
-    detail: 'R-34 carrier prune blocked while marathon active',
+    detail: 'R-34 legacy prune blocked while marathon active; carrier path exempt',
   })
 
   const inventoryModules = P10_DIAL_CAPABILITY_INVENTORY.length

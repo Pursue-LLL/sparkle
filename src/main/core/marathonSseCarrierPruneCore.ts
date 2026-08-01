@@ -66,7 +66,11 @@ export function resolveMarathonSseCarrierPruneContext(input: {
   )
   const base = { registryMaxGapSinceActivityMs }
 
-  if (!input.marathonActive || input.observation.kind !== 'single') {
+  const marathonOrTokenGapStale =
+    input.marathonActive ||
+    (input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS && input.staleRequestIds.length > 0)
+
+  if (!marathonOrTokenGapStale || input.observation.kind !== 'single') {
     return { eligible: false, ...base }
   }
   const host = input.observation.host?.trim() ?? ''
