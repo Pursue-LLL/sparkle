@@ -2,6 +2,8 @@
 // [OUTPUT] runP10PreDeployGate
 // [POS] SSOT §M.0.15.13 — single pre-deploy gate summary; nextGateAllowed only when code layer green.
 
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { runDialCapabilityInventoryAudit } from './dialCapabilityInventoryCore'
 import { runP10ActiveUnknownMutationNegativeGate } from './p10ActiveUnknownMutationNegativeGateCore'
@@ -14,6 +16,8 @@ import { runP10PhysicalKpiGateForBaselineFixture } from './p10PhysicalKpiGateCor
 import { runP10ReplayGate } from './p10ReplayGateCore'
 import { runP10StockParityGate } from './p10StockParityGateCore'
 import { runP10TunLatencyGate } from './p10TunLatencyGateCore'
+import type { P10MeasurementArtifact } from './p10MeasurementArtifactCore'
+import type { P10TunLatencyFixture } from './p10TunLatencyGateCore'
 
 export interface P10PreDeployGateCase {
   name: string
@@ -28,6 +32,25 @@ export interface P10PreDeployGateResult {
   codeLayerOk: boolean
   artifactLayerBlocked: boolean
   cases: P10PreDeployGateCase[]
+}
+
+export function loadLatestTunLatencyArtifact(): P10MeasurementArtifact<P10TunLatencyFixture> | undefined {
+  const dir = join(homedir(), '.sparkle', 'p10-artifacts')
+  if (!existsSync(dir)) {
+    return undefined
+  }
+  const files = readdirSync(dir)
+    .filter((name) => name.startsWith('tun-latency-') && name.endsWith('.json'))
+    .sort()
+  const latest = files.at(-1)
+  if (!latest) {
+    return undefined
+  }
+  try {
+    return JSON.parse(readFileSync(join(dir, latest), 'utf8')) as P10MeasurementArtifact<P10TunLatencyFixture>
+  } catch {
+    return undefined
+  }
 }
 
 export function runP10PreDeployGate(srcMainRoot: string): P10PreDeployGateResult {
@@ -85,21 +108,24 @@ export function runP10PreDeployGate(srcMainRoot: string): P10PreDeployGateResult
     detail: stock.cases[0]?.detail ?? 'awaiting artifact',
   })
 
-  const tun = runP10TunLatencyGate()
+  const tunArtifact = loadLatestTunLatencyArtifact()
+  const tun = runP10TunLatencyGate(tunArtifact ? { artifact: tunArtifact } : {})
   cases.push({
     name: 'p10_6_tun_tax_artifact',
-    ok: false,
-    blocked: true,
+    ok: tun.ok,
+    blocked: !tunArtifact,
     detail: tun.detail,
   })
 
   const codeLayerOk = cases
-    .filter((item) => !item.blocked)
+    .filter((item) => !item.name.startsWith('p10_6'))
     .every((item) => item.ok)
-  const artifactLayerBlocked = cases.some((item) => item.blocked)
-  const nextGateAllowed = codeLayerOk && !artifactLayerBlocked
+  const artifactCases = cases.filter((item) => item.name.startsWith('p10_6'))
+  const artifactLayerOk = artifactCases.every((item) => item.ok)
+  const artifactLayerBlocked = !artifactLayerOk
+  const nextGateAllowed = codeLayerOk && artifactLayerOk
   return {
-    ok: codeLayerOk,
+    ok: codeLayerOk && artifactLayerOk,
     nextGateAllowed,
     codeLayerOk,
     artifactLayerBlocked,
