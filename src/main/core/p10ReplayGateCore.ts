@@ -84,12 +84,40 @@ export function evaluateP10AdmissionStormMitigation(): P10BaselineVerdict {
   }
 }
 
+export function evaluateP10GlobalControlInflightMitigation(): P10BaselineVerdict {
+  let state = createInitialDialAdmissionState()
+  const first = resolveDialAdmission(state, {
+    dialId: 'd-pulse',
+    class: 'active_recovery',
+    caller: 'connectPathPulse',
+    incidentGeneration: 'inc-a',
+    submittedAtMs: 1,
+  })
+  state = first.nextState
+  const second = resolveDialAdmission(state, {
+    dialId: 'd-rescue',
+    class: 'active_recovery',
+    caller: 'marathonRescueDialExecutor',
+    incidentGeneration: 'inc-b',
+    submittedAtMs: 2,
+  })
+  const ok = first.admitted === true && second.admitted === false
+  return {
+    fixtureId: '0801_dial_storm',
+    ok,
+    detail: ok
+      ? 'global control in-flight blocks cross-incident dial storm'
+      : `expected global_control_inflight got ${second.reason}`,
+  }
+}
+
 export function runP10ReplayGate(input: P10ReplayGateInput = {}): P10ReplayGateResult {
   const verdicts: P10BaselineVerdict[] = [
     evaluateP10BadRulerFixture(),
     evaluateP10UnsupportedRegionGolden(input.innerSubtype0730 ?? 'ERROR_UNSUPPORTED_REGION'),
     evaluateP10Code8UnknownGolden(input.code8HasInnerDetails ?? false),
     evaluateP10AdmissionStormMitigation(),
+    evaluateP10GlobalControlInflightMitigation(),
   ]
   if (input.dialStormObserved) {
     verdicts.push(evaluateP10DialStormGolden(input.dialStormObserved))
