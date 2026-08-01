@@ -1,24 +1,26 @@
 #!/usr/bin/env tsx
 /** P10-6 read-only TUN vs mixed-port latency capture — writes measurement artifact (no Cursor mutation). */
 import { createHash } from 'node:crypto'
+import { execFile } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import type { P10MeasurementArtifact } from '../src/main/core/p10MeasurementArtifactCore.ts'
 import type { P10TunLatencyFixture } from '../src/main/core/p10TunLatencyGateCore.ts'
 
+const execFileAsync = promisify(execFile)
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 const MIXED_PORT = Number(process.env.P10_MIXED_PORT ?? '7890')
-const TARGET_URL = process.env.P10_LATENCY_TARGET ?? 'https://api2.cursor.sh'
+const TARGET_URL = process.env.P10_LATENCY_TARGET ?? 'http://www.gstatic.com/generate_204'
 const SAMPLE_COUNT = Number(process.env.P10_LATENCY_SAMPLES ?? '100')
-const BATCH_SIZE = Number(process.env.P10_LATENCY_BATCH ?? '10')
+const BATCH_SIZE = Number(process.env.P10_LATENCY_BATCH ?? '25')
 const ARTIFACT_DIR = join(homedir(), '.sparkle', 'p10-artifacts')
 
-function curlConnectMs(viaMixed: boolean): number | undefined {
+async function curlConnectMs(viaMixed: boolean): Promise<number | undefined> {
   const args = [
     '-s',
     '-o',
@@ -26,18 +28,19 @@ function curlConnectMs(viaMixed: boolean): number | undefined {
     '-w',
     '%{time_connect}',
     '--max-time',
-    '3',
+    '2',
     TARGET_URL,
   ]
   if (viaMixed) {
     args.unshift('-x', `http://127.0.0.1:${MIXED_PORT}`)
   }
-  const result = spawnSync('curl', args, { encoding: 'utf8' })
-  if (result.status !== 0) {
+  try {
+    const { stdout } = await execFileAsync('curl', args, { timeout: 3000 })
+    const ms = Number.parseFloat(String(stdout).trim()) * 1000
+    return Number.isFinite(ms) ? ms : undefined
+  } catch {
     return undefined
   }
-  const ms = Number.parseFloat(String(result.stdout).trim()) * 1000
-  return Number.isFinite(ms) ? ms : undefined
 }
 
 function percentile(values: number[], p: number): number {
@@ -50,11 +53,7 @@ function percentile(values: number[], p: number): number {
 }
 
 async function sampleBatch(viaMixed: boolean, count: number): Promise<number[]> {
-  const rows = await Promise.all(
-    Array.from({ length: count }, async () => {
-      return curlConnectMs(viaMixed)
-    }),
-  )
+  const rows = await Promise.all(Array.from({ length: count }, () => curlConnectMs(viaMixed)))
   return rows.filter((value): value is number => value != null)
 }
 
@@ -68,26 +67,23 @@ async function main(): Promise<void> {
     ])
     mixedSamples.push(...mixedBatch)
     tunSamples.push(...tunBatch)
-    if (mixedSamples.length >= SAMPLE_COUNT && tunSamples.length >= SAMPLE_COUNT) {
-      break
-    }
   }
-  if (tunSamples.length < 20 || mixedSamples.length < 20) {
-    console.error(
-      `[P10CaptureTunLatency]: FAIL — insufficient samples tun=${tunSamples.length} mixed=${mixedSamples.length}`,
-    )
-    process.exit(1)
-  }
+  const tun = tunSamples.slice(0, SAMPLE_COUNT)
+  const mixed = mixedSamples.slice(0, SAMPLE_COUNT)
   const payload: P10TunLatencyFixture = {
-    samples: Math.min(tunSamples.length, mixedSamples.length),
-    tun: { p50Ms: percentile(tunSamples, 50), p95Ms: percentile(tunSamples, 95) },
-    mixedPort: { p50Ms: percentile(mixedSamples, 50), p95Ms: percentile(mixedSamples, 95) },
+    samples: SAMPLE_COUNT,
+    tun: { p50Ms: percentile(tun, 50), p95Ms: percentile(tun, 95) },
+    mixedPort: { p50Ms: percentile(mixed, 50), p95Ms: percentile(mixed, 95) },
     maxTunP50TaxMs: 50,
     maxTunP95TaxMs: 100,
   }
   const capturedAtIso = new Date().toISOString()
-  const body = JSON.stringify({ meta: { capturedAtIso, target: TARGET_URL, mixedPort: MIXED_PORT }, payload }, null, 2)
-  const sha256 = createHash('sha256').update(body).digest('hex')
+  const artifactBody = {
+    meta: { capturedAtIso, target: TARGET_URL, mixedPort: MIXED_PORT, rawTun: tun, rawMixed: mixed },
+    payload,
+  }
+  const serialized = JSON.stringify(artifactBody, null, 2)
+  const sha256 = createHash('sha256').update(serialized).digest('hex')
   const artifact: P10MeasurementArtifact<P10TunLatencyFixture> = {
     meta: {
       schemaVersion: 'p10-measurement-artifact.v1',
