@@ -52,6 +52,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `maxStepsRateObserverCore.ts` / `maxStepsRateObserver.ts` | **P28** rolling100 max-steps 达成率 · `[MaxStepsRate]` @ hung_scan 5min · `~/.sparkle/max-steps-rate-snapshot.jsonl`（observe-only） |
 | `physicalMaxStepsRateCore.ts` | **P10-5** physical networkStartId rolling100 SLO · invalid until network_started coverage=100% |
 | `streamLifecycleTruthCore.ts` | **P10-1** stream lifecycle reducer ABSENT→ACTIVE→TERMINAL（irreversible） |
+| `streamLifecycleProjectionCore.ts` | **P10-1** segment/ledger → lifecycle projection · MTDO stale RID filter |
 | `p10BaselineFixturesCore.ts` | **P10-0** frozen replay fixtures（bad ruler · 07-30 unsupported_region · 08-01 dial storm） |
 | `validatedLedgerTerminalCore.ts` / `validatedLedgerTerminalIngest.ts` / `validatedLedgerTerminalProjectionCore.ts` | **G8** ledger ingest → MaxStepsRate merge (G8a) + jsonl projection (G8b) |
 | `quicStallSsotCore.ts` / `quicStallSsot.ts`                               | **P22b** `~/.sparkle/quic-stall-ssot.json` atom — Sparkle writer · patch-315 reader SSOT |

@@ -11,6 +11,31 @@ import {
 import { CURSOR_HY2_MARATHON_CONN_THRESHOLD } from './cursorHy2MarathonKeepaliveCore'
 
 describe('marathonTransportDialOrchestratorCore', () => {
+  it('drops rescue candidate when all stale rids are lifecycle-terminal', () => {
+    const nowMs = 10_000_000
+    const candidate = selectMarathonTransportDialTrigger({
+      nowMs,
+      cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      lastDialAtMs: 0,
+      lastConnectPathPulseAtMs: 0,
+      latencyDeltaHigh: false,
+      latencyDeltaRescueEligible: false,
+      tokenGap: {
+        maxGapMs: 25_000,
+        staleRequestIds: ['rid-terminal'],
+        lookbackMs: 180_000,
+        cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      },
+      connectPathPartitionDetected: false,
+      tokenGapSuppressedPendingTool: false,
+      marathonStreamActive: true,
+      marathonTruthPulseDue: true,
+      forceHighLatencyWarmth: false,
+      terminalOriginalRequestIds: new Set(['rid-terminal']),
+    })
+    assert.equal(candidate, undefined)
+  })
+
   it('prioritizes silent_generation_end over token_gap', () => {
     const nowMs = 10_000_000
     const candidate = selectMarathonTransportDialTrigger({
