@@ -1,41 +1,42 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import {
-  auditDialCapabilityInventory,
   P10_DIAL_CAPABILITY_INVENTORY,
+  discoverUnlistedDialMutationModules,
+  runDialCapabilityInventoryAudit,
 } from './dialCapabilityInventoryCore'
 
-const CORE_DIR = join(process.cwd(), 'src/main/core')
-
-function readCoreModule(fileName: string): string {
-  return readFileSync(join(CORE_DIR, fileName), 'utf8')
-}
+const SRC_MAIN = join(process.cwd(), 'src/main')
 
 describe('dialCapabilityInventoryCore P10-2', () => {
-  it('inventory covers all wired non-production dial modules', () => {
+  it('inventory covers wired non-production dial modules', () => {
     const modules = P10_DIAL_CAPABILITY_INVENTORY.map((entry) => entry.module)
     assert.ok(modules.includes('marathonRescueDialExecutor.ts'))
+    assert.ok(modules.includes('marathonWarmthDialExecutor.ts'))
     assert.ok(modules.includes('marathonTransportDialOrchestrator.ts'))
-    assert.ok(modules.includes('marathonQuiesce.ts'))
+    assert.ok(modules.includes('ipc.ts'))
   })
 
   it('passes static provenance audit for current codebase', () => {
-    const sources: Record<string, string> = {}
-    for (const entry of P10_DIAL_CAPABILITY_INVENTORY) {
-      sources[entry.module] = readCoreModule(entry.module)
-    }
-    const result = auditDialCapabilityInventory(sources)
+    const result = runDialCapabilityInventoryAudit(SRC_MAIN)
     assert.equal(
       result.ok,
       true,
-      result.violations.map((v) => `${v.module}:${v.missingPattern}`).join(', '),
+      [
+        ...result.violations.map((v) => `${v.module}:${v.missingPattern}`),
+        ...result.unlistedModules.map((m) => `unlisted:${m}`),
+      ].join(', '),
     )
   })
 
   it('marathonQuiesce does not call mihomo reload', () => {
-    const source = readCoreModule('marathonQuiesce.ts')
-    assert.doesNotMatch(source, /reloadMihomoConfigFromDisk/)
+    const result = runDialCapabilityInventoryAudit(SRC_MAIN)
+    assert.deepEqual(result.unlistedModules.filter((m) => m.includes('marathonQuiesce')), [])
+  })
+
+  it('discovers unlisted dial mutation modules when present', () => {
+    const unlisted = discoverUnlistedDialMutationModules(SRC_MAIN)
+    assert.ok(!unlisted.some((path) => path.endsWith('mihomoApi.ts')))
   })
 })

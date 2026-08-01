@@ -178,6 +178,24 @@ async function patchAppConfigWithServiceSync(patch: Partial<AppConfig>): Promise
 
   if (shouldReloadProfileForAppConfigPatch(patch)) {
     try {
+      const { readMarathonCoreRestartGuardSnapshot } = await import('../core/marathonCoreRestartGuard')
+      const { getMarathonQuiesceSnapshot } = await import('../core/marathonQuiesce')
+      const { shouldDeferAppConfigMihomoReload } = await import('../core/appConfigMihomoReloadGuardCore')
+      const guardSnapshot = await readMarathonCoreRestartGuardSnapshot()
+      const quiesceSnapshot = getMarathonQuiesceSnapshot()
+      const deferReload = shouldDeferAppConfigMihomoReload({
+        quiesceActive: quiesceSnapshot.active,
+        cursorConnectionCount: guardSnapshot.cursorConnectionCount,
+        recentActiveLifecycleStreamCount: guardSnapshot.recentActiveLifecycleStreamCount,
+      })
+      if (deferReload) {
+        void appendAppLog(
+          `[AppConfig]: defer mihomo profile reload quiesce=${quiesceSnapshot.active ? '1' : '0'}` +
+            ` cursor_conn=${guardSnapshot.cursorConnectionCount}` +
+            ` recent_active_lifecycle=${guardSnapshot.recentActiveLifecycleStreamCount}\n`,
+        )
+        return nextConfig
+      }
       const { generateProfile } = await import('../core/factory')
       const { reloadMihomoConfigFromDisk } = await import('../core/mihomoApi')
       await generateProfile()
