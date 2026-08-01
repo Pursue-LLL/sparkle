@@ -51,6 +51,9 @@ function main(): void {
     'src/main/core/p10FullMatrixGateCore.test.ts',
     'src/main/core/p10ActiveUnknownMutationNegativeGateCore.test.ts',
     'src/main/core/dialCapabilityInventoryCore.test.ts',
+    'src/main/core/p10PhysicalKpiGateCore.test.ts',
+    'src/main/core/p10ContinuationJournalCore.test.ts',
+    'src/main/core/streamContinuationJournal.test.ts',
   ]
   console.log('[P10CodeGate]: running §M.0.15.11.8 full matrix tests')
   const result = spawnSync('npx', ['tsx', '--test', ...tests], {
