@@ -476,6 +476,7 @@ async function executeDialPlan(
       trigger: candidate.trigger,
       maxGapMs: candidate.maxGapMs,
       staleRequestIdCount: candidate.staleRequestIdCount,
+      staleRequestIds: candidate.staleRequestIds,
       nowMs,
     })
     await appendAppLog(
@@ -495,6 +496,7 @@ async function executeDialPlan(
     trigger: candidate.trigger,
     maxGapMs: candidate.maxGapMs,
     staleRequestIdCount: candidate.staleRequestIdCount,
+    staleRequestIds: candidate.staleRequestIds,
     nowMs,
   })
   await appendAppLog(

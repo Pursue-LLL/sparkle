@@ -1,4 +1,4 @@
-// [INPUT] marathonSessionDialExecutorCore · cursorHy2MarathonKeepaliveCore
+// [INPUT] marathonSessionDialExecutorCore · cursorHy2MarathonKeepaliveCore · dialAdmissionArbiter
 // [OUTPUT] executeMarathonRescueDial
 // [POS] P19 — MTDO inline rescue dial; no MTDO re-entrancy guard (G10 fix).
 
@@ -13,6 +13,11 @@ import {
 } from './cursorHy2MarathonKeepaliveCore'
 import { resolveCursorDedicatedActiveNode } from './cursorDedicatedNodeResolver'
 import {
+  buildRecoveryIncidentGeneration,
+  completeDialIntent,
+} from './dialAdmissionArbiter'
+import type { DialAdmissionOutcome } from './dialAdmissionArbiterCore'
+import {
   executeHy2SessionDialWithGuard,
   formatMarathonRescueDialLogLine,
   getLastHy2SessionKeepaliveAtMs,
@@ -24,6 +29,19 @@ export interface MarathonRescueDialRequest {
   nowMs?: number
   maxGapMs?: number
   staleRequestIdCount?: number
+  staleRequestIds?: readonly string[]
+}
+
+function mapRescueDialAdmissionOutcome(
+  result: MarathonSessionKeepaliveResult,
+): DialAdmissionOutcome {
+  if (result.outcome === 'executed') {
+    return 'SUCCESS'
+  }
+  if (result.outcome === 'skipped_weak_probe') {
+    return 'INEFFECTIVE'
+  }
+  return 'INCONCLUSIVE'
 }
 
 function shouldApplyRescueCooldown(trigger: MarathonWarmthTrigger, nowMs: number): boolean {
@@ -79,6 +97,12 @@ export async function executeMarathonRescueDial(
 
   const logKind = resolveMarathonWarmthLogKind(trigger)
   const delayPurpose = trigger === 'hy2_parent_sidecar' ? 'hy2_parent_sidecar' : 'marathon_rescue'
+  const incidentGeneration = buildRecoveryIncidentGeneration(
+    trigger,
+    request.staleRequestIds,
+    nowMs,
+  )
+  const dialId = `${trigger}:${incidentGeneration}:${nowMs}`
   const result = await executeHy2SessionDialWithGuard({
     activeNode,
     cursorConnectionCount,
@@ -87,7 +111,19 @@ export async function executeMarathonRescueDial(
     logKind,
     weakProbeLogPrefix: `${logKind}_weak`,
     forceOnWeakProbe: true,
+    admissionIntent: {
+      dialId,
+      class: 'active_recovery',
+      caller: 'marathonRescueDialExecutor',
+      incidentGeneration,
+      node: activeNode,
+      submittedAtMs: nowMs,
+    },
   })
+
+  if (result.outcome !== 'skipped_admission') {
+    completeDialIntent(dialId, incidentGeneration, mapRescueDialAdmissionOutcome(result))
+  }
 
   if (!isSkipMarathonSessionDialAppLogForTests()) {
     const { appendAppLog } = await import('../utils/log')
