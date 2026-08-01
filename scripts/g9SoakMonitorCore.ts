@@ -14,6 +14,9 @@ export interface G9SoakMonitorMetrics {
   attemptRatePct: number | null
   belowTargetAttempt: boolean | null
   recoveryOutcome: string | null
+  physicalValid?: boolean | null
+  physicalSloInvalid?: boolean
+  physicalInvalidReason?: string
 }
 
 function parseIntField(line: string | null, field: string): number | null {
@@ -45,6 +48,10 @@ export function parseG9SoakMetrics(
   recoveryLogLine: string | null,
   snapshotAttemptRatePct: number | null,
 ): G9SoakMonitorMetrics {
+  const physicalValidRaw = maxStepsLogLine?.match(/physical_valid=(\d+)/)?.[1]
+  const physicalSloInvalidRaw = maxStepsLogLine?.match(/physical_slo_invalid=(\d+)/)?.[1]
+  const physicalInvalidReason =
+    maxStepsLogLine?.match(/physical_invalid_reason=([^\s]+)/)?.[1] ?? undefined
   const cursorRateFromLog = parseFloatField(maxStepsLogLine, 'cursor_request_rate_pct')
   const attemptRateFromLog = parseFloatField(maxStepsLogLine, 'attempt_rate_pct')
   const attemptRatePct = cursorRateFromLog ?? attemptRateFromLog ?? snapshotAttemptRatePct
@@ -64,11 +71,18 @@ export function parseG9SoakMetrics(
     belowTargetAttempt:
       belowTargetRaw === '1' ? true : belowTargetRaw === '0' ? false : null,
     recoveryOutcome: recoveryLogLine?.match(/outcome=(\w+)/)?.[1] ?? null,
+    physicalValid: physicalValidRaw === '1' ? true : physicalValidRaw === '0' ? false : null,
+    physicalSloInvalid: physicalSloInvalidRaw === '1',
+    physicalInvalidReason,
   }
 }
 
 export function evaluateG9SoakPass(metrics: G9SoakMonitorMetrics): boolean {
-  const { attemptsStarted, attemptRatePct, belowTargetAttempt } = metrics
+  const { attemptsStarted, attemptRatePct, belowTargetAttempt, physicalSloInvalid, physicalValid } =
+    metrics
+  if (physicalSloInvalid === true || physicalValid === false) {
+    return false
+  }
   if (attemptsStarted == null || attemptsStarted < G9_SOAK_MIN_ATTEMPTS) {
     return false
   }

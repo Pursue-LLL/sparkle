@@ -50,6 +50,9 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描；**L0–L3 marathon hard-disable**（conn≥12/quiesce）；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan |
 | `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a/b** ~85min 段轮换 detect @ hung_scan · marathon-segments cache merge · QUIC stall early handoff · **Sparkle detect-only**；Guard patch-315 **observe-only**（无 execute） |
 | `maxStepsRateObserverCore.ts` / `maxStepsRateObserver.ts` | **P28** rolling100 max-steps 达成率 · `[MaxStepsRate]` @ hung_scan 5min · `~/.sparkle/max-steps-rate-snapshot.jsonl`（observe-only） |
+| `physicalMaxStepsRateCore.ts` | **P10-5** physical networkStartId rolling100 SLO · invalid until network_started coverage=100% |
+| `streamLifecycleTruthCore.ts` | **P10-1** stream lifecycle reducer ABSENT→ACTIVE→TERMINAL（irreversible） |
+| `p10BaselineFixturesCore.ts` | **P10-0** frozen replay fixtures（bad ruler · 07-30 unsupported_region · 08-01 dial storm） |
 | `validatedLedgerTerminalCore.ts` / `validatedLedgerTerminalIngest.ts` / `validatedLedgerTerminalProjectionCore.ts` | **G8** ledger ingest → MaxStepsRate merge (G8a) + jsonl projection (G8b) |
 | `quicStallSsotCore.ts` / `quicStallSsot.ts`                               | **P22b** `~/.sparkle/quic-stall-ssot.json` atom — Sparkle writer · patch-315 reader SSOT |
 | `marathonSegmentCache.ts`                                                 | **P22b** append-only `marathon-segments.v1.jsonl` — immune to renderer log rotation |
