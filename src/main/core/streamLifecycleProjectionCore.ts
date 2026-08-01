@@ -69,11 +69,10 @@ export function buildStreamLifecycleEventsFromSources(input: {
   return events
 }
 
-export function resolveTerminalOriginalRequestIds(input: {
-  segments: readonly MarathonSegmentCacheRecord[]
-  ledgerTerminals: readonly ValidatedLedgerTerminalRow[]
-}): Set<string> {
-  const state = reduceStreamLifecycleEvents(buildStreamLifecycleEventsFromSources(input))
+export function resolveTerminalOriginalRequestIdsFromEvents(
+  events: readonly StreamLifecycleEvent[],
+): Set<string> {
+  const state = reduceStreamLifecycleEvents(events)
   const terminalOriginalRequestIds = new Set<string>()
   for (const [key, generationState] of state.entries()) {
     if (generationState.phase !== 'terminal') {
@@ -86,6 +85,13 @@ export function resolveTerminalOriginalRequestIds(input: {
     }
   }
   return terminalOriginalRequestIds
+}
+
+export function resolveTerminalOriginalRequestIds(input: {
+  segments: readonly MarathonSegmentCacheRecord[]
+  ledgerTerminals: readonly ValidatedLedgerTerminalRow[]
+}): Set<string> {
+  return resolveTerminalOriginalRequestIdsFromEvents(buildStreamLifecycleEventsFromSources(input))
 }
 
 export function filterStaleRequestIdsForStreamLifecycle(
