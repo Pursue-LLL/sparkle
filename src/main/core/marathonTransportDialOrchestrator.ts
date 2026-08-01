@@ -54,6 +54,9 @@ import {
   isTokenGapSuppressedForPendingTool,
   type MarathonStreamRegistry,
 } from './marathonStreamRegistryCore'
+import { readMarathonSegmentCache } from './marathonSegmentCache'
+import { ingestValidatedLedgerTerminals } from './validatedLedgerTerminalIngest'
+import { resolveTerminalOriginalRequestIds } from './streamLifecycleProjectionCore'
 import {
   MTDO_ACTIVE_STREAM_MAX_GAP_MS,
   MTDO_MARATHON_STREAM_MIN_AGE_MS,
@@ -701,6 +704,15 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       recentProbe?.latencyMs ?? 0,
     )
 
+    const [marathonSegments, ledgerTerminals] = await Promise.all([
+      readMarathonSegmentCache(nowMs),
+      ingestValidatedLedgerTerminals(nowMs),
+    ])
+    const terminalOriginalRequestIds = resolveTerminalOriginalRequestIds({
+      segments: marathonSegments,
+      ledgerTerminals,
+    })
+
     const selectionBase: MarathonTransportDialSelectionContext = {
       nowMs,
       cursorConnectionCount,
@@ -718,6 +730,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       marathonStreamActive,
       marathonTruthPulseDue,
       forceHighLatencyWarmth,
+      terminalOriginalRequestIds,
     }
 
     const tokenGapRescueIneffective =

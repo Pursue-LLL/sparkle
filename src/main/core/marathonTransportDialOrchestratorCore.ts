@@ -9,6 +9,7 @@ import {
   CURSOR_HY2_NUDGE_DEFER_THRESHOLD,
 } from './cursorHy2MarathonKeepaliveCore'
 import type { MarathonStreamTokenGapSignal } from './cursorStreamTokenGapCore'
+import { filterStaleRequestIdsForStreamLifecycle } from './streamLifecycleProjectionCore'
 
 export const MTDO_COALESCE_MS = 15_000
 /** R-21: warmth + vitality + pulse share one 60s observability slot (rescue exempt). */
@@ -54,6 +55,8 @@ export interface MarathonTransportDialSelectionContext {
   /** P24: pulse contract gate from httpStartMs parent-chain age. */
   marathonTruthPulseDue: boolean
   forceHighLatencyWarmth: boolean
+  /** P10-1: originalRequestIds with terminal lifecycle — excluded from rescue stale sets. */
+  terminalOriginalRequestIds?: ReadonlySet<string>
 }
 
 const TRIGGER_PRIORITY: readonly MarathonTransportDialTrigger[] = [
@@ -113,6 +116,27 @@ export function shouldRunIndependentConnectPathPulse(
     return true
   }
   return context.nowMs - context.lastConnectPathPulseAtMs >= MTDO_CONNECT_PATH_PULSE_INTERVAL_MS
+}
+
+function applyLifecycleFilterToCandidate(
+  candidate: MarathonTransportDialCandidate,
+  terminalOriginalRequestIds: ReadonlySet<string> | undefined,
+): MarathonTransportDialCandidate | undefined {
+  if (!candidate.staleRequestIds || candidate.staleRequestIds.length === 0) {
+    return candidate
+  }
+  const filtered = filterStaleRequestIdsForStreamLifecycle(
+    candidate.staleRequestIds,
+    terminalOriginalRequestIds,
+  )
+  if (filtered.length === 0) {
+    return undefined
+  }
+  return {
+    ...candidate,
+    staleRequestIds: filtered,
+    staleRequestIdCount: filtered.length,
+  }
 }
 
 export function selectMarathonTransportDialTrigger(
@@ -195,7 +219,7 @@ export function selectMarathonTransportDialTrigger(
   for (const priorityTrigger of TRIGGER_PRIORITY) {
     const match = candidates.find((candidate) => candidate.trigger === priorityTrigger)
     if (match) {
-      return match
+      return applyLifecycleFilterToCandidate(match, context.terminalOriginalRequestIds)
     }
   }
 
