@@ -28,13 +28,17 @@ describe('p10FullMatrixGateCore P10-6', () => {
     assert.equal(consumer.ok, true, consumer.cases.filter((c) => !c.ok).map((c) => c.name).join(','))
   })
 
-  it('passes stock-vs-telemetry frozen parity fixtures', () => {
+  it('rejects synthetic stock parity without measurement artifact', () => {
     const stock = runP10StockParityGate()
-    assert.equal(stock.ok, true, stock.cases.filter((c) => !c.ok).map((c) => c.detail).join(';'))
+    assert.equal(stock.ok, false)
+    assert.equal(stock.artifactBacked, false)
+    assert.match(stock.cases[0]?.detail ?? '', /missing artifact/)
   })
 
-  it('passes TUN-vs-mixed-port latency tax gate', () => {
+  it('rejects synthetic TUN tax without measurement artifact', () => {
     const tun = runP10TunLatencyGate()
-    assert.equal(tun.ok, true, tun.detail)
+    assert.equal(tun.ok, false)
+    assert.equal(tun.artifactBacked, false)
+    assert.match(tun.detail, /missing artifact/)
   })
 })

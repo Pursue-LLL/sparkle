@@ -1,6 +1,6 @@
 // [INPUT] module source inventory
-// [OUTPUT] auditDialCapabilityInventory · discoverUnlistedDialMutationModules
-// [POS] P10-2 SSOT — static dial-capability provenance audit; production bypass allowed.
+// [OUTPUT] auditDialCapabilityInventory · discoverUnlistedDataPlaneMutationModules
+// [POS] P10-2 SSOT — machine-generated dial/close/route/TUN capability provenance audit.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -30,12 +30,26 @@ export interface DialCapabilityInventoryResult {
 export const P10_DIAL_MUTATION_CANONICAL_HOLDERS: readonly string[] = [
   'core/mihomoApi.ts',
   'core/provider.ts',
+  'core/marathonCoreRestartGuard.ts',
+  'core/marathonRescueDialExecutor.ts',
+  'core/marathonWarmthDialExecutor.ts',
 ]
 
-/** Files that mutate mihomo/data-plane must appear in inventory or explicit guard. */
-export const P10_DIAL_MUTATION_MARKERS: readonly string[] = [
-  'reloadMihomoConfigFromDisk',
-  'reloadMihomoProfileProviders',
+/** Machine-scanned data-plane mutation call patterns (§M.0.15.13 item 3). */
+export const P10_DATA_PLANE_MUTATION_PATTERNS: readonly { id: string; pattern: RegExp }[] = [
+  { id: 'reloadMihomoConfigFromDisk', pattern: /\breloadMihomoConfigFromDisk\s*\(/ },
+  { id: 'reloadMihomoProfileProviders', pattern: /\breloadMihomoProfileProviders\s*\(/ },
+  { id: 'mihomoCloseConnection', pattern: /\bmihomoCloseConnection\s*\(/ },
+  { id: 'mihomoCloseConnections', pattern: /\bmihomoCloseConnections\s*\(/ },
+  { id: 'executeMarathonRescueDial', pattern: /\bexecuteMarathonRescueDial\s*\(/ },
+  { id: 'executeMarathonWarmthDial', pattern: /\bexecuteMarathonWarmthDial\s*\(/ },
+  { id: 'mihomoChangeProxy', pattern: /\bmihomoChangeProxy\s*\(/ },
+  { id: 'changeProxyApi', pattern: /\bchangeProxyApi\s*\(/ },
+  { id: 'mihomoFlushFakeIpCache', pattern: /\bmihomoFlushFakeIpCache\s*\(/ },
+  { id: 'restartMihomoConnections', pattern: /\brestartMihomoConnections\s*\(/ },
+  { id: 'restartMihomoLogs', pattern: /\brestartMihomoLogs\s*\(/ },
+  { id: 'startMihomoTraffic', pattern: /\bstartMihomoTraffic\s*\(/ },
+  { id: 'evaluateMarathonCoreColdRestart', pattern: /\bevaluateMarathonCoreColdRestart\s*\(/ },
 ]
 
 export const P10_DIAL_CAPABILITY_INVENTORY: readonly DialCapabilityEntry[] = [
@@ -66,6 +80,55 @@ export const P10_DIAL_CAPABILITY_INVENTORY: readonly DialCapabilityEntry[] = [
     capability: 'connect_path_pulse',
     requiredArbiter: true,
     requiredPatterns: ['admitDialIntent', 'connectPathPulse'],
+  },
+  {
+    module: 'cursorHy2MarathonKeepalive.ts',
+    sourcePath: 'core/cursorHy2MarathonKeepalive.ts',
+    capability: 'hy2_session_keepalive_rescue_warmth',
+    requiredArbiter: true,
+    requiredPatterns: ['executeMarathonRescueDial', 'executeMarathonWarmthDial'],
+  },
+  {
+    module: 'mihomoQuicSilentStallRecovery.ts',
+    sourcePath: 'core/mihomoQuicSilentStallRecovery.ts',
+    capability: 'quic_stall_frozen_prune_close',
+    requiredArbiter: false,
+    requiredPatterns: ['resolveFrozenSurgicalPrunePlan', 'marathonActive'],
+  },
+  {
+    module: 'cursorConnectionHygiene.ts',
+    sourcePath: 'core/cursorConnectionHygiene.ts',
+    capability: 'cursor_connection_hygiene_close',
+    requiredArbiter: false,
+    requiredPatterns: ['mihomoCloseConnection'],
+  },
+  {
+    module: 'cursorTransportHealth.ts',
+    sourcePath: 'core/cursorTransportHealth.ts',
+    capability: 'transport_recovery_l2_flush_close',
+    requiredArbiter: false,
+    requiredPatterns: ['decideTransportRecoveryExecution', 'mihomoCloseConnections'],
+  },
+  {
+    module: 'cursorDedicatedDefault.ts',
+    sourcePath: 'core/cursorDedicatedDefault.ts',
+    capability: 'cursor_dedicated_default_change_proxy',
+    requiredArbiter: false,
+    requiredPatterns: ['changeProxyApi', 'CURSOR_DEDICATED_GROUP_NAME'],
+  },
+  {
+    module: 'marathonProtocolContract.ts',
+    sourcePath: 'core/marathonProtocolContract.ts',
+    capability: 'marathon_protocol_cold_start_change_proxy',
+    requiredArbiter: false,
+    requiredPatterns: ['mihomoChangeProxy', 'marathonTruthActive'],
+  },
+  {
+    module: 'proxyHealthMonitor.ts',
+    sourcePath: 'core/proxyHealthMonitor.ts',
+    capability: 'commercial_proxy_failover_change_proxy',
+    requiredArbiter: false,
+    requiredPatterns: ['mihomoChangeProxy', 'isMarathonQuiesceProxyHealthPaused'],
   },
   {
     module: 'marathonQuiesce.ts',
@@ -108,6 +171,13 @@ export const P10_DIAL_CAPABILITY_INVENTORY: readonly DialCapabilityEntry[] = [
     capability: 'profile_save_provider_reload',
     requiredArbiter: false,
     requiredPatterns: ['shouldDeferProfileProviderReload', 'reloadMihomoProfileProviders'],
+  },
+  {
+    module: 'tray.ts',
+    sourcePath: 'resolve/tray.ts',
+    capability: 'tray_close_connections_change_proxy',
+    requiredArbiter: false,
+    requiredPatterns: ['mihomoCloseConnections', 'mihomoChangeProxy'],
   },
 ]
 
@@ -161,14 +231,22 @@ function listTypeScriptFiles(dir: string, prefix: string): string[] {
   return out
 }
 
-function sourceHasDialMutationCall(source: string): boolean {
-  return (
-    /\breloadMihomoConfigFromDisk\s*\(/.test(source) ||
-    /\breloadMihomoProfileProviders\s*\(/.test(source)
+export function sourceHasDataPlaneMutationCall(source: string): boolean {
+  return P10_DATA_PLANE_MUTATION_PATTERNS.some(({ pattern }) => pattern.test(source))
+}
+
+export function listDataPlaneMutationHits(source: string): string[] {
+  return P10_DATA_PLANE_MUTATION_PATTERNS.filter(({ pattern }) => pattern.test(source)).map(
+    ({ id }) => id,
   )
 }
 
+/** @deprecated use discoverUnlistedDataPlaneMutationModules */
 export function discoverUnlistedDialMutationModules(srcMainRoot: string): string[] {
+  return discoverUnlistedDataPlaneMutationModules(srcMainRoot)
+}
+
+export function discoverUnlistedDataPlaneMutationModules(srcMainRoot: string): string[] {
   const listedPaths = new Set(P10_DIAL_CAPABILITY_INVENTORY.map((entry) => entry.sourcePath))
   const unlisted: string[] = []
   for (const relPath of listTypeScriptFiles(srcMainRoot, '')) {
@@ -176,7 +254,7 @@ export function discoverUnlistedDialMutationModules(srcMainRoot: string): string
       continue
     }
     const source = readFileSync(join(srcMainRoot, relPath), 'utf8')
-    if (!sourceHasDialMutationCall(source)) {
+    if (!sourceHasDataPlaneMutationCall(source)) {
       continue
     }
     if (!listedPaths.has(relPath)) {
@@ -192,7 +270,7 @@ export function runDialCapabilityInventoryAudit(srcMainRoot: string): DialCapabi
     sourcesByModule[entry.module] = readFileSync(join(srcMainRoot, entry.sourcePath), 'utf8')
   }
   const base = auditDialCapabilityInventory(sourcesByModule)
-  const unlistedModules = discoverUnlistedDialMutationModules(srcMainRoot)
+  const unlistedModules = discoverUnlistedDataPlaneMutationModules(srcMainRoot)
   return {
     ok: base.ok && unlistedModules.length === 0,
     violations: base.violations,

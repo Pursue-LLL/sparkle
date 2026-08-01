@@ -47,14 +47,32 @@ export const P10_0721_CODE8_UNKNOWN_GOLDEN = {
 } as const
 
 /** Read-only Mac/VPS baseline manifest @ P10-0 capture — no secrets, hash-only. */
+export const P10_WORKBENCH_STOCK_PATCHED_DIFF = {
+  capturedAtIso: P10_BASELINE_CAPTURED_AT_ISO,
+  cursorAppPath: '/Applications/Cursor-3.1.15.app',
+  stockBackupPath:
+    '~/.cursor-patches/ifm-agent-stability/2026-08-01T10-19-06.085Z__Applications__Cursor-3.1.15.app__Contents__Resources__app__out__vs__workbench__workbench.desktop.main.js',
+  stockWorkbenchMainJsSha256:
+    '31edd10b2ab9db2530995cfb0c5cf4c20062f10eb568e7002889a6e1abb7419f',
+  stockWorkbenchMainJsBytes: 50_319_049,
+  stockIfmPatchMarkerCount: 0,
+  patchedWorkbenchMainJsSha256:
+    '08205fb9f7f73cf05b249394bf29c02305600c4d62a6cf5837e2ebe006732f1d',
+  patchedWorkbenchMainJsBytes: 50_355_727,
+  patchedIfmPatchMarkerCount: 6,
+  patch482PresentOnDisk: true,
+  patch482ActiveInMemory: false,
+} as const
+
 export const P10_BASELINE_MANIFEST = {
   capturedAtIso: P10_BASELINE_CAPTURED_AT_ISO,
   cursor315: {
     appPath: 'Cursor-3.1.15.app',
-    workbenchMainJsSha256:
-      '08205fb9f7f73cf05b249394bf29c02305600c4d62a6cf5837e2ebe006732f1d',
-    workbenchMainJsBytes: 50_355_727,
-    workbenchIfmMarkerHits: 6,
+    workbenchMainJsSha256: P10_WORKBENCH_STOCK_PATCHED_DIFF.patchedWorkbenchMainJsSha256,
+    workbenchMainJsBytes: P10_WORKBENCH_STOCK_PATCHED_DIFF.patchedWorkbenchMainJsBytes,
+    stockWorkbenchMainJsSha256: P10_WORKBENCH_STOCK_PATCHED_DIFF.stockWorkbenchMainJsSha256,
+    stockWorkbenchMainJsBytes: P10_WORKBENCH_STOCK_PATCHED_DIFF.stockWorkbenchMainJsBytes,
+    workbenchIfmMarkerHits: P10_WORKBENCH_STOCK_PATCHED_DIFF.patchedIfmPatchMarkerCount,
     workbenchState: 'patched_observe_only',
     userDataRoot: 'Cursor-3.1.15-data',
     guardExtensionPath: 'local.cursor-usage-watch-0.16.40',
@@ -102,6 +120,7 @@ export type P10BaselineFixtureId =
   | '0801_dial_storm'
   | '0721_code8_unknown'
   | 'baseline_manifest'
+  | 'workbench_stock_patched_diff'
   | '660d7a6f_evidence_gap'
 
 export interface P10BaselineVerdict {
@@ -154,6 +173,8 @@ export function evaluateP10BaselineManifestFixture(
 ): P10BaselineVerdict {
   const ok =
     manifest.cursor315.workbenchMainJsSha256.length === 64 &&
+    manifest.cursor315.stockWorkbenchMainJsSha256.length === 64 &&
+    manifest.cursor315.workbenchMainJsSha256 !== manifest.cursor315.stockWorkbenchMainJsSha256 &&
     manifest.macSparkle.mihomoYamlSha256.length === 64 &&
     manifest.vpsJpHy2.configJsonSha256.length === 64 &&
     manifest.vpsJpHy2.hy2QuicUdpTimeout === '3600s'
@@ -161,8 +182,26 @@ export function evaluateP10BaselineManifestFixture(
     fixtureId: 'baseline_manifest',
     ok,
     detail: ok
-      ? 'mac/vps hash manifest complete (read-only capture)'
-      : 'baseline manifest incomplete — missing hash fields',
+      ? 'mac/vps hash manifest + stock/patched workbench diff complete'
+      : 'baseline manifest incomplete — missing hash fields or stock/patched diff',
+  }
+}
+
+export function evaluateP10WorkbenchStockPatchedDiff(
+  diff: typeof P10_WORKBENCH_STOCK_PATCHED_DIFF = P10_WORKBENCH_STOCK_PATCHED_DIFF,
+): P10BaselineVerdict {
+  const ok =
+    diff.stockIfmPatchMarkerCount === 0 &&
+    diff.patchedIfmPatchMarkerCount > 0 &&
+    diff.stockWorkbenchMainJsSha256 !== diff.patchedWorkbenchMainJsSha256 &&
+    diff.patch482PresentOnDisk &&
+    !diff.patch482ActiveInMemory
+  return {
+    fixtureId: 'workbench_stock_patched_diff',
+    ok,
+    detail: ok
+      ? 'stock vs patched workbench frozen; patch-482 disk≠memory (reload blocked)'
+      : 'workbench stock/patched diff fixture violated',
   }
 }
 

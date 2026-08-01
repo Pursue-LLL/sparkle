@@ -22,13 +22,11 @@ async function printMatrixSummary(): Promise<boolean> {
   const consumer = runP10ConsumerFaultGate()
   const stock = runP10StockParityGate()
   const tun = runP10TunLatencyGate()
-  const matrixOk =
+  const codeMatrixOk =
     replay.nextGateAllowed &&
     fault.ok &&
     parallel.ok &&
-    consumer.ok &&
-    stock.ok &&
-    tun.ok
+    consumer.ok
 
   console.log('[P10CodeGate]: matrix summary')
   console.log(`  replay: ${replay.nextGateAllowed ? 'PASS' : 'FAIL'}`)
@@ -37,9 +35,11 @@ async function printMatrixSummary(): Promise<boolean> {
     `  parallel: ${parallel.ok ? 'PASS' : 'FAIL'} (${parallel.cases.map((c) => c.composerCount).join('/')})`,
   )
   console.log(`  consumer: ${consumer.ok ? 'PASS' : 'FAIL'} (${consumer.cases.length} cases)`)
-  console.log(`  stock_parity: ${stock.ok ? 'PASS' : 'FAIL'} (${stock.cases.length} metrics)`)
-  console.log(`  tun_tax: ${tun.ok ? 'PASS' : 'FAIL'} — ${tun.detail}`)
-  return matrixOk
+  console.log(
+    `  stock_parity: ${stock.ok ? 'PASS' : 'BLOCKED'} (${stock.artifactBacked ? 'artifact' : 'awaiting P10-6 capture'})`,
+  )
+  console.log(`  tun_tax: ${tun.ok ? 'PASS' : 'BLOCKED'} — ${tun.detail}`)
+  return codeMatrixOk
 }
 
 function main(): void {
@@ -62,12 +62,14 @@ function main(): void {
     process.exit(result.status ?? 1)
   }
 
-  void printMatrixSummary().then((matrixOk) => {
-    if (!matrixOk) {
-      console.error('[P10CodeGate]: FAIL — matrix invariant proof incomplete')
+  void printMatrixSummary().then((codeMatrixOk) => {
+    if (!codeMatrixOk) {
+      console.error('[P10CodeGate]: FAIL — code matrix invariant proof incomplete')
       process.exit(1)
     }
-    console.log('[P10CodeGate]: PASS — frozen matrix green; runtime soak still requires deploy + physical ingest')
+    console.log(
+      '[P10CodeGate]: PASS — code matrix green; stock/TUN artifact gates BLOCKED until P10-6 capture; runtime soak still requires deploy + physical ingest',
+    )
   })
 }
 

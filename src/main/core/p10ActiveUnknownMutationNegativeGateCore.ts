@@ -121,6 +121,29 @@ export function runP10ActiveUnknownMutationNegativeGate(): P10ActiveUnknownMutat
     detail: 'R-35 sidecar passive-only — zero dial/close under ACTIVE',
   })
 
+  cases.push({
+    caller: 'mihomoQuicSilentStallRecovery.ts/frozen_prune_marathon_gate',
+    ok: (() => {
+      const coreDir = dirname(fileURLToPath(import.meta.url))
+      const source = readFileSync(join(coreDir, 'mihomoQuicSilentStallRecovery.ts'), 'utf8')
+      return (
+        source.includes('resolveFrozenSurgicalPrunePlan') &&
+        source.includes('marathonActive: latestMarathonRecoveryContext.marathonActive')
+      )
+    })(),
+    detail: 'R-34 prune path wired to marathonActive context',
+  })
+
+  cases.push({
+    caller: 'cursorHy2MarathonKeepalive.ts/rescue_delegates_executor',
+    ok: (() => {
+      const coreDir = dirname(fileURLToPath(import.meta.url))
+      const source = readFileSync(join(coreDir, 'cursorHy2MarathonKeepalive.ts'), 'utf8')
+      return source.includes('executeMarathonRescueDial') && source.includes('executeMarathonWarmthDial')
+    })(),
+    detail: 'keepalive facade delegates to P19 dial executors (arbiter inside)',
+  })
+
   const inventoryModules = P10_DIAL_CAPABILITY_INVENTORY.length
   const ok = cases.every((item) => item.ok)
   return { ok, inventoryModules, cases }

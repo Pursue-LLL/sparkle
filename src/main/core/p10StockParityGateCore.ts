@@ -1,6 +1,11 @@
-// [INPUT] frozen stock-vs-telemetry percentile fixtures
+// [INPUT] artifact-backed stock-vs-telemetry percentile fixtures
 // [OUTPUT] runP10StockParityGate — p50/p95/p99 + CI regression guard
-// [POS] P10-6 §M.0.15.11.8 step 6 — stock parity must not regress beyond frozen tolerance.
+// [POS] P10-6 §M.0.15.13 — stock parity requires traceable artifact; synthetic defaults FAIL.
+
+import {
+  type P10MeasurementArtifact,
+  validateP10MeasurementArtifact,
+} from './p10MeasurementArtifactCore'
 
 export interface P10PercentileSnapshot {
   samples: number
@@ -16,8 +21,8 @@ export interface P10StockParityFixture {
   maxRegressionRatio: number
 }
 
-/** Frozen JP-VPS-HY2 marathon pairing baseline (observe-only epoch). */
-export const P10_STOCK_PARITY_FIXTURES: readonly P10StockParityFixture[] = [
+/** Reference-only — never PASS without artifact (§M.0.15.13). */
+export const P10_STOCK_PARITY_SYNTHETIC_FIXTURES: readonly P10StockParityFixture[] = [
   {
     metric: 'first_token_ms',
     stock: { samples: 120, p50: 820, p95: 1450, p99: 2100 },
@@ -38,6 +43,10 @@ export const P10_STOCK_PARITY_FIXTURES: readonly P10StockParityFixture[] = [
   },
 ]
 
+export interface P10StockParityGateInput {
+  artifact?: P10MeasurementArtifact<readonly P10StockParityFixture[]>
+}
+
 export interface P10StockParityCaseResult {
   metric: string
   ok: boolean
@@ -46,6 +55,7 @@ export interface P10StockParityCaseResult {
 
 export interface P10StockParityGateResult {
   ok: boolean
+  artifactBacked: boolean
   cases: P10StockParityCaseResult[]
 }
 
@@ -57,8 +67,18 @@ function regressionRatio(stock: number, telemetry: number): number {
 }
 
 export function runP10StockParityGate(
-  fixtures: readonly P10StockParityFixture[] = P10_STOCK_PARITY_FIXTURES,
+  input: P10StockParityGateInput = {},
 ): P10StockParityGateResult {
+  const artifactCheck = validateP10MeasurementArtifact(input.artifact, 'stock_parity')
+  if (!artifactCheck.ok) {
+    return {
+      ok: false,
+      artifactBacked: false,
+      cases: [{ metric: '*', ok: false, detail: artifactCheck.detail }],
+    }
+  }
+
+  const fixtures = input.artifact!.payload
   const cases: P10StockParityCaseResult[] = []
   for (const fixture of fixtures) {
     const p50Ratio = regressionRatio(fixture.stock.p50, fixture.telemetry.p50)
@@ -79,5 +99,9 @@ export function runP10StockParityGate(
         : `regression p50=${p50Ratio.toFixed(3)} p95=${p95Ratio.toFixed(3)} p99=${p99Ratio.toFixed(3)} max=${fixture.maxRegressionRatio}`,
     })
   }
-  return { ok: cases.every((item) => item.ok), cases }
+  return {
+    ok: cases.every((item) => item.ok),
+    artifactBacked: true,
+    cases,
+  }
 }
