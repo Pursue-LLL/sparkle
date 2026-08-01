@@ -12,6 +12,7 @@ import {
   shouldRunHy2TunnelVitality,
   type Hy2TunnelVitalityResult,
 } from './hy2TunnelVitalityCore'
+import type { DialAdmissionOutcome } from './dialAdmissionArbiterCore'
 import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import { isHy2SessionDialInFlight } from './marathonSessionDialExecutorCore'
 
@@ -113,7 +114,23 @@ export async function runHy2TunnelVitalityIfDue(
     return { outcome: 'skipped_in_flight' }
   }
 
+  const incidentGeneration = `vitality:${activeNode}:${Math.floor(nowMs / 60_000)}`
+  const dialId = `vitality:${incidentGeneration}:${nowMs}`
+  const { admitDialIntent, completeDialIntent } = await import('./dialAdmissionArbiter')
+  const admission = admitDialIntent({
+    dialId,
+    class: 'active_recovery',
+    caller: 'hy2TunnelVitality',
+    incidentGeneration,
+    node: activeNode,
+    submittedAtMs: nowMs,
+  })
+  if (!admission.admitted) {
+    return { outcome: 'skipped_admission' }
+  }
+
   hy2TunnelVitalityInFlight = true
+  let admissionOutcome: DialAdmissionOutcome = 'INCONCLUSIVE'
   try {
     let connectPathDelayMs = 0
     if (testHy2TunnelVitalityDialOverride) {
@@ -147,6 +164,7 @@ export async function runHy2TunnelVitalityIfDue(
         prePartitionRisk,
       }),
     )
+    admissionOutcome = 'SUCCESS'
     return { outcome: 'executed', connectPathDelayMs }
   } catch (error) {
     const err = formatUnknownErrorForLog(error)
@@ -164,6 +182,7 @@ export async function runHy2TunnelVitalityIfDue(
     await recoverMihomoApiAfterNudgeFailure(error)
     return { outcome: 'failed', err }
   } finally {
+    completeDialIntent(dialId, incidentGeneration, admissionOutcome)
     hy2TunnelVitalityInFlight = false
   }
 }

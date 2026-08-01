@@ -26,6 +26,7 @@ export type Hy2TunnelVitalityOutcome =
   | 'skipped_in_flight'
   | 'skipped_below_marathon_age'
   | 'skipped_inactive'
+  | 'skipped_admission'
   | 'failed'
 
 export interface Hy2TunnelVitalityGateInput {

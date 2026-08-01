@@ -16,6 +16,8 @@ import {
   formatStreamAttemptMaxStepsRateLogSuffix,
 } from './streamAttemptMaxStepsRateCore'
 import { computePhysicalMaxStepsRateSnapshot } from './physicalMaxStepsRateCore'
+import { projectPhysicalNetworkStarts } from './physicalNetworkStartFromLedgerCore'
+import { countLedgerHttpSegmentStarted, ingestPhysicalNetworkStartsFromLedger } from './physicalNetworkStartIngest'
 import { readMarathonSegmentCache } from './marathonSegmentCache'
 import { ingestValidatedLedgerTerminals } from './validatedLedgerTerminalIngest'
 
@@ -38,11 +40,16 @@ export async function logMaxStepsRateIfDue(nowMs: number = Date.now()): Promise<
   const segments = await readMarathonSegmentCache(nowMs)
   const failureRows = readAgentTransportJsonlTailRows()
   const ledgerRows = await ingestValidatedLedgerTerminals(nowMs)
+  const networkStartRows = await ingestPhysicalNetworkStartsFromLedger(nowMs)
+  const physicalStarts = projectPhysicalNetworkStarts({
+    starts: networkStartRows,
+    terminals: ledgerRows,
+  })
   const snapshot = computeMaxStepsRateSnapshot(segments, failureRows, nowMs, undefined, undefined, undefined, ledgerRows)
   const attemptSnapshot = computeStreamAttemptMaxStepsRateSnapshot(ledgerRows, failureRows, segments, nowMs)
   const physicalSnapshot = computePhysicalMaxStepsRateSnapshot({
-    starts: [],
-    ledgerHttpSegmentStarted: segments.length,
+    starts: physicalStarts,
+    ledgerHttpSegmentStarted: countLedgerHttpSegmentStarted(),
   })
   if (attemptSnapshot.primary.startedAttempts === 0 && snapshot.primary.startedTurns === 0 && snapshot.aux24h.startedTurns === 0) {
     return
