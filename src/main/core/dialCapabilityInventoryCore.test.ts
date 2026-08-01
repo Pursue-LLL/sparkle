@@ -35,8 +35,13 @@ describe('dialCapabilityInventoryCore P10-2', () => {
     assert.deepEqual(result.unlistedModules.filter((m) => m.includes('marathonQuiesce')), [])
   })
 
-  it('discovers unlisted dial mutation modules when present', () => {
+  it('discovers unlisted data-plane mutation modules when present', () => {
     const unlisted = discoverUnlistedDialMutationModules(SRC_MAIN)
     assert.ok(!unlisted.some((path) => path.endsWith('mihomoApi.ts')))
+    assert.equal(unlisted.length, 0, unlisted.join(', '))
+  })
+
+  it('inventory covers expanded mutation pattern set', () => {
+    assert.ok(P10_DIAL_CAPABILITY_INVENTORY.length >= 16)
   })
 })

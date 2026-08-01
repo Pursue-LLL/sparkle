@@ -5,6 +5,7 @@ import {
   evaluateP10BaselineManifestFixture,
   evaluateP10Code8UnknownGolden,
   evaluateP10UnsupportedRegionGolden,
+  evaluateP10WorkbenchStockPatchedDiff,
   evaluateP10_660d7a6fEvidenceGap,
   P10_BAD_RULER_FIXTURE,
 } from './p10BaselineFixturesCore'
@@ -24,6 +25,12 @@ describe('p10BaselineFixturesCore P10-0', () => {
   it('keeps 07-21 code8 without inner details unknown', () => {
     const verdict = evaluateP10Code8UnknownGolden(false)
     assert.equal(verdict.ok, true)
+  })
+
+  it('freezes stock vs patched workbench diff @ P10-0', () => {
+    const verdict = evaluateP10WorkbenchStockPatchedDiff()
+    assert.equal(verdict.ok, true)
+    assert.match(verdict.detail, /patch-482/)
   })
 
   it('freezes mac/vps baseline manifest hashes', () => {
