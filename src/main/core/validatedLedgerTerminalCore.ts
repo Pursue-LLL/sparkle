@@ -126,13 +126,19 @@ export function ledgerTerminalToFailureRow(row: ValidatedLedgerTerminalRow): Age
     }
   }
   const streamSub = String(row.streamPrimarySub ?? '').toLowerCase()
+  const reason = String(row.reason ?? '')
+  const reasonSubFromReason = /resource_exhausted/i.test(reason)
+    ? 'resource-exhausted'
+    : streamSub === 'server-eof'
+      ? 'http-sse-server-eof'
+      : streamSub || row.terminalKind || 'ledger-terminal'
   return {
     ts: row.ts,
     originalRequestId: row.originalRequestId,
     requestId: row.requestId,
     composerId: row.composerId,
     reasonType: row.willRetry ? 'proxy-network' : 'cursor-server',
-    reasonSub: streamSub === 'server-eof' ? 'http-sse-server-eof' : streamSub || row.terminalKind || 'ledger-terminal',
+    reasonSub: reasonSubFromReason,
     errMsg: row.reason,
     streamPrimarySub: row.streamPrimarySub,
     attempt: row.attempt,

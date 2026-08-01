@@ -6,9 +6,10 @@ import type { AgentTransportFailureRow } from './connectPartitionDetectCore'
 import type { MarathonSegmentCacheRecord } from './marathonSegmentCache'
 import {
   isMaxStepsLedgerTerminal,
+  ledgerTerminalToFailureRow,
   type ValidatedLedgerTerminalRow,
 } from './validatedLedgerTerminalCore'
-import { isMaxStepsTerminalRow, MAX_STEPS_RATE_TARGET_PCT } from './maxStepsRateObserverCore'
+import { isMaxStepsTerminalRow, isResourceExhaustedTerminalRow, MAX_STEPS_RATE_TARGET_PCT } from './maxStepsRateObserverCore'
 
 export const STREAM_ATTEMPT_RATE_ROLLING_LIMIT = 100
 export const STREAM_ATTEMPT_RATE_LOOKBACK_MS = 7 * 86_400_000
@@ -18,9 +19,11 @@ export interface StreamAttemptWindowStats {
   startedAttempts: number
   completedAttempts: number
   maxStepsAttempts: number
+  resourceExhaustedAttempts: number
   earlyDisconnectAttempts: number
   inProgressAttempts: number
   attemptRatePct: number
+  resourceExhaustedRatePct: number
 }
 
 export interface StreamAttemptMaxStepsRateSnapshot {
@@ -48,14 +51,17 @@ interface AttemptTerminal {
   key: string
   ts: number
   isMaxSteps: boolean
+  isResourceExhausted: boolean
   source: 'ledger' | 'jsonl'
 }
 
 function ledgerRowToAttemptTerminal(row: ValidatedLedgerTerminalRow): AttemptTerminal {
+  const failure = ledgerTerminalToFailureRow(row)
   return {
     key: buildStreamAttemptKey(row),
     ts: row.ts,
     isMaxSteps: isMaxStepsLedgerTerminal(row),
+    isResourceExhausted: isResourceExhaustedTerminalRow(failure),
     source: 'ledger',
   }
 }
@@ -77,6 +83,7 @@ function jsonlRowToAttemptTerminal(row: AgentTransportFailureRow): AttemptTermin
     }),
     ts,
     isMaxSteps: isMaxStepsTerminalRow(row),
+    isResourceExhausted: isResourceExhaustedTerminalRow(row),
     source: 'jsonl',
   }
 }
@@ -127,8 +134,12 @@ function collectInProgressAttemptKeys(
   return inProgress
 }
 
+function pctRate(numerator: number, denominator: number): number {
+  return denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : 0
+}
+
 function pct(maxStepsAttempts: number, startedAttempts: number): number {
-  return startedAttempts > 0 ? Math.round((maxStepsAttempts / startedAttempts) * 1000) / 10 : 0
+  return pctRate(maxStepsAttempts, startedAttempts)
 }
 
 export function computeStreamAttemptMaxStepsRateSnapshot(
@@ -150,12 +161,16 @@ export function computeStreamAttemptMaxStepsRateSnapshot(
   const inProgressKeys = collectInProgressAttemptKeys(segments, completedKeys, lookbackSinceMs)
 
   let maxStepsAttempts = 0
+  let resourceExhaustedAttempts = 0
   let earlyDisconnectAttempts = 0
   for (const terminal of rollingCompleted) {
     if (terminal.isMaxSteps) {
       maxStepsAttempts += 1
     } else {
       earlyDisconnectAttempts += 1
+      if (terminal.isResourceExhausted) {
+        resourceExhaustedAttempts += 1
+      }
     }
   }
 
@@ -166,9 +181,11 @@ export function computeStreamAttemptMaxStepsRateSnapshot(
     startedAttempts,
     completedAttempts: rollingCompleted.length,
     maxStepsAttempts,
+    resourceExhaustedAttempts,
     earlyDisconnectAttempts,
     inProgressAttempts: inProgressKeys.size,
     attemptRatePct: pct(maxStepsAttempts, startedAttempts),
+    resourceExhaustedRatePct: pctRate(resourceExhaustedAttempts, startedAttempts),
   }
 
   return {
@@ -186,14 +203,17 @@ export function formatStreamAttemptMaxStepsRateLogSuffix(
   return (
     ` cursor_requests_started=${p.startedAttempts}` +
     ` cursor_requests_max_steps=${p.maxStepsAttempts}` +
+    ` cursor_requests_resource_exhausted=${p.resourceExhaustedAttempts}` +
     ` cursor_requests_early_disconnect=${p.earlyDisconnectAttempts}` +
     ` cursor_requests_in_progress=${p.inProgressAttempts}` +
     ` cursor_request_rate_pct=${p.attemptRatePct.toFixed(1)}` +
+    ` cursor_request_resource_exhausted_rate_pct=${p.resourceExhaustedRatePct.toFixed(1)}` +
     ` cursor_request_target_pct=${snapshot.targetPct}` +
     ` below_target_cursor_request=${snapshot.belowTarget ? 1 : 0}` +
     ` attempts_started=${p.startedAttempts}` +
     ` attempts_completed=${p.completedAttempts}` +
     ` attempts_max_steps=${p.maxStepsAttempts}` +
+    ` attempts_resource_exhausted=${p.resourceExhaustedAttempts}` +
     ` attempts_early_disconnect=${p.earlyDisconnectAttempts}` +
     ` attempts_in_progress=${p.inProgressAttempts}` +
     ` attempt_rate_pct=${p.attemptRatePct.toFixed(1)}` +
