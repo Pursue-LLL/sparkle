@@ -743,9 +743,13 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       recentProbe?.latencyMs ?? 0,
     )
 
-    const [marathonSegments, ledgerTerminals] = await Promise.all([
+    const [marathonSegments, ledgerTerminals, networkStarts] = await Promise.all([
       readMarathonSegmentCache(nowMs),
       ingestValidatedLedgerTerminals(nowMs),
+      (async () => {
+        const { ingestPhysicalNetworkStartsFromLedger } = await import('./physicalNetworkStartIngest')
+        return ingestPhysicalNetworkStartsFromLedger(nowMs)
+      })(),
     ])
     const {
       appendStreamLifecycleJournalEvents,
@@ -756,6 +760,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
     const projectedLifecycleEvents = buildStreamLifecycleEventsFromSources({
       segments: marathonSegments,
       ledgerTerminals,
+      networkStarts,
     })
     const persistedLifecycleEvents = readStreamLifecycleJournalTail()
     const mergedLifecycleEvents = mergeStreamLifecycleJournalEvents(
