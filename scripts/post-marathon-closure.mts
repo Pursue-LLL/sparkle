@@ -25,6 +25,10 @@ function run(label: string, cmd: string, args: string[], env?: NodeJS.ProcessEnv
   }
 }
 
+function stepP10CodeGate(): void {
+  run('p10-code-gate', path.join(ROOT, 'node_modules/.bin/tsx'), ['scripts/p10CodeGate.mts'])
+}
+
 function stepPreflight(): void {
   run('preflight', 'bash', ['scripts/preflight-sparkle-1280.sh'])
 }
@@ -52,6 +56,11 @@ function main(): void {
   const mode = process.argv[2] ?? 'full'
   console.log(`[PostMarathon] mode=${mode} installed=${INSTALLED_VER || 'unknown'} expected=${EXPECTED_VER}`)
 
+  if (mode === 'p10-code-gate') {
+    stepP10CodeGate()
+    return
+  }
+
   if (mode === 'preflight-only') {
     stepPreflight()
     return
@@ -74,6 +83,7 @@ function main(): void {
     console.log(`[PostMarathon] skip upgrade — Sparkle ${INSTALLED_VER} matches package.json`)
   }
 
+  stepP10CodeGate()
   stepPreflight()
 
   if (process.env.G9_SOAK_STRICT === '1') {
