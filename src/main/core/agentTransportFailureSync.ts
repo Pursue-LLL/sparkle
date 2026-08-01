@@ -378,9 +378,9 @@ export function startAgentTransportFailureSync(): void {
   void (async () => {
     const { auditCursorLogDiscoveryHealth } = await import('./cursorLogDiscoveryCore')
     const { appendAppLog } = await import('../utils/log')
-    const { getAppConfig } = await import('../config/app')
     const health = await auditCursorLogDiscoveryHealth({
-      appPathPrefixes: (await getAppConfig()).cursorProxyAppPathPrefixes ?? [],
+      appPathPrefixes:
+        (await (await import('../config/app')).getAppConfig()).cursorProxyAppPathPrefixes ?? [],
     })
     const strayNote =
       health.strayEntries.length > 0

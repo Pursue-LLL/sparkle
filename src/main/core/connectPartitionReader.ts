@@ -147,6 +147,7 @@ export async function readConnectPartitionSignalAsync(
   cursorConnectionCount: number,
   nowMs: number = Date.now(),
   cursorDataDirs?: string[],
+  options?: { emitPartitionWindowLog?: boolean },
 ): Promise<ConnectPartitionReadResult> {
   if (testConnectPartitionReadOverride) {
     return testConnectPartitionReadOverride(cursorConnectionCount, nowMs)
@@ -168,8 +169,10 @@ export async function readConnectPartitionSignalAsync(
   )
   const jsonlPingCount = countConnectPingFailuresInWindow(jsonlRows, nowMs, cursorConnectionCount)
   const windowMs = resolveConnectPartitionWindowMs(cursorConnectionCount)
+  const emitPartitionWindowLog = options?.emitPartitionWindowLog !== false
   const shouldLogPartitionWindow =
-    cursorConnectionCount >= CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS || signal != null
+    emitPartitionWindowLog &&
+    (cursorConnectionCount >= CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS || signal != null)
   if (shouldLogPartitionWindow) {
     const { appendAppLog } = await import('../utils/log')
     await appendAppLog(

@@ -83,9 +83,10 @@ describe('connectPingStormCore', () => {
     assert.equal(shouldEmitUltraConnObservability(199), false)
   })
 
-  it('resolveConnectPartitionWindowMs widens at conn>=12 (15s) and conn>=200 (60s)', () => {
+  it('resolveConnectPartitionWindowMs widens at conn>=12 (60s P26) and conn>=200 (60s P16)', () => {
     assert.equal(resolveConnectPartitionWindowMs(11), 8_000)
-    assert.equal(resolveConnectPartitionWindowMs(199), 15_000)
+    assert.equal(resolveConnectPartitionWindowMs(12), 60_000)
+    assert.equal(resolveConnectPartitionWindowMs(199), 60_000)
     assert.equal(resolveConnectPartitionWindowMs(816), 60_000)
   })
 })

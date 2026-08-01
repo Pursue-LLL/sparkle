@@ -3,17 +3,18 @@ import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { describe, it } from 'node:test'
 import { validateSparkleMainAsarBundle } from '../../../scripts/upgradeSparkleAsarGateCore'
+import { collectSparkleMainProcessDiskSource } from '../../../scripts/sparkleMainAsarSourceCore'
 
 const outMainDir = join(process.cwd(), 'out/main')
 
 describe('coreReadyTimestamp bundle guard', () => {
-  it('networkStartupGraceCore chunk defines and exports markCoreReadyAtMs', () => {
+  it('coreReadyTimestamp chunk defines and exports markCoreReadyAtMs', () => {
     const chunkName = readdirSync(outMainDir).find(
-      (name) => name.startsWith('networkStartupGraceCore-') && name.endsWith('.js'),
+      (name) => name.startsWith('coreReadyTimestamp-') && name.endsWith('.js'),
     )
     assert.ok(
       chunkName,
-      'expected networkStartupGraceCore chunk under out/main/ — run electron-vite build first',
+      'expected coreReadyTimestamp chunk under out/main/ — run electron-vite build first',
     )
 
     const source = readFileSync(join(outMainDir, chunkName), 'utf8')
@@ -24,7 +25,8 @@ describe('coreReadyTimestamp bundle guard', () => {
   it('main index bundle links markCoreReadyAtMs via chunk export', () => {
     const mainPath = join(outMainDir, 'index.js')
     const source = readFileSync(mainPath, 'utf8')
-    const gate = validateSparkleMainAsarBundle(source)
+    assert.match(source, /\.markCoreReadyAtMs\(/)
+    const gate = validateSparkleMainAsarBundle(collectSparkleMainProcessDiskSource(outMainDir))
     assert.deepEqual(gate, { ok: true })
     assert.doesNotMatch(source, /\n\s*markCoreReadyAtMs\(\)/)
   })
