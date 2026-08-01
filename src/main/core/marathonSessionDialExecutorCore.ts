@@ -94,6 +94,8 @@ export interface ExecuteHy2SessionDialOptions {
   forceOnWeakProbe?: boolean
   /** P10-2: non-production dial must pass admission arbiter before in-flight guard. */
   admissionIntent?: DialIntent
+  /** P12: warmth dial uses observability budget queue. */
+  useObservabilityBudget?: boolean
 }
 
 /** Shared dial body — callers own trigger-specific gates. */
@@ -113,10 +115,29 @@ export async function executeHy2SessionDialWithGuard(
 
   hy2SessionKeepaliveInFlight = true
   try {
-    const { api2Result, api2geoResult } = await runHy2SessionNudgeDialPair(
-      options.activeNode,
-      options.delayOptions,
-    )
+    let api2Result: { delay?: number; message?: string }
+    let api2geoResult: { delay?: number; message?: string }
+    if (options.useObservabilityBudget) {
+      const runSessionNudgeDial = () =>
+        runHy2SessionNudgeDialPair(options.activeNode, options.delayOptions)
+      const { resolveMarathonObservabilityDialContext, withMarathonObservabilityDialBudget } =
+        await import('./marathonObservabilityDialBudget')
+      const dialContext = await resolveMarathonObservabilityDialContext()
+      const budgetResult = await withMarathonObservabilityDialBudget(
+        'session_nudge',
+        dialContext,
+        runSessionNudgeDial,
+      )
+      if (budgetResult.outcome === 'skipped_busy' || budgetResult.value === null) {
+        return { outcome: 'skipped_budget_busy' }
+      }
+      ;({ api2Result, api2geoResult } = budgetResult.value)
+    } else {
+      ;({ api2Result, api2geoResult } = await runHy2SessionNudgeDialPair(
+        options.activeNode,
+        options.delayOptions,
+      ))
+    }
     const api2DelayMs = typeof api2Result.delay === 'number' ? api2Result.delay : 0
     const api2geoDelayMs = typeof api2geoResult.delay === 'number' ? api2geoResult.delay : 0
     const delayMs = Math.max(api2DelayMs, api2geoDelayMs)
