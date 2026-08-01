@@ -144,6 +144,16 @@ export function runP10ActiveUnknownMutationNegativeGate(): P10ActiveUnknownMutat
     detail: 'keepalive facade delegates to P19 dial executors (arbiter inside)',
   })
 
+  cases.push({
+    caller: 'frozenSurgicalPruneCore.ts/marathon_active_zero_mutation',
+    ok: (() => {
+      const coreDir = dirname(fileURLToPath(import.meta.url))
+      const source = readFileSync(join(coreDir, 'frozenSurgicalPruneCore.ts'), 'utf8')
+      return source.includes('marathon_active_zero_data_plane_mutation')
+    })(),
+    detail: 'R-34 carrier prune blocked while marathon active',
+  })
+
   const inventoryModules = P10_DIAL_CAPABILITY_INVENTORY.length
   const ok = cases.every((item) => item.ok)
   return { ok, inventoryModules, cases }

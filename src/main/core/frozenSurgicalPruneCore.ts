@@ -42,6 +42,10 @@ export interface FrozenSurgicalPruneGateInput {
 export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInput): FrozenSurgicalPrunePlan {
   const { observation, nowMs } = input
 
+  if (input.marathonActive === true) {
+    return { action: 'none', reason: 'marathon_active_zero_data_plane_mutation' }
+  }
+
   if (observation.stallMs < MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
     return { action: 'none', reason: 'below_vitality_threshold' }
   }

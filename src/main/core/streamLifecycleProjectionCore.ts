@@ -3,6 +3,7 @@
 // [POS] P10-1 projection — ledger/segment → lifecycle reducer input.
 
 import type { MarathonSegmentCacheRecord } from './marathonSegmentCache'
+import type { ParsedNetworkStartedLedgerRow } from './physicalNetworkStartFromLedgerCore'
 import {
   buildStreamGenerationKey,
   reduceStreamLifecycleEvents,
@@ -14,37 +15,57 @@ import type { ValidatedLedgerTerminalRow } from './validatedLedgerTerminalCore'
 export function buildStreamLifecycleEventsFromSources(input: {
   segments: readonly MarathonSegmentCacheRecord[]
   ledgerTerminals: readonly ValidatedLedgerTerminalRow[]
+  networkStarts?: readonly ParsedNetworkStartedLedgerRow[]
   rendererBootId?: string
 }): StreamLifecycleEvent[] {
   const rendererBootId = input.rendererBootId?.trim() || 'ledger-projection'
   const events: StreamLifecycleEvent[] = []
   let sequence = 1
 
-  const startsByOriginal = new Map<string, MarathonSegmentCacheRecord>()
-  for (const segment of input.segments) {
-    const originalRequestId = segment.originalRequestId.trim()
-    if (!originalRequestId) {
-      continue
+  if (input.networkStarts && input.networkStarts.length > 0) {
+    for (const start of input.networkStarts) {
+      const originalRequestId = String(start.originalRequestId || start.requestId || '').trim()
+      if (!originalRequestId) {
+        continue
+      }
+      events.push({
+        eventId: `net:${start.networkStartId}`,
+        sequence: sequence++,
+        occurredAtMs: start.httpStartMs,
+        rendererBootId: start.rendererBootId || rendererBootId,
+        composerId: start.composerId?.trim() || 'unknown',
+        originalRequestId,
+        segmentRequestId: start.requestId?.trim() || originalRequestId,
+        generation: 0,
+        kind: 'physical_start',
+      })
     }
-    const prev = startsByOriginal.get(originalRequestId)
-    if (!prev || segment.httpStartMs < prev.httpStartMs) {
-      startsByOriginal.set(originalRequestId, segment)
+  } else {
+    const startsByOriginal = new Map<string, MarathonSegmentCacheRecord>()
+    for (const segment of input.segments) {
+      const originalRequestId = segment.originalRequestId.trim()
+      if (!originalRequestId) {
+        continue
+      }
+      const prev = startsByOriginal.get(originalRequestId)
+      if (!prev || segment.httpStartMs < prev.httpStartMs) {
+        startsByOriginal.set(originalRequestId, segment)
+      }
     }
-  }
 
-  for (const segment of startsByOriginal.values()) {
-    const generation = 0
-    events.push({
-      eventId: `start:${segment.originalRequestId}:${segment.httpStartMs}`,
-      sequence: sequence++,
-      occurredAtMs: segment.httpStartMs,
-      rendererBootId,
-      composerId: segment.composerId || 'unknown',
-      originalRequestId: segment.originalRequestId,
-      segmentRequestId: segment.requestId,
-      generation,
-      kind: 'physical_start',
-    })
+    for (const segment of startsByOriginal.values()) {
+      events.push({
+        eventId: `start:${segment.originalRequestId}:${segment.httpStartMs}`,
+        sequence: sequence++,
+        occurredAtMs: segment.httpStartMs,
+        rendererBootId,
+        composerId: segment.composerId || 'unknown',
+        originalRequestId: segment.originalRequestId,
+        segmentRequestId: segment.requestId,
+        generation: 0,
+        kind: 'physical_start',
+      })
+    }
   }
 
   for (const terminal of input.ledgerTerminals) {
