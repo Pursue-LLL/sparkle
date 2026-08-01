@@ -193,6 +193,7 @@ export type MarathonSessionKeepaliveOutcome =
   | 'skipped_connect_keepalive_in_flight'
   | 'skipped_budget_busy'
   | 'skipped_weak_probe'
+  | 'skipped_admission'
   | 'failed'
 
 /** P27/R-B: triage SSOT — distinguish post-mortem rescue from live-path warmth. */

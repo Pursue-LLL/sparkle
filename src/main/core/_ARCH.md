@@ -53,7 +53,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `physicalMaxStepsRateCore.ts` | **P10-5** physical networkStartId rolling100 SLO · invalid until network_started coverage=100% |
 | `streamLifecycleTruthCore.ts` | **P10-1** stream lifecycle reducer ABSENT→ACTIVE→TERMINAL（irreversible） |
 | `streamLifecycleProjectionCore.ts` | **P10-1** segment/ledger → lifecycle projection · MTDO stale RID filter |
-| `p10BaselineFixturesCore.ts` | **P10-0** frozen replay fixtures（bad ruler · 07-30 unsupported_region · 08-01 dial storm） |
+| `dialAdmissionArbiterCore.ts` | **P10-2** non-production dial admission pure core（production bypass · passive no-dial · single in-flight · INEFFECTIVE closes generation） |
+| `dialAdmissionArbiter.ts` | **P10-2** runtime module state · wired into `marathonRescueDialExecutor` → `executeHy2SessionDialWithGuard` |
 | `validatedLedgerTerminalCore.ts` / `validatedLedgerTerminalIngest.ts` / `validatedLedgerTerminalProjectionCore.ts` | **G8** ledger ingest → MaxStepsRate merge (G8a) + jsonl projection (G8b) |
 | `quicStallSsotCore.ts` / `quicStallSsot.ts`                               | **P22b** `~/.sparkle/quic-stall-ssot.json` atom — Sparkle writer · patch-315 reader SSOT |
 | `marathonSegmentCache.ts`                                                 | **P22b** append-only `marathon-segments.v1.jsonl` — immune to renderer log rotation |

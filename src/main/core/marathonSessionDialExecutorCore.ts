@@ -6,6 +6,7 @@ import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import { API2_PROBE_TARGET, API2GEO_PROBE_TARGET } from './cursorTransportHealthCore'
 import type { MihomoDelayOptions } from './mihomoApi'
 import type { MarathonSessionKeepaliveResult } from './cursorHy2MarathonKeepaliveCore'
+import type { DialIntent } from './dialAdmissionArbiterCore'
 
 let lastHy2SessionKeepaliveAtMs = 0
 let hy2SessionKeepaliveInFlight = false
@@ -91,12 +92,21 @@ export interface ExecuteHy2SessionDialOptions {
   weakProbeLogPrefix?: string
   /** G22: rescue dial already ran marathon_rescue probes — weak delay must not veto outcome. */
   forceOnWeakProbe?: boolean
+  /** P10-2: non-production dial must pass admission arbiter before in-flight guard. */
+  admissionIntent?: DialIntent
 }
 
 /** Shared dial body — callers own trigger-specific gates. */
 export async function executeHy2SessionDialWithGuard(
   options: ExecuteHy2SessionDialOptions,
 ): Promise<MarathonSessionKeepaliveResult> {
+  if (options.admissionIntent) {
+    const { admitDialIntent } = await import('./dialAdmissionArbiter')
+    const admission = admitDialIntent(options.admissionIntent)
+    if (!admission.admitted) {
+      return { outcome: 'skipped_admission', err: admission.reason }
+    }
+  }
   if (hy2SessionKeepaliveInFlight) {
     return { outcome: 'skipped_in_flight' }
   }
