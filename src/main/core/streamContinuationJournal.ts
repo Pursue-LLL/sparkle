@@ -7,6 +7,8 @@ import { homedir } from 'os'
 import { dirname, join } from 'path'
 import type { StreamContinuationIntentEvent } from './p10ContinuationJournalCore'
 
+// [POS] P10-4 Sparkle-side lifecycle mirror — Guard SSOT is ~/.cursor-500-guard/continuation-intent-journal.v1.jsonl
+
 const JOURNAL_FILE = join(homedir(), '.sparkle', 'stream-continuation-journal.v1.jsonl')
 
 let testJournalPathOverride: string | null = null
