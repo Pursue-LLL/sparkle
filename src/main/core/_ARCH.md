@@ -51,7 +51,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a/b** ~85min 段轮换 detect @ hung_scan · marathon-segments cache merge · QUIC stall early handoff · **Sparkle detect-only**；Guard patch-315 **observe-only**（无 execute） |
 | `maxStepsRateObserverCore.ts` / `maxStepsRateObserver.ts` | **P28** rolling100 max-steps 达成率 · `[MaxStepsRate]` @ hung_scan 5min · `~/.sparkle/max-steps-rate-snapshot.jsonl`（observe-only） |
 | `physicalNetworkStartFromLedgerCore.ts` | **P10-5** parse/project network_started + terminal → physical cohort |
-| `physicalNetworkStartIngest.ts` | **P10-5** incremental validated-ledger ingest for network_started |
+| `streamLifecycleJournal.ts` | **P10-1** durable append-only lifecycle journal · MTDO projection sync |
+| `physicalMaxStepsRateCore.ts` | **P10-5** physical networkStartId rolling100 SLO · invalid until network_started coverage=100% |
 | `streamLifecycleTruthCore.ts` | **P10-1** stream lifecycle reducer ABSENT→ACTIVE→TERMINAL（irreversible） |
 | `streamLifecycleProjectionCore.ts` | **P10-1** segment/ledger → lifecycle projection · MTDO stale RID filter |
 | `dialAdmissionArbiterCore.ts` | **P10-2** non-production dial admission pure core（production bypass · passive no-dial · single in-flight · INEFFECTIVE closes generation） |

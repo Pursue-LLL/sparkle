@@ -710,6 +710,23 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
       readMarathonSegmentCache(nowMs),
       ingestValidatedLedgerTerminals(nowMs),
     ])
+    const {
+      appendStreamLifecycleJournalEvents,
+      mergeStreamLifecycleJournalEvents,
+      readStreamLifecycleJournalTail,
+    } = await import('./streamLifecycleJournal')
+    const { buildStreamLifecycleEventsFromSources } = await import('./streamLifecycleProjectionCore')
+    const projectedLifecycleEvents = buildStreamLifecycleEventsFromSources({
+      segments: marathonSegments,
+      ledgerTerminals,
+    })
+    const persistedLifecycleEvents = readStreamLifecycleJournalTail()
+    mergeStreamLifecycleJournalEvents(persistedLifecycleEvents, projectedLifecycleEvents)
+    const persistedIds = new Set(persistedLifecycleEvents.map((event) => event.eventId))
+    const newLifecycleEvents = projectedLifecycleEvents.filter(
+      (event) => !persistedIds.has(event.eventId),
+    )
+    appendStreamLifecycleJournalEvents(newLifecycleEvents)
     const terminalOriginalRequestIds = resolveTerminalOriginalRequestIds({
       segments: marathonSegments,
       ledgerTerminals,
