@@ -2,6 +2,9 @@
 // [OUTPUT] runP10ActiveUnknownMutationNegativeGate
 // [POS] P10-2 Gate 2 — ACTIVE lifecycle must block/defer every inventoried data-plane mutation caller.
 
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { shouldDeferAppConfigMihomoReload, shouldDeferProfileProviderReload } from './appConfigMihomoReloadGuardCore'
 import { shouldBlockMarathonCoreColdRestart } from './marathonCoreRestartGuardCore'
 import {
@@ -102,6 +105,20 @@ export function runP10ActiveUnknownMutationNegativeGate(): P10ActiveUnknownMutat
     caller: 'dial executors/post_ineffective_still_single_flight',
     ok: !thirdDial.admitted,
     detail: thirdDial.reason,
+  })
+
+  cases.push({
+    caller: 'hy2ParentSidecar.ts/passive_detect_only',
+    ok: (() => {
+      const coreDir = dirname(fileURLToPath(import.meta.url))
+      const source = readFileSync(join(coreDir, 'hy2ParentSidecar.ts'), 'utf8')
+      return (
+        !source.includes('executeMarathonRescueDial') &&
+        !source.includes('mihomoCloseConnection') &&
+        source.includes('phase=detect_only')
+      )
+    })(),
+    detail: 'R-35 sidecar passive-only — zero dial/close under ACTIVE',
   })
 
   const inventoryModules = P10_DIAL_CAPABILITY_INVENTORY.length
