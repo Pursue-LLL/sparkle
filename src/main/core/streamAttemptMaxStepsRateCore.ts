@@ -184,6 +184,13 @@ export function formatStreamAttemptMaxStepsRateLogSuffix(
 ): string {
   const p = snapshot.primary
   return (
+    ` cursor_requests_started=${p.startedAttempts}` +
+    ` cursor_requests_max_steps=${p.maxStepsAttempts}` +
+    ` cursor_requests_early_disconnect=${p.earlyDisconnectAttempts}` +
+    ` cursor_requests_in_progress=${p.inProgressAttempts}` +
+    ` cursor_request_rate_pct=${p.attemptRatePct.toFixed(1)}` +
+    ` cursor_request_target_pct=${snapshot.targetPct}` +
+    ` below_target_cursor_request=${snapshot.belowTarget ? 1 : 0}` +
     ` attempts_started=${p.startedAttempts}` +
     ` attempts_completed=${p.completedAttempts}` +
     ` attempts_max_steps=${p.maxStepsAttempts}` +

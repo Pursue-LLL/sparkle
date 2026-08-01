@@ -19,7 +19,7 @@ describe('sparkleMainAsarSourceCore disk collector', () => {
     )
     writeFileSync(
       path.join(dir, 'mihomoQuicSilentStallRecovery-abc.js'),
-      'close_frozen_connection frozen_surgical_prune',
+      'close_frozen_connection frozen_surgical_prune marathon_sse_carrier_frozen_prune Hy2ParentSidecar proactive_parent_sidecar_dial attempt_rate_pct below_target_attempt',
       'utf8',
     )
 

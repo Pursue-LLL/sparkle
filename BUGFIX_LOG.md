@@ -6,7 +6,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **FIX CODE-DONE @1.28.1 R-35** · TRIAGE-DEFINITIVE @ 2026-07-31 22:31 · 待 marathon 空窗 upgrade + G9 strict soak |
+| **状态** | **FIX CODE-DONE @1.28.2 R-35′** · 待 marathon 空窗 upgrade + G9 strict soak |
 | **发生版本** | Sparkle **1.28.0**（~19:17 CST upgrade 完成 · Preflight1280 8/8 PASS · hasP28b=true）· Cursor **3.1.15** · leaf **JP-VPS-HY2** |
 | **事故时间** | userMessage **20:33:57 CST**（Dashboard Included 行 **20:34** = 起点）· **A 断连 22:31:09 CST** · durationMs=**7031697**（≈117min）· 50.07M tok · $38.50 |
 | **RID / composer** | `b866a8f9-75ad-49a4-8062-b6d9a59203d3` · `ab194449-a760-40d1-af95-1b166096ece1` · attempt=**0** |

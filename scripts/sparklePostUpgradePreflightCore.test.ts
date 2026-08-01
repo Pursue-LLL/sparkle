@@ -7,7 +7,7 @@ import {
 
 describe('sparklePostUpgradePreflightCore', () => {
   const goodAsar =
-    'frozen_surgical_prune close_frozen_connection mihomoCloseConnection maxStepsRateObserver markCoreReadyAtMs appendAppLog attempt_rate_pct below_target_attempt'
+    'frozen_surgical_prune close_frozen_connection marathon_sse_carrier_frozen_prune Hy2ParentSidecar proactive_parent_sidecar_dial mihomoCloseConnection maxStepsRateObserver markCoreReadyAtMs appendAppLog attempt_rate_pct below_target_attempt'
   const goodConfig = 'cursorConnectionHygieneEnabled: false\nautoCloseConnection: false'
   const goodGuard = '{"phase":"detect_only","observe-only":true}'
 
