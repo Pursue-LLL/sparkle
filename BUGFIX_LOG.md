@@ -1,6 +1,15 @@
 # Sparkle Bugfix Log
 
-> **2026-07-31 最新**：**R-35′ @1.28.2** 审计补洞闭环 · **BUG-2026-07-31-018** FIX CODE-DONE · 文档 @ 2026-07-31
+> **2026-08-02 最新**：**R-38 @1.28.7** carrier connection SSOT（9480ace0-class）· pkg freshness bump · 文档 @ 2026-08-02
+
+### R-38 @1.28.7 · v1.28.6→1.28.7 · 9480ace0-class HY2 stall carrier bind
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX CODE-DONE @1.28.7** · pkg `dist/sparkle-macos-1.28.7-arm64.pkg` · **待 cursor_conn=0 安装** |
+| **PRIMARY** | R-34 prune **错连短探针**未 close **dying SSE carrier** → `marathonCarrierConnectionBindCore` RID→connectionId |
+| **证据** | `9480ace0` ledger server-eof×3 · `token_gap_rescue_ineffective probe_ok=true` · pkg 1.28.6 @8/1 **无 R-38** |
+| **验证** | `marathonCarrierConnectionBindCore.test.ts` 13/13 · asar 含 `registry_carrier_bound` · preflight-1280 |
 
 ### BUG-2026-07-31-018 · v1.28.0（已装）· composer_ab194449_b866a8f9_server_eof_2231 (R-34 半闭环复发 · 同族第 9+ 次)
 
