@@ -14,6 +14,10 @@ export interface MarathonStreamRecord {
   firstActivityMs: number
   lastActivityMs: number
   openToolCalls: number
+  /** R-38: mihomo connectionId bound to this marathon SSE carrier RID. */
+  carrierConnectionId?: string
+  carrierHost?: string
+  carrierBoundAtMs?: number
 }
 
 export interface MarathonStreamRegistry {

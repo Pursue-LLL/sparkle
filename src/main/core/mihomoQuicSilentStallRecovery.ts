@@ -6,6 +6,7 @@ import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import { appendAppLog } from '../utils/log'
 import { mihomoCloseConnection } from './mihomoApi'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
+import type { MihomoQuicStallTrackedConnection } from './mihomoQuicSilentStallCore'
 import {
   resolveHy2ParentRotationAfterPrunePlan,
   type Hy2ParentRotationPlan,
@@ -22,6 +23,7 @@ import {
   shouldEvaluateRecoveryHonesty,
   type RecoveryHonestyAttemptRecord,
 } from './recoveryHonestyCore'
+import { resolveStallRecoveryCloseTarget } from './marathonCarrierConnectionBindCore'
 import {
   formatMihomoQuicStallRecoveryLogLine,
   type MihomoQuicStallRecoveryAction,
@@ -321,14 +323,59 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     return action
   }
 
-  const closed = await closeStalledConnection(observation.connectionId ?? '')
-  markRecovery(observation.connectionId, nowMs)
+  const trackedByIdForClose = new Map<string, MihomoQuicStallTrackedConnection>()
+  for (const [id, firstSeenAtMs] of latestTrackedFirstSeenAtMsById) {
+    const lastBytesChangeAtMs = latestTrackedLastByteChangeAtMsById.get(id) ?? firstSeenAtMs
+    const connection = latestConnections.find((entry) => entry.id === id)
+    trackedByIdForClose.set(id, {
+      upload: connection?.upload ?? 0,
+      download: connection?.download ?? 0,
+      lastBytesChangeAtMs,
+      firstSeenAtMs,
+      host: connection ? String(connection.metadata?.host ?? '') : '',
+      leaf: observation.leaf,
+      network: String(connection?.metadata?.network ?? ''),
+    })
+  }
+  const closeTargetResolved = resolveStallRecoveryCloseTarget({
+    observation,
+    carrierRid: plan.carrierRid,
+    registry: latestMarathonRecoveryContext.registry,
+    connections: latestConnections,
+    trackedById: trackedByIdForClose,
+    nowMs,
+  })
+  const closeConnectionId = closeTargetResolved.connectionId.trim()
+  if (!closeConnectionId) {
+    await logRecovery(
+      formatMihomoQuicStallRecoveryLogLine({
+        outcome: 'skipped',
+        action,
+        reason: 'carrier_close_target_unresolved',
+        leaf: observation.leaf,
+        stallMs: observation.stallMs,
+        cursorConnectionCount: observation.cursorConnectionCount,
+        connectionId: observation.connectionId,
+        host: observation.host,
+        observationConnectionId: observation.connectionId,
+        closeTargetSource: closeTargetResolved.closeTargetSource,
+        ...triageFields,
+      }),
+    )
+    return action
+  }
+
+  const closed = await closeStalledConnection(closeConnectionId)
+  markRecovery(closeConnectionId, nowMs)
+  if (observation.connectionId && observation.connectionId !== closeConnectionId) {
+    markRecovery(observation.connectionId, nowMs)
+  }
   lastGlobalPruneAtMs = nowMs
   pendingRecoveryHonesty = {
     kind: 'stall_prune',
     attemptedAtMs: nowMs,
     baselineMaxGapMs: latestTokenGapSnapshot.maxGapMs,
-    staleRequestIds: [],
+    staleRequestIds: plan.carrierRid ? [plan.carrierRid] : [],
   }
   await logRecovery(
     formatMihomoQuicStallRecoveryLogLine({
@@ -338,8 +385,10 @@ export async function executeMihomoQuicStallRecoveryIfDue(
       leaf: observation.leaf,
       stallMs: observation.stallMs,
       cursorConnectionCount: observation.cursorConnectionCount,
-      connectionId: observation.connectionId,
-      host: observation.host,
+      connectionId: closeConnectionId,
+      host: closeTargetResolved.host ?? observation.host,
+      observationConnectionId: observation.connectionId,
+      closeTargetSource: closeTargetResolved.closeTargetSource,
       err: closed.err,
       ...triageFields,
     }),
