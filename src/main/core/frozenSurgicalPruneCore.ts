@@ -73,7 +73,13 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
     nowMs,
   })
   if (carrierContext.eligible && observation.stallMs >= MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
-    if (nowMs - input.lastGlobalPruneAtMs < FROZEN_SURGICAL_PRUNE_GLOBAL_COOLDOWN_MS) {
+    const tokenGapProof =
+      input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS &&
+      (input.staleRequestIds?.length ?? 0) > 0
+    if (
+      nowMs - input.lastGlobalPruneAtMs < FROZEN_SURGICAL_PRUNE_GLOBAL_COOLDOWN_MS &&
+      !tokenGapProof
+    ) {
       return {
         action: 'vitality_dial',
         reason: 'global_prune_cooldown',

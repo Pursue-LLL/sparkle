@@ -73,6 +73,8 @@ export function formatMihomoQuicStallRecoveryLogLine(fields: {
   tokenGapMaxMs?: number
   carrierRid?: string
   staleProofKind?: string
+  closeTargetSource?: string
+  observationConnectionId?: string
 }): string {
   const parts = [
     '[MihomoQuicStallRecovery]:',
@@ -103,6 +105,12 @@ export function formatMihomoQuicStallRecoveryLogLine(fields: {
   }
   if (fields.staleProofKind) {
     parts.push(`stale_proof_kind=${fields.staleProofKind}`)
+  }
+  if (fields.closeTargetSource) {
+    parts.push(`close_target_source=${fields.closeTargetSource}`)
+  }
+  if (fields.observationConnectionId) {
+    parts.push(`observation_connection_id=${fields.observationConnectionId}`)
   }
   if (fields.connectionId) {
     parts.push(`connection_id=${fields.connectionId}`)
