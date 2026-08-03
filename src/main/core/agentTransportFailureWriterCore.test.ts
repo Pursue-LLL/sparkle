@@ -49,6 +49,17 @@ describe('agentTransportFailureWriterCore', () => {
     assert.equal(shouldPersistTransportFailure(row!), true)
   })
 
+  it('parses nested auth refresh ConnectError ECONNRESET (dcffd69d-class)', () => {
+    const row = parseTransportFailureLine(
+      '2026-08-03 10:18:48.341 [error] Failed to refresh authentication, scheduling next attempt {"error":{"name":"ConnectError","rawMessage":"Client network socket disconnected before secure TLS connection was established","code":10,"metadata":{},"details":[],"cause":{"code":"ECONNRESET","path":null,"host":"api2.cursor.sh","port":443}}}',
+    )
+    assert.ok(row)
+    assert.equal(row?.connectCode, '10')
+    assert.equal(row?.reasonSub, 'tls-reset')
+    assert.equal(row?.ts, Date.parse('2026-08-03T10:18:48.341'))
+    assert.equal(shouldPersistTransportFailure(row!), true)
+  })
+
   it('parses NAL Structured Logs Stream error PING timeout (520a4a94)', () => {
     const ts = Date.parse('2026-07-27T17:42:12.698')
     const row = parseTransportFailureLine(

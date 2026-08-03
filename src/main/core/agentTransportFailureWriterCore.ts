@@ -233,6 +233,17 @@ function parseIfmEventV1Line(line: string): AgentTransportFailureRow | undefined
   }
 }
 
+function unwrapConnectErrorPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const nested = payload.error
+  if (nested && typeof nested === 'object') {
+    const nestedRecord = nested as Record<string, unknown>
+    if (nestedRecord.name === 'ConnectError') {
+      return nestedRecord
+    }
+  }
+  return payload
+}
+
 function parseRendererConnectErrorJsonLine(line: string): AgentTransportFailureRow | undefined {
   if (!/"name"\s*:\s*"ConnectError"/.test(line)) {
     return undefined
@@ -247,23 +258,33 @@ function parseRendererConnectErrorJsonLine(line: string): AgentTransportFailureR
   } catch {
     return undefined
   }
+  payload = unwrapConnectErrorPayload(payload)
   if (payload.name !== 'ConnectError') {
     return undefined
   }
   const rawMessage = String(payload.rawMessage ?? '').trim()
   const connectCode = String(payload.code ?? '')
+  const cause =
+    payload.cause && typeof payload.cause === 'object'
+      ? (payload.cause as Record<string, unknown>)
+      : {}
+  const causeCode = String(cause.code ?? '').trim()
   const errMsg =
     rawMessage ||
+    causeCode ||
     String(payload.message ?? '').trim() ||
     (connectCode ? `ConnectError code=${connectCode}` : 'ConnectError')
-  if (!TRANSPORT_ERR_RE.test(errMsg) && connectCode !== '14') {
+  if (!TRANSPORT_ERR_RE.test(errMsg) && connectCode !== '14' && !TRANSPORT_ERR_RE.test(causeCode)) {
     return undefined
   }
   const ts = parseLogTimestampMs(line)
   if (ts === undefined) {
     return undefined
   }
-  const classified = classifyTransportReason(errMsg, connectCode)
+  const classified = classifyTransportReason(
+    causeCode && TRANSPORT_ERR_RE.test(causeCode) ? `${errMsg} ${causeCode}`.trim() : errMsg,
+    connectCode,
+  )
   return {
     ts,
     reasonType: classified.reasonType,

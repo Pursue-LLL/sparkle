@@ -57,6 +57,7 @@ export function resolveMarathonSseCarrierPruneContext(input: {
   marathonActive: boolean
   tokenGapMaxMs: number
   staleRequestIds: readonly string[]
+  staleRequestIdCount?: number
   registry: MarathonStreamRegistry
   nowMs: number
 }): MarathonSseCarrierPruneContext {
@@ -66,9 +67,20 @@ export function resolveMarathonSseCarrierPruneContext(input: {
   )
   const base = { registryMaxGapSinceActivityMs }
 
-  const marathonOrTokenGapStale =
-    input.marathonActive ||
-    (input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS && input.staleRequestIds.length > 0)
+  const staleRequestIdCount = Math.max(
+    input.staleRequestIds.length,
+    input.staleRequestIdCount ?? 0,
+  )
+  const hasTokenGapStaleList =
+    input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS && input.staleRequestIds.length > 0
+  const hasTokenGapStaleCountOnly =
+    input.marathonActive &&
+    input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS &&
+    staleRequestIdCount > 0 &&
+    input.staleRequestIds.length === 0 &&
+    input.observation.stallMs >= MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS
+  const tokenGapProof = hasTokenGapStaleList || hasTokenGapStaleCountOnly
+  const marathonOrTokenGapStale = input.marathonActive || hasTokenGapStaleList || hasTokenGapStaleCountOnly
 
   if (!marathonOrTokenGapStale || input.observation.kind !== 'single') {
     return { eligible: false, ...base }
@@ -81,8 +93,6 @@ export function resolveMarathonSseCarrierPruneContext(input: {
     return { eligible: false, ...base }
   }
 
-  const tokenGapProof =
-    input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS && input.staleRequestIds.length > 0
   if (tokenGapProof) {
     return {
       eligible: true,
