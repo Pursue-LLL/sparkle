@@ -166,6 +166,28 @@ describe('frozenSurgicalPruneCore R-34c', () => {
     assert.equal(plan.staleProofKind, 'token_gap')
   })
 
+  it('token_gap count without stale rid list still closes carrier during marathon', () => {
+    const plan = resolveFrozenSurgicalPrunePlan({
+      observation: {
+        ...baseObservation,
+        stallMs: 95_000,
+        host: 'api2.cursor.sh',
+      },
+      tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1_300_000,
+      staleRequestIdCount: 3,
+      staleRequestIds: [],
+      lastGlobalPruneAtMs: 0,
+      lastRecoveryAtMsByConnectionId: new Map(),
+      nowMs: 1_000_000,
+      marathonActive: true,
+      registryMaxGapSinceActivityMs: 0,
+      registry: { records: new Map() },
+    })
+    assert.equal(plan.action, 'close_frozen_connection')
+    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
+    assert.equal(plan.staleProofKind, 'token_gap')
+  })
+
   it('9480ace0 replay: token_gap stale with marathonTruth false prefers carrier over legacy prune', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: {

@@ -6,7 +6,10 @@ import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import { MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS } from './mihomoQuicSilentStallCore'
-import { resolveMarathonSseCarrierPruneContext } from './marathonSseCarrierPruneCore'
+import {
+  resolveMarathonSseCarrierPruneContext,
+  MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS,
+} from './marathonSseCarrierPruneCore'
 import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
 
 export const MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS = 120_000
@@ -69,13 +72,18 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
     marathonActive,
     tokenGapMaxMs: input.tokenGapMaxMs,
     staleRequestIds: input.staleRequestIds ?? [],
+    staleRequestIdCount: input.staleRequestIdCount,
     registry: input.registry ?? { records: new Map() },
     nowMs,
   })
   if (carrierContext.eligible && observation.stallMs >= MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
     const tokenGapProof =
       input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS &&
-      (input.staleRequestIds?.length ?? 0) > 0
+      ((input.staleRequestIds?.length ?? 0) > 0 ||
+        (input.marathonActive &&
+          input.staleRequestIdCount > 0 &&
+          (input.staleRequestIds?.length ?? 0) === 0 &&
+          observation.stallMs >= MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS))
     if (
       nowMs - input.lastGlobalPruneAtMs < FROZEN_SURGICAL_PRUNE_GLOBAL_COOLDOWN_MS &&
       !tokenGapProof
