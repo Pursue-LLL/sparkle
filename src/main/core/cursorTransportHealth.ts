@@ -562,8 +562,12 @@ async function runHungConnectionScanCycle(): Promise<void> {
       proxyNode: recentProbeForHung?.proxyNode
     })
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error)
+    const cthcBlind =
+      errMsg.includes('ENOENT') &&
+      (errMsg.includes('sparkle-mihomo') || errMsg.includes('noperm.sock'))
     await appendAppLog(
-      `[CursorTransportHealth]: hung scan failed: ${error instanceof Error ? error.message : String(error)}\n`
+      `[CursorTransportHealth]: hung scan failed: ${errMsg}${cthcBlind ? ' [CTHC_BLIND=1]' : ''}\n`,
     )
   } finally {
     isHungScanInFlight = false

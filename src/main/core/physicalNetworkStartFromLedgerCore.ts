@@ -29,11 +29,14 @@ interface LedgerEnvelope {
   composerId?: string
   networkStartId?: string
   rendererBootId?: string
+  processInstanceId?: string
+  segmentId?: string
   payload?: {
     networkStartId?: string
     rendererBootId?: string
     httpStartMs?: number
     origin?: string
+    segmentId?: string
   }
 }
 
@@ -67,31 +70,67 @@ export function parseNetworkStartedLedgerLine(line: string): ParsedNetworkStarte
     return undefined
   }
   const envelope = parsed.envelope
-  if (!envelope || envelope.eventKind !== 'network_started') {
+  if (!envelope) {
     return undefined
   }
-  const payload = envelope.payload ?? {}
-  const networkStartId = String(payload.networkStartId ?? envelope.networkStartId ?? '').trim()
-  const rendererBootId = String(payload.rendererBootId ?? envelope.rendererBootId ?? '').trim()
-  const httpStartMs =
-    typeof payload.httpStartMs === 'number' && Number.isFinite(payload.httpStartMs)
-      ? payload.httpStartMs
-      : typeof envelope.occurredAtMs === 'number'
-        ? envelope.occurredAtMs
-        : 0
-  if (!networkStartId || !rendererBootId || httpStartMs <= 0) {
-    return undefined
+
+  if (envelope.eventKind === 'network_started') {
+    const payload = envelope.payload ?? {}
+    const networkStartId = String(payload.networkStartId ?? envelope.networkStartId ?? '').trim()
+    const rendererBootId = String(payload.rendererBootId ?? envelope.rendererBootId ?? '').trim()
+    const httpStartMs =
+      typeof payload.httpStartMs === 'number' && Number.isFinite(payload.httpStartMs)
+        ? payload.httpStartMs
+        : typeof envelope.occurredAtMs === 'number'
+          ? envelope.occurredAtMs
+          : 0
+    if (!networkStartId || !rendererBootId || httpStartMs <= 0) {
+      return undefined
+    }
+    return {
+      ts: typeof envelope.occurredAtMs === 'number' ? envelope.occurredAtMs : httpStartMs,
+      networkStartId,
+      rendererBootId,
+      composerId: envelope.composerId,
+      originalRequestId: envelope.originalRequestId,
+      requestId: envelope.requestId,
+      httpStartMs,
+      origin: readOrigin(payload.origin),
+    }
   }
-  return {
-    ts: typeof envelope.occurredAtMs === 'number' ? envelope.occurredAtMs : httpStartMs,
-    networkStartId,
-    rendererBootId,
-    composerId: envelope.composerId,
-    originalRequestId: envelope.originalRequestId,
-    requestId: envelope.requestId,
-    httpStartMs,
-    origin: readOrigin(payload.origin),
+
+  // Guard validated-ledger emits http_segment_started (not network_started) for Cursor-2.
+  if (envelope.eventKind === 'http_segment_started') {
+    const payload = envelope.payload ?? {}
+    const httpStartMs =
+      typeof payload.httpStartMs === 'number' && Number.isFinite(payload.httpStartMs)
+        ? payload.httpStartMs
+        : typeof envelope.occurredAtMs === 'number'
+          ? envelope.occurredAtMs
+          : 0
+    const segmentId = String(payload.segmentId ?? envelope.segmentId ?? '').trim()
+    const requestId = String(envelope.requestId ?? envelope.originalRequestId ?? '').trim()
+    const rendererBootId = String(envelope.processInstanceId ?? envelope.rendererBootId ?? '').trim()
+    const networkStartId =
+      segmentId ||
+      String(payload.networkStartId ?? envelope.networkStartId ?? '').trim() ||
+      (requestId && httpStartMs > 0 ? `${requestId}:${httpStartMs}` : '')
+    if (!networkStartId || !rendererBootId || httpStartMs <= 0) {
+      return undefined
+    }
+    return {
+      ts: typeof envelope.occurredAtMs === 'number' ? envelope.occurredAtMs : httpStartMs,
+      networkStartId,
+      rendererBootId,
+      composerId: envelope.composerId,
+      originalRequestId: envelope.originalRequestId,
+      requestId: envelope.requestId,
+      httpStartMs,
+      origin: readOrigin(payload.origin),
+    }
   }
+
+  return undefined
 }
 
 export function countHttpSegmentStartedLedgerLines(lines: readonly string[]): number {

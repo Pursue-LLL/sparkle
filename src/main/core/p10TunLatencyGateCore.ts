@@ -12,6 +12,8 @@ export interface P10TunLatencyFixture {
   samples: number
   tun: { p50Ms: number; p95Ms: number }
   mixedPort: { p50Ms: number; p95Ms: number }
+  /** Per-sample paired tax percentiles — SSOT preferred over aggregate subtraction. */
+  pairedTax?: { p50Ms: number; p95Ms: number; samples: number }
   maxTunP50TaxMs: number
   maxTunP95TaxMs: number
 }
@@ -62,16 +64,22 @@ export function runP10TunLatencyGate(
   }
 
   const fixture = input.artifact!.payload
-  const p50TaxMs = computePairedTunTaxMs(fixture.tun.p50Ms, fixture.mixedPort.p50Ms)
-  const p95TaxMs = computePairedTunTaxMs(fixture.tun.p95Ms, fixture.mixedPort.p95Ms)
+  const usePerSamplePaired = (fixture.pairedTax?.samples ?? 0) >= 100
+  const p50TaxMs = usePerSamplePaired
+    ? (fixture.pairedTax?.p50Ms ?? 0)
+    : computePairedTunTaxMs(fixture.tun.p50Ms, fixture.mixedPort.p50Ms)
+  const p95TaxMs = usePerSamplePaired
+    ? (fixture.pairedTax?.p95Ms ?? 0)
+    : computePairedTunTaxMs(fixture.tun.p95Ms, fixture.mixedPort.p95Ms)
+  const effectiveSamples = usePerSamplePaired ? (fixture.pairedTax?.samples ?? 0) : fixture.samples
   const ok =
-    fixture.samples >= 100 &&
+    effectiveSamples >= 100 &&
     Math.abs(p50TaxMs) <= fixture.maxTunP50TaxMs &&
     Math.abs(p95TaxMs) <= fixture.maxTunP95TaxMs
   return {
     ok,
     artifactBacked: true,
-    samples: fixture.samples,
+    samples: effectiveSamples,
     tunP50Ms: fixture.tun.p50Ms,
     mixedPortP50Ms: fixture.mixedPort.p50Ms,
     tunP95Ms: fixture.tun.p95Ms,
@@ -79,7 +87,7 @@ export function runP10TunLatencyGate(
     p50TaxMs,
     p95TaxMs,
     detail: ok
-      ? `${artifactCheck.detail}; paired tax p50=${p50TaxMs}ms p95=${p95TaxMs}ms (samples=${fixture.samples})`
+      ? `${artifactCheck.detail}; paired tax p50=${p50TaxMs}ms p95=${p95TaxMs}ms (samples=${effectiveSamples}${usePerSamplePaired ? ' per-sample' : ' aggregate'})`
       : `paired tax exceeded p50=${p50TaxMs}/${fixture.maxTunP50TaxMs} p95=${p95TaxMs}/${fixture.maxTunP95TaxMs}`,
   }
 }

@@ -47,3 +47,33 @@ export function validateP10MeasurementArtifact<TPayload>(
 export function computePairedTunTaxMs(tunMs: number, mixedMs: number): number {
   return tunMs - mixedMs
 }
+
+export function percentileMs(values: readonly number[], p: number): number {
+  if (values.length === 0) {
+    return 0
+  }
+  const sorted = [...values].sort((a, b) => a - b)
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
+  return Math.round(sorted[index] ?? 0)
+}
+
+export function computePerSamplePairedTaxPercentiles(input: {
+  tunMs: readonly number[]
+  mixedMs: readonly number[]
+}): { p50Ms: number; p95Ms: number; samples: number } {
+  const samples = Math.min(input.tunMs.length, input.mixedMs.length)
+  const taxMs: number[] = []
+  for (let index = 0; index < samples; index += 1) {
+    const tun = input.tunMs[index]
+    const mixed = input.mixedMs[index]
+    if (tun == null || mixed == null) {
+      continue
+    }
+    taxMs.push(computePairedTunTaxMs(tun, mixed))
+  }
+  return {
+    samples: taxMs.length,
+    p50Ms: percentileMs(taxMs, 50),
+    p95Ms: percentileMs(taxMs, 95),
+  }
+}

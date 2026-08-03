@@ -18,7 +18,14 @@ export function isMihomoApiSocketPresent(): boolean {
   if (process.platform === 'win32') {
     return true
   }
-  return existsSync(mihomoIpcPath())
+  const sockPath = mihomoIpcPath()
+  if (!existsSync(sockPath)) {
+    return false
+  }
+  if (sockPath.includes('noperm.sock')) {
+    return false
+  }
+  return true
 }
 
 function isMihomoApiConnectionError(message: string): boolean {
@@ -77,7 +84,15 @@ export async function ensureMihomoApiReachableForMarathon(reason: string): Promi
 
   lastMihomoSocketRecoveryAtMs = nowMs
   await appendAppLog(`[MihomoApiSocketWatchdog]: recover reason=${reason}\n`)
-  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+  const guardModule = await import('./marathonCoreRestartGuard')
+  const evaluateMarathonCoreColdRestart = guardModule.evaluateMarathonCoreColdRestart
+  if (typeof evaluateMarathonCoreColdRestart !== 'function') {
+    await appendAppLog(
+      `[MihomoApiSocketWatchdog]: evaluateMarathonCoreColdRestart missing export — defer restartCore [CTHC_BLIND=1]\n`,
+    )
+    scheduleDeferredMihomoSocketRecovery(reason, MIHOMO_SOCKET_RECOVERY_COOLDOWN_MS)
+    return false
+  }
   const guard = await evaluateMarathonCoreColdRestart('restartCore')
   if (guard.blocked) {
     await appendAppLog(

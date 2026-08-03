@@ -10,6 +10,7 @@ import {
   parseValidatedLedgerTerminalLine,
   type ValidatedLedgerTerminalRow,
 } from './validatedLedgerTerminalCore'
+import { discoverGuardValidatedLedgerPaths, guardLegacyRootDir } from './guardValidatedLedgerPathsCore'
 
 const INGEST_CHUNK_BYTES = 2_097_152
 const CACHE_MAX_LINES = 20_000
@@ -44,8 +45,56 @@ export function resetValidatedLedgerIngestPathsForTests(): void {
 function guardLedgerPath(): string {
   return (
     testLedgerPathOverride ??
-    join(homedir(), '.cursor-500-guard', 'runtime-events', 'validated-ledger.v1.jsonl')
+    join(guardLegacyRootDir(), 'runtime-events', 'validated-ledger.v1.jsonl')
   )
+}
+
+interface MultiLedgerTerminalCheckpoint {
+  ledgers: Record<string, ValidatedLedgerIngestCheckpoint>
+  updatedAtMs: number
+}
+
+function readMultiLedgerCheckpoint(): MultiLedgerTerminalCheckpoint {
+  const checkpointFile = ingestCheckpointPath()
+  if (!existsSync(checkpointFile)) {
+    return { ledgers: {}, updatedAtMs: 0 }
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(checkpointFile, 'utf8')) as MultiLedgerTerminalCheckpoint
+    if (parsed.ledgers && typeof parsed.ledgers === 'object') {
+      return parsed
+    }
+    const legacy = parsed as unknown as ValidatedLedgerIngestCheckpoint
+    if (legacy.ledgerPath) {
+      return {
+        ledgers: { [legacy.ledgerPath]: legacy },
+        updatedAtMs: legacy.updatedAtMs ?? 0,
+      }
+    }
+    return { ledgers: {}, updatedAtMs: 0 }
+  } catch {
+    return { ledgers: {}, updatedAtMs: 0 }
+  }
+}
+
+function writeMultiLedgerCheckpoint(checkpoint: MultiLedgerTerminalCheckpoint): void {
+  writeFileSync(ingestCheckpointPath(), `${JSON.stringify(checkpoint)}\n`, 'utf8')
+}
+
+function readCheckpoint(ledgerPath: string): ValidatedLedgerIngestCheckpoint {
+  const multi = readMultiLedgerCheckpoint()
+  const existing = multi.ledgers[ledgerPath]
+  if (existing) {
+    return existing
+  }
+  return { ledgerPath, byteOffset: 0, fileSize: 0, updatedAtMs: 0 }
+}
+
+function writeCheckpoint(checkpoint: ValidatedLedgerIngestCheckpoint): void {
+  const multi = readMultiLedgerCheckpoint()
+  multi.ledgers[checkpoint.ledgerPath] = checkpoint
+  multi.updatedAtMs = checkpoint.updatedAtMs
+  writeMultiLedgerCheckpoint(multi)
 }
 
 function terminalCachePath(): string {
@@ -54,26 +103,6 @@ function terminalCachePath(): string {
 
 function ingestCheckpointPath(): string {
   return testCheckpointPathOverride ?? join(homedir(), '.sparkle', 'validated-ledger-ingest-checkpoint.json')
-}
-
-function readCheckpoint(ledgerPath: string): ValidatedLedgerIngestCheckpoint {
-  const checkpointFile = ingestCheckpointPath()
-  if (!existsSync(checkpointFile)) {
-    return { ledgerPath, byteOffset: 0, fileSize: 0, updatedAtMs: 0 }
-  }
-  try {
-    const parsed = JSON.parse(readFileSync(checkpointFile, 'utf8')) as ValidatedLedgerIngestCheckpoint
-    if (parsed.ledgerPath !== ledgerPath) {
-      return { ledgerPath, byteOffset: 0, fileSize: 0, updatedAtMs: 0 }
-    }
-    return parsed
-  } catch {
-    return { ledgerPath, byteOffset: 0, fileSize: 0, updatedAtMs: 0 }
-  }
-}
-
-function writeCheckpoint(checkpoint: ValidatedLedgerIngestCheckpoint): void {
-  writeFileSync(ingestCheckpointPath(), `${JSON.stringify(checkpoint)}\n`, 'utf8')
 }
 
 function appendTerminalRows(rows: readonly ValidatedLedgerTerminalRow[]): void {
@@ -136,27 +165,31 @@ async function ingestLedgerFromOffset(
 export async function ingestValidatedLedgerTerminals(
   nowMs: number = Date.now(),
 ): Promise<ValidatedLedgerTerminalRow[]> {
-  const ledgerPath = guardLedgerPath()
-  if (!existsSync(ledgerPath)) {
-    return readValidatedLedgerTerminalCache()
+  const ledgerPaths = testLedgerPathOverride
+    ? [testLedgerPathOverride]
+    : discoverGuardValidatedLedgerPaths()
+  for (const ledgerPath of ledgerPaths) {
+    if (!existsSync(ledgerPath)) {
+      continue
+    }
+    const fileSize = statSync(ledgerPath).size
+    const checkpoint = readCheckpoint(ledgerPath)
+    let startOffset = checkpoint.byteOffset
+    if (fileSize < checkpoint.fileSize || startOffset > fileSize) {
+      startOffset = 0
+    }
+    if (startOffset >= fileSize) {
+      continue
+    }
+    const { rows, endOffset } = await ingestLedgerFromOffset(ledgerPath, startOffset)
+    appendTerminalRows(rows)
+    writeCheckpoint({
+      ledgerPath,
+      byteOffset: endOffset,
+      fileSize,
+      updatedAtMs: nowMs,
+    })
   }
-  const fileSize = statSync(ledgerPath).size
-  const checkpoint = readCheckpoint(ledgerPath)
-  let startOffset = checkpoint.byteOffset
-  if (fileSize < checkpoint.fileSize || startOffset > fileSize) {
-    startOffset = 0
-  }
-  if (startOffset >= fileSize) {
-    return readValidatedLedgerTerminalCache()
-  }
-  const { rows, endOffset } = await ingestLedgerFromOffset(ledgerPath, startOffset)
-  appendTerminalRows(rows)
-  writeCheckpoint({
-    ledgerPath,
-    byteOffset: endOffset,
-    fileSize,
-    updatedAtMs: nowMs,
-  })
   return readValidatedLedgerTerminalCache()
 }
 
