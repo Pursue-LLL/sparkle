@@ -893,14 +893,26 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
         nowMs - lastTokenGapIneffectiveEmitAtMs >= TOKEN_GAP_INEFFECTIVE_EMIT_COOLDOWN_MS
       ) {
         lastTokenGapIneffectiveEmitAtMs = nowMs
-        await appendAppLog(formatTokenGapRescueIneffectiveLogLine(ineffective))
+        const { getLastMaxStallSingleObservation } = await import('./mihomoQuicSilentStallObserver')
+        const { executeTokenGapIneffectiveEscalationIfDue } = await import(
+          './mihomoQuicSilentStallRecovery'
+        )
+        const escalationAction = await executeTokenGapIneffectiveEscalationIfDue(
+          {
+            maxGapMs: ineffective.maxGapMs,
+            staleRequestIds: ineffective.staleRequestIds,
+            observation: getLastMaxStallSingleObservation(),
+          },
+          nowMs,
+        )
+        await appendAppLog(formatTokenGapRescueIneffectiveLogLine(ineffective, escalationAction))
         await appendNetworkStabilityEvent({
           ts: new Date(nowMs).toISOString(),
           kind: TOKEN_GAP_RESCUE_INEFFECTIVE_KIND,
           probe_ok: true,
-          recovery_action: 'none',
+          recovery_action: escalationAction,
           hung_connection_count: cursorConnectionCount,
-          error_detail: `max_gap_ms=${ineffective.maxGapMs} stale_rids=${ineffective.staleRequestIds.slice(0, 3).join(',')}`,
+          error_detail: `max_gap_ms=${ineffective.maxGapMs} stale_rids=${ineffective.staleRequestIds.slice(0, 3).join(',')} escalation=${escalationAction}`,
         })
       }
     }

@@ -70,12 +70,13 @@ export function evaluateTokenGapRescueIneffective(input: {
 
 export function formatTokenGapRescueIneffectiveLogLine(
   observation: TokenGapRescueIneffectiveObservation,
+  escalationAction: string = 'none',
 ): string {
   const stalePreview = observation.staleRequestIds.slice(0, 5).join(',')
   const parts = [
     '[TokenGapRescueIneffective]:',
     'outcome=observed',
-    'observe_only=true',
+    `escalation_action=${escalationAction}`,
     `max_gap_ms=${observation.maxGapMs}`,
     'partition_stale=0',
     `elapsed_since_rescue_ms=${observation.elapsedSinceRescueMs}`,

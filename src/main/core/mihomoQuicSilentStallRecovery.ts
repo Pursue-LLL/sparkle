@@ -24,6 +24,7 @@ import {
   type RecoveryHonestyAttemptRecord,
 } from './recoveryHonestyCore'
 import { resolveStallRecoveryCloseTarget } from './marathonCarrierConnectionBindCore'
+import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 import {
   formatMihomoQuicStallRecoveryLogLine,
   type MihomoQuicStallRecoveryAction,
@@ -398,4 +399,102 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     await runStallVitalityDial(observation.leaf, observation.cursorConnectionCount, nowMs)
   }
   return action
+}
+
+export const TOKEN_GAP_INEFFECTIVE_ESCALATION_COOLDOWN_MS = 120_000
+
+let lastTokenGapIneffectiveEscalationAtMs = 0
+
+export function resetTokenGapIneffectiveEscalationForTests(): void {
+  lastTokenGapIneffectiveEscalationAtMs = 0
+}
+
+export async function executeTokenGapIneffectiveEscalationIfDue(
+  input: {
+    maxGapMs: number
+    staleRequestIds: readonly string[]
+    observation: MihomoQuicSilentStallObservation | undefined
+  },
+  nowMs: number = Date.now(),
+): Promise<MihomoQuicStallRecoveryAction> {
+  if (
+    nowMs - lastTokenGapIneffectiveEscalationAtMs <
+    TOKEN_GAP_INEFFECTIVE_ESCALATION_COOLDOWN_MS
+  ) {
+    return 'none'
+  }
+  const staleRequestIdCount = Math.max(
+    input.staleRequestIds.length,
+    latestTokenGapSnapshot.staleRequestIdCount,
+    input.maxGapMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS ? 1 : 0,
+  )
+  setMarathonTokenGapSnapshotForRecovery({
+    maxGapMs: Math.max(input.maxGapMs, latestTokenGapSnapshot.maxGapMs),
+    staleRequestIdCount,
+  })
+  if (input.staleRequestIds.length > 0) {
+    setMarathonRecoveryContextForPrune({
+      marathonActive: latestMarathonRecoveryContext.marathonActive,
+      registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
+      httpParentChainAgeMs: latestMarathonRecoveryContext.httpParentChainAgeMs,
+      outboundHy2SessionAgeMs: latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
+      staleRequestIds: [...input.staleRequestIds],
+      registry: latestMarathonRecoveryContext.registry,
+    })
+  }
+  const observation = input.observation
+  if (!observation || observation.kind !== 'single') {
+    return 'none'
+  }
+  lastTokenGapIneffectiveEscalationAtMs = nowMs
+  return executeMihomoQuicStallRecoveryIfDue(observation, nowMs)
+}
+
+export const TOKEN_GAP_INEFFECTIVE_ESCALATION_COOLDOWN_MS = 120_000
+
+let lastTokenGapIneffectiveEscalationAtMs = 0
+
+export function resetTokenGapIneffectiveEscalationForTests(): void {
+  lastTokenGapIneffectiveEscalationAtMs = 0
+}
+
+export async function executeTokenGapIneffectiveEscalationIfDue(
+  input: {
+    maxGapMs: number
+    staleRequestIds: readonly string[]
+    observation: MihomoQuicSilentStallObservation | undefined
+  },
+  nowMs: number = Date.now(),
+): Promise<MihomoQuicStallRecoveryAction> {
+  if (
+    nowMs - lastTokenGapIneffectiveEscalationAtMs <
+    TOKEN_GAP_INEFFECTIVE_ESCALATION_COOLDOWN_MS
+  ) {
+    return 'none'
+  }
+  const staleRequestIdCount = Math.max(
+    input.staleRequestIds.length,
+    latestTokenGapSnapshot.staleRequestIdCount,
+    input.maxGapMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS ? 1 : 0,
+  )
+  setMarathonTokenGapSnapshotForRecovery({
+    maxGapMs: Math.max(input.maxGapMs, latestTokenGapSnapshot.maxGapMs),
+    staleRequestIdCount,
+  })
+  if (input.staleRequestIds.length > 0) {
+    setMarathonRecoveryContextForPrune({
+      marathonActive: latestMarathonRecoveryContext.marathonActive,
+      registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
+      httpParentChainAgeMs: latestMarathonRecoveryContext.httpParentChainAgeMs,
+      outboundHy2SessionAgeMs: latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
+      staleRequestIds: [...input.staleRequestIds],
+      registry: latestMarathonRecoveryContext.registry,
+    })
+  }
+  const observation = input.observation
+  if (!observation || observation.kind !== 'single') {
+    return 'none'
+  }
+  lastTokenGapIneffectiveEscalationAtMs = nowMs
+  return executeMihomoQuicStallRecoveryIfDue(observation, nowMs)
 }
