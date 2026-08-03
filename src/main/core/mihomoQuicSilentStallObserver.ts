@@ -19,6 +19,7 @@ import {
   shouldSkipMihomoQuicSilentStallEmit,
   updateMihomoQuicStallTrackedConnection,
   type MihomoQuicStallTrackedConnection,
+  type MihomoQuicSilentStallObservation,
 } from './mihomoQuicSilentStallCore'
 
 const SCAN_INTERVAL_MS = 5_000
@@ -28,6 +29,7 @@ const lastEmitAtByKey = new Map<string, number>()
 let lastScanAtMs = 0
 let lastObservedFrozenQuicCursorCount = 0
 let lastObservedMaxStallMs = 0
+let lastMaxStallSingleObservation: MihomoQuicSilentStallObservation | undefined
 
 export function resetMihomoQuicSilentStallObserverForTests(): void {
   trackedById.clear()
@@ -35,6 +37,7 @@ export function resetMihomoQuicSilentStallObserverForTests(): void {
   lastScanAtMs = 0
   lastObservedFrozenQuicCursorCount = 0
   lastObservedMaxStallMs = 0
+  lastMaxStallSingleObservation = undefined
 }
 
 /** Latest frozen QUIC Cursor transport count from the most recent stall scan (R-24 MTDO breach). */
@@ -45,6 +48,11 @@ export function getMarathonFrozenQuicCursorCount(): number {
 /** Max stall_ms observed on the most recent stall scan (P22b early handoff SSOT). */
 export function getMarathonMaxQuicStallMs(): number {
   return lastObservedMaxStallMs
+}
+
+/** Single-connection observation with highest stall_ms from the most recent scan (R-18 escalation). */
+export function getLastMaxStallSingleObservation(): MihomoQuicSilentStallObservation | undefined {
+  return lastMaxStallSingleObservation
 }
 
 function syncTrackedConnections(connections: readonly ControllerConnectionDetail[]): void {
@@ -99,6 +107,18 @@ export async function observeMihomoConnectionsForQuicSilentStall(
   lastObservedMaxStallMs = observations.reduce(
     (max, observation) => Math.max(max, observation.stallMs),
     0,
+  )
+  lastMaxStallSingleObservation = observations.reduce<MihomoQuicSilentStallObservation | undefined>(
+    (best, observation) => {
+      if (observation.kind !== 'single') {
+        return best
+      }
+      if (!best || observation.stallMs > best.stallMs) {
+        return observation
+      }
+      return best
+    },
+    undefined,
   )
 
   const activeHy2Leaf =
