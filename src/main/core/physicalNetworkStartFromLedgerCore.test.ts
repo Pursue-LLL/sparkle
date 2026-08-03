@@ -54,6 +54,28 @@ describe('physicalNetworkStartFromLedgerCore P10-5', () => {
     assert.equal(records[0]?.closedAtMs, 5000)
   })
 
+  it('parses http_segment_started envelope (Cursor-2 validated-ledger)', () => {
+    const line = JSON.stringify({
+      envelope: {
+        eventKind: 'http_segment_started',
+        occurredAtMs: 1784866200310,
+        processInstanceId: 'c2-1784858169328-cwt6pfbs',
+        requestId: '8f984d3f-c0b1-48a8-95bb-738d53bed6b0',
+        originalRequestId: '67db51f9-908a-4c80-aa25-dbd2576fc9d3',
+        composerId: 'e716c716-1c0b-4350-895c-9a79ca5430c3',
+        segmentId: 'c2-1784858169328-cwt6pfbs:segment:50',
+        payload: {
+          segmentId: 'c2-1784858169328-cwt6pfbs:segment:50',
+          httpStartMs: 1784866200309,
+        },
+      },
+    })
+    const row = parseNetworkStartedLedgerLine(line)
+    assert.equal(row?.networkStartId, 'c2-1784858169328-cwt6pfbs:segment:50')
+    assert.equal(row?.rendererBootId, 'c2-1784858169328-cwt6pfbs')
+    assert.equal(row?.httpStartMs, 1784866200309)
+  })
+
   it('counts http_segment_started lines for bad-ruler detection', () => {
     const lines = [
       JSON.stringify({ envelope: { eventKind: 'http_segment_started' } }),

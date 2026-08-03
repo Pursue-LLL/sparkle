@@ -53,6 +53,29 @@ export function loadLatestTunLatencyArtifact(): P10MeasurementArtifact<P10TunLat
   }
 }
 
+export function loadLatestStockParityArtifact():
+  | P10MeasurementArtifact<import('./p10StockParityGateCore').P10StockParityFixture[]>
+  | undefined {
+  const dir = join(homedir(), '.sparkle', 'p10-artifacts')
+  if (!existsSync(dir)) {
+    return undefined
+  }
+  const files = readdirSync(dir)
+    .filter((name) => name.startsWith('stock-parity-') && name.endsWith('.json'))
+    .sort()
+  const latest = files.at(-1)
+  if (!latest) {
+    return undefined
+  }
+  try {
+    return JSON.parse(readFileSync(join(dir, latest), 'utf8')) as P10MeasurementArtifact<
+      import('./p10StockParityGateCore').P10StockParityFixture[]
+    >
+  } catch {
+    return undefined
+  }
+}
+
 export function runP10PreDeployGate(srcMainRoot: string): P10PreDeployGateResult {
   const cases: P10PreDeployGateCase[] = []
 
@@ -100,12 +123,13 @@ export function runP10PreDeployGate(srcMainRoot: string): P10PreDeployGateResult
     detail: `expect invalid baseline: ${physicalKpi.detail}`,
   })
 
-  const stock = runP10StockParityGate()
+  const stockArtifact = loadLatestStockParityArtifact()
+  const stock = runP10StockParityGate(stockArtifact ? { artifact: stockArtifact } : {})
   cases.push({
     name: 'p10_6_stock_parity_artifact',
-    ok: false,
-    blocked: true,
-    detail: stock.cases[0]?.detail ?? 'awaiting artifact',
+    ok: stock.ok,
+    blocked: !stockArtifact,
+    detail: stock.cases.map((item) => `${item.metric}:${item.detail}`).join('; ') || 'awaiting artifact',
   })
 
   const tunArtifact = loadLatestTunLatencyArtifact()

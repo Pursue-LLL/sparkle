@@ -8,8 +8,38 @@ import { join, dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import type { P10MeasurementArtifact } from '../src/main/core/p10MeasurementArtifactCore.ts'
-import type { P10TunLatencyFixture } from '../src/main/core/p10TunLatencyGateCore.ts'
+import type { P10MeasurementArtifact } from '../src/main/core/p10MeasurementArtifactCore'
+import type { P10TunLatencyFixture } from '../src/main/core/p10TunLatencyGateCore'
+
+function percentileMs(values: readonly number[], p: number): number {
+  if (values.length === 0) {
+    return 0
+  }
+  const sorted = [...values].sort((a, b) => a - b)
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
+  return Math.round(sorted[index] ?? 0)
+}
+
+function computePerSamplePairedTaxPercentiles(input: {
+  tunMs: readonly number[]
+  mixedMs: readonly number[]
+}): { p50Ms: number; p95Ms: number; samples: number } {
+  const samples = Math.min(input.tunMs.length, input.mixedMs.length)
+  const taxMs: number[] = []
+  for (let index = 0; index < samples; index += 1) {
+    const tun = input.tunMs[index]
+    const mixed = input.mixedMs[index]
+    if (tun == null || mixed == null) {
+      continue
+    }
+    taxMs.push(tun - mixed)
+  }
+  return {
+    samples: taxMs.length,
+    p50Ms: percentileMs(taxMs, 50),
+    p95Ms: percentileMs(taxMs, 95),
+  }
+}
 
 const execFileAsync = promisify(execFile)
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -17,7 +47,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const MIXED_PORT = Number(process.env.P10_MIXED_PORT ?? '7890')
 const TARGET_URL = process.env.P10_LATENCY_TARGET ?? 'http://www.gstatic.com/generate_204'
 const SAMPLE_COUNT = Number(process.env.P10_LATENCY_SAMPLES ?? '100')
-const BATCH_SIZE = Number(process.env.P10_LATENCY_BATCH ?? '25')
 const ARTIFACT_DIR = join(homedir(), '.sparkle', 'p10-artifacts')
 
 async function curlConnectMs(viaMixed: boolean): Promise<number | undefined> {
@@ -43,37 +72,28 @@ async function curlConnectMs(viaMixed: boolean): Promise<number | undefined> {
   }
 }
 
-function percentile(values: number[], p: number): number {
-  if (values.length === 0) {
-    return 0
-  }
-  const sorted = [...values].sort((a, b) => a - b)
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
-  return Math.round(sorted[index] ?? 0)
-}
-
-async function sampleBatch(viaMixed: boolean, count: number): Promise<number[]> {
-  const rows = await Promise.all(Array.from({ length: count }, () => curlConnectMs(viaMixed)))
-  return rows.filter((value): value is number => value != null)
+async function samplePairedConnectMs(): Promise<{ tunMs?: number; mixedMs?: number }> {
+  const mixedMs = await curlConnectMs(true)
+  const tunMs = await curlConnectMs(false)
+  return { tunMs, mixedMs }
 }
 
 async function main(): Promise<void> {
-  const tunSamples: number[] = []
-  const mixedSamples: number[] = []
-  while (tunSamples.length < SAMPLE_COUNT || mixedSamples.length < SAMPLE_COUNT) {
-    const [mixedBatch, tunBatch] = await Promise.all([
-      sampleBatch(true, BATCH_SIZE),
-      sampleBatch(false, BATCH_SIZE),
-    ])
-    mixedSamples.push(...mixedBatch)
-    tunSamples.push(...tunBatch)
+  const tun: number[] = []
+  const mixed: number[] = []
+  while (tun.length < SAMPLE_COUNT) {
+    const pair = await samplePairedConnectMs()
+    if (pair.mixedMs != null && pair.tunMs != null) {
+      mixed.push(pair.mixedMs)
+      tun.push(pair.tunMs)
+    }
   }
-  const tun = tunSamples.slice(0, SAMPLE_COUNT)
-  const mixed = mixedSamples.slice(0, SAMPLE_COUNT)
+  const pairedTax = computePerSamplePairedTaxPercentiles({ tunMs: tun, mixedMs: mixed })
   const payload: P10TunLatencyFixture = {
     samples: SAMPLE_COUNT,
-    tun: { p50Ms: percentile(tun, 50), p95Ms: percentile(tun, 95) },
-    mixedPort: { p50Ms: percentile(mixed, 50), p95Ms: percentile(mixed, 95) },
+    tun: { p50Ms: percentileMs(tun, 50), p95Ms: percentileMs(tun, 95) },
+    mixedPort: { p50Ms: percentileMs(mixed, 50), p95Ms: percentileMs(mixed, 95) },
+    pairedTax,
     maxTunP50TaxMs: 50,
     maxTunP95TaxMs: 100,
   }
@@ -86,7 +106,7 @@ async function main(): Promise<void> {
       schemaVersion: 'p10-measurement-artifact.v1',
       capturedAtIso,
       source: 'p10CaptureTunLatencyArtifact.mts',
-      sha256,
+      sha256: 'pending',
       endpoint: TARGET_URL,
       node: process.env.P10_ACTIVE_LEAF ?? 'JP-VPS-HY2',
     },

@@ -81,10 +81,15 @@ export function mihomoIpcPath(): string {
   if (core === 'system') {
     return '/tmp/sparkle-mihomo-external.sock'
   }
-  if (!checkCorePermissionPathSync(mihomoCorePath(core))) {
-    return '/tmp/sparkle-mihomo-api-noperm.sock'
+  const primarySock = '/tmp/sparkle-mihomo-api.sock'
+  if (checkCorePermissionPathSync(mihomoCorePath(core))) {
+    return primarySock
   }
-  return '/tmp/sparkle-mihomo-api.sock'
+  // noperm.sock is never provisioned by Sparkle — always probe primary to avoid CTHC ENOENT blind.
+  if (existsSync(primarySock)) {
+    return primarySock
+  }
+  return primarySock
 }
 
 export function serviceIpcPath(): string {
