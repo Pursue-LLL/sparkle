@@ -201,7 +201,10 @@ export async function runMarathonProtocolColdStartGateIfDue(
   }
 
   const mutationKind = isMarathonTlsCanaryLeaf(trimmedActive) ? 'node_switch' : 'protocol_upgrade'
-  const mtic = evaluateTransportMutationAllowed(mutationKind, mutationSnapshot)
+  const mtic = evaluateTransportMutationAllowed(mutationKind, {
+    ...mutationSnapshot,
+    marathonHy2RecoverTlsToHy2: isMarathonTlsCanaryLeaf(trimmedActive),
+  })
   if (!mtic.allowed) {
     await appendAppLog(
       formatTransportMutationGateLogLine({

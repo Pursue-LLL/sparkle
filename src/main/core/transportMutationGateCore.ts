@@ -19,10 +19,13 @@ export interface TransportMutationSnapshot {
   postCoreRestartQuarantineRemainingMs: number
   hostIsCritical?: boolean
   serverEofProof?: boolean
+  /** One-way TLS→HY2 recover — bypass quarantine/hy2 chain (risk-reducing only). */
+  marathonHy2RecoverTlsToHy2?: boolean
 }
 
 export type TransportMutationAllowReason =
   | 'allowed'
+  | 'allowed_marathon_hy2_recover'
   | 'deny_quarantine_active'
   | 'deny_hy2_parent_chain_alive'
   | 'deny_stale_rids_present'
@@ -54,6 +57,18 @@ export function evaluateTransportMutationAllowed(
   snapshot: TransportMutationSnapshot,
 ): TransportMutationDecision {
   if (mutation === 'protocol_upgrade' || mutation === 'node_switch') {
+    if (
+      mutation === 'node_switch' &&
+      snapshot.marathonHy2RecoverTlsToHy2 === true
+    ) {
+      if (snapshot.cursorConnectionCount > 0) {
+        return { allowed: false, reason: 'deny_cursor_conn_active' }
+      }
+      if (snapshot.marathonTruthActive) {
+        return { allowed: false, reason: 'deny_marathon_truth_active' }
+      }
+      return { allowed: true, reason: 'allowed_marathon_hy2_recover' }
+    }
     if (snapshot.postCoreRestartQuarantineRemainingMs > 0) {
       return { allowed: false, reason: 'deny_quarantine_active' }
     }

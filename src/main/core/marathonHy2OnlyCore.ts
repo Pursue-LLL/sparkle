@@ -21,6 +21,18 @@ export function shouldRecoverTlsLeafToHy2(activeNode: string): boolean {
   return isMarathonTlsCanaryLeaf(activeNode)
 }
 
+/** Marathon Cursor 专用组禁止出现的 VPS leaf（历史 TLS canary :18443）。 */
+export function isMarathonExcludedCursorVpsLeaf(node: string): boolean {
+  return isMarathonTlsCanaryLeaf(node)
+}
+
+export function filterMarathonCursorEligibleVpsLeaves(leaves: readonly string[]): string[] {
+  return leaves.filter((name) => !isMarathonExcludedCursorVpsLeaf(name))
+}
+
+/** Provider-mode Cursor 专用 filter — HY2/Reality/TUIC only, excludes *-VPS-TLS. */
+export const MARATHON_CURSOR_VPS_PROVIDER_FILTER = '(?i)-VPS-(HY2|Reality|TUIC)$'
+
 export function formatMarathonHy2OnlyTlsDeniedLogLine(input: {
   fromNode: string
   toNode: string

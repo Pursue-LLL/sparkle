@@ -4,6 +4,10 @@ import {
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName
 } from './cursorProxyGroup'
+import {
+  filterMarathonCursorEligibleVpsLeaves,
+  MARATHON_CURSOR_VPS_PROVIDER_FILTER,
+} from './marathonHy2OnlyCore'
 import { resolveVpsProviderId } from './vpsProviderSplitCore'
 import { buildHongKongUrlTestDefaults } from './defaultAutoSwitchProxy'
 
@@ -224,9 +228,9 @@ function buildCursorGroupConfig(
   _groups: ProxyGroupConfig[],
   profileId: string | undefined
 ): ProxyGroupConfig | null {
-  const vpsNodes = [...new Set(leafNames.filter(matchesVpsNode))].sort((a, b) =>
-    a.localeCompare(b, 'zh-CN')
-  )
+  const vpsNodes = filterMarathonCursorEligibleVpsLeaves(
+    [...new Set(leafNames.filter(matchesVpsNode))],
+  ).sort((a, b) => a.localeCompare(b, 'zh-CN'))
 
   if (profileId) {
     if (vpsNodes.length === 0) {
@@ -235,7 +239,8 @@ function buildCursorGroupConfig(
     return {
       name: CURSOR_DEDICATED_GROUP_NAME,
       type: 'select',
-      use: [resolveVpsProviderId(profileId)]
+      use: [resolveVpsProviderId(profileId)],
+      filter: MARATHON_CURSOR_VPS_PROVIDER_FILTER,
     }
   }
 

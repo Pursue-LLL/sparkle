@@ -64,7 +64,7 @@ describe('provider VPS split integration', () => {
       (group) => group.name === '🎯 Cursor 专用'
     )
     assert.deepEqual(cursorGroup?.use, [vpsProviderId])
-    assert.equal(cursorGroup?.filter, undefined)
+    assert.equal(cursorGroup?.filter, '(?i)vps')
   })
 
   it('keeps single commercial provider when no VPS leaves exist', () => {

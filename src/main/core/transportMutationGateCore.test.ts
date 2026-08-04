@@ -107,6 +107,25 @@ describe('transportMutationGateCore MTIC-v2', () => {
     assert.equal(decision.reason, 'deny_quarantine_active')
   })
 
+  it('marathon_hy2_recover bypasses quarantine and hy2 chain for TLS→HY2 only', () => {
+    const decision = evaluateTransportMutationAllowed('node_switch', {
+      ...REPLAY_1450_SNAPSHOT,
+      marathonHy2RecoverTlsToHy2: true,
+    })
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.reason, 'allowed_marathon_hy2_recover')
+  })
+
+  it('marathon_hy2_recover still denies when cursor_conn active', () => {
+    const decision = evaluateTransportMutationAllowed('node_switch', {
+      ...REPLAY_1450_SNAPSHOT,
+      marathonHy2RecoverTlsToHy2: true,
+      cursorConnectionCount: 12,
+    })
+    assert.equal(decision.allowed, false)
+    assert.equal(decision.reason, 'deny_cursor_conn_active')
+  })
+
   it('resolveHy2ParentChainAgeMs prefers persisted birth ms', () => {
     const nowMs = 1_785_826_659_999
     const birthMs = 1_785_825_659_999

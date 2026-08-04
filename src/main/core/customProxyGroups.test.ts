@@ -32,7 +32,7 @@ describe('customProxyGroups', () => {
       (group) => group.name === CURSOR_DEDICATED_GROUP_NAME
     )
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
-    assert.equal(cursorGroup?.filter, undefined)
+    assert.equal(cursorGroup?.filter, '(?i)-VPS-(HY2|Reality|TUIC)$')
     assert.ok(groupNames(profile).includes(HONG_KONG_FILTER_GROUP_NAME))
     assert.ok(groupNames(profile).includes('🚀 节点选择'))
     assert.equal(groupNames(profile)[0], CURSOR_DEDICATED_GROUP_NAME)
