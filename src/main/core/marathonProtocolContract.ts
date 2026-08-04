@@ -41,13 +41,47 @@ export async function evaluateMarathonProtocolSwitchBlock(input: {
   const cursorConnectionCount = quiesceSnapshot.cursorConnectionCount
   const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
   const truth = await resolveMarathonSSETruthNow(cursorConnectionCount)
+  const { resolveTransportMutationSnapshot } = await import('./transportMutationGateRuntime')
+  const mutationSnapshot = await resolveTransportMutationSnapshot({
+    cursorConnectionCount,
+    marathonTruthActive: truth.marathonTruthActive,
+  })
   const decision = evaluateMarathonProtocolSwitchDecision({
     cursorConnectionCount,
     marathonTruthActive: truth.marathonTruthActive,
     fromNode: input.fromNode,
     toNode: input.toNode,
     source: input.source,
+    mutationSnapshot,
   })
+  if (!decision.allowed && input.source === 'protocol_contract') {
+    const { formatTransportMutationGateLogLine } = await import('./transportMutationGateCore')
+    const { appendAppLog } = await import('../utils/log')
+    await appendAppLog(
+      formatTransportMutationGateLogLine({
+        mutation: 'protocol_upgrade',
+        decision: {
+          allowed: false,
+          reason:
+            decision.reason === 'blocked_mtic_quarantine'
+              ? 'deny_quarantine_active'
+              : decision.reason === 'blocked_mtic_hy2_chain_alive'
+                ? 'deny_hy2_parent_chain_alive'
+                : decision.reason === 'blocked_mtic_stale_rids'
+                  ? 'deny_stale_rids_present'
+                  : decision.reason === 'blocked_mid_session'
+                    ? 'deny_cursor_conn_active'
+                    : decision.reason === 'blocked_marathon_active'
+                      ? 'deny_marathon_truth_active'
+                      : 'deny_unknown_mutation',
+        },
+        cursorConnectionCount,
+        hy2ParentChainAgeMs: mutationSnapshot.hy2ParentChainAgeMs,
+        staleRidCount: mutationSnapshot.staleRidCount,
+        quarantineRemainingMs: mutationSnapshot.postCoreRestartQuarantineRemainingMs,
+      }),
+    )
+  }
   return {
     blocked: !decision.allowed,
     reason: decision.reason,
@@ -124,6 +158,33 @@ export async function runMarathonProtocolColdStartGateIfDue(
         ` node=${trimmedActive} recommended=${recommendedNode} cursor_conn=${cursorConnectionCount}` +
         ` marathon_truth_active=${truth.marathonTruthActive ? 1 : 0}\n`,
     )
+  }
+
+  const { resolveTransportMutationSnapshot } = await import('./transportMutationGateRuntime')
+  const { evaluateTransportMutationAllowed, formatTransportMutationGateLogLine } = await import(
+    './transportMutationGateCore'
+  )
+  const mutationSnapshot = await resolveTransportMutationSnapshot({
+    cursorConnectionCount,
+    marathonTruthActive: truth.marathonTruthActive,
+  })
+  const mtic = evaluateTransportMutationAllowed('protocol_upgrade', mutationSnapshot)
+  if (!mtic.allowed) {
+    await appendAppLog(
+      formatTransportMutationGateLogLine({
+        mutation: 'protocol_upgrade',
+        decision: mtic,
+        cursorConnectionCount,
+        hy2ParentChainAgeMs: mutationSnapshot.hy2ParentChainAgeMs,
+        staleRidCount: mutationSnapshot.staleRidCount,
+        quarantineRemainingMs: mutationSnapshot.postCoreRestartQuarantineRemainingMs,
+      }),
+    )
+    await appendAppLog(
+      `[MarathonProtocolContract]: outcome=protocol_upgrade_blocked` +
+        ` from=${trimmedActive} to=${recommendedNode} reason=${mtic.reason}\n`,
+    )
+    return
   }
 
   const upgraded = await executeMarathonProtocolColdStartUpgrade(trimmedActive, recommendedNode)

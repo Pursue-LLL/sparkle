@@ -1,6 +1,19 @@
 # Sparkle Bugfix Log
 
-> **2026-08-04 最新**：**R-41 + R-41b @1.29.0 CODE-DONE**（SEL + jsonl + asar gate）· **R-40b @1.28.9** + **R-40 @1.28.8** CODE-DONE · **prod 仍 1.28.7 待装包**
+> **2026-08-04 最新**：**MTIC-v2 @1.30.0 CODE-DONE** — transport mutation gate · 14:50 protocol_upgrade replay blocked · **R-41 + R-41b @1.29.0** · prod 曾 1.29.1
+
+### MTIC-v2 @1.30.0 · transport mutation gate · 2026-08-04 14:50 recurrence class-fix
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX CODE-DONE @1.30.0** · **待 cursor_conn=0 upgrade:mac** |
+| **A 时刻** | 2026-08-04 **14:50:09 CST** · Sparkle 1.29.1 install cold restart |
+| **PRIMARY** | **L7** `MarathonProtocolContract protocol_upgrade_executed` HY2→TLS @ `cursor_conn=0` while HY2 parent chain age **576s+** + quarantine **554s** remaining |
+| **symptom** | JP-VPS-TLS auth/analytics TLS handshake ERROR 簇 · marathon SSE 仍在 HY2 |
+| **NOT** | Cursor 服务端 · max-steps-cap · R-41 close regression |
+| **修复** | `transportMutationGateCore.ts` — deny protocol_upgrade when quarantine / hy2_parent_chain / stale_rids / cursor_conn / marathon_truth |
+| **验证** | `transportMutationGateCore.test.ts` 12-state matrix + 14:50 replay · `marathonProtocolContractCore.test.ts` MTIC block case |
+| **Ship** | upgrade:mac **1.30.0** · asar gate `TransportMutationGate` + `mtic_v2_transport_mutation_gate` · G9 soak |
 
 ### BUG-2026-08-04-001 · v1.28.7（生产）· RID 5f587792 / conn f1ee553d · HY2 stall + observation_fallback（同族第 10+ 次）
 
