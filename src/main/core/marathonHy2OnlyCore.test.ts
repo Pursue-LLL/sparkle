@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  formatMarathonHy2OnlySsotBootLogLine,
   isDeniedMarathonProtocolUpgradeToTls,
   isMarathonTlsCanaryLeaf,
   shouldRecoverTlsLeafToHy2,
@@ -29,5 +30,11 @@ describe('marathonHy2OnlyCore', () => {
   it('flags TLS leaf for HY2 recovery', () => {
     assert.equal(shouldRecoverTlsLeafToHy2('JP-VPS-TLS'), true)
     assert.equal(shouldRecoverTlsLeafToHy2('JP-VPS-HY2'), false)
+  })
+
+  it('formatMarathonHy2OnlySsotBootLogLine includes ssot_boot marker', () => {
+    const line = formatMarathonHy2OnlySsotBootLogLine({ activeNode: 'JP-VPS-HY2' })
+    assert.match(line, /ssot_boot/)
+    assert.match(line, /deny_tls_upgrade=1/)
   })
 })

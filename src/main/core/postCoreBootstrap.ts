@@ -95,6 +95,13 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
     if (cursorGroup?.now) {
       const { runMarathonProtocolColdStartGateIfDue } = await import('./marathonProtocolContract')
       await runMarathonProtocolColdStartGateIfDue(cursorGroup.now, 0)
+      const groupsAfterGate = await mihomoGroups()
+      const cursorGroupAfterGate = groupsAfterGate?.find(
+        (group) => group.name === CURSOR_DEDICATED_GROUP_NAME,
+      )
+      const activeAfterGate = cursorGroupAfterGate?.now ?? cursorGroup.now
+      const { formatMarathonHy2OnlySsotBootLogLine } = await import('./marathonHy2OnlyCore')
+      await appendAppLog(formatMarathonHy2OnlySsotBootLogLine({ activeNode: activeAfterGate }))
     }
   } catch (error) {
     await appendAppLog(

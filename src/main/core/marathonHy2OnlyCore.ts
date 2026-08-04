@@ -49,3 +49,14 @@ export function formatMarathonHy2OnlyDowngradeLogLine(input: {
     ` reason=marathon_hy2_only\n`
   )
 }
+
+export function formatMarathonHy2OnlySsotBootLogLine(input: {
+  activeNode: string
+}): string {
+  return (
+    `[MarathonHy2Only]: outcome=ssot_boot` +
+    ` active=${input.activeNode}` +
+    ` optimal=${MARATHON_CURSOR_OPTIMAL_VPS_NODE}` +
+    ` deny_tls_upgrade=1\n`
+  )
+}
