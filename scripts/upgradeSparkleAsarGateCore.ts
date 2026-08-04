@@ -60,7 +60,9 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('StallEscalationLadder') ||
     !mainSource.includes('r41_critical_host_no_close') ||
     !mainSource.includes('TransportMutationGate') ||
-    !mainSource.includes('mtic_v2_transport_mutation_gate')
+    !mainSource.includes('mtic_v2_transport_mutation_gate') ||
+    !mainSource.includes('MarathonHy2Only') ||
+    !mainSource.includes('marathon_hy2_only')
   ) {
     return { ok: false, reason: 'missing_r35_parent_sidecar' }
   }

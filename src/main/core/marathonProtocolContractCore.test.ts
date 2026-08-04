@@ -10,16 +10,14 @@ import {
 } from './marathonProtocolContractCore'
 
 describe('marathonProtocolContractCore R-30/R-31', () => {
-  it('requires cold-start gate for HY2 while idle', () => {
+  it('does not require cold-start gate for HY2 while idle — marathon SSOT optimal leaf', () => {
     const gate = evaluateMarathonProtocolColdStartGate({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
       activeNode: 'JP-VPS-HY2',
     })
-    assert.equal(gate.required, true)
-    assert.equal(gate.riskClass, 'suboptimal_leaf')
-    assert.equal(gate.recommendedNode, 'JP-VPS-TLS')
-    assert.match(formatMarathonProtocolColdStartGateLogLine(gate), /gate_required/)
+    assert.equal(gate.required, false)
+    assert.equal(gate.riskClass, 'none')
   })
 
   it('requires cold-start gate for TUIC and Reality', () => {
@@ -33,14 +31,16 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     }
   })
 
-  it('does not require gate for trusted TLS leaf', () => {
+  it('requires cold-start gate for persisted TLS canary — recover to HY2', () => {
     const gate = evaluateMarathonProtocolColdStartGate({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
       activeNode: 'JP-VPS-TLS',
     })
-    assert.equal(gate.required, false)
-    assert.equal(gate.riskClass, 'none')
+    assert.equal(gate.required, true)
+    assert.equal(gate.riskClass, 'suboptimal_leaf')
+    assert.equal(gate.recommendedNode, 'JP-VPS-HY2')
+    assert.match(formatMarathonProtocolColdStartGateLogLine(gate), /gate_required/)
   })
 
   it('does not require gate when cursor connections are active', () => {
@@ -108,7 +108,7 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(decision.reason, 'allowed_manual_operator')
   })
 
-  it('R-31 allows manual HY2 to TLS during active cursor connections', () => {
+  it('1.30.1 blocks manual HY2 to TLS — marathon HY2-only SSOT', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 3,
       marathonTruthActive: false,
@@ -116,8 +116,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
       toNode: 'JP-VPS-TLS',
       source: 'manual',
     })
-    assert.equal(decision.allowed, true)
-    assert.equal(decision.reason, 'protocol_upgrade_to_tls')
+    assert.equal(decision.allowed, false)
+    assert.equal(decision.reason, 'blocked_marathon_hy2_only_tls_denied')
   })
 
   it('R-31 still blocks manual suboptimal lateral switches during session', () => {
@@ -132,7 +132,7 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(decision.reason, 'blocked_suboptimal_lateral')
   })
 
-  it('allows cold-start protocol upgrade HY2 to TLS when MTIC invariants green', () => {
+  it('1.30.1 blocks protocol_contract HY2 to TLS even when MTIC invariants green', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
@@ -147,11 +147,11 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
         postCoreRestartQuarantineRemainingMs: 0,
       },
     })
-    assert.equal(decision.allowed, true)
-    assert.equal(decision.reason, 'protocol_upgrade_to_tls')
+    assert.equal(decision.allowed, false)
+    assert.equal(decision.reason, 'blocked_marathon_hy2_only_tls_denied')
   })
 
-  it('MTIC-v2 blocks protocol upgrade replay 2026-08-04 14:50 hy2 chain alive', () => {
+  it('1.30.1 HY2-only deny precedes MTIC replay 2026-08-04 14:50 class', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
@@ -167,7 +167,19 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
       },
     })
     assert.equal(decision.allowed, false)
-    assert.equal(decision.reason, 'blocked_mtic_quarantine')
+    assert.equal(decision.reason, 'blocked_marathon_hy2_only_tls_denied')
+  })
+
+  it('allows protocol_contract TLS to HY2 downgrade when idle', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 0,
+      marathonTruthActive: false,
+      fromNode: 'JP-VPS-TLS',
+      toNode: 'JP-VPS-HY2',
+      source: 'protocol_contract',
+    })
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.reason, 'protocol_downgrade_from_tls')
   })
 
   it('allows trusted idle lateral switch', () => {
@@ -182,7 +194,7 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(decision.reason, 'allowed_trusted_idle')
   })
 
-  it('blocks auto/bootstrap switches to suboptimal leaves', () => {
+  it('allows auto/bootstrap TLS to HY2 downgrade while idle', () => {
     for (const source of ['auto', 'bootstrap'] as const) {
       const decision = evaluateMarathonProtocolSwitchDecision({
         cursorConnectionCount: 0,
@@ -191,8 +203,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
         toNode: 'JP-VPS-HY2',
         source,
       })
-      assert.equal(decision.allowed, false, source)
-      assert.equal(decision.reason, 'blocked_auto_suboptimal')
+      assert.equal(decision.allowed, true, source)
+      assert.equal(decision.reason, 'protocol_downgrade_from_tls')
     }
   })
 
@@ -243,17 +255,14 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.match(line, /gate_missed=1/)
   })
 
-  it('R-40b auto TLS at conn=0 even when stale marathonTruth would block gate', () => {
+  it('1.30.1 never auto TLS — resolveShouldAutoUpgradeSuboptimalIdleTls always false', () => {
     assert.equal(
       resolveShouldAutoUpgradeSuboptimalIdleTls({
         cursorConnectionCount: 0,
         activeNode: 'JP-VPS-HY2',
       }),
-      true,
+      false,
     )
-  })
-
-  it('R-40b does not auto TLS when cursor connections active', () => {
     assert.equal(
       resolveShouldAutoUpgradeSuboptimalIdleTls({
         cursorConnectionCount: 12,
@@ -261,9 +270,6 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
       }),
       false,
     )
-  })
-
-  it('R-40b does not auto TLS for trusted TLS leaf', () => {
     assert.equal(
       resolveShouldAutoUpgradeSuboptimalIdleTls({
         cursorConnectionCount: 0,

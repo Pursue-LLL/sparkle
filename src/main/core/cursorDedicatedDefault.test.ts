@@ -9,16 +9,21 @@ import {
 } from './cursorDedicatedDefault'
 
 describe('cursorDedicatedDefault', () => {
-  it('uses trusted standard TLS as the only automatic default', () => {
-    assert.equal(CURSOR_DEFAULT_VPS_NODE, 'JP-VPS-TLS')
+  it('prefers HY2 as marathon-optimal bootstrap default', () => {
+    assert.equal(CURSOR_DEFAULT_VPS_NODE, 'JP-VPS-HY2')
+    assert.equal(
+      resolveCursorDefaultVpsNode(new Set(['JP-VPS-Reality', 'KR-VPS-Reality', 'JP-VPS-TLS', 'JP-VPS-HY2'])),
+      'JP-VPS-HY2',
+    )
     assert.equal(
       resolveCursorDefaultVpsNode(new Set(['JP-VPS-Reality', 'KR-VPS-Reality', 'JP-VPS-TLS'])),
-      'JP-VPS-TLS'
+      'JP-VPS-TLS',
     )
   })
 
-  it('never auto-falls back to Reality when trusted TLS is unavailable', () => {
-    assert.equal(resolveCursorDefaultVpsNode(new Set(['JP-VPS-Reality', 'JP-VPS-HY2'])), undefined)
+  it('prefers HY2 over Reality when TLS unavailable — never auto-falls back to Reality', () => {
+    assert.equal(resolveCursorDefaultVpsNode(new Set(['JP-VPS-Reality', 'JP-VPS-HY2'])), 'JP-VPS-HY2')
+    assert.equal(resolveCursorDefaultVpsNode(new Set(['JP-VPS-Reality', 'KR-VPS-Reality'])), undefined)
   })
 
   it('marks Reality and UDP VPS transports as suboptimal for automatic selection', () => {
