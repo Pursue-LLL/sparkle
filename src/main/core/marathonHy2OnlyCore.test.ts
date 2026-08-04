@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   formatMarathonHy2OnlySsotBootLogLine,
+  filterMarathonCursorEligibleVpsLeaves,
   isDeniedMarathonProtocolUpgradeToTls,
   isMarathonTlsCanaryLeaf,
   shouldRecoverTlsLeafToHy2,
@@ -36,5 +37,16 @@ describe('marathonHy2OnlyCore', () => {
     const line = formatMarathonHy2OnlySsotBootLogLine({ activeNode: 'JP-VPS-HY2' })
     assert.match(line, /ssot_boot/)
     assert.match(line, /deny_tls_upgrade=1/)
+  })
+
+  it('filterMarathonCursorEligibleVpsLeaves removes TLS canary', () => {
+    assert.deepEqual(
+      filterMarathonCursorEligibleVpsLeaves([
+        'JP-VPS-HY2',
+        'JP-VPS-TLS',
+        'JP-VPS-Reality',
+      ]),
+      ['JP-VPS-HY2', 'JP-VPS-Reality'],
+    )
   })
 })

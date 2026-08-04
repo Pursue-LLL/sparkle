@@ -15,10 +15,7 @@ describe('cursorDedicatedDefault', () => {
       resolveCursorDefaultVpsNode(new Set(['JP-VPS-Reality', 'KR-VPS-Reality', 'JP-VPS-TLS', 'JP-VPS-HY2'])),
       'JP-VPS-HY2',
     )
-    assert.equal(
-      resolveCursorDefaultVpsNode(new Set(['JP-VPS-Reality', 'KR-VPS-Reality', 'JP-VPS-TLS'])),
-      'JP-VPS-TLS',
-    )
+    assert.equal(resolveCursorDefaultVpsNode(new Set(['JP-VPS-Reality', 'JP-VPS-TLS'])), undefined)
   })
 
   it('prefers HY2 over Reality when TLS unavailable — never auto-falls back to Reality', () => {

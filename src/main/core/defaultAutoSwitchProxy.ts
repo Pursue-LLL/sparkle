@@ -9,6 +9,7 @@ import {
   isNestedAutoSwitchSelection,
   isSparkleRegionalAutoSelectGroup
 } from './cursorProxyGroup'
+import { filterMarathonCursorEligibleVpsLeaves } from './marathonHy2OnlyCore'
 import {
   buildRegionProviderFilter,
   DEFAULT_REGION_PRIORITY,
@@ -239,9 +240,11 @@ export function appendRegionalAutoGroupsToCursorDedicated(
     return
   }
 
-  // Legacy leaf-list mode: keep only VPS-named members.
+  // Legacy leaf-list mode: keep only marathon-eligible VPS members (exclude TLS canary).
   const existing = cursorGroup.proxies ?? []
-  cursorGroup.proxies = existing.filter((ref) => /vps/i.test(ref))
+  cursorGroup.proxies = filterMarathonCursorEligibleVpsLeaves(
+    existing.filter((ref) => /vps/i.test(ref)),
+  )
 }
 
 export function resolvePreferredAutoSwitchProxy(
