@@ -4,7 +4,7 @@ import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'
 
 export const CURSOR_DEFAULT_VPS_NODE = 'JP-VPS-HY2' as const
 
-const CURSOR_PREFERRED_VPS_NODES = ['JP-VPS-HY2', 'JP-VPS-TLS'] as const
+const CURSOR_FALLBACK_VPS_NODES = ['JP-VPS-TLS'] as const
 
 /** Never auto-select transports that can reintroduce QUIC or Reality handshake failure modes. */
 export function isCursorSuboptimalNode(name: string): boolean {
@@ -22,7 +22,10 @@ export function shouldApplyCursorDedicatedDefault(current: string | undefined): 
 }
 
 export function resolveCursorDefaultVpsNode(available: ReadonlySet<string>): string | undefined {
-  for (const node of CURSOR_PREFERRED_VPS_NODES) {
+  if (available.has(CURSOR_DEFAULT_VPS_NODE)) {
+    return CURSOR_DEFAULT_VPS_NODE
+  }
+  for (const node of CURSOR_FALLBACK_VPS_NODES) {
     if (available.has(node)) {
       return node
     }
