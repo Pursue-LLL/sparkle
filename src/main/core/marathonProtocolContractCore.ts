@@ -7,6 +7,30 @@ import {
   isCursorProtocolUpgrade,
   isCursorSuboptimalNode,
 } from './cursorDedicatedDefault'
+import {
+  evaluateTransportMutationAllowed,
+  type TransportMutationAllowReason,
+  type TransportMutationSnapshot,
+} from './transportMutationGateCore'
+
+function mapTransportMutationDenyToSwitchBlockReason(
+  reason: TransportMutationAllowReason,
+): MarathonProtocolSwitchBlockReason | undefined {
+  switch (reason) {
+    case 'deny_quarantine_active':
+      return 'blocked_mtic_quarantine'
+    case 'deny_hy2_parent_chain_alive':
+      return 'blocked_mtic_hy2_chain_alive'
+    case 'deny_stale_rids_present':
+      return 'blocked_mtic_stale_rids'
+    case 'deny_cursor_conn_active':
+      return 'blocked_mid_session'
+    case 'deny_marathon_truth_active':
+      return 'blocked_marathon_active'
+    default:
+      return undefined
+  }
+}
 
 export const MARATHON_PROTOCOL_COLD_START_GATE_COOLDOWN_MS = 300_000
 
@@ -19,6 +43,9 @@ export type MarathonProtocolSwitchBlockReason =
   | 'blocked_mid_session'
   | 'blocked_auto_suboptimal'
   | 'blocked_suboptimal_lateral'
+  | 'blocked_mtic_quarantine'
+  | 'blocked_mtic_hy2_chain_alive'
+  | 'blocked_mtic_stale_rids'
   | 'noop'
 
 export interface MarathonProtocolColdStartGateResult {
@@ -96,6 +123,7 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
   fromNode: string
   toNode: string
   source: 'auto' | 'manual' | 'bootstrap' | 'protocol_contract'
+  mutationSnapshot?: TransportMutationSnapshot
 }): MarathonProtocolSwitchDecision {
   const fromNode = input.fromNode.trim()
   const toNode = input.toNode.trim()
@@ -116,11 +144,22 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
   }
 
   if (input.source === 'protocol_contract') {
-    if (
-      input.cursorConnectionCount === 0 &&
-      !input.marathonTruthActive &&
-      isCursorProtocolUpgrade(fromNode, toNode)
-    ) {
+    if (isCursorProtocolUpgrade(fromNode, toNode)) {
+      const snapshot: TransportMutationSnapshot = input.mutationSnapshot ?? {
+        cursorConnectionCount: input.cursorConnectionCount,
+        marathonTruthActive: input.marathonTruthActive,
+        hy2ParentChainAgeMs: 0,
+        staleRidCount: 0,
+        postCoreRestartQuarantineRemainingMs: 0,
+      }
+      const mtic = evaluateTransportMutationAllowed('protocol_upgrade', snapshot)
+      if (!mtic.allowed) {
+        const mapped = mapTransportMutationDenyToSwitchBlockReason(mtic.reason)
+        if (mapped) {
+          return { allowed: false, reason: mapped }
+        }
+        return { allowed: false, reason: 'blocked_mid_session' }
+      }
       return { allowed: true, reason: 'protocol_upgrade_to_tls' }
     }
   }

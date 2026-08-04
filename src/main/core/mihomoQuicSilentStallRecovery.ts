@@ -109,6 +109,16 @@ export function setMarathonTokenGapSnapshotForRecovery(snapshot: {
   }
 }
 
+export function getMarathonTokenGapSnapshotForMutationGate(): {
+  maxGapMs: number
+  staleRequestIdCount: number
+} {
+  return {
+    maxGapMs: latestTokenGapSnapshot.maxGapMs,
+    staleRequestIdCount: latestTokenGapSnapshot.staleRequestIdCount,
+  }
+}
+
 export function recordRecoveryHonestyAttempt(record: RecoveryHonestyAttemptRecord): void {
   pendingRecoveryHonesty = record
 }

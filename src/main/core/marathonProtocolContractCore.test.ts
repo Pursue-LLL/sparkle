@@ -132,16 +132,42 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(decision.reason, 'blocked_suboptimal_lateral')
   })
 
-  it('allows cold-start protocol upgrade HY2 to TLS', () => {
+  it('allows cold-start protocol upgrade HY2 to TLS when MTIC invariants green', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
       fromNode: 'JP-VPS-HY2',
       toNode: 'JP-VPS-TLS',
       source: 'protocol_contract',
+      mutationSnapshot: {
+        cursorConnectionCount: 0,
+        marathonTruthActive: false,
+        hy2ParentChainAgeMs: 0,
+        staleRidCount: 0,
+        postCoreRestartQuarantineRemainingMs: 0,
+      },
     })
     assert.equal(decision.allowed, true)
     assert.equal(decision.reason, 'protocol_upgrade_to_tls')
+  })
+
+  it('MTIC-v2 blocks protocol upgrade replay 2026-08-04 14:50 hy2 chain alive', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 0,
+      marathonTruthActive: false,
+      fromNode: 'JP-VPS-HY2',
+      toNode: 'JP-VPS-TLS',
+      source: 'protocol_contract',
+      mutationSnapshot: {
+        cursorConnectionCount: 0,
+        marathonTruthActive: false,
+        hy2ParentChainAgeMs: 576_042,
+        staleRidCount: 3,
+        postCoreRestartQuarantineRemainingMs: 554_265,
+      },
+    })
+    assert.equal(decision.allowed, false)
+    assert.equal(decision.reason, 'blocked_mtic_quarantine')
   })
 
   it('allows trusted idle lateral switch', () => {
