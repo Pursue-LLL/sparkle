@@ -1,5 +1,76 @@
 # Sparkle Bugfix Log
 
+> **2026-08-04 最新**：**R-41 + R-41b @1.29.0 CODE-DONE**（SEL + jsonl + asar gate）· **R-40b @1.28.9** + **R-40 @1.28.8** CODE-DONE · **prod 仍 1.28.7 待装包**
+
+### BUG-2026-08-04-001 · v1.28.7（生产）· RID 5f587792 / conn f1ee553d · HY2 stall + observation_fallback（同族第 10+ 次）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **definitive 定责** · R-40/R-40b **FIX CODE-DONE @1.28.9** · R-41/R-41b **FIX CODE-DONE @1.29.0** · **prod 1.28.7 零生效** |
+| **A 时刻** | 2026-08-04 **10:04:00 CST**（UTC 02:04:00） |
+| **RID** | `5f587792-788d-4188-a82c-913e1464a5f5`（generation UUID · stale_rid 追踪至 13:10 仍为僵尸条目） |
+| **conn** | `f1ee553d-5cb7-4db4-80bc-84489bff9acb` · host **api2.cursor.sh** · leaf **JP-VPS-HY2** |
+| **PRIMARY** | **L3** HY2 byte-freeze stall_ms=**208996**（upload/download 冻结 2458/4972） |
+| **L7 aggravator** | Sparkle **1.28.7** `close_connection reason=frozen_surgical_prune close_target_source=observation_fallback` |
+| **precursor** | 02:02:00 同 conn stall 88499ms → vitality_dial **无效**（字节不变）→ 121s 空窗无 escalation |
+| **NOT** | max-steps-cap（rolling100 rate=1%）· Cursor 服务端随机 · VPS sing-box error（SSH @A±2min **0 ERROR** · 400 hy2 conn/min）· Sparkle TUN 加税（LatencyTruth delta=**−245ms** high=0） |
+| **VPS @ A** | jp-vps sing-box active 5d+ · conntrack 678/1M · api2 curl 200/501ms @B |
+| **jsonl 缺口** | `agent-transport-failures.jsonl` **无本 RID** — Sparkle close 抢先于 Cursor terminal 事件 |
+| **单日复发** | 8/4 全天 **24+** 次同类 `observation_fallback close api2`（~每 5min） |
+| **修复** | R-40 deny_unbound + persist birth + sidecar execute + R-40b auto TLS · **R-41 SEL + R-41b jsonl/gate CODE-DONE** |
+| **证据** | `app-2026-8-4.log:10438,10467,10468` · Master SSOT §M.0.19–§M.0.20 · triage `~/Desktop/cursor-triage-5f587792-*` |
+| **Ship** | ① upgrade:mac **1.29.0**（R-40+R-41 同包）② G9 soak strict |
+
+**踩坑**：vitality_dial executed ≠ bytes 恢复 · marathonTruth 脱节走 generic close · sidecar 4h 阈值对 88s stall 无效 · 装 repo 不装 pkg = 零修复 · Dashboard RID 在 stale 列表 ≠ 新断连时刻。
+
+**同族反复反思**：第 10+ 次 HY2 stall — 根因是 **binary vitality/close 无 escalation ladder** + **critical host close dead path 未删** + **无 G9 ship gate**。R-41 目标：最后一次。
+
+### R-41 @1.29.0 · Stall Escalation Ladder · CODE-DONE
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX CODE-DONE @1.29.0** · **待 cursor_conn=0 upgrade:mac** |
+| **核心** | `stallEscalationLadderCore.ts` — vitality 无效 → 60s emergency sidecar → 90s parent UDP refresh → **永不禁关 critical inner** |
+| **plan 层** | `frozenSurgicalPruneCore` — critical host 永不返回 `close_frozen_connection` |
+| **sidecar** | `hy2ParentSidecarCore` — `emergencyStallEscalation` 绕过 4h/marathon inactive |
+| **recovery** | `mihomoQuicSilentStallRecovery` — vitality byte snapshot + SEL execute + close 双层 block |
+| **验证** | `stallEscalationLadderCore.test.ts` f1ee553d replay · `frozenSurgicalPruneCore.test.ts` R-41 8 cases · **26/26 unit PASS** |
+| **依赖** | R-40/R-40b 同包 @1.29.0 升级 |
+
+### R-41b @1.29.0 · SEL jsonl + asar gate hardening · CODE-DONE
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX CODE-DONE @1.29.0** · **待 cursor_conn=0 upgrade:mac** |
+| **jsonl** | `stallEscalationLadderJsonl.ts` — SEL 事件写入 `~/.sparkle/agent-transport-failures.jsonl`（含 stale RID 追踪） |
+| **gate** | `upgradeSparkleAsarGateCore.ts` — 要求 `StallEscalationLadder` + `r41_critical_host_no_close` |
+| **preflight** | `sparklePostUpgradePreflightCore.ts` — R-40/R-41 marker 联合校验 |
+| **验证** | `stallEscalationLadderJsonl.test.ts` · `upgradeSparkleAsarGateCore.test.ts` · `sparklePostUpgradePreflightCore.test.ts` |
+
+### R-40b @1.28.9 · v1.28.8→1.28.9 · 2026-08-04 8/4 recurrence path
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX CODE-DONE @1.28.9** · **待 cursor_conn=0 upgrade:mac** |
+| **A 时刻** | 2026-08-04 **02:07 CST** · `gate_skipped_manual_selection` · **02:08** `marathon_started_on_suboptimal_leaf` |
+| **PRIMARY** | conn=0 时 `shouldAutoUpgradeTls` 被 stale `marathonTruthActive` 阻断 → 断连后复入 HY2 |
+| **修复** | ① `resolveShouldAutoUpgradeSuboptimalIdleTls` conn=0 SSOT ② 删 `promptColdStartProtocolUpgrade` dead code |
+| **证据** | `app-2026-8-4.log:10545-10546` · `marathonProtocolContractCore.ts` R-40b |
+| **验证** | `marathonProtocolContractCore.test.ts` R-40b 3 cases |
+
+### R-40 @1.28.8 · v1.28.7→1.28.8 · 2026-08-04 observation_fallback api2 close
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX CODE-DONE @1.28.8** · **待 cursor_conn=0 upgrade:mac** |
+| **A 时刻** | 2026-08-04 **10:04:00 CST** · conn `f1ee553d` · host **api2.cursor.sh** · leaf **JP-VPS-HY2** |
+| **PRIMARY** | **L3** HY2 209s byte-freeze · **L7** `frozen_surgical_prune` + `observation_fallback` 关 api2 |
+| **NOT** | max-steps-cap · VPS sing-box error · partition=0 |
+| **修复** | ① `deny_unbound_critical_host` ② sidecar execute ③ persist `hy2ParentChainBirthMs` ④ conn=0 auto TLS ⑤ gate phase=execute |
+| **证据** | `app-2026-8-4.log:10468` · RecoveryHonesty ineffective @10473 · Master SSOT §M.0.19 |
+| **验证** | unit PASS · G9 soak `attempt_rate_pct≥90` 待跑 |
+| **Ship** | 四绿：preflight · unit · upgrade:mac · G9 soak |
+
 > **2026-08-02 最新**：**R-38 @1.28.7** carrier connection SSOT（9480ace0-class）· pkg freshness bump · 文档 @ 2026-08-02
 
 ### R-38 @1.28.7 · v1.28.6→1.28.7 · 9480ace0-class HY2 stall carrier bind

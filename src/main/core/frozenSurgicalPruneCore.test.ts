@@ -7,7 +7,7 @@ import {
 import { MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS } from './mihomoQuicSilentStallRecoveryCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 
-describe('frozenSurgicalPruneCore R-34c', () => {
+describe('frozenSurgicalPruneCore R-34c + R-41', () => {
   const baseObservation = {
     kind: 'single' as const,
     connectionId: 'conn-frozen-1',
@@ -21,7 +21,7 @@ describe('frozenSurgicalPruneCore R-34c', () => {
     cursorConnectionCount: 33,
   }
 
-  it('closes frozen connection when all gates pass during marathon', () => {
+  it('R-41: never closes critical host on legacy frozen_surgical_prune path', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: baseObservation,
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
@@ -30,8 +30,8 @@ describe('frozenSurgicalPruneCore R-34c', () => {
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
     })
-    assert.equal(plan.action, 'close_frozen_connection')
-    assert.equal(plan.reason, 'frozen_surgical_prune')
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'r41_critical_host_no_close')
   })
 
   it('does not close without token gap stale proof (zero mis-kill)', () => {
@@ -60,7 +60,7 @@ describe('frozenSurgicalPruneCore R-34c', () => {
     assert.equal(plan.reason, 'global_prune_cooldown')
   })
 
-  it('R-38: carrier token_gap stale bypasses global prune cooldown', () => {
+  it('R-41: carrier token_gap stale on critical host → vitality not close', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: { ...baseObservation, stallMs: 90_000 },
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 5_000,
@@ -72,8 +72,9 @@ describe('frozenSurgicalPruneCore R-34c', () => {
       marathonActive: true,
       registry: { records: new Map() },
     })
-    assert.equal(plan.action, 'close_frozen_connection')
-    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
+    assert.equal(plan.carrierRid, '9480ace0-4dfd-4bf5-99e0-0f9ee5639d67')
   })
 
   it('requires stall above close threshold for legacy 120s path', () => {
@@ -106,7 +107,7 @@ describe('frozenSurgicalPruneCore R-34c', () => {
     assert.equal(plan.reason, 'marathon_active_zero_data_plane_mutation')
   })
 
-  it('R-35b carrier prune allowed during marathon when registry proves stale SSE', () => {
+  it('R-41: carrier prune on critical host → SEL vitality not close', () => {
     const nowMs = 1_000_000
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: {
@@ -137,101 +138,34 @@ describe('frozenSurgicalPruneCore R-34c', () => {
         ]),
       },
     })
-    assert.equal(plan.action, 'close_frozen_connection')
-    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
     assert.equal(plan.carrierRid, 'rid-carrier')
-    assert.equal(plan.staleProofKind, 'registry_gap')
   })
 
-  it('9480ace0-class: token_gap stale during marathon closes carrier conn not legacy path', () => {
+  it('f1ee553d replay: 8/4 api2.cursor.sh never close at 209s', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: {
-        ...baseObservation,
-        stallMs: 47_000,
-        host: 'api2direct.cursor.sh',
-      },
-      tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
-      staleRequestIdCount: 1,
-      staleRequestIds: ['9480ace0-4dfd-4bf5-99e0-0f9ee5639d67'],
-      lastGlobalPruneAtMs: 0,
-      lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
-      marathonActive: true,
-      registryMaxGapSinceActivityMs: 0,
-      registry: { records: new Map() },
-    })
-    assert.equal(plan.action, 'close_frozen_connection')
-    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
-    assert.equal(plan.carrierRid, '9480ace0-4dfd-4bf5-99e0-0f9ee5639d67')
-    assert.equal(plan.staleProofKind, 'token_gap')
-  })
-
-  it('token_gap count without stale rid list still closes carrier during marathon', () => {
-    const plan = resolveFrozenSurgicalPrunePlan({
-      observation: {
-        ...baseObservation,
-        stallMs: 95_000,
+        kind: 'single',
+        connectionId: 'f1ee553d-5cb7-4db4-80bc-84489bff9acb',
         host: 'api2.cursor.sh',
-      },
-      tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1_300_000,
-      staleRequestIdCount: 3,
-      staleRequestIds: [],
-      lastGlobalPruneAtMs: 0,
-      lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
-      marathonActive: true,
-      registryMaxGapSinceActivityMs: 0,
-      registry: { records: new Map() },
-    })
-    assert.equal(plan.action, 'close_frozen_connection')
-    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
-    assert.equal(plan.staleProofKind, 'token_gap')
-  })
-
-  it('9480ace0 replay: token_gap stale with marathonTruth false prefers carrier over legacy prune', () => {
-    const plan = resolveFrozenSurgicalPrunePlan({
-      observation: {
-        ...baseObservation,
-        stallMs: 210_995,
-        host: 'api2.cursor.sh',
-        connectionId: 'c8ed1237-a515-41c3-b4ed-5b0c92eb6e86',
+        leaf: 'JP-VPS-HY2',
+        network: 'tcp',
+        stallMs: 208_996,
+        connAgeMs: 213_995,
+        frozenQuicCursorCount: 1,
+        totalQuicCursorCount: 11,
+        cursorConnectionCount: 27,
       },
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 50_000,
       staleRequestIdCount: 2,
-      staleRequestIds: ['9480ace0-4dfd-4bf5-99e0-0f9ee5639d67', 'e7b65ffd-607b-4d59-b48e-1e2776005364'],
+      staleRequestIds: ['5f587792-788d-4188-a82c-913e1464a5f5'],
       lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
       marathonActive: false,
-      registryMaxGapSinceActivityMs: 0,
-      registry: { records: new Map() },
     })
-    assert.equal(plan.action, 'close_frozen_connection')
-    assert.equal(plan.reason, 'marathon_sse_carrier_frozen_prune')
-    assert.equal(plan.carrierRid, '9480ace0-4dfd-4bf5-99e0-0f9ee5639d67')
-  })
-
-  it('07-31 stall_ms=213944 replay closes frozen connection under R-34 five-gate AND', () => {
-    const plan = resolveFrozenSurgicalPrunePlan({
-      observation: {
-        kind: 'single',
-        connectionId: 'conn-0731-replay',
-        host: 'api2.cursor.sh',
-        leaf: 'JP-VPS-HY2',
-        network: 'tcp',
-        stallMs: 213_944,
-        connAgeMs: 400_000,
-        frozenQuicCursorCount: 2,
-        totalQuicCursorCount: 8,
-        cursorConnectionCount: 33,
-      },
-      tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 5_000,
-      staleRequestIdCount: 1,
-      lastGlobalPruneAtMs: 0,
-      lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
-    })
-    assert.equal(plan.action, 'close_frozen_connection')
-    assert.equal(plan.reason, 'frozen_surgical_prune')
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
   })
 })

@@ -26,11 +26,14 @@ export function resolveHy2ParentSidecarDialPlan(input: {
   marathonTruthActive: boolean
   lastSidecarDialAtMs: number
   nowMs: number
+  /** R-41: bypass 4h age gate when byte-frozen + vitality ineffective. */
+  emergencyStallEscalation?: boolean
 }): Hy2ParentSidecarPlan {
-  if (!input.marathonTruthActive) {
+  if (!input.marathonTruthActive && !input.emergencyStallEscalation) {
     return { action: 'none', reason: 'marathon_inactive' }
   }
   if (
+    !input.emergencyStallEscalation &&
     input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS &&
     input.snapshot.httpParentChainAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS
   ) {
@@ -41,7 +44,9 @@ export function resolveHy2ParentSidecarDialPlan(input: {
   }
   return {
     action: 'sidecar_dial',
-    reason: 'proactive_parent_sidecar_dial',
+    reason: input.emergencyStallEscalation
+      ? 'emergency_stall_escalation_r1'
+      : 'proactive_parent_sidecar_dial',
   }
 }
 

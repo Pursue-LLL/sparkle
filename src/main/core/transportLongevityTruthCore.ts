@@ -8,6 +8,7 @@ import {
   resolveMarathonQuIcLeafFromChains,
 } from './mihomoQuicSilentStallCore'
 export const TRANSPORT_LONGEVITY_TRUTH_FILENAME = 'transport-longevity-truth.json'
+export const TRANSPORT_LONGEVITY_TRUTH_SCHEMA_VERSION = 2
 export const HY2_PARENT_ROTATE_AGE_MS = 18 * 60 * 60 * 1000
 
 export interface TransportLongevityTruthSnapshot {
@@ -19,6 +20,8 @@ export interface TransportLongevityTruthSnapshot {
   maxByteStallMs: number
   frozenQuicCursorCount: number
   activeHy2Leaf: string
+  /** Monotonic HY2 parent chain birth — survives SSE segment reset (R-40). */
+  hy2ParentChainBirthMs?: number
 }
 
 export function resolveOutboundHy2SessionAgeMs(input: {
@@ -48,6 +51,39 @@ export function resolveOutboundHy2SessionAgeMs(input: {
   return Math.max(0, input.nowMs - oldestFirstSeenMs)
 }
 
+export function resolvePersistedHy2ParentChainAgeMs(input: {
+  nowMs: number
+  activeHy2Leaf: string
+  previousSnapshot: TransportLongevityTruthSnapshot | undefined
+  computedHttpParentChainAgeMs: number
+  computedOutboundHy2SessionAgeMs: number
+}): {
+  httpParentChainAgeMs: number
+  outboundHy2SessionAgeMs: number
+  hy2ParentChainBirthMs: number
+} {
+  const computedMax = Math.max(
+    input.computedHttpParentChainAgeMs,
+    input.computedOutboundHy2SessionAgeMs,
+  )
+  const previous = input.previousSnapshot
+  const sameLeaf = previous?.activeHy2Leaf === input.activeHy2Leaf
+  let birthMs = sameLeaf ? (previous?.hy2ParentChainBirthMs ?? 0) : 0
+
+  if (birthMs <= 0) {
+    birthMs = computedMax > 0 ? input.nowMs - computedMax : input.nowMs
+  } else if (computedMax > 0) {
+    birthMs = Math.min(birthMs, input.nowMs - computedMax)
+  }
+
+  const persistedAgeMs = Math.max(0, input.nowMs - birthMs)
+  return {
+    httpParentChainAgeMs: Math.max(input.computedHttpParentChainAgeMs, persistedAgeMs),
+    outboundHy2SessionAgeMs: Math.max(input.computedOutboundHy2SessionAgeMs, persistedAgeMs),
+    hy2ParentChainBirthMs: birthMs,
+  }
+}
+
 export function buildTransportLongevityTruth(input: {
   nowMs: number
   cursorConnectionCount: number
@@ -57,18 +93,29 @@ export function buildTransportLongevityTruth(input: {
   activeHy2Leaf: string
   maxByteStallMs: number
   frozenQuicCursorCount: number
+  previousSnapshot?: TransportLongevityTruthSnapshot
 }): TransportLongevityTruthSnapshot {
+  const computedHttpParentChainAgeMs = input.marathonTruth.maxParentChainAgeMs
+  const computedOutboundHy2SessionAgeMs = resolveOutboundHy2SessionAgeMs({
+    connections: input.connections,
+    trackedById: input.trackedById,
+    activeLeaf: input.activeHy2Leaf,
+    nowMs: input.nowMs,
+  })
+  const persisted = resolvePersistedHy2ParentChainAgeMs({
+    nowMs: input.nowMs,
+    activeHy2Leaf: input.activeHy2Leaf,
+    previousSnapshot: input.previousSnapshot,
+    computedHttpParentChainAgeMs,
+    computedOutboundHy2SessionAgeMs,
+  })
   return {
     schemaVersion: TRANSPORT_LONGEVITY_TRUTH_SCHEMA_VERSION,
     updatedAtMs: input.nowMs,
     cursorConnectionCount: input.cursorConnectionCount,
-    httpParentChainAgeMs: input.marathonTruth.maxParentChainAgeMs,
-    outboundHy2SessionAgeMs: resolveOutboundHy2SessionAgeMs({
-      connections: input.connections,
-      trackedById: input.trackedById,
-      activeLeaf: input.activeHy2Leaf,
-      nowMs: input.nowMs,
-    }),
+    httpParentChainAgeMs: persisted.httpParentChainAgeMs,
+    outboundHy2SessionAgeMs: persisted.outboundHy2SessionAgeMs,
+    hy2ParentChainBirthMs: persisted.hy2ParentChainBirthMs,
     maxByteStallMs: Math.max(0, Math.round(input.maxByteStallMs)),
     frozenQuicCursorCount: Math.max(0, Math.round(input.frozenQuicCursorCount)),
     activeHy2Leaf: input.activeHy2Leaf,
@@ -80,6 +127,9 @@ export function formatTransportLongevityTruthLogLine(snapshot: TransportLongevit
     `[TransportLongevityTruth]:` +
     ` http_parent_chain_age_ms=${snapshot.httpParentChainAgeMs}` +
     ` outbound_hy2_session_age_ms=${snapshot.outboundHy2SessionAgeMs}` +
+    (snapshot.hy2ParentChainBirthMs != null
+      ? ` hy2_parent_chain_birth_ms=${snapshot.hy2ParentChainBirthMs}`
+      : '') +
     ` max_byte_stall_ms=${snapshot.maxByteStallMs}` +
     ` frozen_quic_cursor=${snapshot.frozenQuicCursorCount}` +
     ` cursor_conn=${snapshot.cursorConnectionCount}` +

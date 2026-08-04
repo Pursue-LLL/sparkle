@@ -23,6 +23,7 @@ export type StallRecoveryCloseTargetSource =
   | 'carrier_rid_mapped'
   | 'observation_aligned'
   | 'observation_fallback'
+  | 'deny_unbound_critical_host'
 
 export interface StallRecoveryCloseTarget {
   connectionId: string
@@ -232,10 +233,27 @@ export function resolveStallRecoveryCloseTarget(input: {
   }
 
   if (observationId) {
+    const observationHost = input.observation.host?.trim() ?? ''
     if (carrierRid && observationIsShortProbe) {
       return {
         connectionId: '',
         closeTargetSource: 'observation_fallback',
+      }
+    }
+    const carrierBound =
+      carrierRid &&
+      (findRegistryCarrierBinding(input.registry, carrierRid, input.connections) ||
+        pickCarrierConnectionForRid({
+          carrierRid,
+          connections: input.connections,
+          trackedById: input.trackedById,
+          nowMs: input.nowMs,
+        }))
+    if (isCriticalCursorHost(observationHost) && !carrierBound) {
+      return {
+        connectionId: '',
+        host: observationHost,
+        closeTargetSource: 'deny_unbound_critical_host',
       }
     }
     return {

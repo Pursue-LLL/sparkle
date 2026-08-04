@@ -129,6 +129,8 @@ export async function observeMihomoConnectionsForQuicSilentStall(
   try {
     const { resolveMarathonSSETruthSnapshot } = await import('./marathonSSETruthRuntime')
     const { truth: marathonTruth, registry } = await resolveMarathonSSETruthSnapshot(cursorConnectionCount)
+    const { readTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
+    const previousLongevitySnapshot = await readTransportLongevityTruthSnapshot()
     const longevitySnapshot = buildTransportLongevityTruth({
       nowMs,
       cursorConnectionCount,
@@ -138,6 +140,7 @@ export async function observeMihomoConnectionsForQuicSilentStall(
       activeHy2Leaf,
       maxByteStallMs: lastObservedMaxStallMs,
       frozenQuicCursorCount: lastObservedFrozenQuicCursorCount,
+      previousSnapshot: previousLongevitySnapshot,
     })
     const trackedFirstSeenAtMsById = new Map<string, number>()
     const trackedLastByteChangeAtMsById = new Map<string, number>()

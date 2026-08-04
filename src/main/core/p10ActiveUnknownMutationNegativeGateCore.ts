@@ -108,17 +108,18 @@ export function runP10ActiveUnknownMutationNegativeGate(): P10ActiveUnknownMutat
   })
 
   cases.push({
-    caller: 'hy2ParentSidecar.ts/passive_detect_only',
+    caller: 'hy2ParentSidecar.ts/r40_execute_sidecar',
     ok: (() => {
       const coreDir = dirname(fileURLToPath(import.meta.url))
       const source = readFileSync(join(coreDir, 'hy2ParentSidecar.ts'), 'utf8')
       return (
-        !source.includes('executeMarathonRescueDial') &&
-        !source.includes('mihomoCloseConnection') &&
-        source.includes('phase=detect_only')
+        source.includes('runHy2TunnelVitalityIfDue') &&
+        source.includes('mihomoCloseConnection') &&
+        source.includes('phase=execute') &&
+        !source.includes('phase=detect_only')
       )
     })(),
-    detail: 'R-35 sidecar passive-only — zero dial/close under ACTIVE',
+    detail: 'R-40 sidecar execute — proactive dial/UDP refresh under marathon',
   })
 
   cases.push({

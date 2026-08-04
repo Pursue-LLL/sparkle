@@ -55,7 +55,10 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
   }
   if (
     !mainSource.includes('Hy2ParentSidecar') ||
-    !mainSource.includes('phase=detect_only')
+    !mainSource.includes('phase=execute') ||
+    !mainSource.includes('deny_unbound_critical_host') ||
+    !mainSource.includes('StallEscalationLadder') ||
+    !mainSource.includes('r41_critical_host_no_close')
   ) {
     return { ok: false, reason: 'missing_r35_parent_sidecar' }
   }
@@ -75,7 +78,7 @@ export function assertSparkleMainAsarBundle(mainSource: string): void {
       missing_mihomo_close_connection: 'asar missing mihomoCloseConnection — frozen prune close will fail at runtime',
       missing_p28b_attempt_rate: 'asar missing P28b attempt_rate_pct — G9 soak SLO metrics will not emit',
       missing_r35_carrier_prune: 'asar missing R-35 marathon_sse_carrier_frozen_prune',
-      missing_r35_parent_sidecar: 'asar missing P10-2 Hy2ParentSidecar passive detect_only sidecar',
+      missing_r35_parent_sidecar: 'asar missing R-40/R-41 Hy2ParentSidecar execute + deny_unbound + StallEscalationLadder',
     }
     throw new Error(messages[result.reason])
   }

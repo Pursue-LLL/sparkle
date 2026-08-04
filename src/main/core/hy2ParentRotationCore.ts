@@ -85,8 +85,13 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
   lastRotationAtMs: number
   nowMs: number
+  /** R-41: bypass 4h age gate when byte-frozen + vitality ineffective. */
+  emergencyStallEscalation?: boolean
 }): Hy2ParentRotationPlan {
-  if (input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_ROTATE_AGE_MS) {
+  if (
+    !input.emergencyStallEscalation &&
+    input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_ROTATE_AGE_MS
+  ) {
     return { action: 'none', reason: 'session_age_below_threshold' }
   }
   if (input.nowMs - input.lastRotationAtMs < HY2_PARENT_ROTATION_COOLDOWN_MS) {
