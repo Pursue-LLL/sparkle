@@ -8,6 +8,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import {
   TRANSPORT_LONGEVITY_TRUTH_FILENAME,
+  TRANSPORT_LONGEVITY_TRUTH_SCHEMA_VERSION,
   type TransportLongevityTruthSnapshot,
 } from './transportLongevityTruthCore'
 
@@ -39,4 +40,22 @@ export async function readTransportLongevityTruthSnapshot(): Promise<
   } catch {
     return undefined
   }
+}
+
+export async function resetTransportLongevityHy2ParentChainBirth(
+  activeHy2Leaf: string,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  const previous = await readTransportLongevityTruthSnapshot()
+  await writeTransportLongevityTruthSnapshot({
+    schemaVersion: previous?.schemaVersion ?? TRANSPORT_LONGEVITY_TRUTH_SCHEMA_VERSION,
+    updatedAtMs: nowMs,
+    cursorConnectionCount: previous?.cursorConnectionCount ?? 0,
+    httpParentChainAgeMs: 0,
+    outboundHy2SessionAgeMs: 0,
+    maxByteStallMs: previous?.maxByteStallMs ?? 0,
+    frozenQuicCursorCount: previous?.frozenQuicCursorCount ?? 0,
+    activeHy2Leaf,
+    hy2ParentChainBirthMs: nowMs,
+  })
 }

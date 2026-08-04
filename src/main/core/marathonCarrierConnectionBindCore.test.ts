@@ -229,4 +229,55 @@ describe('marathonCarrierConnectionBindCore R-38', () => {
     })
     assert.equal(closeTarget.connectionId, '')
   })
+
+  it('denies unbound critical host close on api2 marathon SSE without carrier bind', () => {
+    const nowMs = 4_000_000
+    const stallMs = 209_496
+    const connections = [
+      conn({
+        id: OBS_CONN,
+        upload: 52_722,
+        download: 19_219,
+        host: 'api2.cursor.sh',
+      }),
+    ]
+    const trackedById = new Map([
+      [
+        OBS_CONN,
+        {
+          ...frozenTracked({
+            upload: 52_722,
+            download: 19_219,
+            host: 'api2.cursor.sh',
+            firstSeenAtMs: nowMs - 284_946,
+            lastBytesChangeAtMs: nowMs - stallMs,
+          }),
+          firstSeenAtMs: nowMs - 284_946,
+          lastBytesChangeAtMs: nowMs - stallMs,
+        },
+      ],
+    ])
+    const closeTarget = resolveStallRecoveryCloseTarget({
+      observation: {
+        kind: 'single',
+        connectionId: OBS_CONN,
+        host: 'api2.cursor.sh',
+        leaf: 'JP-VPS-HY2',
+        network: 'tcp',
+        stallMs,
+        upload: 52_722,
+        download: 19_219,
+        frozenQuicCursorCount: 2,
+        totalQuicCursorCount: 10,
+        cursorConnectionCount: 25,
+      },
+      carrierRid: undefined,
+      registry: { records: new Map() },
+      connections,
+      trackedById,
+      nowMs,
+    })
+    assert.equal(closeTarget.connectionId, '')
+    assert.equal(closeTarget.closeTargetSource, 'deny_unbound_critical_host')
+  })
 })

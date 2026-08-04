@@ -33,6 +33,19 @@ export interface MarathonProtocolSwitchDecision {
   reason: MarathonProtocolSwitchBlockReason
 }
 
+/** R-40b: conn=0 cold start auto TLS — cursor_conn alone is SSOT, not stale marathonTruth. */
+export function resolveShouldAutoUpgradeSuboptimalIdleTls(input: {
+  cursorConnectionCount: number
+  activeNode: string
+}): boolean {
+  const trimmedActive = input.activeNode.trim()
+  return (
+    input.cursorConnectionCount === 0 &&
+    Boolean(trimmedActive) &&
+    isCursorSuboptimalNode(trimmedActive)
+  )
+}
+
 export function evaluateMarathonProtocolColdStartGate(input: {
   cursorConnectionCount: number
   marathonTruthActive: boolean

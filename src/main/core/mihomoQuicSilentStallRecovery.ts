@@ -26,7 +26,17 @@ import {
 import { resolveStallRecoveryCloseTarget } from './marathonCarrierConnectionBindCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 import {
+  formatStallEscalationLadderLogLine,
+  markStallEscalationExecuted,
+  recordVitalityByteSnapshot,
+  resetStallEscalationLadderStateForTests,
+  resolveStallEscalationLadderPlan,
+  type StallEscalationLadderAction,
+} from './stallEscalationLadderCore'
+import { isCriticalCursorHost } from './cursorCriticalTransportCore'
+import {
   formatMihomoQuicStallRecoveryLogLine,
+  MIHOMO_QUIC_STALL_VITALITY_TRIGGER_MS,
   type MihomoQuicStallRecoveryAction,
 } from './mihomoQuicSilentStallRecoveryCore'
 
@@ -82,6 +92,7 @@ export function resetMihomoQuicSilentStallRecoveryForTests(): void {
     staleRequestIds: [],
     registry: { records: new Map() },
   }
+  resetStallEscalationLadderStateForTests()
 }
 
 export function setSkipMihomoQuicSilentStallRecoveryAppLogForTests(skip: boolean): void {
@@ -189,7 +200,172 @@ function mapPruneActionToRecoveryAction(action: FrozenSurgicalPruneAction): Miho
   return 'none'
 }
 
-async function maybeRunHy2ParentRotationAfterPrune(nowMs: number): Promise<void> {
+function connectionBytesForObservation(
+  observation: MihomoQuicSilentStallObservation,
+): { upload: number; download: number } {
+  const connectionId = observation.connectionId?.trim()
+  if (!connectionId) {
+    return { upload: 0, download: 0 }
+  }
+  const connection = latestConnections.find((entry) => entry.id === connectionId)
+  return {
+    upload: connection?.upload ?? 0,
+    download: connection?.download ?? 0,
+  }
+}
+
+async function executeStallEscalationLadderIfDue(
+  observation: MihomoQuicSilentStallObservation,
+  nowMs: number,
+): Promise<StallEscalationLadderAction> {
+  const bytes = connectionBytesForObservation(observation)
+  const plan = resolveStallEscalationLadderPlan({
+    observation,
+    upload: bytes.upload,
+    download: bytes.download,
+    nowMs,
+  })
+  if (plan.action === 'none' || plan.action === 'observe_exhausted') {
+    if (plan.action === 'observe_exhausted') {
+      await logRecovery(
+        formatStallEscalationLadderLogLine({
+          outcome: 'observe',
+          action: plan.action,
+          reason: plan.reason,
+          connectionId: observation.connectionId,
+          host: observation.host,
+          stallMs: observation.stallMs,
+          upload: bytes.upload,
+          download: bytes.download,
+        }),
+      )
+      try {
+        const { persistStallEscalationLadderJsonl } = await import('./stallEscalationLadderJsonl')
+        await persistStallEscalationLadderJsonl({
+          action: plan.action,
+          reason: plan.reason,
+          connectionId: observation.connectionId,
+          host: observation.host,
+          stallMs: observation.stallMs,
+          upload: bytes.upload,
+          download: bytes.download,
+          leaf: observation.leaf,
+          staleRequestIds: latestMarathonRecoveryContext.staleRequestIds,
+          cursorConnectionCount: observation.cursorConnectionCount,
+          nowMs,
+        })
+      } catch {
+        // app-log remains authoritative if jsonl write fails
+      }
+    }
+    return plan.action
+  }
+
+  const connectionId = observation.connectionId?.trim() ?? ''
+  if (plan.action === 'emergency_sidecar_dial') {
+    if (!latestLongevitySnapshot) {
+      await logRecovery(
+        formatStallEscalationLadderLogLine({
+          outcome: 'skipped',
+          action: plan.action,
+          reason: 'missing_longevity_snapshot',
+          connectionId,
+          host: observation.host,
+          stallMs: observation.stallMs,
+          upload: bytes.upload,
+          download: bytes.download,
+        }),
+      )
+      return plan.action
+    }
+    try {
+      const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
+      const marathonTruth = await resolveMarathonSSETruthNow(observation.cursorConnectionCount)
+      const { runHy2ParentSidecarIfDue } = await import('./hy2ParentSidecar')
+      await runHy2ParentSidecarIfDue({
+        snapshot: latestLongevitySnapshot,
+        connections: latestConnections,
+        trackedFirstSeenAtMsById: latestTrackedFirstSeenAtMsById,
+        trackedLastByteChangeAtMsById: latestTrackedLastByteChangeAtMsById,
+        marathonTruth,
+        cursorConnectionCount: observation.cursorConnectionCount,
+        nowMs,
+        emergencyStallEscalation: true,
+      })
+      markStallEscalationExecuted({ connectionId, action: plan.action, nowMs })
+      await logRecovery(
+        formatStallEscalationLadderLogLine({
+          outcome: 'executed',
+          action: plan.action,
+          reason: plan.reason,
+          connectionId,
+          host: observation.host,
+          stallMs: observation.stallMs,
+          upload: bytes.upload,
+          download: bytes.download,
+        }),
+      )
+      try {
+        const { persistStallEscalationLadderJsonl } = await import('./stallEscalationLadderJsonl')
+        await persistStallEscalationLadderJsonl({
+          action: plan.action,
+          reason: plan.reason,
+          connectionId,
+          host: observation.host,
+          stallMs: observation.stallMs,
+          upload: bytes.upload,
+          download: bytes.download,
+          leaf: observation.leaf,
+          staleRequestIds: latestMarathonRecoveryContext.staleRequestIds,
+          cursorConnectionCount: observation.cursorConnectionCount,
+          nowMs,
+        })
+      } catch {
+        // app-log remains authoritative
+      }
+    } catch (error) {
+      await logRecovery(
+        formatStallEscalationLadderLogLine({
+          outcome: 'failed',
+          action: plan.action,
+          reason: plan.reason,
+          connectionId,
+          host: observation.host,
+          stallMs: observation.stallMs,
+          upload: bytes.upload,
+          download: bytes.download,
+          err: formatUnknownErrorForLog(error),
+        }),
+      )
+    }
+    return plan.action
+  }
+
+  if (plan.action === 'parent_udp_refresh') {
+    await maybeRunHy2ParentRotationAfterPrune(nowMs, true)
+    markStallEscalationExecuted({ connectionId, action: plan.action, nowMs })
+    await logRecovery(
+      formatStallEscalationLadderLogLine({
+        outcome: 'executed',
+        action: plan.action,
+        reason: plan.reason,
+        connectionId,
+        host: observation.host,
+        stallMs: observation.stallMs,
+        upload: bytes.upload,
+        download: bytes.download,
+      }),
+    )
+    return plan.action
+  }
+
+  return plan.action
+}
+
+async function maybeRunHy2ParentRotationAfterPrune(
+  nowMs: number,
+  emergencyStallEscalation = false,
+): Promise<void> {
   if (!latestLongevitySnapshot || latestConnections.length === 0) {
     return
   }
@@ -200,6 +376,7 @@ async function maybeRunHy2ParentRotationAfterPrune(nowMs: number): Promise<void>
     trackedLastByteChangeAtMsById: latestTrackedLastByteChangeAtMsById,
     lastRotationAtMs: lastHy2ParentRotationAtMs,
     nowMs,
+    emergencyStallEscalation,
   })
   if (plan.action !== 'close_udp_outbound' || !plan.udpConnectionId) {
     return
@@ -241,6 +418,7 @@ function buildRecoveryTriageLogFields(plan: {
   pruneDenialReason?: string
   carrierRid?: string
   staleProofKind?: string
+  marathonActive?: boolean
 } {
   const pruneDenialReason =
     plan.reason !== 'frozen_surgical_prune' && plan.reason !== 'marathon_sse_carrier_frozen_prune'
@@ -256,6 +434,7 @@ function buildRecoveryTriageLogFields(plan: {
     pruneDenialReason,
     carrierRid: plan.carrierRid,
     staleProofKind: plan.staleProofKind,
+    marathonActive: latestMarathonRecoveryContext.marathonActive,
   }
 }
 
@@ -283,6 +462,13 @@ export async function executeMihomoQuicStallRecoveryIfDue(
   const triageFields = buildRecoveryTriageLogFields(plan)
 
   if (plan.action === 'none') {
+    if (
+      observation.kind === 'single' &&
+      isCriticalCursorHost(observation.host?.trim() ?? '') &&
+      observation.stallMs >= MIHOMO_QUIC_STALL_VITALITY_TRIGGER_MS
+    ) {
+      await executeStallEscalationLadderIfDue(observation, nowMs)
+    }
     await logRecovery(
       formatMihomoQuicStallRecoveryLogLine({
         outcome: 'skipped',
@@ -300,11 +486,20 @@ export async function executeMihomoQuicStallRecoveryIfDue(
   }
 
   if (plan.action === 'vitality_dial') {
+    const bytes = connectionBytesForObservation(observation)
     const vitality = await runStallVitalityDial(
       observation.leaf,
       observation.cursorConnectionCount,
       nowMs,
     )
+    if (observation.connectionId) {
+      recordVitalityByteSnapshot({
+        connectionId: observation.connectionId,
+        upload: bytes.upload,
+        download: bytes.download,
+        nowMs,
+      })
+    }
     markRecovery(observation.connectionId, nowMs)
     await logRecovery(
       formatMihomoQuicStallRecoveryLogLine({
@@ -321,7 +516,35 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         ...triageFields,
       }),
     )
+    await executeStallEscalationLadderIfDue(observation, nowMs)
     return action
+  }
+
+  const observationHost = observation.host?.trim() ?? ''
+  if (isCriticalCursorHost(observationHost)) {
+    await executeStallEscalationLadderIfDue(observation, nowMs)
+    const vitality = await runStallVitalityDial(
+      observation.leaf,
+      observation.cursorConnectionCount,
+      nowMs,
+    )
+    markRecovery(observation.connectionId, nowMs)
+    await logRecovery(
+      formatMihomoQuicStallRecoveryLogLine({
+        outcome: vitality.ok ? 'executed' : 'failed',
+        action: 'vitality_dial',
+        reason: 'r41_critical_host_close_blocked',
+        leaf: observation.leaf,
+        stallMs: observation.stallMs,
+        cursorConnectionCount: observation.cursorConnectionCount,
+        connectionId: observation.connectionId,
+        host: observation.host,
+        vitalityDelayMs: vitality.delayMs,
+        err: vitality.err,
+        ...triageFields,
+      }),
+    )
+    return 'vitality_dial'
   }
 
   const trackedByIdForClose = new Map<string, MihomoQuicStallTrackedConnection>()
@@ -348,11 +571,21 @@ export async function executeMihomoQuicStallRecoveryIfDue(
   })
   const closeConnectionId = closeTargetResolved.connectionId.trim()
   if (!closeConnectionId) {
+    const denyReason =
+      closeTargetResolved.closeTargetSource === 'deny_unbound_critical_host'
+        ? 'deny_unbound_critical_host'
+        : 'carrier_close_target_unresolved'
+    const vitality = await runStallVitalityDial(
+      observation.leaf,
+      observation.cursorConnectionCount,
+      nowMs,
+    )
+    markRecovery(observation.connectionId, nowMs)
     await logRecovery(
       formatMihomoQuicStallRecoveryLogLine({
-        outcome: 'skipped',
-        action,
-        reason: 'carrier_close_target_unresolved',
+        outcome: vitality.ok ? 'executed' : 'failed',
+        action: 'vitality_dial',
+        reason: denyReason,
         leaf: observation.leaf,
         stallMs: observation.stallMs,
         cursorConnectionCount: observation.cursorConnectionCount,
@@ -360,10 +593,12 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         host: observation.host,
         observationConnectionId: observation.connectionId,
         closeTargetSource: closeTargetResolved.closeTargetSource,
+        vitalityDelayMs: vitality.delayMs,
+        err: vitality.err,
         ...triageFields,
       }),
     )
-    return action
+    return 'vitality_dial'
   }
 
   const closed = await closeStalledConnection(closeConnectionId)
@@ -399,55 +634,6 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     await runStallVitalityDial(observation.leaf, observation.cursorConnectionCount, nowMs)
   }
   return action
-}
-
-export const TOKEN_GAP_INEFFECTIVE_ESCALATION_COOLDOWN_MS = 120_000
-
-let lastTokenGapIneffectiveEscalationAtMs = 0
-
-export function resetTokenGapIneffectiveEscalationForTests(): void {
-  lastTokenGapIneffectiveEscalationAtMs = 0
-}
-
-export async function executeTokenGapIneffectiveEscalationIfDue(
-  input: {
-    maxGapMs: number
-    staleRequestIds: readonly string[]
-    observation: MihomoQuicSilentStallObservation | undefined
-  },
-  nowMs: number = Date.now(),
-): Promise<MihomoQuicStallRecoveryAction> {
-  if (
-    nowMs - lastTokenGapIneffectiveEscalationAtMs <
-    TOKEN_GAP_INEFFECTIVE_ESCALATION_COOLDOWN_MS
-  ) {
-    return 'none'
-  }
-  const staleRequestIdCount = Math.max(
-    input.staleRequestIds.length,
-    latestTokenGapSnapshot.staleRequestIdCount,
-    input.maxGapMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS ? 1 : 0,
-  )
-  setMarathonTokenGapSnapshotForRecovery({
-    maxGapMs: Math.max(input.maxGapMs, latestTokenGapSnapshot.maxGapMs),
-    staleRequestIdCount,
-  })
-  if (input.staleRequestIds.length > 0) {
-    setMarathonRecoveryContextForPrune({
-      marathonActive: latestMarathonRecoveryContext.marathonActive,
-      registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
-      httpParentChainAgeMs: latestMarathonRecoveryContext.httpParentChainAgeMs,
-      outboundHy2SessionAgeMs: latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
-      staleRequestIds: [...input.staleRequestIds],
-      registry: latestMarathonRecoveryContext.registry,
-    })
-  }
-  const observation = input.observation
-  if (!observation || observation.kind !== 'single') {
-    return 'none'
-  }
-  lastTokenGapIneffectiveEscalationAtMs = nowMs
-  return executeMihomoQuicStallRecoveryIfDue(observation, nowMs)
 }
 
 export const TOKEN_GAP_INEFFECTIVE_ESCALATION_COOLDOWN_MS = 120_000

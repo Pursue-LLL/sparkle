@@ -10,16 +10,17 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)))
 
-describe('hy2ParentSidecar P10-2 passive-only', () => {
-  it('source must not import production dial/close executors', () => {
+describe('hy2ParentSidecar R-35a execute', () => {
+  it('source executes sidecar dial and UDP outbound refresh', () => {
     const source = readFileSync(path.join(ROOT, 'hy2ParentSidecar.ts'), 'utf8')
-    assert.doesNotMatch(source, /executeMarathonRescueDial/)
-    assert.doesNotMatch(source, /mihomoCloseConnection/)
-    assert.match(source, /phase=detect_only/)
-    assert.match(source, /outcome: 'skipped'/)
+    assert.match(source, /runHy2TunnelVitalityIfDue/)
+    assert.match(source, /mihomoCloseConnection/)
+    assert.match(source, /phase=execute/)
+    assert.doesNotMatch(source, /phase=detect_only/)
+    assert.doesNotMatch(source, /outcome: 'skipped'/)
   })
 
-  it('exposes detect log state helpers for tests', () => {
+  it('exposes sidecar action state helpers for tests', () => {
     resetHy2ParentSidecarStateForTests()
     assert.equal(getLastHy2ParentSidecarDetectLogAtMsForTests(), 0)
   })

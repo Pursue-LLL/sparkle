@@ -41,6 +41,28 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
 
   await appendAppLog('[PostCoreBootstrap]: mihomo API ready — scheduling post-core services\n')
 
+  try {
+    const { readTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
+    const { HY2_PARENT_SIDECAR_DIAL_AGE_MS } = await import('./hy2ParentSidecarCore')
+    const longevity = await readTransportLongevityTruthSnapshot()
+    if (longevity) {
+      const chainAgeMs = Math.max(longevity.httpParentChainAgeMs, longevity.outboundHy2SessionAgeMs)
+      if (chainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS) {
+        await appendAppLog(
+          `[PostCoreBootstrap]: proactive_risk parent_chain_stale` +
+            ` http_parent_chain_age_ms=${longevity.httpParentChainAgeMs}` +
+            ` outbound_hy2_session_age_ms=${longevity.outboundHy2SessionAgeMs}` +
+            ` active_hy2_leaf=${longevity.activeHy2Leaf ?? 'unknown'}` +
+            ` cursor_conn=${longevity.cursorConnectionCount}\n`,
+        )
+      }
+    }
+  } catch (error) {
+    await appendAppLog(
+      `[PostCoreBootstrap]: proactive parent-chain risk check failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    )
+  }
+
   const { mihomoGroups, mihomoChangeProxy, mihomoGroupDelay } = await import('./mihomoApi')
   const { registerMihomoGroupsAccessor } = await import('./networkStabilityMonitor')
   registerMihomoGroupsAccessor(mihomoGroups)

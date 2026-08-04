@@ -3,6 +3,7 @@
 // [POS] R-34c SSOT — five-gate AND for closing a single byte-frozen connection (replaces marathon_block_close).
 
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
+import { resolveCriticalHostCloseDenialPlan } from './stallEscalationLadderCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import { MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS } from './mihomoQuicSilentStallCore'
@@ -40,6 +41,14 @@ export interface FrozenSurgicalPruneGateInput {
   staleRequestIds?: readonly string[]
   httpParentChainAgeMs?: number
   outboundHy2SessionAgeMs?: number
+}
+
+function denyCriticalHostClose(host: string | undefined, fallbackReason: string): FrozenSurgicalPrunePlan | undefined {
+  const denial = resolveCriticalHostCloseDenialPlan(host)
+  if (!denial) {
+    return undefined
+  }
+  return { action: 'vitality_dial', reason: fallbackReason }
 }
 
 export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInput): FrozenSurgicalPrunePlan {
@@ -95,6 +104,17 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
         staleProofKind: carrierContext.staleProofKind,
       }
     }
+    const carrierCloseDenied = denyCriticalHostClose(
+      observation.host,
+      'r41_critical_host_carrier_no_close',
+    )
+    if (carrierCloseDenied) {
+      return {
+        ...carrierCloseDenied,
+        carrierRid: carrierContext.carrierRid,
+        staleProofKind: carrierContext.staleProofKind,
+      }
+    }
     return {
       action: 'close_frozen_connection',
       reason: 'marathon_sse_carrier_frozen_prune',
@@ -121,6 +141,10 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
     }
     if (nowMs - input.lastGlobalPruneAtMs < FROZEN_SURGICAL_PRUNE_GLOBAL_COOLDOWN_MS) {
       return { action: 'vitality_dial', reason: 'global_prune_cooldown' }
+    }
+    const legacyCloseDenied = denyCriticalHostClose(observation.host, 'r41_critical_host_no_close')
+    if (legacyCloseDenied) {
+      return legacyCloseDenied
     }
     return { action: 'close_frozen_connection', reason: 'frozen_surgical_prune' }
   }

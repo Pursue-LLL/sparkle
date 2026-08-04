@@ -6,6 +6,7 @@ import {
   formatMarathonProtocolColdStartGateLogLine,
   formatMarathonProtocolLateStartLogLine,
   formatMarathonProtocolSwitchBlockedLogLine,
+  resolveShouldAutoUpgradeSuboptimalIdleTls,
 } from './marathonProtocolContractCore'
 
 describe('marathonProtocolContractCore R-30/R-31', () => {
@@ -214,5 +215,35 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     })
     assert.match(line, /marathon_started_on_suboptimal_leaf/)
     assert.match(line, /gate_missed=1/)
+  })
+
+  it('R-40b auto TLS at conn=0 even when stale marathonTruth would block gate', () => {
+    assert.equal(
+      resolveShouldAutoUpgradeSuboptimalIdleTls({
+        cursorConnectionCount: 0,
+        activeNode: 'JP-VPS-HY2',
+      }),
+      true,
+    )
+  })
+
+  it('R-40b does not auto TLS when cursor connections active', () => {
+    assert.equal(
+      resolveShouldAutoUpgradeSuboptimalIdleTls({
+        cursorConnectionCount: 12,
+        activeNode: 'JP-VPS-HY2',
+      }),
+      false,
+    )
+  })
+
+  it('R-40b does not auto TLS for trusted TLS leaf', () => {
+    assert.equal(
+      resolveShouldAutoUpgradeSuboptimalIdleTls({
+        cursorConnectionCount: 0,
+        activeNode: 'JP-VPS-TLS',
+      }),
+      false,
+    )
   })
 })

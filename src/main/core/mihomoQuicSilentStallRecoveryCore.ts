@@ -75,6 +75,7 @@ export function formatMihomoQuicStallRecoveryLogLine(fields: {
   staleProofKind?: string
   closeTargetSource?: string
   observationConnectionId?: string
+  marathonActive?: boolean
 }): string {
   const parts = [
     '[MihomoQuicStallRecovery]:',
@@ -111,6 +112,9 @@ export function formatMihomoQuicStallRecoveryLogLine(fields: {
   }
   if (fields.observationConnectionId) {
     parts.push(`observation_connection_id=${fields.observationConnectionId}`)
+  }
+  if (fields.marathonActive != null) {
+    parts.push(`marathon_active=${fields.marathonActive ? 1 : 0}`)
   }
   if (fields.connectionId) {
     parts.push(`connection_id=${fields.connectionId}`)

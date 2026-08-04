@@ -3,7 +3,9 @@ import { describe, it } from 'node:test'
 import {
   HY2_PARENT_ROTATE_AGE_MS,
   resolveOutboundHy2SessionAgeMs,
+  resolvePersistedHy2ParentChainAgeMs,
 } from './transportLongevityTruthCore'
+import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import { resolveHy2ParentRotationAfterPrunePlan } from './hy2ParentRotationCore'
 
 describe('transportLongevityTruthCore R-34a', () => {
@@ -36,6 +38,30 @@ describe('transportLongevityTruthCore R-34a', () => {
     })
     assert.ok(ageMs >= HY2_PARENT_ROTATE_AGE_MS)
   })
+
+  it('R-40 persist birth survives SSE segment age reset to zero', () => {
+    const nowMs = 500_000_000
+    const birthMs = nowMs - HY2_PARENT_SIDECAR_DIAL_AGE_MS - 60_000
+    const persisted = resolvePersistedHy2ParentChainAgeMs({
+      nowMs,
+      activeHy2Leaf: 'JP-VPS-HY2',
+      previousSnapshot: {
+        schemaVersion: 2,
+        updatedAtMs: nowMs - 5_000,
+        cursorConnectionCount: 28,
+        httpParentChainAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 60_000,
+        outboundHy2SessionAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 60_000,
+        hy2ParentChainBirthMs: birthMs,
+        maxByteStallMs: 0,
+        frozenQuicCursorCount: 0,
+        activeHy2Leaf: 'JP-VPS-HY2',
+      },
+      computedHttpParentChainAgeMs: 0,
+      computedOutboundHy2SessionAgeMs: 0,
+    })
+    assert.ok(persisted.httpParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS)
+    assert.equal(persisted.hy2ParentChainBirthMs, birthMs)
+  })
 })
 
 describe('hy2ParentRotationCore R-34b', () => {
@@ -66,5 +92,35 @@ describe('hy2ParentRotationCore R-34b', () => {
     })
     assert.equal(plan.action, 'none')
     assert.equal(plan.reason, 'healthy_inner_critical_flows')
+  })
+
+  it('R-41: emergency stall escalation bypasses 4h session age gate', () => {
+    const nowMs = 2_000_000
+    const plan = resolveHy2ParentRotationAfterPrunePlan({
+      snapshot: {
+        schemaVersion: 1,
+        updatedAtMs: nowMs,
+        cursorConnectionCount: 28,
+        httpParentChainAgeMs: 0,
+        outboundHy2SessionAgeMs: 0,
+        maxByteStallMs: 88499,
+        frozenQuicCursorCount: 1,
+        activeHy2Leaf: 'JP-VPS-HY2',
+      },
+      connections: [
+        {
+          id: 'udp-parent',
+          chains: ['JP-VPS-HY2'],
+          metadata: { network: 'udp' },
+        } as ControllerConnectionDetail,
+      ],
+      trackedFirstSeenAtMsById: new Map([['udp-parent', nowMs - 600_000]]),
+      trackedLastByteChangeAtMsById: new Map([['udp-parent', nowMs - 600_000]]),
+      lastRotationAtMs: 0,
+      nowMs,
+      emergencyStallEscalation: true,
+    })
+    assert.equal(plan.action, 'close_udp_outbound')
+    assert.equal(plan.reason, 'parent_session_refresh_after_prune')
   })
 })

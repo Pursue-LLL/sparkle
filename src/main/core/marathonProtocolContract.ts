@@ -9,6 +9,7 @@ import {
   formatMarathonProtocolLateStartLogLine,
   formatMarathonProtocolSwitchBlockedLogLine,
   MARATHON_PROTOCOL_COLD_START_GATE_COOLDOWN_MS,
+  resolveShouldAutoUpgradeSuboptimalIdleTls,
   type MarathonProtocolSwitchBlockReason,
 } from './marathonProtocolContractCore'
 import { evaluateMarathonProtocolSwitchDecision } from './marathonProtocolContractCore'
@@ -54,25 +55,6 @@ export async function evaluateMarathonProtocolSwitchBlock(input: {
   }
 }
 
-async function promptColdStartProtocolUpgrade(
-  activeNode: string,
-  recommendedNode: string,
-): Promise<boolean> {
-  const { dialog } = await import('electron')
-  const { response } = await dialog.showMessageBox({
-    type: 'warning',
-    buttons: ['一键切 TLS', '继续使用（高风险）'],
-    defaultId: 0,
-    cancelId: 1,
-    title: 'Cursor 马拉松协议门禁',
-    message: `当前节点「${activeNode}」为 QUIC/Reality 高风险协议`,
-    detail:
-      `马拉松长连接建议使用「${recommendedNode}」。` +
-      '赛中切换会断连并浪费 Included 次数；请在冷启动（无 Agent 连接）时切换。',
-  })
-  return response === 0
-}
-
 export async function executeMarathonProtocolColdStartUpgrade(
   activeNode: string,
   recommendedNode: string,
@@ -97,26 +79,33 @@ export async function runMarathonProtocolColdStartGateIfDue(
     activeNode,
     manualSelectionNode,
   })
-  if (!gate.required) {
+
+  const { isCursorSuboptimalNode, CURSOR_DEFAULT_VPS_NODE } = await import('./cursorDedicatedDefault')
+  const trimmedActive = activeNode.trim()
+  const shouldAutoUpgradeTls = resolveShouldAutoUpgradeSuboptimalIdleTls({
+    cursorConnectionCount,
+    activeNode: trimmedActive,
+  })
+
+  if (!gate.required && !shouldAutoUpgradeTls) {
     if (
       manualSelectionNode &&
-      manualSelectionNode.trim() === activeNode.trim()
+      manualSelectionNode.trim() === trimmedActive &&
+      isCursorSuboptimalNode(trimmedActive)
     ) {
-      const { isCursorSuboptimalNode } = await import('./cursorDedicatedDefault')
-      if (isCursorSuboptimalNode(activeNode)) {
-        const { appendAppLog } = await import('../utils/log')
-        await appendAppLog(
-          `[MarathonProtocolContract]: outcome=gate_skipped_manual_selection` +
-            ` node=${activeNode.trim()}` +
-            ` cursor_conn=${cursorConnectionCount}\n`,
-        )
-      }
+      const { appendAppLog } = await import('../utils/log')
+      await appendAppLog(
+        `[MarathonProtocolContract]: outcome=gate_skipped_manual_selection` +
+          ` node=${trimmedActive}` +
+          ` cursor_conn=${cursorConnectionCount}\n`,
+      )
     }
     return
   }
 
   const nowMs = Date.now()
   if (
+    !shouldAutoUpgradeTls &&
     coldStartGatePromptCount > 0 &&
     nowMs - lastColdStartGatePromptAtMs < MARATHON_PROTOCOL_COLD_START_GATE_COOLDOWN_MS
   ) {
@@ -125,13 +114,23 @@ export async function runMarathonProtocolColdStartGateIfDue(
   coldStartGatePromptCount += 1
   lastColdStartGatePromptAtMs = nowMs
 
+  const recommendedNode = gate.required ? gate.recommendedNode : CURSOR_DEFAULT_VPS_NODE
   const { appendAppLog } = await import('../utils/log')
-  await appendAppLog(formatMarathonProtocolColdStartGateLogLine(gate))
-
-  const accepted = await promptColdStartProtocolUpgrade(gate.activeNode, gate.recommendedNode)
-  if (accepted) {
-    await executeMarathonProtocolColdStartUpgrade(gate.activeNode, gate.recommendedNode)
+  if (gate.required) {
+    await appendAppLog(formatMarathonProtocolColdStartGateLogLine(gate))
+  } else {
+    await appendAppLog(
+      `[MarathonProtocolContract]: outcome=auto_upgrade_suboptimal_idle` +
+        ` node=${trimmedActive} recommended=${recommendedNode} cursor_conn=${cursorConnectionCount}` +
+        ` marathon_truth_active=${truth.marathonTruthActive ? 1 : 0}\n`,
+    )
   }
+
+  const upgraded = await executeMarathonProtocolColdStartUpgrade(trimmedActive, recommendedNode)
+  await appendAppLog(
+    `[MarathonProtocolContract]: outcome=${upgraded ? 'protocol_upgrade_executed' : 'protocol_upgrade_failed'}` +
+      ` from=${trimmedActive} to=${recommendedNode} cursor_conn=${cursorConnectionCount}\n`,
+  )
 }
 
 export async function notifyMarathonStartedOnSuboptimalLeafIfNeeded(

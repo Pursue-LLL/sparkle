@@ -91,11 +91,14 @@ export function evaluateSparklePostUpgradePreflight(
   const r35Ready =
     input.mainAsarSource.includes('marathon_sse_carrier_frozen_prune') &&
     input.mainAsarSource.includes('Hy2ParentSidecar') &&
-    input.mainAsarSource.includes('phase=detect_only')
+    input.mainAsarSource.includes('phase=execute') &&
+    input.mainAsarSource.includes('deny_unbound_critical_host') &&
+    input.mainAsarSource.includes('StallEscalationLadder') &&
+    input.mainAsarSource.includes('r41_critical_host_no_close')
   checks.push({
     id: 'r35_carrier_sidecar',
     ok: r35Ready,
-    detail: r35Ready ? 'R-35 carrier prune + parent sidecar wired' : 'missing R-35 markers',
+    detail: r35Ready ? 'R-40/R-41 carrier + sidecar + SEL wired' : 'missing R-40/R-41 markers',
   })
 
   const closeFnRegression = /mihomoCloseConnection is not a function/i.test(input.appLogTail)
