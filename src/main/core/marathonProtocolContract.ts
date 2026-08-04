@@ -114,7 +114,13 @@ export async function runMarathonProtocolColdStartGateIfDue(
     manualSelectionNode,
   })
 
-  const { isCursorSuboptimalNode, CURSOR_DEFAULT_VPS_NODE } = await import('./cursorDedicatedDefault')
+  const { isCursorSuboptimalNode } = await import('./cursorDedicatedDefault')
+  const {
+    MARATHON_CURSOR_OPTIMAL_VPS_NODE,
+    isMarathonTlsCanaryLeaf,
+    formatMarathonHy2OnlyTlsDeniedLogLine,
+    formatMarathonHy2OnlyDowngradeLogLine,
+  } = await import('./marathonHy2OnlyCore')
   const trimmedActive = activeNode.trim()
   const shouldAutoUpgradeTls = resolveShouldAutoUpgradeSuboptimalIdleTls({
     cursorConnectionCount,
@@ -148,11 +154,11 @@ export async function runMarathonProtocolColdStartGateIfDue(
   coldStartGatePromptCount += 1
   lastColdStartGatePromptAtMs = nowMs
 
-  const recommendedNode = gate.required ? gate.recommendedNode : CURSOR_DEFAULT_VPS_NODE
+  const recommendedNode = gate.required ? gate.recommendedNode : MARATHON_CURSOR_OPTIMAL_VPS_NODE
   const { appendAppLog } = await import('../utils/log')
   if (gate.required) {
     await appendAppLog(formatMarathonProtocolColdStartGateLogLine(gate))
-  } else {
+  } else if (shouldAutoUpgradeTls) {
     await appendAppLog(
       `[MarathonProtocolContract]: outcome=auto_upgrade_suboptimal_idle` +
         ` node=${trimmedActive} recommended=${recommendedNode} cursor_conn=${cursorConnectionCount}` +
@@ -168,11 +174,38 @@ export async function runMarathonProtocolColdStartGateIfDue(
     cursorConnectionCount,
     marathonTruthActive: truth.marathonTruthActive,
   })
-  const mtic = evaluateTransportMutationAllowed('protocol_upgrade', mutationSnapshot)
+
+  const switchDecision = evaluateMarathonProtocolSwitchDecision({
+    cursorConnectionCount,
+    marathonTruthActive: truth.marathonTruthActive,
+    fromNode: trimmedActive,
+    toNode: recommendedNode,
+    source: 'protocol_contract',
+    mutationSnapshot,
+  })
+  if (!switchDecision.allowed) {
+    if (switchDecision.reason === 'blocked_marathon_hy2_only_tls_denied') {
+      await appendAppLog(
+        formatMarathonHy2OnlyTlsDeniedLogLine({
+          fromNode: trimmedActive,
+          toNode: recommendedNode,
+          source: 'protocol_contract',
+        }),
+      )
+    }
+    await appendAppLog(
+      `[MarathonProtocolContract]: outcome=protocol_switch_blocked` +
+        ` from=${trimmedActive} to=${recommendedNode} reason=${switchDecision.reason}\n`,
+    )
+    return
+  }
+
+  const mutationKind = isMarathonTlsCanaryLeaf(trimmedActive) ? 'node_switch' : 'protocol_upgrade'
+  const mtic = evaluateTransportMutationAllowed(mutationKind, mutationSnapshot)
   if (!mtic.allowed) {
     await appendAppLog(
       formatTransportMutationGateLogLine({
-        mutation: 'protocol_upgrade',
+        mutation: mutationKind,
         decision: mtic,
         cursorConnectionCount,
         hy2ParentChainAgeMs: mutationSnapshot.hy2ParentChainAgeMs,
@@ -181,15 +214,26 @@ export async function runMarathonProtocolColdStartGateIfDue(
       }),
     )
     await appendAppLog(
-      `[MarathonProtocolContract]: outcome=protocol_upgrade_blocked` +
+      `[MarathonProtocolContract]: outcome=protocol_switch_blocked` +
         ` from=${trimmedActive} to=${recommendedNode} reason=${mtic.reason}\n`,
     )
     return
   }
 
-  const upgraded = await executeMarathonProtocolColdStartUpgrade(trimmedActive, recommendedNode)
+  const switched = await executeMarathonProtocolColdStartUpgrade(trimmedActive, recommendedNode)
+  if (isMarathonTlsCanaryLeaf(trimmedActive)) {
+    await appendAppLog(
+      formatMarathonHy2OnlyDowngradeLogLine({
+        fromNode: trimmedActive,
+        toNode: recommendedNode,
+        cursorConnectionCount,
+        executed: switched,
+      }),
+    )
+    return
+  }
   await appendAppLog(
-    `[MarathonProtocolContract]: outcome=${upgraded ? 'protocol_upgrade_executed' : 'protocol_upgrade_failed'}` +
+    `[MarathonProtocolContract]: outcome=${switched ? 'protocol_upgrade_executed' : 'protocol_upgrade_failed'}` +
       ` from=${trimmedActive} to=${recommendedNode} cursor_conn=${cursorConnectionCount}\n`,
   )
 }

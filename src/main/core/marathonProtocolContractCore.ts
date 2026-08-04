@@ -3,10 +3,14 @@
 // [POS] R-30/R-31 SSOT — cold-start TLS gate · operator manual switch exempt.
 
 import {
-  CURSOR_DEFAULT_VPS_NODE,
   isCursorProtocolUpgrade,
   isCursorSuboptimalNode,
 } from './cursorDedicatedDefault'
+import {
+  isDeniedMarathonProtocolUpgradeToTls,
+  MARATHON_CURSOR_OPTIMAL_VPS_NODE,
+  shouldRecoverTlsLeafToHy2,
+} from './marathonHy2OnlyCore'
 import {
   evaluateTransportMutationAllowed,
   type TransportMutationAllowReason,
@@ -46,7 +50,8 @@ export type MarathonProtocolSwitchBlockReason =
   | 'blocked_mtic_quarantine'
   | 'blocked_mtic_hy2_chain_alive'
   | 'blocked_mtic_stale_rids'
-  | 'noop'
+  | 'blocked_marathon_hy2_only_tls_denied'
+  | 'protocol_downgrade_from_tls'
 
 export interface MarathonProtocolColdStartGateResult {
   required: boolean
@@ -65,12 +70,19 @@ export function resolveShouldAutoUpgradeSuboptimalIdleTls(input: {
   cursorConnectionCount: number
   activeNode: string
 }): boolean {
-  const trimmedActive = input.activeNode.trim()
-  return (
-    input.cursorConnectionCount === 0 &&
-    Boolean(trimmedActive) &&
-    isCursorSuboptimalNode(trimmedActive)
-  )
+  // Sparkle 1.30.1: never auto HY2→TLS; marathon SSOT is HY2-only.
+  void input
+  return false
+}
+
+function denyTlsUpgradeIfMarathonHy2Only(
+  fromNode: string,
+  toNode: string,
+): MarathonProtocolSwitchDecision | undefined {
+  if (isDeniedMarathonProtocolUpgradeToTls(fromNode, toNode)) {
+    return { allowed: false, reason: 'blocked_marathon_hy2_only_tls_denied' }
+  }
+  return undefined
 }
 
 export function evaluateMarathonProtocolColdStartGate(input: {
@@ -82,8 +94,16 @@ export function evaluateMarathonProtocolColdStartGate(input: {
   manualSelectionNode?: string
 }): MarathonProtocolColdStartGateResult {
   const activeNode = input.activeNode.trim()
-  const recommendedNode = input.recommendedNode ?? CURSOR_DEFAULT_VPS_NODE
+  const recommendedNode = input.recommendedNode ?? MARATHON_CURSOR_OPTIMAL_VPS_NODE
   const manualSelection = input.manualSelectionNode?.trim() ?? ''
+  if (shouldRecoverTlsLeafToHy2(activeNode)) {
+    return {
+      required: true,
+      activeNode,
+      recommendedNode: MARATHON_CURSOR_OPTIMAL_VPS_NODE,
+      riskClass: 'suboptimal_leaf',
+    }
+  }
   if (
     manualSelection &&
     manualSelection === activeNode &&
@@ -102,6 +122,15 @@ export function evaluateMarathonProtocolColdStartGate(input: {
     !activeNode ||
     !isCursorSuboptimalNode(activeNode)
   ) {
+    return {
+      required: false,
+      activeNode,
+      recommendedNode,
+      riskClass: 'none',
+    }
+  }
+  // HY2 is marathon-optimal — do not cold-start gate toward TLS.
+  if (activeNode === MARATHON_CURSOR_OPTIMAL_VPS_NODE) {
     return {
       required: false,
       activeNode,
@@ -145,6 +174,10 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
 
   if (input.source === 'protocol_contract') {
     if (isCursorProtocolUpgrade(fromNode, toNode)) {
+      const hy2OnlyDeny = denyTlsUpgradeIfMarathonHy2Only(fromNode, toNode)
+      if (hy2OnlyDeny) {
+        return hy2OnlyDeny
+      }
       const snapshot: TransportMutationSnapshot = input.mutationSnapshot ?? {
         cursorConnectionCount: input.cursorConnectionCount,
         marathonTruthActive: input.marathonTruthActive,
@@ -170,6 +203,10 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
       return { allowed: false, reason: 'blocked_suboptimal_lateral' }
     }
     if (isCursorProtocolUpgrade(fromNode, toNode)) {
+      const hy2OnlyDeny = denyTlsUpgradeIfMarathonHy2Only(fromNode, toNode)
+      if (hy2OnlyDeny) {
+        return hy2OnlyDeny
+      }
       return { allowed: true, reason: 'protocol_upgrade_to_tls' }
     }
     if (!isCursorSuboptimalNode(toNode)) {
@@ -190,7 +227,19 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
   }
 
   if (isCursorProtocolUpgrade(fromNode, toNode)) {
+    const hy2OnlyDeny = denyTlsUpgradeIfMarathonHy2Only(fromNode, toNode)
+    if (hy2OnlyDeny) {
+      return hy2OnlyDeny
+    }
     return { allowed: true, reason: 'protocol_upgrade_to_tls' }
+  }
+
+  if (
+    shouldRecoverTlsLeafToHy2(fromNode) &&
+    toNode === MARATHON_CURSOR_OPTIMAL_VPS_NODE &&
+    (input.source === 'auto' || input.source === 'bootstrap' || input.source === 'protocol_contract')
+  ) {
+    return { allowed: true, reason: 'protocol_downgrade_from_tls' }
   }
 
   if (!isCursorSuboptimalNode(toNode)) {

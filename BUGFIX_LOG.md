@@ -1,6 +1,20 @@
 # Sparkle Bugfix Log
 
-> **2026-08-04 最新**：**MTIC-v2 @1.30.0 CODE-DONE** — transport mutation gate · 14:50 protocol_upgrade replay blocked · **R-41 + R-41b @1.29.0** · prod 曾 1.29.1
+> **2026-08-04 最新**：**Marathon HY2-only @1.30.1 CODE-DONE** — deny auto/protocol_contract HY2→TLS · bootstrap TLS→HY2 recovery · **MTIC-v2 @1.30.0** · prod 曾 1.29.1/1.30.0
+
+### Marathon HY2-only @1.30.1 · 2026-08-04 14:50 definitive class-fix
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX CODE-DONE @1.30.1** · **待 cursor_conn=0 upgrade:mac** |
+| **A 时刻** | 2026-08-04 **14:50:09 CST** · Sparkle 1.29.1 install → `protocol_upgrade_executed` HY2→TLS |
+| **PRIMARY** | **L7** `MarathonProtocolContract` + `cursorDedicatedDefault` SSOT treated HY2 as suboptimal → auto TLS canary |
+| **amplifier** | **L3** JP-VPS-TLS `:18443` — agent-transport-failures **1054** tls-reset vs HY2 **152** |
+| **symptom** | auth/analytics TLS handshake ERROR · generation 提前结束 → 额外 Included 计次 |
+| **NOT** | Cursor 服务端 · max-steps-cap · ghost double-billing |
+| **修复** | `marathonHy2OnlyCore.ts` — deny all HY2→TLS · cold-start TLS→HY2 downgrade · `CURSOR_DEFAULT_VPS_NODE=JP-VPS-HY2` |
+| **验证** | `marathonHy2OnlyCore.test.ts` · `marathonProtocolContractCore.test.ts` HY2-only matrix · asar gate `MarathonHy2Only` |
+| **Ship** | upgrade:mac **1.30.1** · G9 soak |
 
 ### MTIC-v2 @1.30.0 · transport mutation gate · 2026-08-04 14:50 recurrence class-fix
 
