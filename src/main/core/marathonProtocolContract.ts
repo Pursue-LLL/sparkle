@@ -3,6 +3,7 @@
 // [POS] R-30 runtime — cold-start gate dialog + mihomoChangeProxy enforcement.
 
 import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { mihomoChangeProxy } from './mihomoApi'
 import {
   evaluateMarathonProtocolColdStartGate,
   formatMarathonProtocolColdStartGateLogLine,
@@ -59,7 +60,6 @@ export async function executeMarathonProtocolColdStartUpgrade(
   activeNode: string,
   recommendedNode: string,
 ): Promise<boolean> {
-  const { mihomoChangeProxy } = await import('./mihomoApi')
   return mihomoChangeProxy(CURSOR_DEDICATED_GROUP_NAME, recommendedNode, {
     source: 'protocol_contract',
   })
