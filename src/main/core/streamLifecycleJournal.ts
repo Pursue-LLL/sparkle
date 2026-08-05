@@ -2,12 +2,23 @@
 // [OUTPUT] appendStreamLifecycleJournalEvents · readStreamLifecycleJournalTail
 // [POS] P10-1 durable lifecycle journal — append-only reducer input SSOT.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+} from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import type { StreamLifecycleEvent } from './streamLifecycleTruthCore'
 
 const JOURNAL_FILE = join(homedir(), '.sparkle', 'stream-lifecycle-journal.v1.jsonl')
+/** Read at most this many trailing bytes — avoids V8 max-string blow-up on long marathon days. */
+export const STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES = 8_388_608
 
 let testJournalPathOverride: string | null = null
 
@@ -29,12 +40,37 @@ export function appendStreamLifecycleJournalEvents(events: readonly StreamLifecy
   appendFileSync(filePath, lines, 'utf8')
 }
 
+export function readStreamLifecycleJournalTailText(filePath: string): string {
+  if (!existsSync(filePath)) {
+    return ''
+  }
+  const fd = openSync(filePath, 'r')
+  try {
+    const fileSize = fstatSync(fd).size
+    if (fileSize <= STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES) {
+      return readFileSync(filePath, 'utf8')
+    }
+    const start = fileSize - STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES
+    const length = fileSize - start
+    const buffer = Buffer.alloc(length)
+    readSync(fd, buffer, 0, length, start)
+    let text = buffer.toString('utf8')
+    const firstNewline = text.indexOf('\n')
+    if (firstNewline >= 0) {
+      text = text.slice(firstNewline + 1)
+    }
+    return text
+  } finally {
+    closeSync(fd)
+  }
+}
+
 export function readStreamLifecycleJournalTail(limit: number = 4096): StreamLifecycleEvent[] {
   const filePath = journalPath()
-  if (!existsSync(filePath)) {
+  const text = readStreamLifecycleJournalTailText(filePath)
+  if (!text) {
     return []
   }
-  const text = readFileSync(filePath, 'utf8')
   const lines = text.split('\n').filter((line) => line.trim())
   const rows: StreamLifecycleEvent[] = []
   for (const line of lines.slice(-limit)) {

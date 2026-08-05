@@ -7,7 +7,9 @@ import {
   appendStreamLifecycleJournalEvents,
   mergeStreamLifecycleJournalEvents,
   readStreamLifecycleJournalTail,
+  readStreamLifecycleJournalTailText,
   setStreamLifecycleJournalPathForTests,
+  STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES,
 } from './streamLifecycleJournal'
 import type { StreamLifecycleEvent } from './streamLifecycleTruthCore'
 
@@ -32,6 +34,38 @@ describe('streamLifecycleJournal P10-1', () => {
     assert.equal(tail.length, 1)
     assert.equal(tail[0]?.eventId, 'start:orig-1:1000')
     setStreamLifecycleJournalPathForTests(null)
+  })
+
+  it('readStreamLifecycleJournalTailText reads only trailing bytes for large files', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'p10-lifecycle-large-'))
+    const journalPath = path.join(dir, 'stream-lifecycle-journal.v1.jsonl')
+    const staleLine = JSON.stringify({
+      eventId: 'start:stale:1',
+      sequence: 1,
+      occurredAtMs: 1,
+      rendererBootId: 'boot-a',
+      composerId: 'comp-1',
+      originalRequestId: 'stale',
+      segmentRequestId: 'req-stale',
+      generation: 0,
+      kind: 'physical_start',
+    })
+    const freshLine = JSON.stringify({
+      eventId: 'start:fresh:2',
+      sequence: 2,
+      occurredAtMs: 2,
+      rendererBootId: 'boot-a',
+      composerId: 'comp-1',
+      originalRequestId: 'fresh',
+      segmentRequestId: 'req-fresh',
+      generation: 0,
+      kind: 'physical_start',
+    })
+    const padding = 'x'.repeat(STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES)
+    fs.writeFileSync(journalPath, `${staleLine}\n${padding}\n${freshLine}\n`, 'utf8')
+    const text = readStreamLifecycleJournalTailText(journalPath)
+    assert.ok(!text.includes('stale'))
+    assert.ok(text.includes('fresh'))
   })
 
   it('merges persisted and projected without duplicate eventId', () => {
