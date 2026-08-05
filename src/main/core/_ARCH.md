@@ -31,8 +31,16 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `transportLongevityTruthCore.ts` / `transportLongevityTruth.ts` | **R-34a** 三龄 SSOT（HTTP parent · HY2 outbound session · byte stall） |
 | `frozenSurgicalPruneCore.ts` | **R-34c** 五门 AND frozen connection prune（替代 marathon_block_close） |
 | `hy2ParentRotationCore.ts` | **R-34b** prune 后 aged HY2 UDP session 安全 refresh |
-| `hy2ParentSidecarCore.ts` / `hy2ParentSidecar.ts` | **R-35a** proactive 4h parent sidecar dial + safe UDP refresh |
-| `marathonSseCarrierPruneCore.ts` | **R-35b** marathon SSE carrier 45s stale-proof prune gate |
+| `hy2ParentSidecarCore.ts` / `hy2ParentSidecar.ts` | **R-35a / Plane B** proactive 4h parent sidecar dial + emergency UDP close+redial |
+| `carrierQuiesceRefreshCore.ts` | **R-41 Phase B** `isMarathonGlobalByteDeath` · active_inner bypass · R2 `parent_udp_refresh` gate |
+| `parentLifecycleCore.ts` | **Plane B** parent lifecycle phase SSOT（young / refresh_due / byte_frozen / emergency） |
+| `stallEscalationLadderCore.ts` | **R-41** vitality 无效后逐级 escalation（sidecar → parent_udp_refresh → rotation）；byte-death 期间 bypass cooldown |
+| `marathonParentRecoveryStallProofCore.ts` | marathon inner recovery stall proof · bypass token_gap when carrier bytes dead |
+| `marathonSseCarrierPruneCore.ts` | **R-35b** marathon SSE carrier 45s stale-proof prune gate · `MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS` |
+| `marathonHy2OnlyCore.ts` / `marathonSSETruthCore.ts` | Marathon HY2-only 协议 SSOT · `marathonTruthActive` when conn≥12 |
+| `transportMutationGateCore.ts` / `transportMutationGateRuntime.ts` | MTIC-v2：赛中禁止 HY2→TLS 等 transport mutation |
+| `bug20260805ControlPlaneReplayCore.ts` | 控制面 replay 回归 gate（emergency bypass · carrier honesty · observability_probe） |
+| `marathonCarrierConnectionBindCore.ts` | marathon SSE carrier ↔ mihomo connection bind SSOT |
 | `recoveryHonestyCore.ts` | **R-34d** recovery success = max_gap 60s 内降 ≥50% |
 | `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | VPS leaf **bootstrap dial-timeout=45s**（provider 生成 SSOT）· 空闲 backfill · 赛中零 data-plane mutation · P20b IDLE gate 保留供历史测试 |
@@ -133,8 +141,9 @@ marathon-segments.v1.jsonl + agent-transport-failures.jsonl
 ## 测试
 
 ```bash
-pnpm run test:node-quality   # 含 marathonQuiesceCore.test.ts 14/14 · marathonCoreRestartGuardCore.test.ts · coreReadyTimestamp.bundle.test.ts · upgradeSparkleAsarGateCore.test.ts
+pnpm run test:node-quality   # 含 carrierQuiesceRefreshCore · stallEscalationLadder · marathonParentRecoveryStallProof 等
 pnpm run upgrade:mac         # 本地装 /Applications + PostCoreBootstrap 门控（网络失败：SKIP_PREPARE=1）
+tsx scripts/verify-byte-death-recovery-gate.mts --minutes 15   # post-upgrade：byte-death 期间 R2 必须执行或 quiesce bypass
 ```
 
 ## 构建标识（UI）
