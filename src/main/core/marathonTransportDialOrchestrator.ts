@@ -297,7 +297,7 @@ async function executeConnectPathPulse(
   const { admitDialIntent, completeDialIntent } = await import('./dialAdmissionArbiter')
   const admission = admitDialIntent({
     dialId,
-    class: 'active_recovery',
+    class: 'observability_probe',
     caller: 'marathonTransportDialOrchestrator.connectPathPulse',
     incidentGeneration,
     node: activeNode,
@@ -1049,6 +1049,7 @@ export async function runMarathonTransportDialCycle(cursorConnectionCount: numbe
           attemptedAtMs: nowMs,
           baselineMaxGapMs: maxGapMs,
           staleRequestIds,
+          requireCarrierBytesRecovery: false,
         })
       }
     }

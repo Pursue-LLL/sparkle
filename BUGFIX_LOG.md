@@ -7,7 +7,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **TRIAGE-DEFINITIVE @2026-08-05** · **PRIMARY 根因未修** · Plane B upstream **PENDING @1.30.3** · G9 soak **未跑** |
+| **状态** | **FIX CODE-DONE @1.30.3** · **待 cursor_conn=0 upgrade:mac + G9 soak** |
 | **发生版本** | Sparkle **1.30.1** · Cursor **3.1.15** · Guard **0.17.3** · leaf **JP-VPS-HY2** |
 | **事故窗口** | 2026-08-05 **00:00–03:00 CST**（UTC 2026-08-04 16:00–19:00）· Dashboard **16 Included** · 均 **~1.72M tok** · ≥30M/40M/50M **0%** |
 | **composer 样本** | `2758ce91-877b-425b-a90a-f144285ff81f` — **35** unique `originalRequestId` · 全部 **attempt=0** |
@@ -38,7 +38,8 @@
 | **1.30.1 HY2-only** | 冷启动 TLS→HY2 | 协议层稳定 ✅ · **Plane B / marathon_truth 未修** |
 | **未装 1.30.2** | purge TLS canary | 与 8/5 PRIMARY 无关 |
 
-| **待修复（1.30.3 目标）** | ① `marathonSSETruthCore`：`cursor_conn≥1` → `marathonTruthActive=true` ② `hy2ParentSidecar`：sidecar **必须 mihomo UDP outbound 真轮换 upstream**（非仅 proxyDelay + birth reset）③ `recoveryHonestyCore`：success = **carrier 字节恢复** ④ G9 soak `attemptRate≥90%` ship gate |
+| **待修复（1.30.3 目标）** | ① `marathonSSETruthCore`：`cursor_conn≥12` → `marathonTruthActive=true` ② `hy2ParentSidecar`：emergency **close_udp_outbound upstream** + vitality redial ③ `dialAdmissionArbiterCore`：`emergency_parent_refresh` bypass ④ `recoveryHonestyCore`：carrier byte 恢复判据 ⑤ `observability_probe` admission 分级 ⑥ G9 pre-install + soak `attemptRate≥90%` ship gate |
+| **修复版本** | **FIX CODE-DONE @1.30.3**（2026-08-05）· **待 cursor_conn=0 upgrade:mac + G9 soak 40min** |
 | **验证方式** | G9 soak strict ≥40min · `[MaxStepsRate] attempt_rate_pct≥90` · 零同窗 silent_generation_end · marathon 中 `parent_chain_age<4h` · Dashboard 单段 ≥30M 命中率恢复 |
 | **会导致什么** | 16×Included 碎计费 · 均 1.72M tok · ≥30M 阈值 0% · attemptRate 2% |
 

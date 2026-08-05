@@ -49,7 +49,7 @@ for conn in connections:
     metadata = conn.get("metadata") or {}
     process_path = str(metadata.get("processPath") or "")
     process_name = str(metadata.get("process") or "")
-    if "/Cursor.app/" in process_path or "/Cursor-3.1.15.app/" in process_path:
+    if "/Cursor.app/" in process_path or "/Cursor-3.1.15.app/" in process_path or "/Cursor-2.app/" in process_path:
         count += 1
         continue
     for name in ("Cursor", "Cursor Helper", "Cursor Helper (Plugin)", "Cursor Helper (Renderer)"):

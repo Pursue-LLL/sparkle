@@ -218,23 +218,18 @@ describe('injectCursorDomainRules', () => {
     assert.deepEqual(ruleLines(profile), ['PROCESS-NAME,Arc,🚀 节点选择', 'GEOIP,us,DIRECT'])
   })
 
-  it('routes non-marathon Cursor bundles to DIRECT before subscription cursor.sh rules', () => {
+  it('routes stock Cursor.app to DIRECT before subscription cursor.sh rules', () => {
     const profile = {
       'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['JP-VPS-HY2'] }],
       rules: ['DOMAIN-SUFFIX,cursor.sh,🌍 国外媒体', 'GEOIP,us,DIRECT']
     } as unknown as MihomoConfig
 
-    injectCursorDomainRules(profile, ['/Applications/Cursor-3.1.15.app'])
+    injectCursorDomainRules(profile, [
+      '/Applications/Cursor-3.1.15.app',
+      '/Applications/Cursor-2.app'
+    ])
 
     const rules = ruleLines(profile)
-    const cursor2Path = 'PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/'
-    assert.ok(
-      rules.some(
-        (rule) =>
-          rule ===
-          `AND,((DOMAIN,metrics.cursor.sh),(${cursor2Path})),DIRECT`
-      )
-    )
     const cursorAppPath = 'PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/'
     assert.ok(
       rules.some(
@@ -242,10 +237,17 @@ describe('injectCursorDomainRules', () => {
           rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursorAppPath})),DIRECT`
       )
     )
+    assert.ok(
+      rules.some(
+        (rule) =>
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/') &&
+          rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
+      )
+    )
 
     const mediaRuleIndex = rules.indexOf('DOMAIN-SUFFIX,cursor.sh,🌍 国外媒体')
-    const directCursor2Index = rules.findIndex((rule) => rule.includes(cursor2Path) && rule.endsWith(',DIRECT'))
-    assert.ok(mediaRuleIndex > directCursor2Index)
+    const directCursorAppIndex = rules.findIndex((rule) => rule.includes(cursorAppPath) && rule.endsWith(',DIRECT'))
+    assert.ok(mediaRuleIndex > directCursorAppIndex)
   })
 
   it('stripUnscopedCursorDedicatedRules keeps path-scoped AND rules', () => {

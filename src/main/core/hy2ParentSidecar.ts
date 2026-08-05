@@ -53,8 +53,11 @@ function resolveProactiveUdpClosePlan(input: {
   trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
   nowMs: number
   lastRotateActionAtMs: number
+  /** R-41 emergency: refresh parent UDP even when inner critical flows exist (close outbound only). */
+  emergencyStallEscalation?: boolean
 }): Hy2ParentSidecarPlan {
   if (
+    !input.emergencyStallEscalation &&
     input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS &&
     input.snapshot.httpParentChainAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS
   ) {
@@ -70,7 +73,7 @@ function resolveProactiveUdpClosePlan(input: {
     byteActiveWithinMs: 30_000,
     trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
   })
-  if (healthyInner > 0) {
+  if (healthyInner > 0 && input.emergencyStallEscalation !== true) {
     return { action: 'none', reason: 'healthy_inner_critical_flows', healthyInnerCount: healthyInner }
   }
   const udpConnectionId = findOldestHy2UdpOutboundConnectionId({
@@ -120,6 +123,7 @@ export async function runHy2ParentSidecarIfDue(input: {
       trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
       nowMs,
       lastRotateActionAtMs: lastHy2ParentSidecarActionAtMs,
+      emergencyStallEscalation: input.emergencyStallEscalation === true,
     })
 
     const shouldAct =
@@ -133,6 +137,30 @@ export async function runHy2ParentSidecarIfDue(input: {
 
     if (dialPlan.action === 'sidecar_dial') {
       const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+      // Plane B @1.30.3: prefer UDP outbound close+redial before probe-only vitality.
+      if (rotatePlan.action === 'close_udp_outbound' && rotatePlan.udpConnectionId) {
+        const closed = await closeUdpOutbound(rotatePlan.udpConnectionId)
+        if (closed.ok) {
+          const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
+          await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+        }
+        lastHy2ParentSidecarActionAtMs = nowMs
+        await appendSidecarLog(
+          formatHy2ParentSidecarLogLine({
+            outcome: closed.ok ? 'executed' : 'failed',
+            action: 'close_udp_outbound',
+            reason: `${rotatePlan.reason} phase=execute_before_sidecar_dial`,
+            outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
+            httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
+            healthyInnerCount: rotatePlan.healthyInnerCount,
+            udpConnectionId: rotatePlan.udpConnectionId,
+            err: closed.err,
+          }),
+        )
+        if (!closed.ok) {
+          return
+        }
+      }
       const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
       const vitality = await runHy2TunnelVitalityIfDue(
         activeLeaf,
@@ -141,14 +169,11 @@ export async function runHy2ParentSidecarIfDue(input: {
         input.marathonTruth,
         {
           sidecarDial: true,
+          emergencySidecar: input.emergencyStallEscalation === true,
           outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
           stallRecoveryBypass: true,
         },
       )
-      if (vitality.outcome === 'executed') {
-        const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
-        await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
-      }
       lastHy2ParentSidecarActionAtMs = nowMs
       await appendSidecarLog(
         formatHy2ParentSidecarLogLine({
@@ -163,7 +188,11 @@ export async function runHy2ParentSidecarIfDue(input: {
       )
     }
 
-    if (rotatePlan.action === 'close_udp_outbound' && rotatePlan.udpConnectionId) {
+    if (
+      rotatePlan.action === 'close_udp_outbound' &&
+      rotatePlan.udpConnectionId &&
+      dialPlan.action !== 'sidecar_dial'
+    ) {
       const closed = await closeUdpOutbound(rotatePlan.udpConnectionId)
       if (closed.ok) {
         const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'

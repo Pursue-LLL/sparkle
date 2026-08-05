@@ -224,6 +224,23 @@ function connectionBytesForObservation(
   }
 }
 
+function resolveRecoveryHonestyCurrentCarrier(
+  record: RecoveryHonestyAttemptRecord,
+): { upload: number; download: number } | undefined {
+  const connectionId = record.connectionId?.trim()
+  if (!connectionId) {
+    return undefined
+  }
+  const connection = latestConnections.find((entry) => entry.id === connectionId)
+  if (!connection) {
+    return undefined
+  }
+  return {
+    upload: connection.upload ?? 0,
+    download: connection.download ?? 0,
+  }
+}
+
 async function executeStallEscalationLadderIfDue(
   observation: MihomoQuicSilentStallObservation,
   nowMs: number,
@@ -411,6 +428,7 @@ export async function evaluatePendingRecoveryHonestyIfDue(nowMs: number = Date.n
     nowMs,
     currentMaxGapMs: latestTokenGapSnapshot.maxGapMs,
     staleRequestIds: [],
+    currentCarrier: resolveRecoveryHonestyCurrentCarrier(pendingRecoveryHonesty),
   })
   await logRecovery(formatRecoveryHonestyLogLine(evaluation))
   pendingRecoveryHonesty = undefined
@@ -617,11 +635,15 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     markRecovery(observation.connectionId, nowMs)
   }
   lastGlobalPruneAtMs = nowMs
+  const pruneBytes = connectionBytesForObservation(observation)
   pendingRecoveryHonesty = {
     kind: 'stall_prune',
     attemptedAtMs: nowMs,
     baselineMaxGapMs: latestTokenGapSnapshot.maxGapMs,
     staleRequestIds: plan.carrierRid ? [plan.carrierRid] : [],
+    baselineCarrier: { upload: pruneBytes.upload, download: pruneBytes.download },
+    requireCarrierBytesRecovery: true,
+    connectionId: closeConnectionId,
   }
   await logRecovery(
     formatMihomoQuicStallRecoveryLogLine({

@@ -99,7 +99,7 @@ export async function executeMarathonWarmthDial(
     useObservabilityBudget: true,
     admissionIntent: {
       dialId,
-      class: 'active_recovery',
+      class: 'observability_probe',
       caller: 'marathonWarmthDialExecutor',
       incidentGeneration,
       node: activeNode,

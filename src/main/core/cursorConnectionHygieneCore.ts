@@ -1,3 +1,4 @@
+import { isCursorAppBundleProcessPath } from './cursorAppBundlePathsCore'
 import { CURSOR_PROCESS_NAMES } from './cursorRuleInjection'
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 
@@ -33,8 +34,7 @@ export interface ConnectionHygieneRow {
 }
 
 function isCursorProcessPath(processPath: string): boolean {
-  const path = processPath.trim()
-  return path.includes('/Cursor.app/') || path.includes('/Cursor-3.1.15.app/')
+  return isCursorAppBundleProcessPath(processPath)
 }
 
 function isCursorProcessName(process: string): boolean {

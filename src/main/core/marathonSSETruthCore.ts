@@ -104,6 +104,15 @@ export function evaluateMarathonSSETruth(input: MarathonSSETruthInput): Marathon
     }
   }
 
+  // Plane B @1.30.3: IFM segment handoff can lag mihomo cursor_conn — treat marathon-scale
+  // connection load as active so proactive parent rotation / sidecar gates are not blocked.
+  if (
+    !marathonTruthActive &&
+    input.cursorConnectionCount >= CURSOR_HY2_MARATHON_CONN_THRESHOLD
+  ) {
+    marathonTruthActive = true
+  }
+
   const pulseContractDue =
     input.cursorConnectionCount >= CURSOR_HY2_MARATHON_CONN_THRESHOLD &&
     parentChains.some((chain) => chain.chainAgeMs >= minChainAgeMs && chain.openSegmentCount > 0)

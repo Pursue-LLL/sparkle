@@ -3,6 +3,7 @@
 // [POS] R-17 SSOT — HY2/TUIC QUIC byte-frozen stall detection; R-33 recovery in mihomoQuicSilentStallRecovery.ts.
 
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
+import { isCursorAppBundleProcessPath } from './cursorAppBundlePathsCore'
 import {
   CURSOR_HY2_MARATHON_CONN_THRESHOLD,
   isMarathonQuIcInboundCursorNode,
@@ -153,7 +154,7 @@ export function countCursorConnectionsFromMihomo(
     const metadata = connection.metadata ?? ({} as ControllerConnectionDetail['metadata'])
     const processPath = String(metadata.processPath ?? '')
     const process = String(metadata.process ?? '')
-    if (processPath.includes('/Cursor.app/') || process === 'Cursor' || process.startsWith('Cursor ')) {
+    if (isCursorAppBundleProcessPath(processPath) || process === 'Cursor' || process.startsWith('Cursor ')) {
       count += 1
     }
   }

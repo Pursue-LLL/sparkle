@@ -1,3 +1,9 @@
+import {
+  CURSOR_2_APP_PATH_PREFIX,
+  MARATHON_CURSOR_APP_PATH_PREFIX,
+  MARATHON_CURSOR_APP_PATH_PREFIXES
+} from '../core/cursorAppBundlePathsCore'
+
 /** Upgrade legacy Sparkle defaults to Cursor-optimized stability settings. */
 export function migrateLegacyCursorDefaults(config: AppConfig): {
   config: AppConfig
@@ -24,6 +30,15 @@ export function migrateLegacyCursorDefaults(config: AppConfig): {
   }
   if (result.cursorProxyAppPathPrefixes === undefined) {
     result.cursorProxyAppPathPrefixes = []
+    migrated = true
+  }
+
+  const prefixes = result.cursorProxyAppPathPrefixes ?? []
+  if (
+    prefixes.includes(MARATHON_CURSOR_APP_PATH_PREFIX) &&
+    !prefixes.includes(CURSOR_2_APP_PATH_PREFIX)
+  ) {
+    result.cursorProxyAppPathPrefixes = [...prefixes, CURSOR_2_APP_PATH_PREFIX]
     migrated = true
   }
   if (result.cursorSysProxyLock === undefined && result.cursorBidiOptimize !== false) {
