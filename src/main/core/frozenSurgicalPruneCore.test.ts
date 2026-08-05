@@ -33,7 +33,7 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       marathonActive: true
     })
     assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'r41_critical_host_no_close')
+    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
   })
 
   it('does not close without token gap stale proof (zero mis-kill)', () => {
@@ -49,7 +49,7 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
     assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 
-  it('respects global prune cooldown', () => {
+  it('keeps a proven critical carrier open during global prune cooldown', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: baseObservation,
       tokenGapMaxMs: 60_000,
@@ -61,7 +61,7 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       marathonActive: true
     })
     assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'global_prune_cooldown')
+    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
   })
 
   it('R-41: carrier token_gap stale on critical host → vitality not close', () => {

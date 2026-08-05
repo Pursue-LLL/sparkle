@@ -1,10 +1,16 @@
 #!/usr/bin/env -S node --import tsx
-/** G9 pre-install gate — block upgrade:mac when rolling attempt SLO is below target. */
+/** G9 pre-install gate — block upgrade when rolling attempt SLO is below target; remedial path for active incidents. */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { evaluateMaxStepsRateUpgradeGate } from './maxStepsRateUpgradeGateCore.ts'
+import {
+  evaluateRemedialG9Upgrade,
+  parseUpgradeIncidentRegistry,
+  REMEDIAL_G9_INCIDENT_REGISTRY_RELATIVE,
+} from './upgradeSafeWindowCore.ts'
 
 function pickLastMatching(text: string, prefix: string): string | null {
   const lines = text.split('\n')
@@ -59,12 +65,57 @@ function readLatestAppLogTail(): string {
   }
 }
 
+function readInstalledSparkleVersion(): string | null {
+  const plist = '/Applications/Sparkle.app/Contents/Info.plist'
+  if (!existsSync(plist)) {
+    return null
+  }
+  try {
+    const version = execFileSync(
+      '/usr/libexec/PlistBuddy',
+      ['-c', 'Print CFBundleShortVersionString', plist],
+      { encoding: 'utf8' },
+    ).trim()
+    return version || null
+  } catch {
+    return null
+  }
+}
+
+function ensureIncidentRegistry(): void {
+  const registryPath = join(homedir(), REMEDIAL_G9_INCIDENT_REGISTRY_RELATIVE)
+  if (existsSync(registryPath)) {
+    return
+  }
+  const defaultPath = join(import.meta.dirname, 'assets/upgrade-incident-registry.default.json')
+  if (!existsSync(defaultPath)) {
+    return
+  }
+  copyFileSync(defaultPath, registryPath)
+}
+
+function readIncidentRegistry() {
+  ensureIncidentRegistry()
+  const registryPath = join(homedir(), REMEDIAL_G9_INCIDENT_REGISTRY_RELATIVE)
+  if (!existsSync(registryPath)) {
+    return parseUpgradeIncidentRegistry(null)
+  }
+  try {
+    return parseUpgradeIncidentRegistry(JSON.parse(readFileSync(registryPath, 'utf8')))
+  } catch {
+    return parseUpgradeIncidentRegistry(null)
+  }
+}
+
 function main(): void {
   if (process.env.SPARKLE_UPGRADE_SKIP_G9_GATE === '1') {
-    console.error('[G9PreInstallGate] skip=1 reason=SPARKLE_UPGRADE_SKIP_G9_GATE')
+    console.error('[G9PreInstallGate] skip=1 reason=SPARKLE_UPGRADE_SKIP_G9_GATE (deprecated — use remedial registry)')
     return
   }
 
+  const targetVersion =
+    process.env.SPARKLE_UPGRADE_TARGET_VERSION ??
+    JSON.parse(readFileSync(join(import.meta.dirname, '../package.json'), 'utf8')).version
   const appLogTail = readLatestAppLogTail()
   const maxStepsLogLine = pickLastMatching(appLogTail, '[MaxStepsRate]:')
   const snapshotAttemptRatePct = readSnapshotAttemptRatePct()
@@ -73,6 +124,20 @@ function main(): void {
     snapshotAttemptRatePct,
     advisoryOnly: process.env.SPARKLE_UPGRADE_G9_ADVISORY === '1',
   })
+
+  if (!gate.allowUpgrade) {
+    const remedial = evaluateRemedialG9Upgrade({
+      gateBlocked: true,
+      gateReason: gate.reason,
+      installedVersion: readInstalledSparkleVersion(),
+      targetVersion: targetVersion || '',
+      registry: readIncidentRegistry(),
+    })
+    if (remedial.allowRemedial) {
+      console.error(`[G9PreInstallGate] allow=1 remedial=1 ${remedial.auditReason}`)
+      return
+    }
+  }
 
   console.error(
     `[G9PreInstallGate] allow=${gate.allowUpgrade ? 1 : 0} reason=${gate.reason}` +

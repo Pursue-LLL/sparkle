@@ -20,14 +20,15 @@ DIST_ARM64="$ROOT/dist/mac-arm64"
 APP="$DIST_ARM64/Sparkle.app"
 
 log "Building Sparkle $EXPECTED_VER (electron-vite + electron-builder dir)..."
+export SPARKLE_UPGRADE_TARGET_VERSION="$EXPECTED_VER"
 
 if [[ "${SPARKLE_UPGRADE_SKIP_G9_GATE:-}" != "1" ]]; then
-  log "G9 pre-install gate (attempt_rate SLO before build)..."
+  log "G9 pre-install gate (attempt_rate SLO + remedial incident registry)..."
   if ! "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/evaluate-sparkle-g9-preinstall-gate.mts"; then
-    fail "G9 pre-install gate blocked upgrade — attempt_rate below 90% with sufficient sample. Fix root cause or set SPARKLE_UPGRADE_SKIP_G9_GATE=1 to override (not recommended during marathon)."
+    fail "G9 pre-install gate blocked upgrade — attempt_rate below 90% with sufficient sample and no remedial incident. Fix root cause or add incident to ~/.sparkle/upgrade-incident-registry.json."
   fi
 else
-  log "WARN: SPARKLE_UPGRADE_SKIP_G9_GATE=1 — skipping G9 pre-install gate"
+  log "WARN: SPARKLE_UPGRADE_SKIP_G9_GATE=1 — deprecated; prefer remedial registry in ~/.sparkle/upgrade-incident-registry.json"
 fi
 
 if [[ -f "$ROOT/extra/sidecar/mihomo" ]]; then
@@ -36,11 +37,6 @@ if [[ -f "$ROOT/extra/sidecar/mihomo" ]]; then
 fi
 
 pnpm run write-build-stamp
-
-# shellcheck source=lib/marathon-core-restart-guard.sh
-source "$ROOT/scripts/lib/marathon-core-restart-guard.sh"
-export MARATHON_GUARD_ROOT="$ROOT"
-marathon_core_restart_guard_assert_idle "upgrade-sparkle-local"
 
 pnpm exec electron-vite build
 
@@ -88,6 +84,14 @@ if [[ -n "$APP_LOG" && -f "$APP_LOG" ]]; then
   log "BUG-014 gate: snapshot app log at line=$BUG014_GATE_SINCE_LINE ($APP_LOG)"
 fi
 
+log "Upgrade Safe Window — wait for idle before install (SPARKLE_UPGRADE_BREAK_GLASS=1 to override)..."
+"$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/upgradeSafeWindowWaitCli.mts"
+
+# shellcheck source=lib/marathon-core-restart-guard.sh
+source "$ROOT/scripts/lib/marathon-core-restart-guard.sh"
+export MARATHON_GUARD_ROOT="$ROOT"
+marathon_core_restart_guard_assert_idle "upgrade-sparkle-local"
+
 bash "$ROOT/scripts/install-sparkle-local.sh"
 
 log "Post-install checks..."
@@ -112,50 +116,69 @@ if [[ -z "${APP_LOG:-}" ]]; then
   APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
 fi
 if [[ -n "$APP_LOG" ]]; then
-  post_core_fail="$(
-    "$ROOT/node_modules/.bin/tsx" -e "
-      import { readFileSync } from 'node:fs';
-      import { countPostCoreBootstrapFailuresSinceLine } from './scripts/upgradeSparklePostInstallGateCore.ts';
-      const text = readFileSync(process.argv[1], 'utf8');
-      process.stdout.write(String(countPostCoreBootstrapFailuresSinceLine(text, Number(process.argv[2]))));
-    " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
-  )"
-  if [[ "${post_core_fail:-0}" -gt 0 ]]; then
-    fail "PostCoreBootstrap failed ${post_core_fail} time(s) since install line $BUG014_GATE_SINCE_LINE in $APP_LOG — marathon keepalive offline"
-  fi
-  log "Waiting for Api2ProbePlane ON (PostCoreBootstrap, up to 90s)..."
-  probe_ok=false
-  for _ in $(seq 1 18); do
-    if [[ -f "$APP_LOG" ]]; then
-      post_core_fail="$(
-        "$ROOT/node_modules/.bin/tsx" -e "
-          import { readFileSync } from 'node:fs';
-          import {
-            countPostCoreBootstrapFailuresSinceLine,
-            hasApi2ProbePlaneOnSinceLine,
-          } from './scripts/upgradeSparklePostInstallGateCore.ts';
-          const text = readFileSync(process.argv[1], 'utf8');
-          const since = Number(process.argv[2]);
-          if (countPostCoreBootstrapFailuresSinceLine(text, since) > 0) {
-            process.stdout.write('fail');
-            process.exit(0);
-          }
-          process.stdout.write(hasApi2ProbePlaneOnSinceLine(text, since) ? 'ok' : 'wait');
-        " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
-      )"
-      if [[ "$post_core_fail" == "fail" ]]; then
-        fail "PostCoreBootstrap failed since install line $BUG014_GATE_SINCE_LINE in $APP_LOG — marathon keepalive offline"
-      fi
-      if [[ "$post_core_fail" == "ok" ]]; then
-        probe_ok=true
-        break
-      fi
+  post_install_bootstrap_ok=false
+  recovery_round=0
+  max_recovery_rounds="${SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS:-2}"
+  while [[ "$post_install_bootstrap_ok" != true ]]; do
+    post_core_fail="$(
+      "$ROOT/node_modules/.bin/tsx" -e "
+        import { readFileSync } from 'node:fs';
+        import { countPostCoreBootstrapFailuresSinceLine } from './scripts/upgradeSparklePostInstallGateCore.ts';
+        const text = readFileSync(process.argv[1], 'utf8');
+        process.stdout.write(String(countPostCoreBootstrapFailuresSinceLine(text, Number(process.argv[2]))));
+      " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
+    )"
+    if [[ "${post_core_fail:-0}" -gt 0 ]]; then
+      log "WARN: PostCoreBootstrap failed ${post_core_fail} time(s) since install line $BUG014_GATE_SINCE_LINE"
     fi
-    sleep 5
+    log "Waiting for Api2ProbePlane ON (PostCoreBootstrap, up to 90s)..."
+    probe_ok=false
+    for _ in $(seq 1 18); do
+      if [[ -f "$APP_LOG" ]]; then
+        post_core_fail="$(
+          "$ROOT/node_modules/.bin/tsx" -e "
+            import { readFileSync } from 'node:fs';
+            import {
+              countPostCoreBootstrapFailuresSinceLine,
+              hasApi2ProbePlaneOnSinceLine,
+              hasMihomoApiReadySinceLine,
+            } from './scripts/upgradeSparklePostInstallGateCore.ts';
+            const text = readFileSync(process.argv[1], 'utf8');
+            const since = Number(process.argv[2]);
+            if (countPostCoreBootstrapFailuresSinceLine(text, since) > 0) {
+              process.stdout.write('fail');
+              process.exit(0);
+            }
+            if (hasMihomoApiReadySinceLine(text, since) && hasApi2ProbePlaneOnSinceLine(text, since)) {
+              process.stdout.write('ok');
+              process.exit(0);
+            }
+            process.stdout.write('wait');
+          " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
+        )"
+        if [[ "$post_core_fail" == "ok" ]]; then
+          probe_ok=true
+          break
+        fi
+      fi
+      sleep 5
+      APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
+    done
+    if [[ "$probe_ok" == true ]]; then
+      post_install_bootstrap_ok=true
+      log "PostCoreBootstrap OK (mihomo API ready + Api2ProbePlane ON)"
+      break
+    fi
+    if (( recovery_round >= max_recovery_rounds )); then
+      fail "PostCoreBootstrap not ready after ${max_recovery_rounds} recovery round(s) — check $APP_LOG"
+    fi
+    recovery_round=$((recovery_round + 1))
+    log "Post-install recovery round ${recovery_round}/${max_recovery_rounds} (socket hygiene + GUI relaunch)..."
+    if ! "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/upgrade-sparkle-post-install-recovery.mts" "$BUG014_GATE_SINCE_LINE" "$recovery_round"; then
+      fail "Post-install recovery round ${recovery_round} failed — check $APP_LOG"
+    fi
     APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
   done
-  [[ "$probe_ok" == true ]] || fail "Api2ProbePlane not ON within 90s — check $APP_LOG"
-  log "PostCoreBootstrap OK (Api2ProbePlane ON)"
 
   log "BUG-014 gate: waiting 45s for post-install hung_scan sample..."
   sleep 45
