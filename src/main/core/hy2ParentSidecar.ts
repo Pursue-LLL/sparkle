@@ -196,6 +196,13 @@ export async function runHy2ParentSidecarIfDue(input: {
       )
     }
 
+    const marathonGlobalByteDeath = isMarathonGlobalByteDeath({
+      marathonActive,
+      snapshot: input.snapshot,
+      recoveryIneffective:
+        input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+    })
+
     const shouldAct =
       dialPlan.action === 'sidecar_dial' || rotatePlan.action === 'close_udp_outbound'
     if (!shouldAct) {
@@ -205,7 +212,10 @@ export async function runHy2ParentSidecarIfDue(input: {
         reason: `${dialPlan.reason}:${rotatePlan.reason}`,
       }
     }
-    if (nowMs - lastHy2ParentSidecarActionAtMs < SIDECAR_ACTION_COOLDOWN_MS) {
+    if (
+      !marathonGlobalByteDeath &&
+      nowMs - lastHy2ParentSidecarActionAtMs < SIDECAR_ACTION_COOLDOWN_MS
+    ) {
       return { outcome: 'skipped', action: 'none', reason: 'sidecar_action_cooldown' }
     }
 
