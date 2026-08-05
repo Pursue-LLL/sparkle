@@ -83,6 +83,8 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   emergencyStallEscalation?: boolean
   /** Phase B: byte-frozen carrier may bypass active_inner gate for parent UDP close. */
   carrierQuiesceBypass?: boolean
+  /** Bypass 5m rotation cooldown during marathon global byte-death. */
+  marathonGlobalByteDeath?: boolean
 }): Hy2ParentRotationPlan {
   const minSessionAgeMs =
     input.carrierQuiesceBypass === true ? 0 : HY2_PARENT_ROTATE_AGE_MS
@@ -93,7 +95,10 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   ) {
     return { action: 'none', reason: 'session_age_below_threshold' }
   }
-  if (input.nowMs - input.lastRotationAtMs < HY2_PARENT_ROTATION_COOLDOWN_MS) {
+  if (
+    !input.marathonGlobalByteDeath &&
+    input.nowMs - input.lastRotationAtMs < HY2_PARENT_ROTATION_COOLDOWN_MS
+  ) {
     return { action: 'none', reason: 'rotation_cooldown' }
   }
   const activeInner = countActiveInnerCriticalFlows({

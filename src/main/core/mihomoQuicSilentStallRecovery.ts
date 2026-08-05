@@ -12,7 +12,7 @@ import {
   resolveHy2ParentRotationAfterPrunePlan,
   type Hy2ParentRotationPlan
 } from './hy2ParentRotationCore'
-import { resolveCarrierQuiesceRefreshDecision } from './carrierQuiesceRefreshCore'
+import { isMarathonGlobalByteDeath, resolveCarrierQuiesceRefreshDecision } from './carrierQuiesceRefreshCore'
 import {
   resolveFrozenSurgicalPrunePlan,
   type FrozenSurgicalPruneAction
@@ -286,6 +286,17 @@ function resolveRecoveryHonestyCurrentCarrier(
   }
 }
 
+function resolveLatestMarathonGlobalByteDeath(): boolean {
+  if (!latestLongevitySnapshot || !latestMarathonRecoveryContext.marathonActive) {
+    return false
+  }
+  return isMarathonGlobalByteDeath({
+    marathonActive: true,
+    snapshot: latestLongevitySnapshot,
+    recoveryIneffective: latestLongevitySnapshot.maxByteStallMs >= 15_000,
+  })
+}
+
 async function executeStallEscalationLadderIfDue(
   observation: MihomoQuicSilentStallObservation,
   nowMs: number
@@ -296,7 +307,8 @@ async function executeStallEscalationLadderIfDue(
     upload: bytes.upload,
     download: bytes.download,
     nowMs,
-    requestBoundStallProof: hasRequestBoundCarrierProof(observation)
+    requestBoundStallProof: hasRequestBoundCarrierProof(observation),
+    marathonGlobalByteDeath: resolveLatestMarathonGlobalByteDeath(),
   })
   if (plan.action === 'none' || plan.action === 'observe_exhausted') {
     if (plan.action === 'observe_exhausted') {
@@ -446,6 +458,7 @@ async function maybeRunHy2ParentRotationAfterPrune(
   if (!latestLongevitySnapshot || latestConnections.length === 0) {
     return { outcome: 'skipped', reason: 'missing_longevity_context' }
   }
+  const marathonGlobalByteDeath = resolveLatestMarathonGlobalByteDeath()
   const plan: Hy2ParentRotationPlan = resolveHy2ParentRotationAfterPrunePlan({
     snapshot: latestLongevitySnapshot,
     connections: latestConnections,
@@ -454,6 +467,7 @@ async function maybeRunHy2ParentRotationAfterPrune(
     lastRotationAtMs: lastHy2ParentRotationAtMs,
     nowMs,
     emergencyStallEscalation,
+    marathonGlobalByteDeath,
     carrierQuiesceBypass: resolveCarrierQuiesceRefreshDecision({
       snapshot: latestLongevitySnapshot,
       activeInnerCriticalCount: countActiveInnerCriticalFlows({
@@ -473,8 +487,10 @@ async function maybeRunHy2ParentRotationAfterPrune(
   lastHy2ParentRotationAtMs = nowMs
   if (closed.ok) {
     const activeLeaf = latestLongevitySnapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
-    const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
-    await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+    if (!marathonGlobalByteDeath) {
+      const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
+      await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+    }
   }
   await logRecovery(
     `[Hy2ParentRotation]: outcome=${closed.ok ? 'executed' : 'failed'} reason=${plan.reason}` +
@@ -562,7 +578,8 @@ export async function executeMihomoQuicStallRecoveryIfDue(
       latestMarathonRecoveryContext.httpParentChainAgeMs,
     outboundHy2SessionAgeMs:
       latestLongevitySnapshot?.outboundHy2SessionAgeMs ??
-      latestMarathonRecoveryContext.outboundHy2SessionAgeMs
+      latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
+    maxByteStallMs: latestLongevitySnapshot?.maxByteStallMs,
   })
   const action = mapPruneActionToRecoveryAction(plan.action)
   const triageFields = buildRecoveryTriageLogFields(plan)

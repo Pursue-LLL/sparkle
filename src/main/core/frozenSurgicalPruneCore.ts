@@ -13,6 +13,8 @@ import {
 } from './marathonSseCarrierPruneCore'
 import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
 import { resolveMarathonParentRecoveryStallProof } from './marathonParentRecoveryStallProofCore'
+import { isMarathonGlobalByteDeath } from './carrierQuiesceRefreshCore'
+import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 
 export const MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS = 120_000
 
@@ -42,6 +44,28 @@ export interface FrozenSurgicalPruneGateInput {
   staleRequestIds?: readonly string[]
   httpParentChainAgeMs?: number
   outboundHy2SessionAgeMs?: number
+  maxByteStallMs?: number
+}
+
+function resolveMarathonGlobalByteDeathForPrune(
+  input: FrozenSurgicalPruneGateInput,
+  marathonActive: boolean,
+): boolean {
+  const snapshot: TransportLongevityTruthSnapshot = {
+    schemaVersion: 2,
+    updatedAtMs: input.nowMs,
+    cursorConnectionCount: input.observation.cursorConnectionCount,
+    httpParentChainAgeMs: input.httpParentChainAgeMs ?? 0,
+    outboundHy2SessionAgeMs: input.outboundHy2SessionAgeMs ?? 0,
+    maxByteStallMs: input.maxByteStallMs ?? input.observation.stallMs,
+    frozenQuicCursorCount: input.observation.frozenQuicCursorCount,
+    activeHy2Leaf: input.observation.leaf,
+  }
+  return isMarathonGlobalByteDeath({
+    marathonActive,
+    snapshot,
+    recoveryIneffective: true,
+  })
 }
 
 function hasCurrentRequestBoundStallProof(
@@ -103,7 +127,9 @@ export function resolveFrozenSurgicalPrunePlan(
   }
 
   const lastConnectionRecoveryAtMs = input.lastRecoveryAtMsByConnectionId.get(connectionId)
+  const marathonGlobalByteDeath = resolveMarathonGlobalByteDeathForPrune(input, marathonActive)
   if (
+    !marathonGlobalByteDeath &&
     lastConnectionRecoveryAtMs != null &&
     nowMs - lastConnectionRecoveryAtMs < FROZEN_SURGICAL_PRUNE_CONNECTION_COOLDOWN_MS
   ) {
