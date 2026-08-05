@@ -1,13 +1,55 @@
 # Sparkle Bugfix Log
 
-> **2026-08-05 最新**：**BUG-2026-08-05-001 definitive** — 8/5 夜跑 16×Included 碎计费 · HY2 parent chain 4h+ 未轮换 · sidecar 18/19 failed · marathon_truth gate bug · **Plane B 仍未闭** · prod **1.30.1**
-> **2026-08-04 上一版**：Marathon HY2-only @1.30.1 CODE-DONE · MTIC-v2 @1.30.0
+> **2026-08-05 16:20 最新**：**BUG-2026-08-05-001** · **同族第 14+ 次** · **PARTIAL @1.30.15 已装**（`56575ea` · PostCoreBootstrap **16:13:56 CST**）· bypass **生效** · R2 **未 executed** · `max_byte_stall_ms=144500` **未降** · G2 gate **FAIL** · G9 soak **0 PASS** · **不算修完**
+> **2026-08-05 15:00 上一版**：prod 1.30.12 · FIX CODE-DONE @1.30.15 git only · S4 10×Included · attemptRate=0%
+> **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
+> **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
 
+---
+
+### META · 2026-08-05 诚实审计 — 改了多少版？为何越修越严重？
+
+| 指标 | 实测 |
+| --- | --- |
+| **1.30.x 微版本（8/4–8/5）** | **1.30.0 → 1.30.15** = **16 个 commit 级 fix**（含 1.30.3 Plane B · 1.30.6 CarrierQuiesce · 1.30.12 SEL proof · 1.30.13–15 byte-death bypass） |
+| **生产 `/Applications` 实际版本** | **1.30.15**（8/5 **16:13:56 CST** 安装 · `PostCoreBootstrap` @ 08:13:56 UTC） |
+| **同族 HY2 byte-freeze 复发** | **第 14+ 次** triage（自 BUG-2026-07-20-001 起）· **装 1.30.15 后仍 byte-frozen** |
+| **8/5 单日 Included 浪费（样本）** | 夜跑 **16** + S4 日间 **10** = **26+** 行（同一 chronic 根因） |
+| **G9 soak 门禁通过次数** | **0** |
+| **rolling100 attemptRate @ 14:58** | **0/100** early_disconnect（`max-steps-rate-snapshot.jsonl`） |
+
+**为何「修了个屁、越修越严重」— 不是撒谎，是机制：**
+
+| # | 机制 | 证据 |
+| --- | --- | --- |
+| 1 | **半修复当全修复** | 1.30.15 已装 · `marathon_global_byte_death_bypass` **planned** ✅ · R2 **executed** ❌ · bytes **144500 未降** · 用户体感仍 = 断连 |
+| 2 | **半闭环发版放大症状** | R-41 禁 inner close → freeze 饿死替代 prune kill → Included **更碎**（29s 段见 14:54:19） |
+| 3 | **1.30.12 开 R1 门闩未开 R2** | stall proof bypass 让 sidecar **更频繁** · R2 仍 active_inner skip → **更频繁断连** |
+| 4 | **古德哈特** | vitality/SEL `executed`↑ · RecoveryHonesty `carrier_recovered=1` + bytes 仍 144500 |
+| 5 | **验收真空** | 零 G9 PASS 即当「CODE-DONE」· attemptRate 从不 blocking |
+| 6 | **birth reset 假年轻** | 05:45 reset 后 age=0 · stall 仍 144500 70min+ · 运维误判「parent 年轻」 |
+
+**重构目标对齐：** 避免「修一个冒一个」→ **gate PASS + bytes 下降 + G9 soak 作唯一「修完」条件** · 1.30.15 已装但 gate FAIL = **未修完** · 禁止再 partial ship。
+
+**反复修复统计（本条目族）：** BUG-2026-08-05-001 单日内 **4 次爆发**（00:00 / 14:38 / 14:53 / **16:13 升级后仍 frozen**）· 1.30.1→1.30.15 **16 次微 fix** · **1 次** 装包后 gate 验证 **FAIL** · **0 次** G9 PASS。
+
+**Sparkle 修复完了吗？— 诚实答案：没有。**
+
+| 验收项 | 1.30.15 @16:13 后 | 通过？ |
+| --- | --- | --- |
+| `/Applications` = 1.30.15 | ✅ | ✅ |
+| `marathon_global_byte_death_bypass_active_inner` | 08:17–08:19 连续 planned | △ 门闩开 |
+| R2 `parent_udp_refresh outcome=executed` | **0 条** post-upgrade | ❌ |
+| `max_byte_stall_ms` 30s 内 <45000 | 仍 **144500**（+ CarrierQuiesce 观测 276552） | ❌ |
+| `verify-byte-death-recovery-gate.mts --minutes 15` | **FAIL** | ❌ |
+| G9 soak attemptRate≥90% | 未跑 / 0 PASS | ❌ |
+
+---
 ### BUG-2026-08-05-001 · v1.30.1（生产）· 8/5 00:00–03:00 CST 夜跑 · 16 Included 碎计费 + 1.72M tok/段（同族第 11+ 次）
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **FIX CODE-DONE @1.30.3** · **待 cursor_conn=0 upgrade:mac + G9 soak** |
+| **状态** | **PARTIAL @1.30.15 已装（16:13 CST）** · bypass ✅ · bytes/R2 ❌ · **待 1.30.16 + G9 soak + gate PASS** |
 | **发生版本** | Sparkle **1.30.1** · Cursor **3.1.15** · Guard **0.17.3** · leaf **JP-VPS-HY2** |
 | **事故窗口** | 2026-08-05 **00:00–03:00 CST**（UTC 2026-08-04 16:00–19:00）· Dashboard **16 Included** · 均 **~1.72M tok** · ≥30M/40M/50M **0%** |
 | **composer 样本** | `2758ce91-877b-425b-a90a-f144285ff81f` — **35** unique `originalRequestId` · 全部 **attempt=0** |
@@ -61,7 +103,128 @@
 4. **R-41 生效 ≠ 马拉松稳定** — 只保证不被 Sparkle kill，不保证 HY2 QUIC 不断粮。
 5. **装 1.30.1/1.30.2 ≠ Plane B 闭环** — 必须 G9 数字说话。
 
-**反复统计更新：** HY2 byte-freeze/split-brain 同族 **第 11+ 次** triage · R-17–R-41 **7+ 版本** partial fix · **0 次** G9 soak 门禁通过。
+**反复统计更新：** HY2 byte-freeze/split-brain 同族 **第 13+ 次** triage · 1.30.0–1.30.15 **16 微版本** partial fix · **0 次** G9 soak 门禁通过 · prod 滞后 git **3 版本**（1.30.12 vs 1.30.15）。
+
+---
+
+### BUG-2026-08-05-001 · recurrence · S4 `dd04a4d2` · 14:38–14:58 CST · v1.30.12（生产）· 同族日内第 2–3 次爆发
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **PARTIAL @1.30.15 已装** · 1.30.13 bypass 生效 · R2/bytes 未闭环 · 待 1.30.16 |
+| **发生版本** | Sparkle **1.30.12** · Cursor **3.1.15**（`Cursor-3.1.15-data`）· Guard observe-only · leaf **JP-VPS-HY2** |
+| **事故窗口 A** | 2026-08-05 **14:38–14:43 CST**（UTC 06:38–06:43）· **5 Included** |
+| **事故窗口 B** | 2026-08-05 **14:53–14:58 CST**（UTC 06:53–06:58）· **5 Included** |
+| **composer** | **S4** `dd04a4d2-b002-4826-a866-2dd95c29c91f` · **同一 userMessage 马拉松** |
+| **PRIMARY（最底层可修复）** | **L3** — `max_byte_stall_ms=144500` 自 **05:45 UTC** 起饱和 **>70min** → R2 `parent_udp_refresh` **skip** `active_inner_critical_flows`（`carrierQuiesceRefreshCore` 4h gate · prod 无 `marathon_global_byte_death`） |
+| **amplifier** | R1 vitality/sidecar `executed` 但 `RecoveryHonesty ineffective` · `connection_recovery_cooldown` 叠加 · birth reset 后 age=0 但 stall 仍 144500 |
+| **NOT** | max-steps-cap · Cursor 3.1.15 服务端 · VPS sing-box @A · 315 补丁（observe-only SSE audit）· 用户手动连发 10 条 |
+
+**genUUID 链（renderer @ `20260805T141929/window1/renderer.log`）：**
+
+| CST | 切换 | generation-ended |
+| --- | --- | --- |
+| 14:38:44 | 603de15e→8a7db0f8→… | （见 §M.0.22） |
+| 14:53:50 | 5cce370c→**e56b8844** | wakelock id=10 |
+| 14:54:19 | e56b8844→**41145997** | wakelock id=11 · **寿命 29s** |
+| 14:57:49 | 41145997→**8333b62c** | wakelock id=12 |
+| 14:58:48 | 8333b62c→**ea82d5e4** | wakelock id=13 |
+
+**Sparkle A 时刻铁证：**
+
+| UTC | 日志 |
+| --- | --- |
+| 06:39:14 | `[StallEscalationLadder]: skip parent_udp_refresh reason=…active_inner_critical_flows stall_ms=177001` |
+| 06:41:29 | 同上 stall_ms=291498 |
+| 06:43:29 | 同上 stall_ms=207497 |
+| 06:54:25 | 同上 stall_ms=261000 + `connection_recovery_cooldown` |
+| 06:58:29 | 同上 stall_ms=125496 |
+
+**fix 链（git · 未装）：**
+
+| 版本 | commit | 修复什么 | 遗漏什么 |
+| --- | --- | --- | --- |
+| **1.30.13** | `4ef6eea` | `isMarathonGlobalByteDeath()` → bypass active_inner @ byte-death | R2 执行后 bytes 是否真降 — 需 gate 验 |
+| **1.30.14** | `644acc9` | byte-death 期间 bypass SEL/rotation/connection cooldown · defer birth reset | recovery 风暴风险（C-2 待做） |
+| **1.30.15** | `56575ea` | bypass sidecar_action_cooldown · `verify-byte-death-recovery-gate.mts` | 无 full integration e2e · 无 G9 PASS |
+
+**导致了什么（若误装 1.30.12 而未升级）：** 1.30.12 的 stall proof bypass **只加强 R1** · R2 仍 skip → **断连频率可高于 1.30.11**。
+
+**踩坑：**
+
+1. **「又断连 = 新 bug」** — 本次与 14:38 **同一 chronic 状态机**（05:45 起 stall=144500），不是新根因。
+2. **装 1.30.12 ≠ 修 R2 skip** — 1.30.12 修 SEL 门闩 · **未修** quiesce 4h active_inner。
+3. **git CODE-DONE ≠ 用户体感** — 必须 `/Applications`=1.30.15 + gate PASS 才算交付。
+4. **Continue/自动续跑不能替代不断连** — 每 genUUID = Included · 目标是 **R2 在断连前解冻**。
+
+**同族反复次数：** 本 BUG 条目 **日内 3 次**（00:00 / 14:38 / 14:53）· 全族 **第 13+ 次** · 1.30.13–15 为 **第 4 轮**针对 active_inner skip 的 coded fix（前序：1.30.6 CarrierQuiesce · 1.30.8 emergency 8h · 1.30.12 stall proof — 均 partial）。
+
+**如何避免再翻车：** ① upgrade 1.30.15 一次 ② gate.mts 15min **FAIL=不交付** ③ G9 40min attemptRate≥90% ④ FAIL 则继续修到 PASS，**禁止让用户当小白鼠反复试 partial fix**。
+
+---
+
+### BUG-2026-08-05-001 · recurrence · 1.30.15 安装后 · 16:13–16:19 CST · **PARTIAL FIX — 未修完**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **PARTIAL @1.30.15 已装** · bypass 门闩 ✅ · **bytes 未恢复** · R2 未 executed · **待 1.30.16+** |
+| **发生版本（升级前）** | Sparkle **1.30.12** · 同 chronic `max_byte_stall_ms=144500` 自 05:45 UTC |
+| **安装版本** | Sparkle **1.30.15**（commit `56575ea`）· 安装 **2026-08-05 16:13:56 CST**（UTC 08:13:56 `PostCoreBootstrap`） |
+| **事故窗口** | 升级后 **16:13–16:19 CST**（UTC 08:13–08:19）· marathon 多路仍 byte-frozen |
+| **PRIMARY（未消除）** | **L3** — inner HTTP/2 carrier byte-death **持续** · `TransportLongevityTruth max_byte_stall_ms=144500` 70min+ 未降 |
+| **1.30.13–15 已解决部分** | `carrierQuiesceRefreshCore` → `reason=marathon_global_byte_death_bypass_active_inner` · **不再** `active_inner_critical_flows skip`（08:17–08:19 连续 planned） |
+| **1.30.13–15 未解决部分** | R2 仅 `CarrierQuiesceRefresh outcome=planned` · **零** `[Hy2ParentRotation]: outcome=executed` / `parent_udp_refresh outcome=executed` post-upgrade · `token_gap_rescue outcome=ineffective` 连发（`carrier_recovered=1` + `gap_reduced_enough=0`） |
+| **1.30.16 根因（代码实锤 · 先前遗漏）** | `hy2ParentSidecar.ts` `resolveProactiveUdpClosePlan` L92-97：**4h proactive rotate age gate 在 carrier quiesce bypass 之前** · birth reset 后 `http_parent_chain_age_ms=0` → `rotatePlan.action=none` reason=`session_and_http_chain_below_proactive_rotate` · 但 L183-196 仍打 `outcome=planned`（**日志假阳性**）→ `shouldAct=false` → 永不 close UDP |
+| **amplifier（Guard · 跨仓）** | 16:15:07 Guard `night_auto_continue` ×4 composer trigger=`silent_stop`（Sparkle 重启闪断 **71s** 后）· 用户体感「没点发送自动续跑」— **非 Sparkle bug 但浪费 Included** |
+| **NOT** | max-steps-cap · Cursor 服务端随机关流 · VPS sing-box crash · 用户手动 Send |
+
+**post-upgrade 铁证（`app-2026-8-5.log`）：**
+
+| UTC | 日志 | 含义 |
+| --- | --- | --- |
+| 08:13:56 | `[PostCoreBootstrap]: mihomo API ready` | 1.30.15 进程启动 |
+| 08:14:58 | `token_gap_rescue outcome=success gap_reduced_enough=1` | 重启后短暂成功 |
+| 08:15:33+ | `token_gap_rescue outcome=ineffective` ×N | bytes 再次 frozen |
+| 08:17:44+ | `CarrierQuiesceRefresh reason=marathon_global_byte_death_bypass_active_inner outcome=planned` | **1.30.13 fix 生效** |
+| 08:18:31 | `TransportLongevityTruth max_byte_stall_ms=144500 http_parent_chain_age_ms=0` | **bytes 未降** · birth reset 后 age=0 与 stall 144500 分裂 |
+| 08:19:28 | `token_gap_nudge outcome=attempted_on_stale_rid max_gap_ms=4551894` | rescue 仍 ineffective |
+
+**G2 门禁（刚跑）：** `verify-byte-death-recovery-gate.mts --minutes 15` → **FAIL** · `08:08:14 R2 still blocked by active_inner`（含升级前窗口）
+
+**版本改了什么 / 修复了什么 / 遗漏了什么：**
+
+| 版本 | 改了什么 | 修复了什么 | 遗漏了什么 | 导致了什么 |
+| --- | --- | --- | --- | --- |
+| **1.30.13** | `isMarathonGlobalByteDeath()` bypass active_inner | quiesce **判定** 不再 parent≥4h 拒绝 | planned→executed 执行链未通 | bypass 日志有了，bytes 仍死 |
+| **1.30.14** | cooldown/birth-reset bypass @ byte-death | 减少 R2 被 cooldown 挡 | R2 仍不 execute | 可能加剧 recovery 风暴 |
+| **1.30.15** | sidecar cooldown bypass + gate 脚本 | 装包后可自动验 | **无** R2 execute 集成测 · **无** bytes 恢复判据 hard gate | 用户以为「修完了」实际 semi-fix |
+
+**同族反复次数：** 本 BUG **日内第 4 次爆发** · 全族 **第 14+ 次** · 针对 active_inner skip 的 coded fix **第 5 轮**（1.30.6→1.30.8→1.30.12→1.30.13–15）· **装包后首次 gate 验证仍 FAIL**
+
+**为何同样 bug 翻来覆去修不好（反思）：**
+
+| # | 根因 | 说明 |
+| --- | --- | --- |
+| 1 | **修 gate 不修 execute** | 1.30.13 bypass 在 `carrierQuiesceRefreshCore` · **`resolveProactiveUdpClosePlan` 仍有前置 4h age gate**（L92-97）· planned 日志误导 |
+| 2 | **古德哈特验收** | `carrier_recovered=1` / bypass planned 当成功 · bytes 144500 不变 |
+| 3 | **测量分裂** | CarrierQuiesce 见 stall 276552 · TransportLongevityTruth 卡 144500 · age=0 与 marathon context 分裂 |
+| 4 | **16 微版本无 soak blocking** | 零 G9 PASS 即 ship partial fix |
+| 5 | **升级本身触发断连** | 16:13 重启 → Guard auto-continue → 用户体感恶化（跨仓 Guard 0.17.6 待修） |
+
+**踩坑（给后续维护者）：**
+
+1. **「1.30.15 已装 = 修好了」是谎言** — 必须 gate PASS + max_byte_stall 下降 + G9 soak。
+2. **bypass planned ≠ R2 executed** — grep 必须三条：`bypass_active_inner` + `parent_udp_refresh executed` + `max_byte_stall_ms<45000`。
+3. **RecoveryHonesty carrier_recovered=1 不可信** — 必须 `gap_reduced_enough=1` 且 renderer generation-ended 不再连发。
+4. **Sparkle 升级会闪断 marathon** — 升级窗口 Guard 应 suppress auto-continue（非 Sparkle 仓但影响 Included）。
+5. **下一 fix 目标 1.30.16** — 闭合 planned→executed 链路 + recoveryHonesty 硬判据 + failing integration test「bypass 后 30s bytes 必降」。
+
+**待修复（1.30.16 目标 · 未写代码）：**
+
+① 追查 `CarrierQuiesceRefresh outcome=planned` 为何不进入 `Hy2ParentRotation executed`（dial admission / sidecar plan / marathon context）  
+② `recoveryHonestyCore`：`carrier_recovered` 必须 `gap_reduced_enough=1` 才报 success  
+③ integration test + gate.mts 硬 FAIL 若 bypass 后 180s 无 R2 executed  
+④ G9 soak 40min blocking ship  
 
 ---
 
