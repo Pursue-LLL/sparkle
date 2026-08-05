@@ -1,6 +1,68 @@
 # Sparkle Bugfix Log
 
-> **2026-08-04 最新**：**Marathon HY2-only @1.30.1 CODE-DONE** — deny auto/protocol_contract HY2→TLS · bootstrap TLS→HY2 recovery · **MTIC-v2 @1.30.0** · prod 曾 1.29.1/1.30.0
+> **2026-08-05 最新**：**BUG-2026-08-05-001 definitive** — 8/5 夜跑 16×Included 碎计费 · HY2 parent chain 4h+ 未轮换 · sidecar 18/19 failed · marathon_truth gate bug · **Plane B 仍未闭** · prod **1.30.1**
+> **2026-08-04 上一版**：Marathon HY2-only @1.30.1 CODE-DONE · MTIC-v2 @1.30.0
+
+### BUG-2026-08-05-001 · v1.30.1（生产）· 8/5 00:00–03:00 CST 夜跑 · 16 Included 碎计费 + 1.72M tok/段（同族第 11+ 次）
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **TRIAGE-DEFINITIVE @2026-08-05** · **PRIMARY 根因未修** · Plane B upstream **PENDING @1.30.3** · G9 soak **未跑** |
+| **发生版本** | Sparkle **1.30.1** · Cursor **3.1.15** · Guard **0.17.3** · leaf **JP-VPS-HY2** |
+| **事故窗口** | 2026-08-05 **00:00–03:00 CST**（UTC 2026-08-04 16:00–19:00）· Dashboard **16 Included** · 均 **~1.72M tok** · ≥30M/40M/50M **0%** |
+| **composer 样本** | `2758ce91-877b-425b-a90a-f144285ff81f` — **35** unique `originalRequestId` · 全部 **attempt=0** |
+| **PRIMARY 根因** | **L3** — Mac→JP-VPS-HY2 **HY2 parent QUIC 链 4.1h+ 未轮换**（`hy2_parent_chain_birth_ms=1785844384050` 自 8/4 11:53 起单调老化）→ **silent byte-freeze** → Connect SSE `silent_generation_end` |
+| **amplifier L7** | `marathon_active=0`  while `cursor_conn=16` → **4h proactive sidecar gate 失效** · `Hy2ParentSidecar outcome=failed` **18/19** |
+| **amplifier L2** | Guard `night_auto_continue` trigger=`sparkle_critical_stall` → 每条 Continue = **新 Included 行**（非用户手动发 16 次） |
+| **NOT** | max-steps-cap（`earlyDisconnectAttempts=98/100` `attemptRatePct=2%`）· Cursor 服务端随机 · VPS sing-box crash（@A SSH 0 ERROR）· Sparkle TUN 系统性加延迟（HY2 p50=308ms）· frozen_surgical_prune 误杀（8/5 日志 **0 次** — R-41 生效） |
+| **证据链** | `app-2026-8-5.log:1,4,5,10,113` · `agent-transport-failures.jsonl` silent_generation_end **136** 条 · `max-steps-rate-snapshot.jsonl` attemptRate=**2%** · validated-ledger median segment **1533975ms（~25.5min）** |
+| **与旧案关系** | **同族第 11+ 次** HY2 byte-freeze/split-brain（延续 BUG-2026-08-04-001 · BUG-018 · BUG-014）· **R-41 改变症状未改根因**（从 prune kill → freeze 饿死） |
+
+**「15–25 分钟」澄清（纠正 2026-08-05 早先表述）：**
+
+| 指标 | 实测 | 含义 |
+| --- | --- | --- |
+| `MihomoQuicSilentStall` 观测间隔 p50 | **~0.78 min** | byte-freeze **检测**频率（604 次/夜） |
+| `RecoveryHonesty ineffective` 间隔 p50 | **~0.48 min** | rescue 短探针频繁失败 |
+| Dashboard Included 段寿命 median | **~25.5 min** | **SSE _carrier 早死 → 计费切段**频率 |
+| 以前 3000万+ 单段 | **~117 min**（BUG-018 50.07M tok） | parent chain 未老化或断连更少 |
+
+**不是「某次改坏了 freeze 周期」— 是 chronic 根因 + 近期放大器叠加：**
+
+| 时间/版本 | 改了什么 | 对 8/5 的影响 |
+| --- | --- | --- |
+| **≤1.28.x** | HY2 马拉松 + parent rotation **Plane B 半闭环**（BUG-015） | 根因已存在；57h chain 先例 |
+| **1.29.0 R-41** | 禁 critical host close | 8/5 **零 prune** ✅ · 但 SSE 改由 freeze 饿死，Included 仍碎 |
+| **1.29.1 @8/4 14:50** | `protocol_upgrade_executed` HY2→TLS | TLS reset 放大；parent chain 未刷新 |
+| **1.30.0 MTIC-v2** | 禁马拉松中 HY2→TLS | 阻止恶化，**不 heal 已有 4h chain** |
+| **1.30.1 HY2-only** | 冷启动 TLS→HY2 | 协议层稳定 ✅ · **Plane B / marathon_truth 未修** |
+| **未装 1.30.2** | purge TLS canary | 与 8/5 PRIMARY 无关 |
+
+| **待修复（1.30.3 目标）** | ① `marathonSSETruthCore`：`cursor_conn≥1` → `marathonTruthActive=true` ② `hy2ParentSidecar`：sidecar **必须 mihomo UDP outbound 真轮换 upstream**（非仅 proxyDelay + birth reset）③ `recoveryHonestyCore`：success = **carrier 字节恢复** ④ G9 soak `attemptRate≥90%` ship gate |
+| **验证方式** | G9 soak strict ≥40min · `[MaxStepsRate] attempt_rate_pct≥90` · 零同窗 silent_generation_end · marathon 中 `parent_chain_age<4h` · Dashboard 单段 ≥30M 命中率恢复 |
+| **会导致什么** | 16×Included 碎计费 · 均 1.72M tok · ≥30M 阈值 0% · attemptRate 2% |
+
+**同族反复反思（为何修上百次仍复发）：**
+
+| 机制 | 问题 |
+| --- | --- |
+| **半闭环发版** | R-41/MTIC/HY2-only 修 **症状层**（禁 close/禁 TLS switch）· **Plane B parent upstream 自 R-35 起 CODE-DONE 但 dial 18/19 failed** |
+| **古德哈特** | `vitality_dial executed` / SEL `executed` 计数涨 · 8/5 **387 ineffective vs 5 success** · `attemptRate` 仍 2% |
+| **测量衰减** | sidecar `executed` 可 reset birth_ms · 物理 UDP 链未换 · parent_chain_age 日志可「假年轻」 |
+| **向上失明** | 目标应是 **单段 SSE ≥90min · ≥30M tok** · 优化 rescue executed 而非 segment 寿命 |
+| **验收真空** | 零 G9 soak PASS 即 ship · rolling100 **2%** 非 blocking |
+
+**踩坑（给后续维护者）：**
+
+1. **「15–25 min byte-freeze」是错误表述** — freeze 检测 ~47s 级起，**计费切段 ~25min** 是 SSE 累积死亡，别混口径。
+2. **`marathon_active=0` + `cursor_conn>0`** 等于 proactive rotation 全灭 — 查 stall 必先查此 gate。
+3. **`Hy2ParentSidecar outcome=failed`** 不是无动作 — SEL 在跑但 **upstream 未接** 等于假修复。
+4. **R-41 生效 ≠ 马拉松稳定** — 只保证不被 Sparkle kill，不保证 HY2 QUIC 不断粮。
+5. **装 1.30.1/1.30.2 ≠ Plane B 闭环** — 必须 G9 数字说话。
+
+**反复统计更新：** HY2 byte-freeze/split-brain 同族 **第 11+ 次** triage · R-17–R-41 **7+ 版本** partial fix · **0 次** G9 soak 门禁通过。
+
+---
 
 ### Marathon HY2-only @1.30.1 · 2026-08-04 14:50 definitive class-fix
 
