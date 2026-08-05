@@ -36,6 +36,7 @@ import {
   type StallEscalationLadderAction
 } from './stallEscalationLadderCore'
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
+import { resolveMarathonParentRecoveryStallProof } from './marathonParentRecoveryStallProofCore'
 import {
   formatMihomoQuicStallRecoveryLogLine,
   MIHOMO_QUIC_STALL_VITALITY_TRIGGER_MS,
@@ -235,6 +236,19 @@ function hasRequestBoundCarrierProof(observation: MihomoQuicSilentStallObservati
   const connectionId = observation.connectionId?.trim() ?? ''
   if (!connectionId || !latestMarathonRecoveryContext.marathonActive) {
     return false
+  }
+  const parentRecovery = resolveMarathonParentRecoveryStallProof({
+    marathonActive: latestMarathonRecoveryContext.marathonActive,
+    observation,
+    httpParentChainAgeMs:
+      latestLongevitySnapshot?.httpParentChainAgeMs ??
+      latestMarathonRecoveryContext.httpParentChainAgeMs,
+    outboundHy2SessionAgeMs:
+      latestLongevitySnapshot?.outboundHy2SessionAgeMs ??
+      latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
+  })
+  if (parentRecovery.proof) {
+    return true
   }
   const staleRequestIds = new Set(
     latestMarathonRecoveryContext.staleRequestIds

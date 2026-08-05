@@ -36,7 +36,29 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
     assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
   })
 
-  it('does not close without token gap stale proof (zero mis-kill)', () => {
+  it('1.30.12: marathon parent recovery bypasses token_gap when frozen_quic cluster', () => {
+    const plan = resolveFrozenSurgicalPrunePlan({
+      observation: {
+        ...baseObservation,
+        host: 'api2.cursor.sh',
+        stallMs: 144_500,
+        frozenQuicCursorCount: 2,
+      },
+      tokenGapMaxMs: 0,
+      staleRequestIdCount: 0,
+      staleRequestIds: [],
+      lastGlobalPruneAtMs: 0,
+      lastRecoveryAtMsByConnectionId: new Map(),
+      nowMs: 1_000_000,
+      marathonActive: true,
+      registry: { records: new Map() },
+    })
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
+    assert.equal(plan.staleProofKind, 'absolute_byte_stall')
+  })
+
+  it('does not close without token gap stale proof when marathon inactive', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: baseObservation,
       tokenGapMaxMs: 0,
@@ -96,9 +118,9 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
     assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 
-  it('P10-2 blocks legacy generic prune while marathon active (carrier path exempt)', () => {
+  it('P10-2: marathon parent recovery allows carrier path without token_gap list', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
-      observation: { ...baseObservation, stallMs: 85_000 },
+      observation: { ...baseObservation, stallMs: 95_000 },
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
       staleRequestIdCount: 2,
       lastGlobalPruneAtMs: 0,
@@ -107,11 +129,12 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       marathonActive: true,
       registry: { records: new Map() }
     })
-    assert.equal(plan.action, 'none')
-    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
+    assert.ok(plan.staleProofKind === 'absolute_byte_stall' || plan.staleProofKind === 'token_gap')
   })
 
-  it('R-41: carrier prune on critical host → SEL vitality not close', () => {
+  it('R-41: registry_gap carrier on critical host → SEL vitality not close', () => {
     const nowMs = 1_000_000
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: {
@@ -142,8 +165,9 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
         ])
       }
     })
-    assert.equal(plan.action, 'none')
-    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
+    assert.equal(plan.staleProofKind, 'registry_gap')
   })
 
   it('f1ee553d replay: 8/4 api2.cursor.sh never close at 209s', () => {
