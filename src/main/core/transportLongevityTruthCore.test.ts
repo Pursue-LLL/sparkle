@@ -123,4 +123,45 @@ describe('hy2ParentRotationCore R-34b', () => {
     assert.equal(plan.action, 'close_udp_outbound')
     assert.equal(plan.reason, 'parent_session_refresh_after_prune')
   })
+
+  it('Phase B: carrier quiesce bypasses active_inner for parent UDP close', () => {
+    const nowMs = 2_000_000
+    const plan = resolveHy2ParentRotationAfterPrunePlan({
+      snapshot: {
+        schemaVersion: 2,
+        updatedAtMs: nowMs,
+        cursorConnectionCount: 21,
+        httpParentChainAgeMs: 4 * 60 * 60 * 1000 + 1,
+        outboundHy2SessionAgeMs: 4 * 60 * 60 * 1000 + 1,
+        maxByteStallMs: 146_002,
+        frozenQuicCursorCount: 2,
+        activeHy2Leaf: 'JP-VPS-HY2',
+      },
+      connections: [
+        {
+          id: 'tcp-live',
+          chains: ['JP-VPS-HY2'],
+          metadata: { network: 'tcp', host: 'api2direct.cursor.sh' },
+        } as ControllerConnectionDetail,
+        {
+          id: 'udp-parent',
+          chains: ['JP-VPS-HY2'],
+          metadata: { network: 'udp' },
+        } as ControllerConnectionDetail,
+      ],
+      trackedFirstSeenAtMsById: new Map([
+        ['tcp-live', nowMs - 60_000],
+        ['udp-parent', nowMs - 4 * 60 * 60 * 1000],
+      ]),
+      trackedLastByteChangeAtMsById: new Map([
+        ['tcp-live', nowMs - 146_002],
+        ['udp-parent', nowMs - 4 * 60 * 60 * 1000],
+      ]),
+      lastRotationAtMs: 0,
+      nowMs,
+      carrierQuiesceBypass: true,
+    })
+    assert.equal(plan.action, 'close_udp_outbound')
+    assert.equal(plan.udpConnectionId, 'udp-parent')
+  })
 })

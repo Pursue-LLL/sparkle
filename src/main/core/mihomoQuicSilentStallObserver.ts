@@ -192,6 +192,7 @@ export async function observeMihomoConnectionsForQuicSilentStall(
         marathonTruth,
         cursorConnectionCount,
         nowMs,
+        recoveryIneffective: longevitySnapshot.maxByteStallMs >= 15_000,
       })
     } catch {
       // sidecar is best-effort; longevity truth remains authoritative
