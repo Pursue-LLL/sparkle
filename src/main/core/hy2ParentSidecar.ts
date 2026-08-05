@@ -352,14 +352,10 @@ export async function runHy2ParentSidecarIfDue(input: {
         rotatePlan.action === 'none' &&
         rotatePlan.reason === 'no_udp_outbound'
       ) {
-        await maybeResetHy2ParentChainBirth({
-          activeLeaf,
-          nowMs,
-          snapshot: input.snapshot,
-          marathonActive,
-          recoveryIneffective:
-            input.recoveryIneffective === true || input.emergencyStallEscalation === true,
-        })
+        const { resetTransportLongevityHy2ParentChainBirth } = await import(
+          './transportLongevityTruth'
+        )
+        await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
         await appendSidecarLog(
           formatCarrierQuiesceRefreshLogLine({
             outcome: 'executed',

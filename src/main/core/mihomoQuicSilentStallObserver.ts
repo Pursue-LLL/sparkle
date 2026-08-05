@@ -222,7 +222,11 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     }
     const finalLongevitySnapshot = {
       ...postSidecarSnapshot,
-      maxByteStallMs: lastObservedMaxStallMs,
+      maxByteStallMs:
+        postSidecarSnapshot.maxByteStallMs === 0 &&
+        postSidecarSnapshot.httpParentChainAgeMs === 0
+          ? 0
+          : lastObservedMaxStallMs,
     }
     await writeTransportLongevityTruthSnapshot(finalLongevitySnapshot)
     if (cursorConnectionCount >= 12) {
