@@ -1,10 +1,8 @@
 // [INPUT] mihomoIpcPath · filesystem · optional admin remove on macOS
 // [OUTPUT] probe + remove zombie mihomo API unix socket before start-only core launch
 
-import { execFile } from 'node:child_process'
 import { existsSync, unlinkSync } from 'node:fs'
 import http from 'node:http'
-import { promisify } from 'node:util'
 import { appendAppLog } from '../utils/log'
 import { activateUserOwnedMihomoApiSocketFallback } from './mihomoApiSocketOverrideCore'
 import {
@@ -12,8 +10,6 @@ import {
   shouldRemoveStaleMihomoApiSocket,
   type CoreStartFootprintDecision,
 } from './staleMihomoApiSocketCore'
-
-const execFileAsync = promisify(execFile)
 
 export function probeMihomoApiSocket(socketPath: string): Promise<string | null> {
   return new Promise((resolve) => {
@@ -50,21 +46,8 @@ async function removeStaleSocketWithAdminFallback(socketPath: string): Promise<b
       return false
     }
   }
-
-  if (process.platform !== 'darwin') {
-    return false
-  }
-
-  const escapedPath = socketPath.replace(/'/g, "'\\''")
-  try {
-    await execFileAsync('osascript', [
-      '-e',
-      `do shell script "rm -f '${escapedPath}'" with administrator privileges`,
-    ])
-    return !existsSync(socketPath)
-  } catch {
-    return false
-  }
+  // Do not block on osascript admin rm — caller falls back to user-owned socket path.
+  return false
 }
 
 export async function resolveCoreFootprintBeforeStartOnly(input: {
