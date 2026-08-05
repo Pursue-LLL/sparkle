@@ -91,6 +91,28 @@ describe('stallEscalationLadderCore R-41', () => {
     assert.equal(plan.reason, 'emergency_stall_escalation_r2')
   })
 
+  it('1.30.18: global max_byte_stall escalates R2 when per-conn stallMs below 90s', () => {
+    resetStallEscalationLadderStateForTests()
+    const nowMs = 2_000_000
+    recordVitalityByteSnapshot({
+      connectionId: f1ee553dObservation.connectionId,
+      upload: 2458,
+      download: 4972,
+      nowMs: nowMs - STALL_ESCALATION_VITALITY_INEFFECTIVE_MS - 1_000,
+    })
+    const plan = resolveStallEscalationLadderPlan({
+      observation: f1ee553dObservation,
+      upload: 2458,
+      download: 4972,
+      nowMs,
+      requestBoundStallProof: true,
+      marathonGlobalByteDeath: true,
+      globalMaxByteStallMs: 144_500,
+    })
+    assert.equal(plan.action, 'parent_udp_refresh')
+    assert.equal(plan.reason, 'emergency_stall_escalation_r2')
+  })
+
   it('1.30.14: marathon global byte-death bypasses R2 emergency cooldown', () => {
     resetStallEscalationLadderStateForTests()
     const nowMs = 2_000_000
