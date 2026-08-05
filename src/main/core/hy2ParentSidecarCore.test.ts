@@ -64,4 +64,22 @@ describe('hy2ParentSidecarCore R-35a', () => {
     assert.equal(plan.action, 'none')
     assert.equal(plan.reason, 'sidecar_cooldown')
   })
+
+  it('1.30.19: marathon global byte-death bypasses sidecar cooldown', () => {
+    const plan = resolveHy2ParentSidecarDialPlan({
+      snapshot: {
+        ...baseSnapshot,
+        httpParentChainAgeMs: 0,
+        outboundHy2SessionAgeMs: 0,
+        maxByteStallMs: 144_500,
+        frozenQuicCursorCount: 2,
+      },
+      marathonTruthActive: true,
+      lastSidecarDialAtMs: 1_000_000 - 60_000,
+      nowMs: 1_000_000,
+      marathonGlobalByteDeath: true,
+    })
+    assert.equal(plan.action, 'sidecar_dial')
+    assert.equal(plan.reason, 'emergency_stall_escalation_r1')
+  })
 })
