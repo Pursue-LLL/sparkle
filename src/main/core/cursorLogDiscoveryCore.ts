@@ -10,6 +10,8 @@ import { homedir } from 'os'
 
 const MAX_LOG_SESSIONS = 6
 
+export type CursorLogRouteKind = 'dedicated-proxy' | 'direct' | 'unknown'
+
 export interface LogDiscoveryHealthResult {
   outcome: 'ok' | 'fail'
   rootsChecked: number
@@ -71,9 +73,7 @@ export async function auditCursorLogDiscoveryHealth(options?: {
       }
       await listCursorLogSessionDirs(logsDir)
     } catch (error) {
-      errors.push(
-        `${logsDir}: ${error instanceof Error ? error.message : String(error)}`,
-      )
+      errors.push(`${logsDir}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -83,7 +83,7 @@ export async function auditCursorLogDiscoveryHealth(options?: {
     rootsChecked: roots.length,
     sessionCount,
     strayEntries,
-    errors,
+    errors
   }
 }
 
@@ -94,7 +94,30 @@ function applicationSupportDir(customDir?: string): string {
 function cursorDataDirFromAppPrefix(appPrefix: string, supportDir: string): string {
   const appName = basename(appPrefix.trim())
   const stem = appName.endsWith('.app') ? appName.slice(0, -4) : appName
-  return join(supportDir, `${stem}-data`)
+  return join(supportDir, stem === 'Cursor' ? 'Cursor' : `${stem}-data`)
+}
+
+/** Mirror cursorRuleInjection routing for a Cursor log root without guessing from the active selector. */
+export function resolveCursorLogRouteKind(
+  cursorDataDir: string,
+  dedicatedAppPathPrefixes: readonly string[]
+): CursorLogRouteKind {
+  if (dedicatedAppPathPrefixes.length === 0) {
+    return 'dedicated-proxy'
+  }
+  const rootName = basename(cursorDataDir.trim())
+  for (const appPrefix of dedicatedAppPathPrefixes) {
+    const appName = basename(appPrefix.trim())
+    const stem = appName.endsWith('.app') ? appName.slice(0, -4) : appName
+    const expectedRoot = stem === 'Cursor' ? 'Cursor' : `${stem}-data`
+    if (rootName === expectedRoot) {
+      return 'dedicated-proxy'
+    }
+  }
+  if (rootName === 'Cursor') {
+    return 'direct'
+  }
+  return 'unknown'
 }
 
 function hasLogsTree(dirPath: string): boolean {

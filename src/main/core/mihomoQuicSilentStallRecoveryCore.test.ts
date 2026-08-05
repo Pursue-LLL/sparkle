@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS,
-  resolveMihomoQuicStallRecoveryPlan,
+  resolveMihomoQuicStallRecoveryPlan
 } from './mihomoQuicSilentStallRecoveryCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
 
@@ -17,33 +17,33 @@ describe('mihomoQuicSilentStallRecoveryCore R-34', () => {
     connAgeMs: 200_000,
     frozenQuicCursorCount: 3,
     totalQuicCursorCount: 10,
-    cursorConnectionCount: 33,
+    cursorConnectionCount: 33
   }
 
-  it('plans vitality dial for single stall below close threshold', () => {
+  it('does not dial from byte silence without current request-bound proof', () => {
     const plan = resolveMihomoQuicStallRecoveryPlan({
       observation: baseObservation,
       lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
+      nowMs: 1_000_000
     })
-    assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'single_stall_vitality')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 
-  it('plans close for frozen surgical prune when token gap proves stale', () => {
+  it('does not mutate when the legacy wrapper lacks a current request id', () => {
     const plan = resolveMihomoQuicStallRecoveryPlan({
       observation: {
         ...baseObservation,
-        stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS + 1,
+        stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS + 1
       },
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
       staleRequestIdCount: 1,
       lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
+      nowMs: 1_000_000
     })
-    assert.equal(plan.action, 'close_connection')
-    assert.equal(plan.reason, 'frozen_surgical_prune')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 
   it('blocks close during marathon when no token gap proof', () => {
@@ -51,14 +51,14 @@ describe('mihomoQuicSilentStallRecoveryCore R-34', () => {
       observation: {
         ...baseObservation,
         cursorConnectionCount: 33,
-        stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS + 1,
+        stallMs: MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS + 1
       },
       tokenGapMaxMs: 0,
       staleRequestIdCount: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
+      nowMs: 1_000_000
     })
-    assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'no_token_gap_stale_proof')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 })

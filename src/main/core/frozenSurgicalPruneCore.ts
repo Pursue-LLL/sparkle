@@ -9,7 +9,7 @@ import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCo
 import { MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS } from './mihomoQuicSilentStallCore'
 import {
   resolveMarathonSseCarrierPruneContext,
-  MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS,
+  MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS
 } from './marathonSseCarrierPruneCore'
 import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
 
@@ -43,7 +43,22 @@ export interface FrozenSurgicalPruneGateInput {
   outboundHy2SessionAgeMs?: number
 }
 
-function denyCriticalHostClose(host: string | undefined, fallbackReason: string): FrozenSurgicalPrunePlan | undefined {
+function hasCurrentRequestBoundStallProof(
+  input: FrozenSurgicalPruneGateInput,
+  marathonActive: boolean
+): boolean {
+  return (
+    marathonActive &&
+    input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS &&
+    input.staleRequestIdCount > 0 &&
+    (input.staleRequestIds?.length ?? 0) > 0
+  )
+}
+
+function denyCriticalHostClose(
+  host: string | undefined,
+  fallbackReason: string
+): FrozenSurgicalPrunePlan | undefined {
   const denial = resolveCriticalHostCloseDenialPlan(host)
   if (!denial) {
     return undefined
@@ -51,12 +66,21 @@ function denyCriticalHostClose(host: string | undefined, fallbackReason: string)
   return { action: 'vitality_dial', reason: fallbackReason }
 }
 
-export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInput): FrozenSurgicalPrunePlan {
+export function resolveFrozenSurgicalPrunePlan(
+  input: FrozenSurgicalPruneGateInput
+): FrozenSurgicalPrunePlan {
   const { observation, nowMs } = input
   const marathonActive = input.marathonActive === true
 
   if (observation.stallMs < MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
     return { action: 'none', reason: 'below_vitality_threshold' }
+  }
+
+  // A quiet HTTP/2 connection is valid while the model thinks or a tool runs.
+  // Never create recovery traffic from byte silence alone: require a currently
+  // active marathon request with both token-gap and request-id evidence.
+  if (!hasCurrentRequestBoundStallProof(input, marathonActive)) {
+    return { action: 'none', reason: 'missing_current_request_bound_stall_proof' }
   }
 
   if (observation.kind === 'aggregate') {
@@ -83,7 +107,7 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
     staleRequestIds: input.staleRequestIds ?? [],
     staleRequestIdCount: input.staleRequestIdCount,
     registry: input.registry ?? { records: new Map() },
-    nowMs,
+    nowMs
   })
   if (carrierContext.eligible && observation.stallMs >= MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
     const tokenGapProof =
@@ -101,25 +125,25 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
         action: 'vitality_dial',
         reason: 'global_prune_cooldown',
         carrierRid: carrierContext.carrierRid,
-        staleProofKind: carrierContext.staleProofKind,
+        staleProofKind: carrierContext.staleProofKind
       }
     }
     const carrierCloseDenied = denyCriticalHostClose(
       observation.host,
-      'r41_critical_host_carrier_no_close',
+      'r41_critical_host_carrier_no_close'
     )
     if (carrierCloseDenied) {
       return {
         ...carrierCloseDenied,
         carrierRid: carrierContext.carrierRid,
-        staleProofKind: carrierContext.staleProofKind,
+        staleProofKind: carrierContext.staleProofKind
       }
     }
     return {
       action: 'close_frozen_connection',
       reason: 'marathon_sse_carrier_frozen_prune',
       carrierRid: carrierContext.carrierRid,
-      staleProofKind: carrierContext.staleProofKind,
+      staleProofKind: carrierContext.staleProofKind
     }
   }
 
@@ -133,7 +157,10 @@ export function resolveFrozenSurgicalPrunePlan(input: FrozenSurgicalPruneGateInp
     if (!host || !isCriticalCursorHost(host)) {
       return { action: 'vitality_dial', reason: 'non_critical_host_no_prune' }
     }
-    if (observation.stallMs < FROZEN_SURGICAL_PRUNE_BYTE_FROZEN_PROOF_MS + MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS) {
+    if (
+      observation.stallMs <
+      FROZEN_SURGICAL_PRUNE_BYTE_FROZEN_PROOF_MS + MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS
+    ) {
       return { action: 'vitality_dial', reason: 'byte_frozen_proof_insufficient' }
     }
     if (input.tokenGapMaxMs < CURSOR_HY2_TOKEN_GAP_FORCE_MS || input.staleRequestIdCount <= 0) {

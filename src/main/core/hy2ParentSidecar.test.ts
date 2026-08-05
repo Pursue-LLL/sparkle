@@ -17,7 +17,14 @@ describe('hy2ParentSidecar R-35a execute', () => {
     assert.match(source, /mihomoCloseConnection/)
     assert.match(source, /phase=execute/)
     assert.doesNotMatch(source, /phase=detect_only/)
-    assert.doesNotMatch(source, /outcome: 'skipped'/)
+    assert.match(source, /Promise<Hy2ParentSidecarExecutionResult>/)
+  })
+
+  it('reports the actual sidecar outcome to the escalation caller', () => {
+    const source = readFileSync(path.join(ROOT, 'mihomoQuicSilentStallRecovery.ts'), 'utf8')
+    assert.match(source, /const sidecar = await runHy2ParentSidecarIfDue/)
+    assert.match(source, /outcome: sidecar\.outcome/)
+    assert.match(source, /if \(sidecar\.outcome === 'executed'\)/)
   })
 
   it('exposes sidecar action state helpers for tests', () => {

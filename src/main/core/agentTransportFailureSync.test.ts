@@ -6,7 +6,7 @@ import { afterEach, describe, it } from 'node:test'
 import {
   resetAgentTransportFailureSyncForTests,
   resolveCursorDataDirs,
-  syncAgentTransportFailuresFromCursorLogs,
+  syncAgentTransportFailuresFromCursorLogs
 } from './agentTransportFailureSync'
 import { listCursorLogSessionDirs } from './cursorLogDiscoveryCore'
 
@@ -42,14 +42,14 @@ describe('agentTransportFailureSync', () => {
     await writeFile(
       rendererPath,
       `2026-07-20 14:56:53.983 [info] [ifm-patch-99 transport-failure] kind="agent_transport_failure" ts=${ts} requestId="rid-sync-1" originalRequestId="rid-sync-1" composerId="cid-1" proxyNode="" reasonType="proxy-network" reasonSub="dial-timeout" errMsg="[unavailable] PING timed out" connectCode="14" attempt=0 activeAgents=2\n`,
-      'utf8',
+      'utf8'
     )
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
       proxyNodeFallback: 'JP-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
-      logWrites: false,
+      logWrites: false
     })
     assert.equal(written, 1)
 
@@ -64,7 +64,7 @@ describe('agentTransportFailureSync', () => {
       sinceMs: ts - 60_000,
       proxyNodeFallback: 'JP-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
-      logWrites: false,
+      logWrites: false
     })
     assert.equal(secondPass, 0)
 
@@ -80,7 +80,7 @@ describe('agentTransportFailureSync', () => {
     await mkdir(join(customDir, 'logs'), { recursive: true })
 
     const dirs = await resolveCursorDataDirs({
-      appPathPrefixes: ['/Applications/Cursor-custom.app'],
+      appPathPrefixes: ['/Applications/Cursor-custom.app']
     })
 
     assert.ok(dirs.includes(dailyDir))
@@ -100,14 +100,14 @@ describe('agentTransportFailureSync', () => {
     await writeFile(
       rendererPath,
       `2026-07-21 11:26:14.272 [error] An unknown error occurred. Please consult the log for more details. {"name":"ConnectError","rawMessage":"read ETIMEDOUT","code":14,"metadata":{},"details":[],"cause":{"errno":-60,"code":"ETIMEDOUT","syscall":"read"}}\n`,
-      'utf8',
+      'utf8'
     )
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
       proxyNodeFallback: 'JP-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
-      logWrites: false,
+      logWrites: false
     })
     assert.equal(written, 1)
 
@@ -131,21 +131,21 @@ describe('agentTransportFailureSync', () => {
       'window1',
       'exthost',
       'anysphere.cursor-always-local',
-      'Cursor Structured Logs.log',
+      'Cursor Structured Logs.log'
     )
     await mkdir(dirname(structuredPath), { recursive: true })
     const ts = Date.parse('2026-07-27T17:57:15.272')
     await writeFile(
       structuredPath,
       `2026-07-27 17:57:15.272 [error] Cursor Network Diagnostic agent ping {"name":"ConnectError","rawMessage":"[unavailable] PING timed out","code":14}\n`,
-      'utf8',
+      'utf8'
     )
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
       proxyNodeFallback: 'JP-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
-      logWrites: false,
+      logWrites: false
     })
     assert.equal(written, 1)
 
@@ -168,21 +168,21 @@ describe('agentTransportFailureSync', () => {
       'window1',
       'exthost',
       'anysphere.cursor-always-local',
-      'Cursor Structured Logs.log',
+      'Cursor Structured Logs.log'
     )
     await mkdir(dirname(structuredPath), { recursive: true })
     const ts = Date.parse('2026-07-27T17:42:12.698')
     await writeFile(
       structuredPath,
       `2026-07-27 17:42:12.698 [error] {"level":"error","key":"transport","message":"Stream error reported from extension host","metadata":{"error.message":"PING timed out","errorCode":"14","requestId":"e67c9ec5-754c-46cd-834e-36eaebecdc40","originalRequestId":"520a4a94-3f18-4e42-a5dd-d7abbd25ed9d"}}\n`,
-      'utf8',
+      'utf8'
     )
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
       proxyNodeFallback: 'JP-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
-      logWrites: false,
+      logWrites: false
     })
     assert.equal(written, 1)
 
@@ -190,6 +190,46 @@ describe('agentTransportFailureSync', () => {
     const row = JSON.parse((await readFile(jsonlPath, 'utf8')).trim()) as Record<string, unknown>
     assert.equal(row.originalRequestId, '520a4a94-3f18-4e42-a5dd-d7abbd25ed9d')
     assert.equal(row.connectCode, '14')
+
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('does not attribute stock Cursor DIRECT failures to the active dedicated proxy', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sparkle-transport-direct-route-'))
+    process.env.HOME = home
+    const cursorDataDir = join(home, 'Library', 'Application Support', 'Cursor')
+    const structuredPath = join(
+      cursorDataDir,
+      'logs',
+      '20260805T100000',
+      'window1',
+      'exthost',
+      'anysphere.cursor-always-local',
+      'Cursor Structured Logs.log'
+    )
+    await mkdir(dirname(structuredPath), { recursive: true })
+    const ts = Date.parse('2026-08-05T10:30:33.445')
+    await writeFile(
+      structuredPath,
+      `2026-08-05 10:30:33.445 [error] {"level":"error","key":"transport","message":"Stream error reported from extension host","metadata":{"error.message":"PING timed out","errorCode":"14","requestId":"direct-rid"}}\n`,
+      'utf8'
+    )
+
+    const written = await syncAgentTransportFailuresFromCursorLogs({
+      sinceMs: ts - 60_000,
+      proxyNodeFallback: 'JP-VPS-HY2',
+      cursorDataDirs: [cursorDataDir],
+      appPathPrefixes: ['/Applications/Cursor-3.1.15.app', '/Applications/Cursor-2.app'],
+      logWrites: false
+    })
+    assert.equal(written, 1)
+    const row = JSON.parse(
+      (await readFile(join(home, '.sparkle', 'agent-transport-failures.jsonl'), 'utf8')).trim()
+    ) as Record<string, unknown>
+    assert.equal(row.proxyNode, '')
+    assert.equal(row.routeKind, 'direct')
+    assert.equal(row.cursorLogRoot, 'Cursor')
+    assert.equal(row.reasonType, 'direct-path-transport')
 
     await rm(home, { recursive: true, force: true })
   })
@@ -215,9 +255,9 @@ describe('agentTransportFailureSync', () => {
           reason: '[internal] Reached maximum number of steps before turn ended',
           streamPrimarySub: 'transport',
           willRetry: false,
-          lastSseCase: 'stepCompleted',
-        },
-      },
+          lastSseCase: 'stepCompleted'
+        }
+      }
     })
     await writeFile(ledgerPath, `${line}\n`, 'utf8')
 
@@ -228,7 +268,7 @@ describe('agentTransportFailureSync', () => {
       const written = await syncAgentTransportFailuresFromCursorLogs({
         sinceMs: ts - 60_000,
         cursorDataDirs: [],
-        logWrites: false,
+        logWrites: false
       })
       assert.equal(written, 1)
       const jsonlPath = join(home, '.sparkle', 'agent-transport-failures.jsonl')

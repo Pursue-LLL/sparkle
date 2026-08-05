@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   FROZEN_SURGICAL_PRUNE_GLOBAL_COOLDOWN_MS,
-  resolveFrozenSurgicalPrunePlan,
+  resolveFrozenSurgicalPrunePlan
 } from './frozenSurgicalPruneCore'
 import { MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS } from './mihomoQuicSilentStallRecoveryCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
@@ -18,7 +18,7 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
     connAgeMs: 200_000,
     frozenQuicCursorCount: 3,
     totalQuicCursorCount: 10,
-    cursorConnectionCount: 33,
+    cursorConnectionCount: 33
   }
 
   it('R-41: never closes critical host on legacy frozen_surgical_prune path', () => {
@@ -26,9 +26,11 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       observation: baseObservation,
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 1,
       staleRequestIdCount: 2,
+      staleRequestIds: ['rid-active'],
       lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
+      marathonActive: true
     })
     assert.equal(plan.action, 'vitality_dial')
     assert.equal(plan.reason, 'r41_critical_host_no_close')
@@ -41,10 +43,10 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       staleRequestIdCount: 0,
       lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
-      nowMs: 1_000_000,
+      nowMs: 1_000_000
     })
-    assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'no_token_gap_stale_proof')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 
   it('respects global prune cooldown', () => {
@@ -52,9 +54,11 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       observation: baseObservation,
       tokenGapMaxMs: 60_000,
       staleRequestIdCount: 1,
+      staleRequestIds: ['rid-active'],
       lastGlobalPruneAtMs: 1_000_000 - FROZEN_SURGICAL_PRUNE_GLOBAL_COOLDOWN_MS + 1_000,
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
+      marathonActive: true
     })
     assert.equal(plan.action, 'vitality_dial')
     assert.equal(plan.reason, 'global_prune_cooldown')
@@ -70,7 +74,7 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
       marathonActive: true,
-      registry: { records: new Map() },
+      registry: { records: new Map() }
     })
     assert.equal(plan.action, 'vitality_dial')
     assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
@@ -86,10 +90,10 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
       marathonActive: false,
-      registryMaxGapSinceActivityMs: 0,
+      registryMaxGapSinceActivityMs: 0
     })
-    assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'single_stall_vitality')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 
   it('P10-2 blocks legacy generic prune while marathon active (carrier path exempt)', () => {
@@ -101,10 +105,10 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
       marathonActive: true,
-      registry: { records: new Map() },
+      registry: { records: new Map() }
     })
     assert.equal(plan.action, 'none')
-    assert.equal(plan.reason, 'marathon_active_zero_data_plane_mutation')
+    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 
   it('R-41: carrier prune on critical host → SEL vitality not close', () => {
@@ -113,7 +117,7 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       observation: {
         ...baseObservation,
         stallMs: 47_000,
-        host: 'api2direct.cursor.sh',
+        host: 'api2direct.cursor.sh'
       },
       tokenGapMaxMs: 0,
       staleRequestIdCount: 0,
@@ -132,15 +136,14 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
               originalRequestId: 'rid-carrier',
               firstActivityMs: 900_000,
               lastActivityMs: nowMs - 20_000,
-              openToolCalls: 0,
-            },
-          ],
-        ]),
-      },
+              openToolCalls: 0
+            }
+          ]
+        ])
+      }
     })
-    assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
-    assert.equal(plan.carrierRid, 'rid-carrier')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 
   it('f1ee553d replay: 8/4 api2.cursor.sh never close at 209s', () => {
@@ -155,7 +158,7 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
         connAgeMs: 213_995,
         frozenQuicCursorCount: 1,
         totalQuicCursorCount: 11,
-        cursorConnectionCount: 27,
+        cursorConnectionCount: 27
       },
       tokenGapMaxMs: CURSOR_HY2_TOKEN_GAP_FORCE_MS + 50_000,
       staleRequestIdCount: 2,
@@ -163,9 +166,9 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
       lastGlobalPruneAtMs: 0,
       lastRecoveryAtMsByConnectionId: new Map(),
       nowMs: 1_000_000,
-      marathonActive: false,
+      marathonActive: false
     })
-    assert.equal(plan.action, 'vitality_dial')
-    assert.equal(plan.reason, 'r41_critical_host_carrier_no_close')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'missing_current_request_bound_stall_proof')
   })
 })

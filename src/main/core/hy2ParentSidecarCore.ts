@@ -7,7 +7,7 @@ import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthC
 /** Proactive sidecar dial when outbound HY2 UDP session OR HTTP parent chain exceeds this age. */
 export const HY2_PARENT_SIDECAR_DIAL_AGE_MS = 4 * 60 * 60 * 1000
 
-/** Proactive UDP outbound close only when no healthy inner flows remain. */
+/** Proactive UDP outbound close only when no active inner critical flows remain. */
 export const HY2_PARENT_PROACTIVE_ROTATE_AGE_MS = HY2_PARENT_SIDECAR_DIAL_AGE_MS
 
 export const HY2_PARENT_SIDECAR_COOLDOWN_MS = 300_000

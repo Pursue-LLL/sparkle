@@ -15,7 +15,7 @@ import {
   isMarathonCoreRestartForceOverride,
   shouldBlockMarathonCoreColdRestart,
   type CoreLifecycleCaller,
-  type MarathonCoreRestartGuardSnapshot,
+  type MarathonCoreRestartGuardSnapshot
 } from './marathonCoreRestartGuardCore'
 
 const GUARD_STATE_RELATIVE_PATH = join('.sparkle', 'marathon-core-restart-guard.json')
@@ -25,34 +25,33 @@ export function getMarathonCoreRestartGuardStateFilePath(): string {
 }
 
 export async function readMarathonCoreRestartGuardSnapshot(
-  nowMs: number = Date.now(),
+  nowMs: number = Date.now()
 ): Promise<MarathonCoreRestartGuardSnapshot> {
   const quiesceSnapshot = getMarathonQuiesceSnapshot()
-  const cursorConnectionCount = await countCursorConnections().catch(() => 0)
-  let recentActiveLifecycleStreamCount = 0
+  const cursorConnectionCount = await countCursorConnections().catch(() => -1)
+  let recentActiveLifecycleStreamCount: number
   try {
     const { readStreamLifecycleJournalTail } = await import('./streamLifecycleJournal')
-    const { countRecentActiveLifecycleStreams } = await import(
-      './marathonCoreRestartGuardLifecycleCore'
-    )
+    const { countRecentActiveLifecycleStreams } =
+      await import('./marathonCoreRestartGuardLifecycleCore')
     const events = readStreamLifecycleJournalTail()
     recentActiveLifecycleStreamCount = countRecentActiveLifecycleStreams({
       events,
-      nowMs,
+      nowMs
     })
   } catch {
-    recentActiveLifecycleStreamCount = 0
+    recentActiveLifecycleStreamCount = -1
   }
   return {
     quiesceActive: quiesceSnapshot.active,
     cursorConnectionCount,
     recentActiveLifecycleStreamCount,
-    updatedAtMs: nowMs,
+    updatedAtMs: nowMs
   }
 }
 
 export async function refreshMarathonCoreRestartGuardStateFile(
-  snapshot?: MarathonCoreRestartGuardSnapshot,
+  snapshot?: MarathonCoreRestartGuardSnapshot
 ): Promise<void> {
   const resolvedSnapshot = snapshot ?? (await readMarathonCoreRestartGuardSnapshot())
   const forceOverride = isMarathonCoreRestartForceOverride()
@@ -64,7 +63,7 @@ export async function refreshMarathonCoreRestartGuardStateFile(
 
 export async function evaluateMarathonCoreColdRestart(
   caller: CoreLifecycleCaller,
-  forceRequested = false,
+  forceRequested = false
 ): Promise<{ blocked: boolean; snapshot: MarathonCoreRestartGuardSnapshot }> {
   const snapshot = await readMarathonCoreRestartGuardSnapshot()
   const forceOverride = forceRequested || isMarathonCoreRestartForceOverride()

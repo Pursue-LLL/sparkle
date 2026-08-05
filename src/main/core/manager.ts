@@ -1,12 +1,7 @@
 import { ChildProcess, spawn } from 'child_process'
-import { dataDir, coreLogPath, ensureLogDir, mihomoCorePath } from '../utils/dirs'
+import { dataDir, coreLogPath, ensureLogDir, mihomoCorePath, mihomoIpcPath } from '../utils/dirs'
 import { generateProfile, getRuntimeConfig } from './factory'
-import {
-  getAppConfig,
-  getControledMihomoConfig,
-  getProfileConfig,
-  patchAppConfig
-} from '../config'
+import { getAppConfig, getControledMihomoConfig, getProfileConfig, patchAppConfig } from '../config'
 import { app, ipcMain } from 'electron'
 import {
   startMihomoTraffic,
@@ -429,7 +424,21 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
     }
   }
   if (!serviceCoreRunning) {
-    await stopCore()
+    const stopped = await stopCoreWithOutcome()
+    if (!stopped) {
+      const corePidPath = path.join(dataDir(), 'core.pid')
+      const hasExistingCoreFootprint =
+        Boolean(child && !child.killed) || existsSync(corePidPath) || existsSync(mihomoIpcPath())
+      if (hasExistingCoreFootprint) {
+        await appendAppLog(
+          '[CoreLifecycle]: core_start_aborted reason=protected_existing_core data_plane_action=none\n'
+        )
+        return [Promise.resolve()]
+      }
+      await appendAppLog(
+        '[CoreLifecycle]: core_start_allowed reason=no_existing_core_footprint data_plane_action=start_only\n'
+      )
+    }
   }
   resetTunStartupGuardState()
   await ensureTunCorePermissionBeforeStart()
@@ -708,13 +717,18 @@ async function stopCoreUnchecked(force = false): Promise<void> {
   }
 }
 
-export async function stopCore(force = false): Promise<void> {
+async function stopCoreWithOutcome(force = false): Promise<boolean> {
   const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
   const guard = await evaluateMarathonCoreColdRestart('stopCore', force)
   if (guard.blocked) {
-    return
+    return false
   }
   await stopCoreUnchecked(force)
+  return true
+}
+
+export async function stopCore(force = false): Promise<void> {
+  await stopCoreWithOutcome(force)
 }
 
 function ensureServiceCoreEventHandler(): void {
@@ -861,7 +875,7 @@ function clearTailscaleAuthNotifications(name?: string): void {
     new Set(
       Array.from(notifiedCoreLogKeys).filter((key) =>
         key.startsWith(tailscaleAuthNotificationKeyPrefix)
-      ),
+      )
     )
   if (keys.size === 0) return
 
@@ -1079,7 +1093,7 @@ async function deferCoreRestartForActiveCursorStreams(): Promise<boolean> {
   }
 
   await appendAppLog(
-    `[Manager]: defer core restart — active cursor_conn=${activeConns} data_plane_action=none (zero-disruption)\n`,
+    `[Manager]: defer core restart — active cursor_conn=${activeConns} data_plane_action=none (zero-disruption)\n`
   )
   return true
 }

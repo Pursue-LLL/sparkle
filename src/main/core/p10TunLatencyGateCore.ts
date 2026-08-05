@@ -5,7 +5,7 @@
 import {
   computePairedTunTaxMs,
   type P10MeasurementArtifact,
-  validateP10MeasurementArtifact,
+  validateP10MeasurementArtifact
 } from './p10MeasurementArtifactCore'
 
 export interface P10TunLatencyFixture {
@@ -24,7 +24,7 @@ export const P10_TUN_LATENCY_SYNTHETIC_FIXTURE: P10TunLatencyFixture = {
   tun: { p50Ms: 35, p95Ms: 88 },
   mixedPort: { p50Ms: 302, p95Ms: 516 },
   maxTunP50TaxMs: 50,
-  maxTunP95TaxMs: 100,
+  maxTunP95TaxMs: 100
 }
 
 export interface P10TunLatencyGateInput {
@@ -44,9 +44,7 @@ export interface P10TunLatencyGateResult {
   detail: string
 }
 
-export function runP10TunLatencyGate(
-  input: P10TunLatencyGateInput = {},
-): P10TunLatencyGateResult {
+export function runP10TunLatencyGate(input: P10TunLatencyGateInput = {}): P10TunLatencyGateResult {
   const artifactCheck = validateP10MeasurementArtifact(input.artifact, 'tun_latency')
   if (!artifactCheck.ok) {
     return {
@@ -59,7 +57,7 @@ export function runP10TunLatencyGate(
       mixedPortP95Ms: 0,
       p50TaxMs: 0,
       p95TaxMs: 0,
-      detail: artifactCheck.detail,
+      detail: artifactCheck.detail
     }
   }
 
@@ -76,6 +74,10 @@ export function runP10TunLatencyGate(
     effectiveSamples >= 100 &&
     Math.abs(p50TaxMs) <= fixture.maxTunP50TaxMs &&
     Math.abs(p95TaxMs) <= fixture.maxTunP95TaxMs
+  const failureDetail =
+    effectiveSamples < 100
+      ? `insufficient samples=${effectiveSamples}/100`
+      : `paired tax exceeded p50=${p50TaxMs}/${fixture.maxTunP50TaxMs} p95=${p95TaxMs}/${fixture.maxTunP95TaxMs}`
   return {
     ok,
     artifactBacked: true,
@@ -88,6 +90,6 @@ export function runP10TunLatencyGate(
     p95TaxMs,
     detail: ok
       ? `${artifactCheck.detail}; paired tax p50=${p50TaxMs}ms p95=${p95TaxMs}ms (samples=${effectiveSamples}${usePerSamplePaired ? ' per-sample' : ' aggregate'})`
-      : `paired tax exceeded p50=${p50TaxMs}/${fixture.maxTunP50TaxMs} p95=${p95TaxMs}/${fixture.maxTunP95TaxMs}`,
+      : failureDetail
   }
 }

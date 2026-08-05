@@ -65,7 +65,7 @@ describe('transportLongevityTruthCore R-34a', () => {
 })
 
 describe('hy2ParentRotationCore R-34b', () => {
-  it('refuses rotation while healthy inner critical flows exist', () => {
+  it('refuses rotation while any inner critical flow exists, even when byte-silent', () => {
     const nowMs = 2_000_000
     const plan = resolveHy2ParentRotationAfterPrunePlan({
       snapshot: {
@@ -86,12 +86,12 @@ describe('hy2ParentRotationCore R-34b', () => {
         } as ControllerConnectionDetail,
       ],
       trackedFirstSeenAtMsById: new Map([['tcp-live', nowMs - 60_000]]),
-      trackedLastByteChangeAtMsById: new Map([['tcp-live', nowMs - 1_000]]),
+      trackedLastByteChangeAtMsById: new Map([['tcp-live', nowMs - 600_000]]),
       lastRotationAtMs: 0,
       nowMs,
     })
     assert.equal(plan.action, 'none')
-    assert.equal(plan.reason, 'healthy_inner_critical_flows')
+    assert.equal(plan.reason, 'active_inner_critical_flows')
   })
 
   it('R-41: emergency stall escalation bypasses 4h session age gate', () => {

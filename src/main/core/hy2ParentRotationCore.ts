@@ -1,6 +1,6 @@
 // [INPUT] TransportLongevityTruthSnapshot · mihomo connections after prune
 // [OUTPUT] resolveHy2ParentRotationAfterPrunePlan
-// [POS] R-34b SSOT — refresh aged HY2 UDP session only when no healthy inner critical flows remain.
+// [POS] R-34b SSOT — refresh aged HY2 UDP session only when no active inner critical flows remain.
 
 import {
   HY2_PARENT_ROTATE_AGE_MS,
@@ -24,12 +24,9 @@ export interface Hy2ParentRotationPlan {
   udpConnectionId?: string
 }
 
-export function countHealthyInnerCriticalFlows(input: {
+export function countActiveInnerCriticalFlows(input: {
   connections: readonly ControllerConnectionDetail[]
   activeLeaf: string
-  nowMs: number
-  byteActiveWithinMs: number
-  trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
 }): number {
   let count = 0
   for (const connection of input.connections) {
@@ -45,10 +42,7 @@ export function countHealthyInnerCriticalFlows(input: {
     if (!isCriticalCursorHost(host)) {
       continue
     }
-    const lastChangeAtMs = input.trackedLastByteChangeAtMsById.get(connection.id) ?? input.nowMs
-    if (input.nowMs - lastChangeAtMs <= input.byteActiveWithinMs) {
-      count += 1
-    }
+    count += 1
   }
   return count
 }
@@ -97,15 +91,12 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   if (input.nowMs - input.lastRotationAtMs < HY2_PARENT_ROTATION_COOLDOWN_MS) {
     return { action: 'none', reason: 'rotation_cooldown' }
   }
-  const healthyInner = countHealthyInnerCriticalFlows({
+  const activeInner = countActiveInnerCriticalFlows({
     connections: input.connections,
     activeLeaf: input.snapshot.activeHy2Leaf,
-    nowMs: input.nowMs,
-    byteActiveWithinMs: 30_000,
-    trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
   })
-  if (healthyInner > 0) {
-    return { action: 'none', reason: 'healthy_inner_critical_flows' }
+  if (activeInner > 0) {
+    return { action: 'none', reason: 'active_inner_critical_flows' }
   }
   const udpConnectionId = findOldestHy2UdpOutboundConnectionId({
     connections: input.connections,
