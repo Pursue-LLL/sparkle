@@ -6,7 +6,6 @@ import {
   HY2_PARENT_ROTATE_AGE_MS,
   type TransportLongevityTruthSnapshot,
 } from './transportLongevityTruthCore'
-import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import {
   isCriticalCursorHost,
 } from './cursorCriticalTransportCore'
@@ -85,9 +84,8 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   /** Phase B: byte-frozen carrier may bypass active_inner gate for parent UDP close. */
   carrierQuiesceBypass?: boolean
 }): Hy2ParentRotationPlan {
-  const minSessionAgeMs = input.carrierQuiesceBypass === true
-    ? HY2_PARENT_SIDECAR_DIAL_AGE_MS
-    : HY2_PARENT_ROTATE_AGE_MS
+  const minSessionAgeMs =
+    input.carrierQuiesceBypass === true ? 0 : HY2_PARENT_ROTATE_AGE_MS
   if (
     !input.emergencyStallEscalation &&
     input.snapshot.outboundHy2SessionAgeMs < minSessionAgeMs &&

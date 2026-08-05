@@ -6,6 +6,7 @@ import {
   resolveCarrierQuiesceRefreshDecision,
 } from './carrierQuiesceRefreshCore'
 import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
+import { MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS } from './marathonSseCarrierPruneCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 
 function snapshot(
@@ -36,7 +37,7 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
     assert.equal(decision.reason, 'carrier_quiesce_refresh_bypass_active_inner')
   })
 
-  it('blocks bypass when parent is young', () => {
+  it('blocks bypass when parent is young and marathon inactive', () => {
     const decision = resolveCarrierQuiesceRefreshDecision({
       snapshot: snapshot({
         httpParentChainAgeMs: 60_000,
@@ -44,6 +45,39 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
       }),
       activeInnerCriticalCount: 15,
       recoveryIneffective: true,
+      marathonActive: false,
+    })
+    assert.equal(decision.bypassActiveInner, false)
+    assert.equal(decision.reason, 'parent_not_refresh_due')
+  })
+
+  it('1.30.13: marathon global byte-death bypasses active_inner when parent is young', () => {
+    const decision = resolveCarrierQuiesceRefreshDecision({
+      snapshot: snapshot({
+        httpParentChainAgeMs: 2_610_790,
+        outboundHy2SessionAgeMs: 2_610_790,
+        maxByteStallMs: 144_500,
+        frozenQuicCursorCount: 2,
+      }),
+      activeInnerCriticalCount: 15,
+      recoveryIneffective: true,
+      marathonActive: true,
+    })
+    assert.equal(decision.bypassActiveInner, true)
+    assert.equal(decision.reason, 'marathon_global_byte_death_bypass_active_inner')
+  })
+
+  it('1.30.13: marathon byte-death requires absolute stall threshold', () => {
+    const decision = resolveCarrierQuiesceRefreshDecision({
+      snapshot: snapshot({
+        httpParentChainAgeMs: 2_610_790,
+        outboundHy2SessionAgeMs: 2_610_790,
+        maxByteStallMs: MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS - 1,
+        frozenQuicCursorCount: 2,
+      }),
+      activeInnerCriticalCount: 15,
+      recoveryIneffective: true,
+      marathonActive: true,
     })
     assert.equal(decision.bypassActiveInner, false)
     assert.equal(decision.reason, 'parent_not_refresh_due')

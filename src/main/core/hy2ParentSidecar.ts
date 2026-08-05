@@ -66,6 +66,7 @@ function resolveProactiveUdpClosePlan(input: {
   /** R-41 emergency bypasses age gates, but never active critical-flow safety unless carrier quiesce. */
   emergencyStallEscalation?: boolean
   recoveryIneffective?: boolean
+  marathonActive?: boolean
 }): Hy2ParentSidecarPlan {
   if (
     !input.emergencyStallEscalation &&
@@ -85,6 +86,7 @@ function resolveProactiveUdpClosePlan(input: {
     snapshot: input.snapshot,
     activeInnerCriticalCount: activeInner,
     recoveryIneffective: input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+    marathonActive: input.marathonActive === true,
   })
   // Parent UDP owns every inner stream. Byte silence during model thinking is valid,
   // unless carrier quiesce proves byte-frozen dead carrier (Phase B).
@@ -134,6 +136,7 @@ export async function runHy2ParentSidecarIfDue(input: {
       nowMs,
       emergencyStallEscalation: input.emergencyStallEscalation === true,
     })
+    const marathonActive = input.marathonTruth.marathonTruthActive
     const rotatePlan = resolveProactiveUdpClosePlan({
       snapshot: input.snapshot,
       connections: input.connections,
@@ -143,6 +146,7 @@ export async function runHy2ParentSidecarIfDue(input: {
       lastRotateActionAtMs: lastHy2ParentSidecarActionAtMs,
       emergencyStallEscalation: input.emergencyStallEscalation === true,
       recoveryIneffective: input.recoveryIneffective === true,
+      marathonActive,
     })
 
     const carrierQuiesce = resolveCarrierQuiesceRefreshDecision({
@@ -153,6 +157,7 @@ export async function runHy2ParentSidecarIfDue(input: {
       }),
       recoveryIneffective:
         input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+      marathonActive,
     })
     if (carrierQuiesce.bypassActiveInner) {
       await appendSidecarLog(
