@@ -28,25 +28,32 @@ export function resolveHy2ParentSidecarDialPlan(input: {
   nowMs: number
   /** R-41: bypass 4h age gate when byte-frozen + vitality ineffective. */
   emergencyStallEscalation?: boolean
+  /** Bypass age + cooldown during marathon global byte-death. */
+  marathonGlobalByteDeath?: boolean
 }): Hy2ParentSidecarPlan {
   if (!input.marathonTruthActive && !input.emergencyStallEscalation) {
     return { action: 'none', reason: 'marathon_inactive' }
   }
   if (
     !input.emergencyStallEscalation &&
+    !input.marathonGlobalByteDeath &&
     input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS &&
     input.snapshot.httpParentChainAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS
   ) {
     return { action: 'none', reason: 'session_and_http_chain_below_sidecar_threshold' }
   }
-  if (input.nowMs - input.lastSidecarDialAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS) {
+  if (
+    !input.marathonGlobalByteDeath &&
+    input.nowMs - input.lastSidecarDialAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS
+  ) {
     return { action: 'none', reason: 'sidecar_cooldown' }
   }
   return {
     action: 'sidecar_dial',
-    reason: input.emergencyStallEscalation
-      ? 'emergency_stall_escalation_r1'
-      : 'proactive_parent_sidecar_dial',
+    reason:
+      input.emergencyStallEscalation || input.marathonGlobalByteDeath
+        ? 'emergency_stall_escalation_r1'
+        : 'proactive_parent_sidecar_dial',
   }
 }
 
