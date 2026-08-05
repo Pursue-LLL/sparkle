@@ -86,10 +86,12 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   /** Bypass 5m rotation cooldown during marathon global byte-death. */
   marathonGlobalByteDeath?: boolean
 }): Hy2ParentRotationPlan {
-  const minSessionAgeMs =
-    input.carrierQuiesceBypass === true ? 0 : HY2_PARENT_ROTATE_AGE_MS
+  const byteDeathBypass =
+    input.carrierQuiesceBypass === true || input.marathonGlobalByteDeath === true
+  const minSessionAgeMs = byteDeathBypass ? 0 : HY2_PARENT_ROTATE_AGE_MS
   if (
     !input.emergencyStallEscalation &&
+    !input.marathonGlobalByteDeath &&
     input.snapshot.outboundHy2SessionAgeMs < minSessionAgeMs &&
     input.snapshot.httpParentChainAgeMs < minSessionAgeMs
   ) {
@@ -105,7 +107,7 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
     connections: input.connections,
     activeLeaf: input.snapshot.activeHy2Leaf,
   })
-  if (activeInner > 0 && input.carrierQuiesceBypass !== true) {
+  if (activeInner > 0 && !byteDeathBypass) {
     return { action: 'none', reason: 'active_inner_critical_flows' }
   }
   const udpConnectionId = findOldestHy2UdpOutboundConnectionId({
