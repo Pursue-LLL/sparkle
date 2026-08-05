@@ -54,6 +54,7 @@ export async function ensureTunCorePermissionBeforeStart(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await appendAppLog(`[TunStartupGuard]: pre-start permission grant skipped, ${message}\n`)
+    await enableSysProxyFallback()
   }
 }
 
