@@ -45,7 +45,6 @@ export async function readTransportLongevityTruthSnapshot(): Promise<
 export async function resetTransportLongevityHy2ParentChainBirth(
   activeHy2Leaf: string,
   nowMs: number = Date.now(),
-  options?: { clearMaxByteStall?: boolean },
 ): Promise<void> {
   const previous = await readTransportLongevityTruthSnapshot()
   await writeTransportLongevityTruthSnapshot({
@@ -54,8 +53,7 @@ export async function resetTransportLongevityHy2ParentChainBirth(
     cursorConnectionCount: previous?.cursorConnectionCount ?? 0,
     httpParentChainAgeMs: 0,
     outboundHy2SessionAgeMs: 0,
-    maxByteStallMs:
-      options?.clearMaxByteStall === true ? 0 : previous?.maxByteStallMs ?? 0,
+    maxByteStallMs: 0,
     frozenQuicCursorCount: previous?.frozenQuicCursorCount ?? 0,
     activeHy2Leaf,
     hy2ParentChainBirthMs: nowMs,
