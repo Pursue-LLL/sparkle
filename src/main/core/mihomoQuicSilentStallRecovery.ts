@@ -309,6 +309,7 @@ async function executeStallEscalationLadderIfDue(
     nowMs,
     requestBoundStallProof: hasRequestBoundCarrierProof(observation),
     marathonGlobalByteDeath: resolveLatestMarathonGlobalByteDeath(),
+    globalMaxByteStallMs: latestLongevitySnapshot?.maxByteStallMs,
   })
   if (plan.action === 'none' || plan.action === 'observe_exhausted') {
     if (plan.action === 'observe_exhausted') {

@@ -218,6 +218,18 @@ export async function runHy2ParentSidecarIfDue(input: {
     const shouldAct =
       dialPlan.action === 'sidecar_dial' || rotatePlan.action === 'close_udp_outbound'
     if (!shouldAct) {
+      if (
+        marathonGlobalByteDeath &&
+        input.snapshot.maxByteStallMs >= 90_000
+      ) {
+        await appendSidecarLog(
+          `[Hy2ParentSidecar]: outcome=skipped action=none reason=byte_death_no_action ` +
+            `dial=${dialPlan.reason} rotate=${rotatePlan.reason} ` +
+            `max_byte_stall_ms=${input.snapshot.maxByteStallMs} ` +
+            `http_parent_chain_age_ms=${input.snapshot.httpParentChainAgeMs} ` +
+            `frozen_quic_cursor=${input.snapshot.frozenQuicCursorCount}\n`,
+        )
+      }
       return {
         outcome: 'skipped',
         action: 'none',

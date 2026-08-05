@@ -6,6 +6,7 @@ import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import {
   CARRIER_QUIESCE_BYTE_FROZEN_MS,
   isCarrierByteFrozen,
+  isMarathonGlobalByteDeath,
 } from './carrierQuiesceRefreshCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 
@@ -23,6 +24,7 @@ export function resolveParentLifecyclePhase(input: {
   snapshot: TransportLongevityTruthSnapshot
   recoveryIneffective: boolean
   refreshExhausted: boolean
+  marathonActive?: boolean
 }): ParentLifecyclePhase {
   const ageMs = Math.max(
     input.snapshot.httpParentChainAgeMs,
@@ -30,6 +32,16 @@ export function resolveParentLifecyclePhase(input: {
   )
   if (input.refreshExhausted) {
     return 'exhausted'
+  }
+  if (
+    input.marathonActive === true &&
+    isMarathonGlobalByteDeath({
+      marathonActive: true,
+      snapshot: input.snapshot,
+      recoveryIneffective: input.recoveryIneffective,
+    })
+  ) {
+    return 'emergency'
   }
   if (
     input.recoveryIneffective &&

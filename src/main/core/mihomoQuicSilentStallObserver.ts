@@ -207,6 +207,7 @@ export async function observeMihomoConnectionsForQuicSilentStall(
         snapshot: postSidecarSnapshot,
         recoveryIneffective: postSidecarSnapshot.maxByteStallMs >= 15_000,
         refreshExhausted: false,
+        marathonActive: marathonTruth.marathonTruthActive,
       })
       if (phase !== 'young') {
         await appendAppLog(
