@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   STALL_ESCALATION_VITALITY_INEFFECTIVE_MS,
   isVitalityIneffectiveForConnection,
+  markStallEscalationExecuted,
   recordVitalityByteSnapshot,
   resetStallEscalationLadderStateForTests,
   resolveCriticalHostCloseDenialPlan,
@@ -88,5 +89,31 @@ describe('stallEscalationLadderCore R-41', () => {
     })
     assert.equal(plan.action, 'parent_udp_refresh')
     assert.equal(plan.reason, 'emergency_stall_escalation_r2')
+  })
+
+  it('1.30.14: marathon global byte-death bypasses R2 emergency cooldown', () => {
+    resetStallEscalationLadderStateForTests()
+    const nowMs = 2_000_000
+    const connectionId = f1ee553dObservation.connectionId
+    recordVitalityByteSnapshot({
+      connectionId,
+      upload: 2458,
+      download: 4972,
+      nowMs: nowMs - 300_000,
+    })
+    markStallEscalationExecuted({
+      connectionId,
+      action: 'emergency_sidecar_dial',
+      nowMs: nowMs - 30_000,
+    })
+    const plan = resolveStallEscalationLadderPlan({
+      observation: { ...f1ee553dObservation, stallMs: 209_996 },
+      upload: 2458,
+      download: 4972,
+      nowMs,
+      requestBoundStallProof: true,
+      marathonGlobalByteDeath: true,
+    })
+    assert.equal(plan.action, 'parent_udp_refresh')
   })
 })

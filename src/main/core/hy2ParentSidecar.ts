@@ -5,6 +5,7 @@
 import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import {
   formatCarrierQuiesceRefreshLogLine,
+  isMarathonGlobalByteDeath,
   resolveCarrierQuiesceRefreshDecision,
 } from './carrierQuiesceRefreshCore'
 import {
@@ -44,6 +45,26 @@ export function getLastHy2ParentSidecarDetectLogAtMsForTests(): number {
 async function appendSidecarLog(line: string): Promise<void> {
   const { appendAppLog } = await import('../utils/log')
   await appendAppLog(line)
+}
+
+async function maybeResetHy2ParentChainBirth(input: {
+  activeLeaf: string
+  nowMs: number
+  snapshot: TransportLongevityTruthSnapshot
+  marathonActive: boolean
+  recoveryIneffective: boolean
+}): Promise<void> {
+  if (
+    isMarathonGlobalByteDeath({
+      marathonActive: input.marathonActive,
+      snapshot: input.snapshot,
+      recoveryIneffective: input.recoveryIneffective,
+    })
+  ) {
+    return
+  }
+  const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
+  await resetTransportLongevityHy2ParentChainBirth(input.activeLeaf, input.nowMs)
 }
 
 async function closeUdpOutbound(connectionId: string): Promise<{ ok: boolean; err?: string }> {
@@ -194,8 +215,14 @@ export async function runHy2ParentSidecarIfDue(input: {
       if (rotatePlan.action === 'close_udp_outbound' && rotatePlan.udpConnectionId) {
         const closed = await closeUdpOutbound(rotatePlan.udpConnectionId)
         if (closed.ok) {
-          const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
-          await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+          await maybeResetHy2ParentChainBirth({
+            activeLeaf,
+            nowMs,
+            snapshot: input.snapshot,
+            marathonActive,
+            recoveryIneffective:
+              input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+          })
         }
         if (rotatePlan.reason === 'carrier_quiesce_parent_udp_refresh') {
           await appendSidecarLog(
@@ -236,8 +263,14 @@ export async function runHy2ParentSidecarIfDue(input: {
         rotatePlan.action === 'none' &&
         rotatePlan.reason === 'no_udp_outbound'
       ) {
-        const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
-        await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+        await maybeResetHy2ParentChainBirth({
+          activeLeaf,
+          nowMs,
+          snapshot: input.snapshot,
+          marathonActive,
+          recoveryIneffective:
+            input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+        })
         await appendSidecarLog(
           formatCarrierQuiesceRefreshLogLine({
             outcome: 'executed',
@@ -291,8 +324,14 @@ export async function runHy2ParentSidecarIfDue(input: {
       const closed = await closeUdpOutbound(rotatePlan.udpConnectionId)
       if (closed.ok) {
         const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
-        const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
-        await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+        await maybeResetHy2ParentChainBirth({
+          activeLeaf,
+          nowMs,
+          snapshot: input.snapshot,
+          marathonActive,
+          recoveryIneffective:
+            input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+        })
       }
       lastHy2ParentSidecarActionAtMs = nowMs
       if (rotatePlan.reason === 'carrier_quiesce_parent_udp_refresh') {

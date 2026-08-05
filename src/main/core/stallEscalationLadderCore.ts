@@ -99,6 +99,8 @@ export function resolveStallEscalationLadderPlan(input: {
   download: number
   nowMs: number
   requestBoundStallProof: boolean
+  /** Bypass R2 cooldown when global inner-carrier byte-death is proven. */
+  marathonGlobalByteDeath?: boolean
 }): StallEscalationLadderPlan {
   const { observation, nowMs } = input
   if (!input.requestBoundStallProof) {
@@ -131,10 +133,13 @@ export function resolveStallEscalationLadderPlan(input: {
   }
 
   const lastEmergencyAtMs = lastEmergencyEscalationAtMsByConnectionId.get(connectionId) ?? 0
+  const emergencyCooldownOk =
+    input.marathonGlobalByteDeath === true ||
+    nowMs - lastEmergencyAtMs >= STALL_ESCALATION_EMERGENCY_COOLDOWN_MS
   if (
     observation.stallMs >= STALL_ESCALATION_EMERGENCY_SIDECAR_MS &&
     vitalityIneffective &&
-    nowMs - lastEmergencyAtMs >= STALL_ESCALATION_EMERGENCY_COOLDOWN_MS
+    emergencyCooldownOk
   ) {
     if (observation.stallMs < STALL_ESCALATION_PARENT_UDP_REFRESH_MS) {
       return { action: 'emergency_sidecar_dial', reason: 'emergency_stall_escalation_r1' }
@@ -146,7 +151,7 @@ export function resolveStallEscalationLadderPlan(input: {
     observation.stallMs >= STALL_ESCALATION_PARENT_UDP_REFRESH_MS &&
     vitalityIneffective &&
     refreshAttempts < 2 &&
-    nowMs - lastEmergencyAtMs >= STALL_ESCALATION_EMERGENCY_COOLDOWN_MS
+    emergencyCooldownOk
   ) {
     return { action: 'parent_udp_refresh', reason: 'emergency_stall_escalation_r2' }
   }
