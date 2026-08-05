@@ -226,6 +226,26 @@ export async function runHy2ParentSidecarIfDue(input: {
             reason: closed.err ?? rotatePlan.reason,
           }
         }
+      } else if (
+        carrierQuiesce.bypassActiveInner &&
+        rotatePlan.action === 'none' &&
+        rotatePlan.reason === 'no_udp_outbound'
+      ) {
+        const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
+        await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+        await appendSidecarLog(
+          formatCarrierQuiesceRefreshLogLine({
+            outcome: 'executed',
+            reason: 'ghost_udp_parent_birth_reset_before_sidecar_dial',
+            activeInnerCriticalCount: countActiveInnerCriticalFlows({
+              connections: input.connections,
+              activeLeaf: input.snapshot.activeHy2Leaf,
+            }),
+            httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
+            maxByteStallMs: input.snapshot.maxByteStallMs,
+            frozenQuicCursorCount: input.snapshot.frozenQuicCursorCount,
+          }),
+        )
       }
       const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
       const vitality = await runHy2TunnelVitalityIfDue(
