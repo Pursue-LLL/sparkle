@@ -4,6 +4,10 @@
 
 import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import {
+  formatCarrierQuiesceRefreshLogLine,
+  resolveCarrierQuiesceRefreshDecision,
+} from './carrierQuiesceRefreshCore'
+import {
   formatHy2ParentSidecarLogLine,
   HY2_PARENT_PROACTIVE_ROTATE_AGE_MS,
   HY2_PARENT_SIDECAR_COOLDOWN_MS,
@@ -59,8 +63,9 @@ function resolveProactiveUdpClosePlan(input: {
   trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
   nowMs: number
   lastRotateActionAtMs: number
-  /** R-41 emergency bypasses age gates, but never active critical-flow safety. */
+  /** R-41 emergency bypasses age gates, but never active critical-flow safety unless carrier quiesce. */
   emergencyStallEscalation?: boolean
+  recoveryIneffective?: boolean
 }): Hy2ParentSidecarPlan {
   if (
     !input.emergencyStallEscalation &&
@@ -76,9 +81,14 @@ function resolveProactiveUdpClosePlan(input: {
     connections: input.connections,
     activeLeaf: input.snapshot.activeHy2Leaf,
   })
-  // Parent UDP owns every inner stream. Byte silence is valid while the model
-  // thinks or a tool runs, so emergency mode must not bypass this safety gate.
-  if (activeInner > 0) {
+  const carrierQuiesce = resolveCarrierQuiesceRefreshDecision({
+    snapshot: input.snapshot,
+    activeInnerCriticalCount: activeInner,
+    recoveryIneffective: input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+  })
+  // Parent UDP owns every inner stream. Byte silence during model thinking is valid,
+  // unless carrier quiesce proves byte-frozen dead carrier (Phase B).
+  if (activeInner > 0 && !carrierQuiesce.bypassActiveInner) {
     return { action: 'none', reason: 'active_inner_critical_flows', healthyInnerCount: activeInner }
   }
   const udpConnectionId = findOldestHy2UdpOutboundConnectionId({
@@ -91,9 +101,11 @@ function resolveProactiveUdpClosePlan(input: {
   }
   return {
     action: 'close_udp_outbound',
-    reason: 'proactive_parent_udp_refresh',
+    reason: carrierQuiesce.bypassActiveInner
+      ? 'carrier_quiesce_parent_udp_refresh'
+      : 'proactive_parent_udp_refresh',
     udpConnectionId,
-    healthyInnerCount: 0,
+    healthyInnerCount: activeInner,
   }
 }
 
@@ -107,6 +119,7 @@ export async function runHy2ParentSidecarIfDue(input: {
   nowMs?: number
   /** R-41: emergency stall escalation bypasses marathon inactive / 4h gates. */
   emergencyStallEscalation?: boolean
+  recoveryIneffective?: boolean
 }): Promise<Hy2ParentSidecarExecutionResult> {
   const nowMs = input.nowMs ?? Date.now()
   if (sidecarObserveInFlight) {
@@ -129,7 +142,33 @@ export async function runHy2ParentSidecarIfDue(input: {
       nowMs,
       lastRotateActionAtMs: lastHy2ParentSidecarActionAtMs,
       emergencyStallEscalation: input.emergencyStallEscalation === true,
+      recoveryIneffective: input.recoveryIneffective === true,
     })
+
+    const carrierQuiesce = resolveCarrierQuiesceRefreshDecision({
+      snapshot: input.snapshot,
+      activeInnerCriticalCount: countActiveInnerCriticalFlows({
+        connections: input.connections,
+        activeLeaf: input.snapshot.activeHy2Leaf,
+      }),
+      recoveryIneffective:
+        input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+    })
+    if (carrierQuiesce.bypassActiveInner) {
+      await appendSidecarLog(
+        formatCarrierQuiesceRefreshLogLine({
+          outcome: 'planned',
+          reason: carrierQuiesce.reason,
+          activeInnerCriticalCount: countActiveInnerCriticalFlows({
+            connections: input.connections,
+            activeLeaf: input.snapshot.activeHy2Leaf,
+          }),
+          httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
+          maxByteStallMs: input.snapshot.maxByteStallMs,
+          frozenQuicCursorCount: input.snapshot.frozenQuicCursorCount,
+        }),
+      )
+    }
 
     const shouldAct =
       dialPlan.action === 'sidecar_dial' || rotatePlan.action === 'close_udp_outbound'
@@ -152,6 +191,20 @@ export async function runHy2ParentSidecarIfDue(input: {
         if (closed.ok) {
           const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
           await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+        }
+        if (rotatePlan.reason === 'carrier_quiesce_parent_udp_refresh') {
+          await appendSidecarLog(
+            formatCarrierQuiesceRefreshLogLine({
+              outcome: closed.ok ? 'executed' : 'failed',
+              reason: rotatePlan.reason,
+              activeInnerCriticalCount: rotatePlan.healthyInnerCount ?? 0,
+              httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
+              maxByteStallMs: input.snapshot.maxByteStallMs,
+              frozenQuicCursorCount: input.snapshot.frozenQuicCursorCount,
+              udpConnectionId: rotatePlan.udpConnectionId,
+              err: closed.err,
+            }),
+          )
         }
         lastHy2ParentSidecarActionAtMs = nowMs
         await appendSidecarLog(

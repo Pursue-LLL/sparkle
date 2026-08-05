@@ -8,9 +8,11 @@ import { mihomoCloseConnection } from './mihomoApi'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import type { MihomoQuicStallTrackedConnection } from './mihomoQuicSilentStallCore'
 import {
+  countActiveInnerCriticalFlows,
   resolveHy2ParentRotationAfterPrunePlan,
   type Hy2ParentRotationPlan
 } from './hy2ParentRotationCore'
+import { resolveCarrierQuiesceRefreshDecision } from './carrierQuiesceRefreshCore'
 import {
   resolveFrozenSurgicalPrunePlan,
   type FrozenSurgicalPruneAction
@@ -437,7 +439,15 @@ async function maybeRunHy2ParentRotationAfterPrune(
     trackedLastByteChangeAtMsById: latestTrackedLastByteChangeAtMsById,
     lastRotationAtMs: lastHy2ParentRotationAtMs,
     nowMs,
-    emergencyStallEscalation
+    emergencyStallEscalation,
+    carrierQuiesceBypass: resolveCarrierQuiesceRefreshDecision({
+      snapshot: latestLongevitySnapshot,
+      activeInnerCriticalCount: countActiveInnerCriticalFlows({
+        connections: latestConnections,
+        activeLeaf: latestLongevitySnapshot.activeHy2Leaf,
+      }),
+      recoveryIneffective: emergencyStallEscalation,
+    }).bypassActiveInner,
   })
   if (plan.action !== 'close_udp_outbound' || !plan.udpConnectionId) {
     return { outcome: 'skipped', reason: plan.reason }

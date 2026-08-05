@@ -6,6 +6,7 @@ import {
   HY2_PARENT_ROTATE_AGE_MS,
   type TransportLongevityTruthSnapshot,
 } from './transportLongevityTruthCore'
+import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import {
   isCriticalCursorHost,
 } from './cursorCriticalTransportCore'
@@ -81,10 +82,16 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   nowMs: number
   /** R-41: bypass 4h age gate when byte-frozen + vitality ineffective. */
   emergencyStallEscalation?: boolean
+  /** Phase B: byte-frozen carrier may bypass active_inner gate for parent UDP close. */
+  carrierQuiesceBypass?: boolean
 }): Hy2ParentRotationPlan {
+  const minSessionAgeMs = input.carrierQuiesceBypass === true
+    ? HY2_PARENT_SIDECAR_DIAL_AGE_MS
+    : HY2_PARENT_ROTATE_AGE_MS
   if (
     !input.emergencyStallEscalation &&
-    input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_ROTATE_AGE_MS
+    input.snapshot.outboundHy2SessionAgeMs < minSessionAgeMs &&
+    input.snapshot.httpParentChainAgeMs < minSessionAgeMs
   ) {
     return { action: 'none', reason: 'session_age_below_threshold' }
   }
@@ -95,7 +102,7 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
     connections: input.connections,
     activeLeaf: input.snapshot.activeHy2Leaf,
   })
-  if (activeInner > 0) {
+  if (activeInner > 0 && input.carrierQuiesceBypass !== true) {
     return { action: 'none', reason: 'active_inner_critical_flows' }
   }
   const udpConnectionId = findOldestHy2UdpOutboundConnectionId({
