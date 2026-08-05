@@ -131,7 +131,7 @@ function dedupeRealpaths(paths: readonly string[]): string[] {
     if (!hasLogsTree(path)) {
       continue
     }
-    let key = path
+    let key: string
     try {
       key = realpathSync(path)
     } catch {

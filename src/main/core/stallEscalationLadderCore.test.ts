@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  STALL_ESCALATION_EMERGENCY_SIDECAR_MS,
   STALL_ESCALATION_VITALITY_INEFFECTIVE_MS,
   isVitalityIneffectiveForConnection,
   recordVitalityByteSnapshot,
