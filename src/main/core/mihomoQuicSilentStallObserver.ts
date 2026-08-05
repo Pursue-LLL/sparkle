@@ -197,6 +197,25 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     } catch {
       // sidecar is best-effort; longevity truth remains authoritative
     }
+    if (cursorConnectionCount >= 12) {
+      const { resolveParentLifecyclePhase, formatParentLifecycleLogLine } =
+        await import('./parentLifecycleCore')
+      const phase = resolveParentLifecyclePhase({
+        snapshot: longevitySnapshot,
+        recoveryIneffective: longevitySnapshot.maxByteStallMs >= 15_000,
+        refreshExhausted: false,
+      })
+      if (phase !== 'young') {
+        await appendAppLog(
+          formatParentLifecycleLogLine({
+            phase,
+            httpParentChainAgeMs: longevitySnapshot.httpParentChainAgeMs,
+            outboundHy2SessionAgeMs: longevitySnapshot.outboundHy2SessionAgeMs,
+            maxByteStallMs: longevitySnapshot.maxByteStallMs,
+          }),
+        )
+      }
+    }
     const { writeTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
     await writeTransportLongevityTruthSnapshot(longevitySnapshot)
     if (cursorConnectionCount >= 12) {

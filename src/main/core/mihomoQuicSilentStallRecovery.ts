@@ -446,7 +446,9 @@ async function maybeRunHy2ParentRotationAfterPrune(
         connections: latestConnections,
         activeLeaf: latestLongevitySnapshot.activeHy2Leaf,
       }),
-      recoveryIneffective: emergencyStallEscalation,
+      recoveryIneffective:
+        emergencyStallEscalation ||
+        latestLongevitySnapshot.maxByteStallMs >= 15_000,
     }).bypassActiveInner,
   })
   if (plan.action !== 'close_udp_outbound' || !plan.udpConnectionId) {
@@ -454,6 +456,11 @@ async function maybeRunHy2ParentRotationAfterPrune(
   }
   const closed = await closeStalledConnection(plan.udpConnectionId)
   lastHy2ParentRotationAtMs = nowMs
+  if (closed.ok) {
+    const activeLeaf = latestLongevitySnapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+    const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
+    await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
+  }
   await logRecovery(
     `[Hy2ParentRotation]: outcome=${closed.ok ? 'executed' : 'failed'} reason=${plan.reason}` +
       ` udp_connection_id=${plan.udpConnectionId}` +

@@ -270,6 +270,20 @@ export async function runHy2ParentSidecarIfDue(input: {
         await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
       }
       lastHy2ParentSidecarActionAtMs = nowMs
+      if (rotatePlan.reason === 'carrier_quiesce_parent_udp_refresh') {
+        await appendSidecarLog(
+          formatCarrierQuiesceRefreshLogLine({
+            outcome: closed.ok ? 'executed' : 'failed',
+            reason: rotatePlan.reason,
+            activeInnerCriticalCount: rotatePlan.healthyInnerCount ?? 0,
+            httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
+            maxByteStallMs: input.snapshot.maxByteStallMs,
+            frozenQuicCursorCount: input.snapshot.frozenQuicCursorCount,
+            udpConnectionId: rotatePlan.udpConnectionId,
+            err: closed.err,
+          }),
+        )
+      }
       await appendSidecarLog(
         formatHy2ParentSidecarLogLine({
           outcome: closed.ok ? 'executed' : 'failed',
