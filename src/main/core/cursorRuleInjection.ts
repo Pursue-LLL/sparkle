@@ -1,4 +1,8 @@
 import {
+  CURSOR_2_APP_PATH_PREFIX,
+  MARATHON_CURSOR_APP_PATH_PREFIXES
+} from './cursorAppBundlePathsCore'
+import {
   CURSOR_DEDICATED_GROUP_NAME,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   resolveCursorStableSelectorGroup
@@ -7,11 +11,10 @@ import {
 /** Optional macOS bundle path prefixes for path-scoped AND rules (advanced; default routes all Cursor traffic). */
 export const DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES = [] as const
 
-/** When dedicated path prefixes are set, these bundles get path-scoped DIRECT for Cursor domains. */
-export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES = [
-  '/Applications/Cursor.app',
-  '/Applications/Cursor-2.app'
-] as const
+/** When dedicated path prefixes are set, stock Cursor.app gets path-scoped DIRECT for Cursor domains. */
+export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES = ['/Applications/Cursor.app'] as const
+
+export { MARATHON_CURSOR_APP_PATH_PREFIXES, CURSOR_2_APP_PATH_PREFIX }
 
 /** macOS / Electron Cursor outbound processes — legacy fallback when no app path prefixes. */
 export const CURSOR_PROCESS_NAMES = [

@@ -14,6 +14,7 @@ export type SparkleMainAsarGateResult =
         | 'missing_p28b_attempt_rate'
         | 'missing_r35_carrier_prune'
         | 'missing_r35_parent_sidecar'
+        | 'missing_bug20260805_control_plane'
     }
 
 /** Vite minifies to `.markCoreReadyAtMs(` on chunk export — bare `markCoreReadyAtMs(` is BUG-2026-07-23-004. */
@@ -66,6 +67,14 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
   ) {
     return { ok: false, reason: 'missing_r35_parent_sidecar' }
   }
+  if (
+    !mainSource.includes('emergency_parent_refresh_bypass') ||
+    !mainSource.includes('requireCarrierBytesRecovery') ||
+    !mainSource.includes('observability_probe_admitted') ||
+    !mainSource.includes('carrier_recovered=')
+  ) {
+    return { ok: false, reason: 'missing_bug20260805_control_plane' }
+  }
 
   return { ok: true }
 }
@@ -83,6 +92,7 @@ export function assertSparkleMainAsarBundle(mainSource: string): void {
       missing_p28b_attempt_rate: 'asar missing P28b attempt_rate_pct — G9 soak SLO metrics will not emit',
       missing_r35_carrier_prune: 'asar missing R-35 marathon_sse_carrier_frozen_prune',
       missing_r35_parent_sidecar: 'asar missing R-40/R-41 Hy2ParentSidecar execute + deny_unbound + StallEscalationLadder',
+      missing_bug20260805_control_plane: 'asar missing BUG-2026-08-05-001 control-plane fixes @1.30.3 (emergency bypass + carrier honesty + observability_probe)',
     }
     throw new Error(messages[result.reason])
   }

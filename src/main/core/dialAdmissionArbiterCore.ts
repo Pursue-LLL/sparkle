@@ -7,6 +7,9 @@ export type DialAdmissionClass =
   | 'user_explicit'
   | 'passive'
   | 'active_recovery'
+  | 'emergency_parent_refresh'
+  /** P12/F8: observability pulse — must not occupy global control in-flight slot. */
+  | 'observability_probe'
 
 export type DialAdmissionOutcome = 'SUCCESS' | 'INEFFECTIVE' | 'INCONCLUSIVE'
 
@@ -40,10 +43,13 @@ export function resolveDialAdmission(
   state: DialAdmissionState,
   intent: DialIntent,
 ): DialAdmissionDecision {
-  if (intent.class === 'production') {
+  if (intent.class === 'production' || intent.class === 'emergency_parent_refresh') {
     return {
       admitted: true,
-      reason: 'production_bypass',
+      reason:
+        intent.class === 'emergency_parent_refresh'
+          ? 'emergency_parent_refresh_bypass'
+          : 'production_bypass',
       nextState: state,
     }
   }
@@ -51,6 +57,20 @@ export function resolveDialAdmission(
     return {
       admitted: false,
       reason: 'passive_no_dial',
+      nextState: state,
+    }
+  }
+  if (intent.class === 'observability_probe') {
+    if (state.inFlightDialId != null) {
+      return {
+        admitted: false,
+        reason: 'observability_deferred_control_inflight',
+        nextState: state,
+      }
+    }
+    return {
+      admitted: true,
+      reason: 'observability_probe_admitted',
       nextState: state,
     }
   }

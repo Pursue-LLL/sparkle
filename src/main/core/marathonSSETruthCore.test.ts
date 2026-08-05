@@ -55,6 +55,20 @@ describe('marathonSSETruthCore', () => {
     )
   })
 
+  it('BUG-2026-08-05-001: marathon truth active when cursor_conn at threshold without IFM segments', () => {
+    const nowMs = 20_000_000
+    const truth = evaluateMarathonSSETruth({
+      nowMs,
+      cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
+      segments: [],
+      terminatedSegmentIds: new Set<string>(),
+      registry: buildMarathonStreamRegistry([], [], nowMs),
+      lastConnectPathPulseAtMs: 0,
+    })
+    assert.equal(truth.marathonTruthActive, true)
+    assert.equal(truth.openSegmentCount, 0)
+  })
+
   it('detects pulse contract breach when overdue', () => {
     const nowMs = 20_000_000
     const truth = evaluateMarathonSSETruth({

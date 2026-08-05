@@ -75,6 +75,61 @@ describe('dialAdmissionArbiterCore P10-2', () => {
     assert.equal(second.reason, 'global_control_inflight')
   })
 
+  it('emergency_parent_refresh bypasses global control in-flight (Plane B @1.30.3)', () => {
+    let state = createInitialDialAdmissionState()
+    const first = resolveDialAdmission(state, {
+      dialId: 'd7',
+      class: 'active_recovery',
+      caller: 'mtdo',
+      incidentGeneration: 'inc-a',
+      submittedAtMs: 1,
+    })
+    state = first.nextState
+    const emergency = resolveDialAdmission(state, {
+      dialId: 'd9',
+      class: 'emergency_parent_refresh',
+      caller: 'hy2TunnelVitality',
+      incidentGeneration: 'inc-b',
+      submittedAtMs: 2,
+    })
+    assert.equal(emergency.admitted, true)
+    assert.equal(emergency.reason, 'emergency_parent_refresh_bypass')
+  })
+
+  it('observability_probe defers while control recovery in-flight (F8 @1.30.3)', () => {
+    let state = createInitialDialAdmissionState()
+    const rescue = resolveDialAdmission(state, {
+      dialId: 'rescue-1',
+      class: 'active_recovery',
+      caller: 'marathonRescueDialExecutor',
+      incidentGeneration: 'silent_generation_end:rid:1',
+      submittedAtMs: 1,
+    })
+    state = rescue.nextState
+    const pulse = resolveDialAdmission(state, {
+      dialId: 'pulse-1',
+      class: 'observability_probe',
+      caller: 'marathonTransportDialOrchestrator.connectPathPulse',
+      incidentGeneration: 'connect_path_pulse:node:1',
+      submittedAtMs: 2,
+    })
+    assert.equal(pulse.admitted, false)
+    assert.equal(pulse.reason, 'observability_deferred_control_inflight')
+  })
+
+  it('observability_probe admits without occupying global in-flight slot', () => {
+    const decision = resolveDialAdmission(createInitialDialAdmissionState(), {
+      dialId: 'pulse-2',
+      class: 'observability_probe',
+      caller: 'marathonWarmthDialExecutor',
+      incidentGeneration: 'warmth:node:2',
+      submittedAtMs: 1,
+    })
+    assert.equal(decision.admitted, true)
+    assert.equal(decision.reason, 'observability_probe_admitted')
+    assert.equal(decision.nextState.inFlightDialId, undefined)
+  })
+
   it('closes incident generation after INEFFECTIVE outcome', () => {
     let state = createInitialDialAdmissionState()
     const admitted = resolveDialAdmission(state, {

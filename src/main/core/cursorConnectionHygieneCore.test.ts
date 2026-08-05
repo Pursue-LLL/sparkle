@@ -32,6 +32,10 @@ describe('cursorConnectionHygieneCore', () => {
       isCursorConnection(row({ id: 'a', processPath: '/Applications/Cursor.app/Contents/MacOS/Cursor' })),
       true
     )
+    assert.equal(
+      isCursorConnection(row({ id: 'c', processPath: '/Applications/Cursor-2.app/Contents/MacOS/Cursor' })),
+      true
+    )
     assert.equal(isCursorConnection(row({ id: 'b', processPath: '/Applications/Firefox.app', process: 'firefox' })), false)
   })
 

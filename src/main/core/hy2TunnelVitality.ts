@@ -63,6 +63,8 @@ export interface RunHy2TunnelVitalityOptions {
   stallRecoveryBypass?: boolean
   /** R-35a: proactive parent sidecar dial — bypass not_due interval when session aged. */
   sidecarDial?: boolean
+  /** Plane B @1.30.3: emergency sidecar bypasses marathon_truth gate for sidecarForce. */
+  emergencySidecar?: boolean
   outboundHy2SessionAgeMs?: number
 }
 
@@ -86,9 +88,10 @@ export async function runHy2TunnelVitalityIfDue(
   const prePartitionRisk = isHy2TunnelVitalityPrePartitionRisk(gate)
   const sidecarForce =
     options.sidecarDial === true &&
-    gate.marathonTruthActive &&
-    (gate.maxParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS ||
-      (options.outboundHy2SessionAgeMs ?? 0) >= HY2_PARENT_SIDECAR_DIAL_AGE_MS)
+    (options.emergencySidecar === true ||
+      (gate.marathonTruthActive &&
+        (gate.maxParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS ||
+          (options.outboundHy2SessionAgeMs ?? 0) >= HY2_PARENT_SIDECAR_DIAL_AGE_MS)))
 
   if (!shouldRunHy2TunnelVitality(gate) && !sidecarForce) {
     const skipReason = resolveHy2TunnelVitalitySkipReason(gate)
@@ -119,7 +122,7 @@ export async function runHy2TunnelVitalityIfDue(
   const { admitDialIntent, completeDialIntent } = await import('./dialAdmissionArbiter')
   const admission = admitDialIntent({
     dialId,
-    class: 'active_recovery',
+    class: options.emergencySidecar === true ? 'emergency_parent_refresh' : 'active_recovery',
     caller: 'hy2TunnelVitality',
     incidentGeneration,
     node: activeNode,

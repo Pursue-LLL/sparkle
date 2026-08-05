@@ -21,6 +21,15 @@ APP="$DIST_ARM64/Sparkle.app"
 
 log "Building Sparkle $EXPECTED_VER (electron-vite + electron-builder dir)..."
 
+if [[ "${SPARKLE_UPGRADE_SKIP_G9_GATE:-}" != "1" ]]; then
+  log "G9 pre-install gate (attempt_rate SLO before build)..."
+  if ! "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/evaluate-sparkle-g9-preinstall-gate.mts"; then
+    fail "G9 pre-install gate blocked upgrade — attempt_rate below 90% with sufficient sample. Fix root cause or set SPARKLE_UPGRADE_SKIP_G9_GATE=1 to override (not recommended during marathon)."
+  fi
+else
+  log "WARN: SPARKLE_UPGRADE_SKIP_G9_GATE=1 — skipping G9 pre-install gate"
+fi
+
 if [[ -f "$ROOT/extra/sidecar/mihomo" ]]; then
   export SKIP_PREPARE=1
   log "SKIP_PREPARE=1 (extra/sidecar/mihomo present — skip GitHub sidecar re-download)"

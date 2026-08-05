@@ -6,9 +6,10 @@ describe('marathonMihomoConnectionsCountCore', () => {
   it('counts Cursor.app process paths and helper names', () => {
     const count = countCursorConnections([
       { metadata: { processPath: '/Applications/Cursor-3.1.15.app/Contents/MacOS/Cursor' } },
+      { metadata: { processPath: '/Applications/Cursor-2.app/Contents/MacOS/Cursor' } },
       { metadata: { process: 'Cursor Helper (Renderer)' } },
       { metadata: { processPath: '/Applications/Safari.app/Contents/MacOS/Safari' } },
     ])
-    assert.equal(count, 2)
+    assert.equal(count, 3)
   })
 })

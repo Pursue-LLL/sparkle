@@ -23,8 +23,11 @@ describe('migrateLegacyCursorDefaults', () => {
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)
 
-    assert.deepEqual(config.cursorProxyAppPathPrefixes, ['/Applications/Cursor-3.1.15.app'])
-    assert.equal(migrated, false)
+    assert.deepEqual(config.cursorProxyAppPathPrefixes, [
+      '/Applications/Cursor-3.1.15.app',
+      '/Applications/Cursor-2.app'
+    ])
+    assert.equal(migrated, true)
   })
 
   it('defaults missing cursorProxyAppPathPrefixes to empty array', () => {
