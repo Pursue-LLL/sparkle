@@ -77,7 +77,7 @@ async function closeUdpOutbound(connectionId: string): Promise<{ ok: boolean; er
   }
 }
 
-function resolveProactiveUdpClosePlan(input: {
+export function resolveProactiveUdpClosePlan(input: {
   snapshot: TransportLongevityTruthSnapshot
   connections: readonly ControllerConnectionDetail[]
   trackedFirstSeenAtMsById: ReadonlyMap<string, number>
@@ -89,14 +89,23 @@ function resolveProactiveUdpClosePlan(input: {
   recoveryIneffective?: boolean
   marathonActive?: boolean
 }): Hy2ParentSidecarPlan {
+  const marathonGlobalByteDeath = isMarathonGlobalByteDeath({
+    marathonActive: input.marathonActive === true,
+    snapshot: input.snapshot,
+    recoveryIneffective: input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+  })
   if (
     !input.emergencyStallEscalation &&
+    !marathonGlobalByteDeath &&
     input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS &&
     input.snapshot.httpParentChainAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS
   ) {
     return { action: 'none', reason: 'session_and_http_chain_below_proactive_rotate' }
   }
-  if (input.nowMs - input.lastRotateActionAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS) {
+  if (
+    !marathonGlobalByteDeath &&
+    input.nowMs - input.lastRotateActionAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS
+  ) {
     return { action: 'none', reason: 'proactive_rotate_cooldown' }
   }
   const activeInner = countActiveInnerCriticalFlows({
@@ -180,7 +189,10 @@ export async function runHy2ParentSidecarIfDue(input: {
         input.recoveryIneffective === true || input.emergencyStallEscalation === true,
       marathonActive,
     })
-    if (carrierQuiesce.bypassActiveInner) {
+    if (
+      carrierQuiesce.bypassActiveInner &&
+      rotatePlan.action === 'close_udp_outbound'
+    ) {
       await appendSidecarLog(
         formatCarrierQuiesceRefreshLogLine({
           outcome: 'planned',

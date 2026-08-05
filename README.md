@@ -119,6 +119,8 @@ sparkle/
 └── README.md               # 项目说明
 ```
 
+详见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+
 ### 可用脚本
 
 #### 开发命令
@@ -137,6 +139,7 @@ sparkle/
 - `pnpm build:win` - 构建 Windows 版本
 - `pnpm build:mac` - 构建 macOS 版本（含 pkg）
 - `pnpm run upgrade:mac` - **本地 dev 一条龙**：编译 + 安装到 `/Applications`（推荐）
+- `tsx scripts/verify-byte-death-recovery-gate.mts [--minutes N]` - post-upgrade byte-death / R2 恢复门禁（默认 15min）
 - `pnpm build:linux` - 构建 Linux 版本
 
 #### 其他命令
@@ -237,7 +240,7 @@ pnpm run upgrade:mac
 
 组件与数据流见 [src/renderer/src/components/proxies/_ARCH.md](src/renderer/src/components/proxies/_ARCH.md)。
 
-**Agent 稳定性**：安装 **≥1.26.77**（含 P17 Structured transport ingest + P16 ultra-conn rescue；UI build stamp Chip）。最低 **≥1.26.53**（P9 Marathon Quiesce）。**≥1.26.50**（token gap nudge · ~33s server EOF 窗口）。
+**Agent 稳定性**：安装 **≥1.30.15**（R-41 byte-death bypass · Plane B parent lifecycle · HY2-only marathon SSOT）。最低 **≥1.26.77**（P17 Structured transport ingest）。Marathon 赛后验收：`tsx scripts/verify-byte-death-recovery-gate.mts --minutes 15` + G9 soak `attemptRate≥90%`（见 [CURSOR-DISCONNECT-TRIAGE.md](CURSOR-DISCONNECT-TRIAGE.md) §6.1）。
 
 ### 常见问题
 

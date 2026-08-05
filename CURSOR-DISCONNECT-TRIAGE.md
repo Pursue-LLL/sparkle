@@ -1,6 +1,6 @@
 # Cursor 断连排查手册
 
-> **文档地图** — 战略/批次/定责：open-perplexity [`CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md`](../../AI/open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md)（**唯一 SSOT，无平行 roadmap**）· 本文件 = 操作 SOP · [`BUGFIX_LOG.md`](./BUGFIX_LOG.md) = 版本台账 · [`reports/cursor-marathon-playbook.md`](./reports/cursor-marathon-playbook.md) = operator checklist
+> **文档地图** — 战略/批次/定责：open-perplexity [`CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md`](../../AI/open-perplexity/temp-docs/repair/CURSOR_DISCONNECT_REPAIR_MASTER_SSOT.md)（**唯一 SSOT，无平行 roadmap**）· 本文件 = 操作 SOP · [`ARCHITECTURE.md`](./ARCHITECTURE.md) = 系统架构 · [`BUGFIX_LOG.md`](./BUGFIX_LOG.md) = 版本台账 · [`reports/cursor-marathon-playbook.md`](./reports/cursor-marathon-playbook.md) = operator checklist
 
 当 Cursor Agent/Chat SSE 流中断时，按以下步骤逐层定位根因。
 
@@ -60,6 +60,10 @@
 | **R-34 Recovery Honesty** | rescue success = max_gap 60s 内降 ≥50% · `[RecoveryHonesty] outcome=success\|ineffective` |
 | **P28 MaxStepsRate** | **1.28.0+** rolling100 ≥90% SLO · `[MaxStepsRate] rate_pct=` @ hung_scan · **G8** ledger ingest · `ledger_terminals=` · `~/.sparkle/max-steps-rate-snapshot.jsonl` |
 | **R-33/R-34 QUIC recovery** | stall≥45s vitality · stall≥120s **frozen surgical prune**（五门，非 mass close）· `[MihomoQuicSilentStallRecovery]` |
+| **R-41 Carrier Quiesce / byte-death** | **1.30.13+** `isMarathonGlobalByteDeath()` → bypass `active_inner_critical_flows` · log `marathon_global_byte_death_bypass_active_inner` · R2 `[StallEscalationLadder] action=parent_udp_refresh outcome=executed` |
+| **R-41 stall escalation ladder** | vitality 无效 → emergency sidecar → **parent_udp_refresh** → rotation；**1.30.14+** byte-death 期间 bypass SEL/rotation/connection cooldown |
+| **1.30.15 sidecar cooldown bypass** | global byte-death 期间 bypass `sidecar_action_cooldown` · 验收 `scripts/verify-byte-death-recovery-gate.mts` |
+| **Plane B parent lifecycle** | `parentLifecycleCore` · `hy2ParentSidecar` emergency UDP close+redial · `recoveryHonestyCore` carrier_recovered 判据 |
 
 修复 Sparkle/Guard 时以上目标优先于「看起来干净」的 transport 清理。
 
@@ -71,7 +75,8 @@
 6. **Sparkle L0 @ 60s hung 会误杀 Agent tool 暂停中的 Connect 流**（v1.26.33）；**v1.26.34+** 改为 **12min** 阈值 + 每 host 保留最新 **6** 条（v1.26.36，并行 Agent 保护）。若 A 时刻 app-log 有 `L0 closed N hung` 且运行 <12min → 定责 **Sparkle L0 误杀/过度清理**，非 Cursor Marathon cap。
 7. **`客户端 · resumeAction` / `resumeAction HTTP` 是断流后的恢复动作，不是根因。** 必须继续查 renderer `agent-error` + VPS @ A。
 8. **非 `max-steps-cap` 断连，未完成 VPS @ A 证据矩阵（§V5）前，禁止输出 definitive 根因。**
-9. **Sparkle 必须用 pkg 安装到 `/Applications`**（≥**1.26.44** 含 vision mux guard + triage V5.4 修复；≥**1.26.40** 含 Agent-stability-first + deep sign）。❌ 禁止 `ditto`/`cp -R` 覆盖 · ❌ 禁止从 `dist/mac-arm64/Sparkle.app` 日常使用 · 见 [BUGFIX_LOG BUG-003/007/2026-07-18-003](./BUGFIX_LOG.md)。
+9. **Sparkle 必须用 pkg 安装到 `/Applications`**（当前 git **1.30.15**；Marathon byte-death fix 自 **1.30.13**）。❌ 禁止 `ditto`/`cp -R` 覆盖 · ❌ 禁止从 `dist/mac-arm64/Sparkle.app` 日常使用 · 见 [BUGFIX_LOG BUG-003/007/2026-07-18-003](./BUGFIX_LOG.md)。
+10. **global byte-death @ A**：app-log `max_byte_stall_ms≥90000` 持续 + `parent_udp_refresh` **skip** `active_inner_critical_flows` → **L3 Sparkle definitive**（`carrierQuiesceRefreshCore` 未 bypass）；**1.30.13+** 应见 `marathon_global_byte_death_bypass_active_inner` 或 R2 `outcome=executed`。
 
 ---
 
@@ -208,6 +213,23 @@ rg "$RID" "$RENDERER_LOG" | rg "agent-error|disconnect|stream-transport|resumeAc
 
 见下文 **Step 3 / 3b / 5** + **§遥测矩阵** Sparkle 行。
 
+**byte-death 定责快检（≥1.30.13，A±60s app-log）：**
+
+| 日志片段 | 含义 |
+|----------|------|
+| `max_byte_stall_ms=144500`（或 ≥90000 持续） | global inner-carrier byte-freeze |
+| `parent_udp_refresh` + `skip` + `active_inner_critical_flows` | R2 **被 quiesce 门闩挡住**（prod <1.30.13 或 bypass 未触发） |
+| `marathon_global_byte_death_bypass_active_inner` | quiesce bypass **已触发**（待验 R2 executed） |
+| `[StallEscalationLadder] action=parent_udp_refresh outcome=executed` | R2 **已执行** |
+| `[RecoveryHonesty] outcome=ineffective` + stall 仍升 | recovery 假阳性 · 继续查 R2/R3 |
+| `reasonSub=max-steps-cap` | **停止** L3 排查 · L7 definitive |
+
+```bash
+# A 时刻过滤（示例 A=2026-08-05 06:43 UTC）
+rg 'max_byte_stall_ms|parent_udp_refresh|marathon_global_byte_death|StallEscalationLadder|CarrierQuiesceRefresh|RecoveryHonesty' \
+  ~/Library/Application\ Support/sparkle/logs/app-*.log | rg '2026-08-05T06:4[23]'
+```
+
 ### §5 VPS @ A（非 max-steps **强制**）
 
 > **禁止**仅用 B 时刻 SSH 否定 A 断连。  
@@ -273,6 +295,18 @@ PRODUCT FIX（若有，一条，与根因直接相关）: …
 
 > **USER ACTION 不再写入根因报告正文**（与定责无关的操作建议移到产品/运维修复项）。
 
+### §6.1 Ship Gate Trinity（Sparkle fix 交付定义）
+
+> **git CODE-DONE ≠ 用户体感修完。** 宣称「已修复」前必须三关全 PASS：
+
+| Gate | 命令 / 检查 | PASS 条件 |
+|------|-------------|-----------|
+| **G1 装包** | `defaults read /Applications/Sparkle.app/Contents/Info.plist CFBundleShortVersionString` | = git `SPARKLE_SEMVER`（当前 **1.30.15**） |
+| **G2 byte-death** | `tsx scripts/verify-byte-death-recovery-gate.mts --minutes 15` | exit 0 · 无 `R2 still blocked by active_inner` |
+| **G3 G9 soak** | marathon 40min · `~/.sparkle/max-steps-rate-snapshot.jsonl` | rolling100 `attemptRate≥90%` |
+
+**FAIL 任一关 → 禁止让用户马拉松验证 partial fix。**
+
 ### §7 根因 → 动作（最佳单路径）
 
 | 根因 | 用户 | 产品/运维 |
@@ -281,7 +315,8 @@ PRODUCT FIX（若有，一条，与根因直接相关）: …
 | Sparkle L0 @ A | Continue 1 次 | 确认 Sparkle 1.26.36 + 重启 service |
 | L4 @ A | Continue；等 VPS | 修 sing-box / 机房 |
 | L3 restart @ A | Continue | 查 sing-box restart 根因 |
-| L3 QUIC 长流 @ A | **Continue**（不换节点、不减并行） | 监控 HY2/TUIC；CTHC 12min+keep6 |
+| L3 QUIC 长流 @ A | **Continue**（不换节点、不减并行） | 确认 **≥1.30.15** + G2/G3 PASS；查 byte-death / R2 bypass |
+| L3 byte-death + active_inner skip @ A | **Continue** | upgrade **1.30.15** + `verify-byte-death-recovery-gate.mts`；见 BUG-2026-08-05-001 |
 | L3 vision+mux BAD_DECRYPT @ A | **Continue** | Sparkle **≥1.26.44** mux guard；确认 `/Applications` 版本 |
 | Guard OFF + auto-retry | 开 Guard ON | 查 gate165 同步 |
 | post_lifecycle_stall 仅告警 | 忽略，继续等 | — |

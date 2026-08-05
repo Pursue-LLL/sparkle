@@ -34,6 +34,8 @@
 
 - [ ] 短探测连续失败 / agent RST 增多 → **此时** 换 Cursor 专用节点给下一轮
 - [ ] 查 `~/.sparkle/network-stability-events.jsonl`
+- [ ] **Sparkle upgrade 后**：`tsx scripts/verify-byte-death-recovery-gate.mts --minutes 15` → **FAIL 禁止开 marathon**
+- [ ] G9 soak 40min · `~/.sparkle/max-steps-rate-snapshot.jsonl` rolling100 **attemptRate≥90%**
 
 ## 断连 vs 代理（日志对照）
 

@@ -1,7 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-05 16:20 最新**：**BUG-2026-08-05-001** · **同族第 14+ 次** · **PARTIAL @1.30.15 已装**（`56575ea` · PostCoreBootstrap **16:13:56 CST**）· bypass **生效** · R2 **未 executed** · `max_byte_stall_ms=144500` **未降** · G2 gate **FAIL** · G9 soak **0 PASS** · **不算修完**
-> **2026-08-05 15:00 上一版**：prod 1.30.12 · FIX CODE-DONE @1.30.15 git only · S4 10×Included · attemptRate=0%
+> **2026-08-05 16:30 最新**：**BUG-2026-08-05-001** · **FIX CODE-DONE @1.30.16**（git）· prod 仍 **1.30.15**（**未重启**）· 修复 `resolveProactiveUdpClosePlan` 前置 4h age gate + planned 假阳性 · 3/3 新单测 PASS · 待您重启后 gate 验收
+> **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
 
@@ -219,12 +219,28 @@
 4. **Sparkle 升级会闪断 marathon** — 升级窗口 Guard 应 suppress auto-continue（非 Sparkle 仓但影响 Included）。
 5. **下一 fix 目标 1.30.16** — 闭合 planned→executed 链路 + recoveryHonesty 硬判据 + failing integration test「bypass 后 30s bytes 必降」。
 
-**待修复（1.30.16 目标 · 未写代码）：**
+**待修复（1.30.16 目标 · CODE-DONE git · 未装）：**
 
-① 追查 `CarrierQuiesceRefresh outcome=planned` 为何不进入 `Hy2ParentRotation executed`（dial admission / sidecar plan / marathon context）  
-② `recoveryHonestyCore`：`carrier_recovered` 必须 `gap_reduced_enough=1` 才报 success  
-③ integration test + gate.mts 硬 FAIL 若 bypass 后 180s 无 R2 executed  
-④ G9 soak 40min blocking ship  
+① ~~`resolveProactiveUdpClosePlan` L92-97 age gate 在 byte-death 时跳过~~ ✅ `hy2ParentSidecar.ts` @1.30.16  
+② ~~planned 日志假阳性~~ ✅ 仅 `rotatePlan=close_udp_outbound` 时打 planned  
+③ `hy2ParentSidecarUdpClosePlan.test.ts` 3 cases PASS  
+④ 待装包 + 重启：`verify-byte-death-recovery-gate.mts` PASS + G9 soak 40min  
+⑤ recoveryHonesty 硬判据（后续 1.30.17 如 gate 仍 FAIL）  
+
+---
+
+### BUG-2026-08-05-001 · fix · 1.30.16 · resolveProactiveUdpClosePlan age gate · CODE-DONE
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIX CODE-DONE @1.30.16**（git）· prod **1.30.15** · **待您说「可以重启」后装包验收** |
+| **修复什么** | `hy2ParentSidecar.ts` `resolveProactiveUdpClosePlan`：`isMarathonGlobalByteDeath()` 时跳过 L92-97 4h age gate + L99-101 rotate cooldown；`runHy2ParentSidecarIfDue` planned 日志仅 rotatePlan=close_udp 时输出 |
+| **为何能抑制 PRIMARY** | 1.30.13 bypass 判定 true 但 age=0 仍卡 rotatePlan=none → 1.30.16 闭合 planned→close_udp 链路 |
+| **测试** | `hy2ParentSidecarUdpClosePlan.test.ts` 3/3 PASS · carrierQuiesce 6/6 PASS |
+| **遗漏** | recoveryHonesty 古德哈特 · Guard upgrade quiesce（跨仓 0.17.6）· G9 soak 未跑 |
+| **会导致什么（若误报修完）** | 用户继续浪费 Included · gate FAIL 被忽略 |
+
+**踩坑：** bypass planned 日志 ≠ R2 executed — 1.30.15 因此误判 semi-fix 为 progress。
 
 ---
 
