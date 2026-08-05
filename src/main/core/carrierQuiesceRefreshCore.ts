@@ -4,6 +4,7 @@
 
 import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import { STALL_ESCALATION_VITALITY_INEFFECTIVE_MS } from './stallEscalationLadderCore'
+import { MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS } from './marathonSseCarrierPruneCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 
 /** Carrier bytes unchanged long enough to treat as dead SSE carrier (not model thinking). */
@@ -16,6 +17,8 @@ export interface CarrierQuiesceRefreshInput {
   snapshot: TransportLongevityTruthSnapshot
   activeInnerCriticalCount: number
   recoveryIneffective: boolean
+  /** Marathon active — enables global byte-death bypass without 4h parent age. */
+  marathonActive?: boolean
 }
 
 export interface CarrierQuiesceRefreshDecision {
@@ -48,11 +51,41 @@ export function isParentEmergencyRefreshDue(snapshot: TransportLongevityTruthSna
   )
 }
 
+/** Global inner-carrier byte-death during marathon — bypass 4h parent age for R2 UDP refresh. */
+export function isMarathonGlobalByteDeath(input: {
+  marathonActive: boolean
+  snapshot: TransportLongevityTruthSnapshot
+  recoveryIneffective: boolean
+}): boolean {
+  if (!input.marathonActive) {
+    return false
+  }
+  if (input.snapshot.frozenQuicCursorCount <= 0) {
+    return false
+  }
+  if (input.snapshot.maxByteStallMs < MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS) {
+    return false
+  }
+  return input.recoveryIneffective || isCarrierRecoveryIneffective(input.snapshot)
+}
+
 export function resolveCarrierQuiesceRefreshDecision(
   input: CarrierQuiesceRefreshInput,
 ): CarrierQuiesceRefreshDecision {
   if (input.activeInnerCriticalCount <= 0) {
     return { bypassActiveInner: false, reason: 'no_active_inner' }
+  }
+  if (
+    isMarathonGlobalByteDeath({
+      marathonActive: input.marathonActive === true,
+      snapshot: input.snapshot,
+      recoveryIneffective: input.recoveryIneffective,
+    })
+  ) {
+    return {
+      bypassActiveInner: true,
+      reason: 'marathon_global_byte_death_bypass_active_inner',
+    }
   }
   if (isParentEmergencyRefreshDue(input.snapshot)) {
     return {

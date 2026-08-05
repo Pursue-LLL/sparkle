@@ -463,6 +463,7 @@ async function maybeRunHy2ParentRotationAfterPrune(
       recoveryIneffective:
         emergencyStallEscalation ||
         latestLongevitySnapshot.maxByteStallMs >= 15_000,
+      marathonActive: latestMarathonRecoveryContext.marathonActive,
     }).bypassActiveInner,
   })
   if (plan.action !== 'close_udp_outbound' || !plan.udpConnectionId) {
