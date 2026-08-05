@@ -9,6 +9,9 @@ import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthC
 /** Carrier bytes unchanged long enough to treat as dead SSE carrier (not model thinking). */
 export const CARRIER_QUIESCE_BYTE_FROZEN_MS = 45_000
 
+/** Parent chain older than this forces UDP refresh even without byte-freeze proof. */
+export const PARENT_EMERGENCY_REFRESH_AGE_MS = 2 * HY2_PARENT_SIDECAR_DIAL_AGE_MS
+
 export interface CarrierQuiesceRefreshInput {
   snapshot: TransportLongevityTruthSnapshot
   activeInnerCriticalCount: number
@@ -38,11 +41,24 @@ export function isCarrierRecoveryIneffective(snapshot: TransportLongevityTruthSn
   return snapshot.maxByteStallMs >= STALL_ESCALATION_VITALITY_INEFFECTIVE_MS
 }
 
+export function isParentEmergencyRefreshDue(snapshot: TransportLongevityTruthSnapshot): boolean {
+  return (
+    snapshot.httpParentChainAgeMs >= PARENT_EMERGENCY_REFRESH_AGE_MS ||
+    snapshot.outboundHy2SessionAgeMs >= PARENT_EMERGENCY_REFRESH_AGE_MS
+  )
+}
+
 export function resolveCarrierQuiesceRefreshDecision(
   input: CarrierQuiesceRefreshInput,
 ): CarrierQuiesceRefreshDecision {
   if (input.activeInnerCriticalCount <= 0) {
     return { bypassActiveInner: false, reason: 'no_active_inner' }
+  }
+  if (isParentEmergencyRefreshDue(input.snapshot)) {
+    return {
+      bypassActiveInner: true,
+      reason: 'parent_emergency_refresh_bypass_active_inner',
+    }
   }
   if (!isParentRefreshDue(input.snapshot)) {
     return { bypassActiveInner: false, reason: 'parent_not_refresh_due' }

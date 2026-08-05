@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   CARRIER_QUIESCE_BYTE_FROZEN_MS,
+  PARENT_EMERGENCY_REFRESH_AGE_MS,
   resolveCarrierQuiesceRefreshDecision,
 } from './carrierQuiesceRefreshCore'
 import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
@@ -59,5 +60,20 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
     })
     assert.equal(decision.bypassActiveInner, false)
     assert.equal(decision.reason, 'carrier_not_byte_frozen')
+  })
+
+  it('bypasses active_inner when parent is emergency stale (8h+)', () => {
+    const decision = resolveCarrierQuiesceRefreshDecision({
+      snapshot: snapshot({
+        httpParentChainAgeMs: PARENT_EMERGENCY_REFRESH_AGE_MS + 1,
+        outboundHy2SessionAgeMs: PARENT_EMERGENCY_REFRESH_AGE_MS + 1,
+        maxByteStallMs: 0,
+        frozenQuicCursorCount: 0,
+      }),
+      activeInnerCriticalCount: 20,
+      recoveryIneffective: false,
+    })
+    assert.equal(decision.bypassActiveInner, true)
+    assert.equal(decision.reason, 'parent_emergency_refresh_bypass_active_inner')
   })
 })
