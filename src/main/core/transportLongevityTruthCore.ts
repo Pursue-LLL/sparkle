@@ -69,14 +69,27 @@ export function resolvePersistedHy2ParentChainAgeMs(input: {
   const previous = input.previousSnapshot
   const sameLeaf = previous?.activeHy2Leaf === input.activeHy2Leaf
   let birthMs = sameLeaf ? (previous?.hy2ParentChainBirthMs ?? 0) : 0
+  const explicitBirthReset =
+    sameLeaf &&
+    previous?.hy2ParentChainBirthMs != null &&
+    previous.hy2ParentChainBirthMs > 0 &&
+    previous.httpParentChainAgeMs === 0 &&
+    previous.outboundHy2SessionAgeMs === 0
 
   if (birthMs <= 0) {
     birthMs = computedMax > 0 ? input.nowMs - computedMax : input.nowMs
-  } else if (computedMax > 0) {
+  } else if (!explicitBirthReset && computedMax > 0) {
     birthMs = Math.min(birthMs, input.nowMs - computedMax)
   }
 
   const persistedAgeMs = Math.max(0, input.nowMs - birthMs)
+  if (explicitBirthReset) {
+    return {
+      httpParentChainAgeMs: persistedAgeMs,
+      outboundHy2SessionAgeMs: persistedAgeMs,
+      hy2ParentChainBirthMs: birthMs,
+    }
+  }
   return {
     httpParentChainAgeMs: Math.max(input.computedHttpParentChainAgeMs, persistedAgeMs),
     outboundHy2SessionAgeMs: Math.max(input.computedOutboundHy2SessionAgeMs, persistedAgeMs),

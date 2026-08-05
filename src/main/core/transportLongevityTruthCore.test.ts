@@ -62,6 +62,30 @@ describe('transportLongevityTruthCore R-34a', () => {
     assert.ok(persisted.httpParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS)
     assert.equal(persisted.hy2ParentChainBirthMs, birthMs)
   })
+
+  it('R-40b explicit birth reset ignores stale computed UDP age', () => {
+    const nowMs = 600_000_000
+    const resetBirthMs = nowMs - 5_000
+    const persisted = resolvePersistedHy2ParentChainAgeMs({
+      nowMs,
+      activeHy2Leaf: 'JP-VPS-HY2',
+      previousSnapshot: {
+        schemaVersion: 2,
+        updatedAtMs: nowMs - 1_000,
+        cursorConnectionCount: 20,
+        httpParentChainAgeMs: 0,
+        outboundHy2SessionAgeMs: 0,
+        hy2ParentChainBirthMs: resetBirthMs,
+        maxByteStallMs: 0,
+        frozenQuicCursorCount: 0,
+        activeHy2Leaf: 'JP-VPS-HY2',
+      },
+      computedHttpParentChainAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 60_000,
+      computedOutboundHy2SessionAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 60_000,
+    })
+    assert.ok(persisted.httpParentChainAgeMs < 60_000)
+    assert.equal(persisted.hy2ParentChainBirthMs, resetBirthMs)
+  })
 })
 
 describe('hy2ParentRotationCore R-34b', () => {
