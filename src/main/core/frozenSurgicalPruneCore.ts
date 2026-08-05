@@ -12,6 +12,7 @@ import {
   MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS
 } from './marathonSseCarrierPruneCore'
 import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
+import { resolveMarathonParentRecoveryStallProof } from './marathonParentRecoveryStallProofCore'
 
 export const MIHOMO_QUIC_STALL_CLOSE_CONNECTION_MS = 120_000
 
@@ -47,6 +48,15 @@ function hasCurrentRequestBoundStallProof(
   input: FrozenSurgicalPruneGateInput,
   marathonActive: boolean
 ): boolean {
+  const parentRecovery = resolveMarathonParentRecoveryStallProof({
+    marathonActive,
+    observation: input.observation,
+    httpParentChainAgeMs: input.httpParentChainAgeMs,
+    outboundHy2SessionAgeMs: input.outboundHy2SessionAgeMs,
+  })
+  if (parentRecovery.proof) {
+    return true
+  }
   return (
     marathonActive &&
     input.tokenGapMaxMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS &&
