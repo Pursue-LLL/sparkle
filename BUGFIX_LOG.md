@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-05 16:30 最新**：**BUG-2026-08-05-001** · **FIX CODE-DONE @1.30.16**（git）· prod 仍 **1.30.15**（**未重启**）· 修复 `resolveProactiveUdpClosePlan` 前置 4h age gate + planned 假阳性 · 3/3 新单测 PASS · 待您重启后 gate 验收
+> **2026-08-05 17:05 最新**：**FIX CODE-DONE @1.30.17**（git）· prod **1.30.16**（16:44 CST 已装）· SEL R2 `marathonGlobalByteDeath` bypass `active_inner` · 11/11 单测 PASS · **未装包** · gate 未 PASS 不算修完
+> **2026-08-05 16:30 上一版**：**FIX CODE-DONE @1.30.16**（git）· post-install gate PARTIAL · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
