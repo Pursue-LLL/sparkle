@@ -211,8 +211,9 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
     const cursorDataDirs = options?.cursorDataDirs ?? (await resolveCursorDataDirs())
     const dedicatedAppPathPrefixes =
       options?.appPathPrefixes ??
-      (await (await import('../config/app')).getAppConfig()).cursorProxyAppPathPrefixes ??
-      []
+      (options?.cursorDataDirs !== undefined
+        ? []
+        : ((await (await import('../config/app')).getAppConfig()).cursorProxyAppPathPrefixes ?? []))
     for (const cursorDataDir of cursorDataDirs) {
       const routeKind = resolveCursorLogRouteKind(cursorDataDir, dedicatedAppPathPrefixes)
       const ingestLogTail = async (filePath: string, tailBytes: number): Promise<void> => {

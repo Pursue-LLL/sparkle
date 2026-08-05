@@ -426,17 +426,20 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   if (!serviceCoreRunning) {
     const stopped = await stopCoreWithOutcome()
     if (!stopped) {
-      const corePidPath = path.join(dataDir(), 'core.pid')
-      const hasExistingCoreFootprint =
-        Boolean(child && !child.killed) || existsSync(corePidPath) || existsSync(mihomoIpcPath())
-      if (hasExistingCoreFootprint) {
+      const { resolveCoreFootprintBeforeStartOnly } = await import('./staleMihomoApiSocketHygiene')
+      const footprint = await resolveCoreFootprintBeforeStartOnly({
+        hasChildProcess: Boolean(child && !child.killed),
+        corePidPath: path.join(dataDir(), 'core.pid'),
+        socketPath: mihomoIpcPath(),
+      })
+      if (footprint.blockStart) {
         await appendAppLog(
-          '[CoreLifecycle]: core_start_aborted reason=protected_existing_core data_plane_action=none\n'
+          `[CoreLifecycle]: core_start_aborted reason=${footprint.reason} data_plane_action=none\n`
         )
         return [Promise.resolve()]
       }
       await appendAppLog(
-        '[CoreLifecycle]: core_start_allowed reason=no_existing_core_footprint data_plane_action=start_only\n'
+        `[CoreLifecycle]: core_start_allowed reason=${footprint.reason} data_plane_action=start_only\n`
       )
     }
   }

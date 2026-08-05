@@ -5,6 +5,11 @@ export const BUG014_RESCUE_RESOURCE_NOT_FOUND_RE =
 
 export const POST_CORE_BOOTSTRAP_FAILED_RE = /\[PostCoreBootstrap\]:.*failed/
 
+export const POST_CORE_BOOTSTRAP_NOT_REACHABLE_RE =
+  /\[PostCoreBootstrap\]: mihomo API not reachable/
+
+export const MIHOMO_API_READY_RE = /\[PostCoreBootstrap\]: mihomo API ready/
+
 export const API2_PROBE_PLANE_ON_RE = /\[Api2ProbePlane\]:.*ON/
 
 function linesSinceExclusive(logText: string, sinceLineExclusive: number): string[] {
@@ -29,6 +34,24 @@ export function countPostCoreBootstrapFailuresSinceLine(
 ): number {
   return linesSinceExclusive(logText, sinceLineExclusive).filter((line) =>
     POST_CORE_BOOTSTRAP_FAILED_RE.test(line),
+  ).length
+}
+
+export function hasMihomoApiReadySinceLine(
+  logText: string,
+  sinceLineExclusive: number,
+): boolean {
+  return linesSinceExclusive(logText, sinceLineExclusive).some((line) =>
+    MIHOMO_API_READY_RE.test(line),
+  )
+}
+
+export function countPostCoreBootstrapNotReachableSinceLine(
+  logText: string,
+  sinceLineExclusive: number,
+): number {
+  return linesSinceExclusive(logText, sinceLineExclusive).filter((line) =>
+    POST_CORE_BOOTSTRAP_NOT_REACHABLE_RE.test(line),
   ).length
 }
 
