@@ -77,6 +77,7 @@
 8. **非 `max-steps-cap` 断连，未完成 VPS @ A 证据矩阵（§V5）前，禁止输出 definitive 根因。**
 9. **Sparkle 必须用 pkg 安装到 `/Applications`**（当前 git **1.30.15**；Marathon byte-death fix 自 **1.30.13**）。❌ 禁止 `ditto`/`cp -R` 覆盖 · ❌ 禁止从 `dist/mac-arm64/Sparkle.app` 日常使用 · 见 [BUGFIX_LOG BUG-003/007/2026-07-18-003](./BUGFIX_LOG.md)。
 10. **global byte-death @ A**：app-log `max_byte_stall_ms≥90000` 持续 + `parent_udp_refresh` **skip** `active_inner_critical_flows` → **L3 Sparkle definitive**（`carrierQuiesceRefreshCore` 未 bypass）；**1.30.13+** 应见 `marathon_global_byte_death_bypass_active_inner` 或 R2 `outcome=executed`。
+11. **Sparkle 升级 Agent SSOT** — 只允许 `pnpm run agent:upgrade:mac`（`scripts/agent-sparkle-upgrade.sh`）；禁止裸 `pnpm build:mac`、禁止后台 build 后忘记 install。马拉松 override：`SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1`。
 
 ---
 

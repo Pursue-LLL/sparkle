@@ -27,6 +27,7 @@
     "build:mac": "pnpm run write-build-stamp && electron-vite build && electron-builder --publish never --mac",
     "build:linux": "pnpm run write-build-stamp && electron-vite build && electron-builder --publish never --linux",
     "upgrade:mac": "bash scripts/upgrade-sparkle-local.sh",
+    "agent:upgrade:mac": "bash scripts/agent-sparkle-upgrade.sh",
     "verify:bundle": "tsx scripts/verify-sparkle-bundle.mts",
     "verify:bundle:full": "SPARKLE_VERIFY_WITH_ASAR=1 tsx scripts/verify-sparkle-bundle.mts",
     "g9-soak:monitor": "tsx scripts/g9-soak-monitor.mts",

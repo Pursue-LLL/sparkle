@@ -138,7 +138,8 @@ sparkle/
 
 - `pnpm build:win` - 构建 Windows 版本
 - `pnpm build:mac` - 构建 macOS 版本（含 pkg）
-- `pnpm run upgrade:mac` - **本地 dev 一条龙**：编译 + 安装到 `/Applications`（推荐）
+- `pnpm run upgrade:mac` - **本地 dev 一条龙**：编译 + 安装到 `/Applications`
+- `pnpm run agent:upgrade:mac` - **Agent SSOT**：dist 就绪则仅 install，否则 full upgrade + post gate（自动化推荐）
 - `tsx scripts/verify-byte-death-recovery-gate.mts [--minutes N]` - post-upgrade byte-death / R2 恢复门禁（默认 15min）
 - `pnpm build:linux` - 构建 Linux 版本
 
@@ -203,7 +204,17 @@ pnpm build:linux deb --x64
 
 #### macOS 本地升级（必读）
 
-**推荐（一条命令）**：
+**Agent / 自动化（推荐）**：
+
+```bash
+cd /path/to/sparkle
+pnpm run agent:upgrade:mac
+# 等价：bash scripts/agent-sparkle-upgrade.sh
+```
+
+逻辑：若 `dist/mac-arm64/Sparkle.app` 版本已匹配且签名有效 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后自动跑 byte-death gate + preflight。马拉松紧急：`SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1 pnpm run agent:upgrade:mac`。
+
+**人工 dev 一条龙**：
 
 ```bash
 cd /path/to/sparkle

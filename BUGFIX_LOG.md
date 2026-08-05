@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-05 17:05 最新**：**FIX CODE-DONE @1.30.17**（git）· prod **1.30.16**（16:44 CST 已装）· SEL R2 `marathonGlobalByteDeath` bypass `active_inner` · 11/11 单测 PASS · **未装包** · gate 未 PASS 不算修完
+> **2026-08-05 17:30 最新**：**prod 1.30.17 已装** · gate **PENDING**（继承 byte-death `max_byte_stall=144500`）· Agent SSOT `agent-sparkle-upgrade.sh` 新增
+> **2026-08-05 17:05 上一版**：**FIX CODE-DONE @1.30.17**（git）· SEL R2 bypass `active_inner` · 11/11 单测 PASS
 > **2026-08-05 16:30 上一版**：**FIX CODE-DONE @1.30.16**（git）· post-install gate PARTIAL · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
@@ -1673,7 +1674,9 @@
 
 ```bash
 cd /path/to/sparkle
-pnpm run upgrade:mac
+pnpm run agent:upgrade:mac
+# Agent SSOT：dist 就绪 → install only；否则 → upgrade-sparkle-local.sh
+# 人工等价：pnpm run upgrade:mac
 # 等价：bash scripts/upgrade-sparkle-local.sh
 ```
 
@@ -1712,7 +1715,8 @@ bash scripts/install-sparkle-local.sh
 
 | 必须 | 禁止 |
 | --- | --- |
-| `pnpm run upgrade:mac` 或 `bash scripts/upgrade-sparkle-local.sh` | 只跑 `electron-builder` 不先 `electron-vite build`（stale asar） |
+| **`pnpm run agent:upgrade:mac`** 或 **`bash scripts/agent-sparkle-upgrade.sh`**（Agent 唯一入口） | 裸跑 `pnpm build:mac` / 后台 build 后忘记 install |
+| `pnpm run upgrade:mac` 或 `bash scripts/upgrade-sparkle-local.sh`（人工 full upgrade） | 只跑 `electron-builder` 不先 `electron-vite build`（stale asar） |
 | **Stage-A**（vite 后 ~30s）：`pnpm run verify:bundle` 或自动 gate 扫 `out/main/*.js` | 只查 `out/main/index.js`（Vite code-split 后 R-34 可能在 chunk） |
 | **Stage-B**（打包后）：同一 SSOT 扫 `app.asar` 全部 `out/main/*.js` | 打包 10min 后才发现 marker 缺失 |
 | preflight / smoke 走 **path-based CLI**（不传 bundle 文本 argv） | inline `tsx -e` 塞 MB 级 bundle（ARG_MAX） |
