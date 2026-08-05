@@ -220,9 +220,13 @@ export async function observeMihomoConnectionsForQuicSilentStall(
         )
       }
     }
-    await writeTransportLongevityTruthSnapshot(postSidecarSnapshot)
+    const finalLongevitySnapshot = {
+      ...postSidecarSnapshot,
+      maxByteStallMs: lastObservedMaxStallMs,
+    }
+    await writeTransportLongevityTruthSnapshot(finalLongevitySnapshot)
     if (cursorConnectionCount >= 12) {
-      await appendAppLog(formatTransportLongevityTruthLogLine(postSidecarSnapshot))
+      await appendAppLog(formatTransportLongevityTruthLogLine(finalLongevitySnapshot))
     }
   } catch {
     // quic-stall-ssot remains authoritative if longevity write fails

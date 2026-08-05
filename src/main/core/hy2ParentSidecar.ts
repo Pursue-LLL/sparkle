@@ -227,9 +227,7 @@ export async function runHy2ParentSidecarIfDue(input: {
       const { resetTransportLongevityHy2ParentChainBirth } = await import(
         './transportLongevityTruth'
       )
-      await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs, {
-        clearMaxByteStall: true,
-      })
+      await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
       await appendSidecarLog(
         formatCarrierQuiesceRefreshLogLine({
           outcome: 'executed',
