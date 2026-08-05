@@ -129,7 +129,8 @@ export async function observeMihomoConnectionsForQuicSilentStall(
   try {
     const { resolveMarathonSSETruthSnapshot } = await import('./marathonSSETruthRuntime')
     const { truth: marathonTruth, registry } = await resolveMarathonSSETruthSnapshot(cursorConnectionCount)
-    const { readTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
+    const { readTransportLongevityTruthSnapshot, writeTransportLongevityTruthSnapshot } =
+      await import('./transportLongevityTruth')
     const previousLongevitySnapshot = await readTransportLongevityTruthSnapshot()
     const longevitySnapshot = buildTransportLongevityTruth({
       nowMs,
@@ -197,29 +198,30 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     } catch {
       // sidecar is best-effort; longevity truth remains authoritative
     }
+    const postSidecarSnapshot =
+      (await readTransportLongevityTruthSnapshot()) ?? longevitySnapshot
     if (cursorConnectionCount >= 12) {
       const { resolveParentLifecyclePhase, formatParentLifecycleLogLine } =
         await import('./parentLifecycleCore')
       const phase = resolveParentLifecyclePhase({
-        snapshot: longevitySnapshot,
-        recoveryIneffective: longevitySnapshot.maxByteStallMs >= 15_000,
+        snapshot: postSidecarSnapshot,
+        recoveryIneffective: postSidecarSnapshot.maxByteStallMs >= 15_000,
         refreshExhausted: false,
       })
       if (phase !== 'young') {
         await appendAppLog(
           formatParentLifecycleLogLine({
             phase,
-            httpParentChainAgeMs: longevitySnapshot.httpParentChainAgeMs,
-            outboundHy2SessionAgeMs: longevitySnapshot.outboundHy2SessionAgeMs,
-            maxByteStallMs: longevitySnapshot.maxByteStallMs,
+            httpParentChainAgeMs: postSidecarSnapshot.httpParentChainAgeMs,
+            outboundHy2SessionAgeMs: postSidecarSnapshot.outboundHy2SessionAgeMs,
+            maxByteStallMs: postSidecarSnapshot.maxByteStallMs,
           }),
         )
       }
     }
-    const { writeTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
-    await writeTransportLongevityTruthSnapshot(longevitySnapshot)
+    await writeTransportLongevityTruthSnapshot(postSidecarSnapshot)
     if (cursorConnectionCount >= 12) {
-      await appendAppLog(formatTransportLongevityTruthLogLine(longevitySnapshot))
+      await appendAppLog(formatTransportLongevityTruthLogLine(postSidecarSnapshot))
     }
   } catch {
     // quic-stall-ssot remains authoritative if longevity write fails
