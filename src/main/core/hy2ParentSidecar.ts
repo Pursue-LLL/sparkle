@@ -11,7 +11,7 @@ import {
   type Hy2ParentSidecarPlan,
 } from './hy2ParentSidecarCore'
 import {
-  countHealthyInnerCriticalFlows,
+  countActiveInnerCriticalFlows,
   findOldestHy2UdpOutboundConnectionId,
 } from './hy2ParentRotationCore'
 import type { MarathonSSETruthResult } from './marathonSSETruthCore'
@@ -21,6 +21,12 @@ const SIDECAR_ACTION_COOLDOWN_MS = 300_000
 
 let lastHy2ParentSidecarActionAtMs = 0
 let sidecarObserveInFlight = false
+
+export interface Hy2ParentSidecarExecutionResult {
+  outcome: 'executed' | 'skipped' | 'failed'
+  action: Hy2ParentSidecarPlan['action']
+  reason: string
+}
 
 export function resetHy2ParentSidecarStateForTests(): void {
   lastHy2ParentSidecarActionAtMs = 0
@@ -53,7 +59,7 @@ function resolveProactiveUdpClosePlan(input: {
   trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
   nowMs: number
   lastRotateActionAtMs: number
-  /** R-41 emergency: refresh parent UDP even when inner critical flows exist (close outbound only). */
+  /** R-41 emergency bypasses age gates, but never active critical-flow safety. */
   emergencyStallEscalation?: boolean
 }): Hy2ParentSidecarPlan {
   if (
@@ -66,15 +72,14 @@ function resolveProactiveUdpClosePlan(input: {
   if (input.nowMs - input.lastRotateActionAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS) {
     return { action: 'none', reason: 'proactive_rotate_cooldown' }
   }
-  const healthyInner = countHealthyInnerCriticalFlows({
+  const activeInner = countActiveInnerCriticalFlows({
     connections: input.connections,
     activeLeaf: input.snapshot.activeHy2Leaf,
-    nowMs: input.nowMs,
-    byteActiveWithinMs: 30_000,
-    trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
   })
-  if (healthyInner > 0 && input.emergencyStallEscalation !== true) {
-    return { action: 'none', reason: 'healthy_inner_critical_flows', healthyInnerCount: healthyInner }
+  // Parent UDP owns every inner stream. Byte silence is valid while the model
+  // thinks or a tool runs, so emergency mode must not bypass this safety gate.
+  if (activeInner > 0) {
+    return { action: 'none', reason: 'active_inner_critical_flows', healthyInnerCount: activeInner }
   }
   const udpConnectionId = findOldestHy2UdpOutboundConnectionId({
     connections: input.connections,
@@ -102,10 +107,10 @@ export async function runHy2ParentSidecarIfDue(input: {
   nowMs?: number
   /** R-41: emergency stall escalation bypasses marathon inactive / 4h gates. */
   emergencyStallEscalation?: boolean
-}): Promise<void> {
+}): Promise<Hy2ParentSidecarExecutionResult> {
   const nowMs = input.nowMs ?? Date.now()
   if (sidecarObserveInFlight) {
-    return
+    return { outcome: 'skipped', action: 'none', reason: 'sidecar_in_flight' }
   }
   sidecarObserveInFlight = true
   try {
@@ -129,10 +134,14 @@ export async function runHy2ParentSidecarIfDue(input: {
     const shouldAct =
       dialPlan.action === 'sidecar_dial' || rotatePlan.action === 'close_udp_outbound'
     if (!shouldAct) {
-      return
+      return {
+        outcome: 'skipped',
+        action: 'none',
+        reason: `${dialPlan.reason}:${rotatePlan.reason}`,
+      }
     }
     if (nowMs - lastHy2ParentSidecarActionAtMs < SIDECAR_ACTION_COOLDOWN_MS) {
-      return
+      return { outcome: 'skipped', action: 'none', reason: 'sidecar_action_cooldown' }
     }
 
     if (dialPlan.action === 'sidecar_dial') {
@@ -158,7 +167,11 @@ export async function runHy2ParentSidecarIfDue(input: {
           }),
         )
         if (!closed.ok) {
-          return
+          return {
+            outcome: 'failed',
+            action: 'close_udp_outbound',
+            reason: closed.err ?? rotatePlan.reason,
+          }
         }
       }
       const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
@@ -186,12 +199,16 @@ export async function runHy2ParentSidecarIfDue(input: {
           err: vitality.err,
         }),
       )
+      return {
+        outcome: vitality.outcome === 'executed' ? 'executed' : 'failed',
+        action: 'sidecar_dial',
+        reason: vitality.outcome === 'executed' ? dialPlan.reason : vitality.err ?? vitality.outcome,
+      }
     }
 
     if (
       rotatePlan.action === 'close_udp_outbound' &&
-      rotatePlan.udpConnectionId &&
-      dialPlan.action !== 'sidecar_dial'
+      rotatePlan.udpConnectionId
     ) {
       const closed = await closeUdpOutbound(rotatePlan.udpConnectionId)
       if (closed.ok) {
@@ -212,7 +229,13 @@ export async function runHy2ParentSidecarIfDue(input: {
           err: closed.err,
         }),
       )
+      return {
+        outcome: closed.ok ? 'executed' : 'failed',
+        action: 'close_udp_outbound',
+        reason: closed.ok ? rotatePlan.reason : closed.err ?? rotatePlan.reason,
+      }
     }
+    return { outcome: 'skipped', action: 'none', reason: 'no_executable_sidecar_action' }
   } finally {
     sidecarObserveInFlight = false
   }

@@ -55,7 +55,7 @@ export function recordVitalityByteSnapshot(input: {
   }
   vitalityByteSnapshotByConnectionId.set(connectionId, {
     totalBytes: Math.max(0, input.upload) + Math.max(0, input.download),
-    recordedAtMs: input.nowMs,
+    recordedAtMs: input.nowMs
   })
 }
 
@@ -80,14 +80,16 @@ export function isVitalityIneffectiveForConnection(input: {
   return currentBytes === snapshot.totalBytes
 }
 
-export function resolveCriticalHostCloseDenialPlan(host: string | undefined): StallEscalationLadderPlan | undefined {
+export function resolveCriticalHostCloseDenialPlan(
+  host: string | undefined
+): StallEscalationLadderPlan | undefined {
   const trimmed = host?.trim() ?? ''
   if (!trimmed || !isCriticalCursorHost(trimmed)) {
     return undefined
   }
   return {
     action: 'none',
-    reason: 'r41_critical_host_no_close',
+    reason: 'r41_critical_host_no_close'
   }
 }
 
@@ -96,8 +98,12 @@ export function resolveStallEscalationLadderPlan(input: {
   upload: number
   download: number
   nowMs: number
+  requestBoundStallProof: boolean
 }): StallEscalationLadderPlan {
   const { observation, nowMs } = input
+  if (!input.requestBoundStallProof) {
+    return { action: 'none', reason: 'missing_request_bound_stall_proof' }
+  }
   if (observation.kind !== 'single') {
     return { action: 'none', reason: 'aggregate_observation' }
   }
@@ -118,7 +124,7 @@ export function resolveStallEscalationLadderPlan(input: {
     connectionId,
     upload: input.upload,
     download: input.download,
-    nowMs,
+    nowMs
   })
   if (!vitalityIneffective && observation.stallMs < STALL_ESCALATION_EMERGENCY_SIDECAR_MS) {
     return { action: 'none', reason: 'awaiting_vitality_or_stall_threshold' }
@@ -127,7 +133,7 @@ export function resolveStallEscalationLadderPlan(input: {
   const lastEmergencyAtMs = lastEmergencyEscalationAtMsByConnectionId.get(connectionId) ?? 0
   if (
     observation.stallMs >= STALL_ESCALATION_EMERGENCY_SIDECAR_MS &&
-    (vitalityIneffective || observation.stallMs >= STALL_ESCALATION_EMERGENCY_SIDECAR_MS) &&
+    vitalityIneffective &&
     nowMs - lastEmergencyAtMs >= STALL_ESCALATION_EMERGENCY_COOLDOWN_MS
   ) {
     if (observation.stallMs < STALL_ESCALATION_PARENT_UDP_REFRESH_MS) {
@@ -161,10 +167,7 @@ export function markStallEscalationExecuted(input: {
   if (!connectionId) {
     return
   }
-  if (
-    input.action === 'emergency_sidecar_dial' ||
-    input.action === 'parent_udp_refresh'
-  ) {
+  if (input.action === 'emergency_sidecar_dial' || input.action === 'parent_udp_refresh') {
     lastEmergencyEscalationAtMsByConnectionId.set(connectionId, input.nowMs)
   }
   if (input.action === 'parent_udp_refresh') {
@@ -191,7 +194,7 @@ export function formatStallEscalationLadderLogLine(fields: {
     `reason=${fields.reason}`,
     `stall_ms=${fields.stallMs}`,
     `upload=${fields.upload}`,
-    `download=${fields.download}`,
+    `download=${fields.download}`
   ]
   if (fields.connectionId) {
     parts.push(`connection_id=${fields.connectionId}`)

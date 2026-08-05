@@ -9,11 +9,11 @@ import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCo
 import type { MihomoQuicStallTrackedConnection } from './mihomoQuicSilentStallCore'
 import {
   resolveHy2ParentRotationAfterPrunePlan,
-  type Hy2ParentRotationPlan,
+  type Hy2ParentRotationPlan
 } from './hy2ParentRotationCore'
 import {
   resolveFrozenSurgicalPrunePlan,
-  type FrozenSurgicalPruneAction,
+  type FrozenSurgicalPruneAction
 } from './frozenSurgicalPruneCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 import type { MarathonStreamRegistry } from './marathonStreamRegistryCore'
@@ -21,7 +21,7 @@ import {
   evaluateRecoveryHonesty,
   formatRecoveryHonestyLogLine,
   shouldEvaluateRecoveryHonesty,
-  type RecoveryHonestyAttemptRecord,
+  type RecoveryHonestyAttemptRecord
 } from './recoveryHonestyCore'
 import { resolveStallRecoveryCloseTarget } from './marathonCarrierConnectionBindCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
@@ -31,13 +31,13 @@ import {
   recordVitalityByteSnapshot,
   resetStallEscalationLadderStateForTests,
   resolveStallEscalationLadderPlan,
-  type StallEscalationLadderAction,
+  type StallEscalationLadderAction
 } from './stallEscalationLadderCore'
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 import {
   formatMihomoQuicStallRecoveryLogLine,
   MIHOMO_QUIC_STALL_VITALITY_TRIGGER_MS,
-  type MihomoQuicStallRecoveryAction,
+  type MihomoQuicStallRecoveryAction
 } from './mihomoQuicSilentStallRecoveryCore'
 
 const lastRecoveryAtMsByConnectionId = new Map<string, number>()
@@ -47,7 +47,7 @@ let skipRecoveryAppLogForTests = false
 
 let latestTokenGapSnapshot: { maxGapMs: number; staleRequestIdCount: number } = {
   maxGapMs: 0,
-  staleRequestIdCount: 0,
+  staleRequestIdCount: 0
 }
 
 let latestMarathonRecoveryContext: {
@@ -63,7 +63,7 @@ let latestMarathonRecoveryContext: {
   httpParentChainAgeMs: 0,
   outboundHy2SessionAgeMs: 0,
   staleRequestIds: [],
-  registry: { records: new Map() },
+  registry: { records: new Map() }
 }
 
 let pendingRecoveryHonesty: RecoveryHonestyAttemptRecord | undefined
@@ -90,7 +90,7 @@ export function resetMihomoQuicSilentStallRecoveryForTests(): void {
     httpParentChainAgeMs: 0,
     outboundHy2SessionAgeMs: 0,
     staleRequestIds: [],
-    registry: { records: new Map() },
+    registry: { records: new Map() }
   }
   resetStallEscalationLadderStateForTests()
 }
@@ -105,7 +105,7 @@ export function setMarathonTokenGapSnapshotForRecovery(snapshot: {
 }): void {
   latestTokenGapSnapshot = {
     maxGapMs: Math.max(0, snapshot.maxGapMs),
-    staleRequestIdCount: Math.max(0, snapshot.staleRequestIdCount),
+    staleRequestIdCount: Math.max(0, snapshot.staleRequestIdCount)
   }
 }
 
@@ -115,7 +115,7 @@ export function getMarathonTokenGapSnapshotForMutationGate(): {
 } {
   return {
     maxGapMs: latestTokenGapSnapshot.maxGapMs,
-    staleRequestIdCount: latestTokenGapSnapshot.staleRequestIdCount,
+    staleRequestIdCount: latestTokenGapSnapshot.staleRequestIdCount
   }
 }
 
@@ -137,7 +137,7 @@ export function setMarathonRecoveryContextForPrune(input: {
     httpParentChainAgeMs: Math.max(0, input.httpParentChainAgeMs ?? 0),
     outboundHy2SessionAgeMs: Math.max(0, input.outboundHy2SessionAgeMs ?? 0),
     staleRequestIds: [...(input.staleRequestIds ?? [])],
-    registry: input.registry ?? { records: new Map() },
+    registry: input.registry ?? { records: new Map() }
   }
 }
 
@@ -163,14 +163,14 @@ async function logRecovery(line: string): Promise<void> {
 async function runStallVitalityDial(
   leaf: string,
   cursorConnectionCount: number,
-  nowMs: number,
+  nowMs: number
 ): Promise<{ ok: boolean; delayMs?: number; err?: string }> {
   try {
     const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
     const truth = await resolveMarathonSSETruthNow(cursorConnectionCount)
     const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
     const result = await runHy2TunnelVitalityIfDue(leaf, cursorConnectionCount, nowMs, truth, {
-      stallRecoveryBypass: true,
+      stallRecoveryBypass: true
     })
     if (result.outcome === 'executed') {
       return { ok: true, delayMs: result.connectPathDelayMs }
@@ -184,7 +184,9 @@ async function runStallVitalityDial(
   }
 }
 
-async function closeStalledConnection(connectionId: string): Promise<{ ok: boolean; err?: string }> {
+async function closeStalledConnection(
+  connectionId: string
+): Promise<{ ok: boolean; err?: string }> {
   try {
     await mihomoCloseConnection(connectionId)
     return { ok: true }
@@ -200,7 +202,9 @@ function markRecovery(connectionId: string | undefined, nowMs: number): void {
   lastRecoveryAtMsByConnectionId.set(connectionId, nowMs)
 }
 
-function mapPruneActionToRecoveryAction(action: FrozenSurgicalPruneAction): MihomoQuicStallRecoveryAction {
+function mapPruneActionToRecoveryAction(
+  action: FrozenSurgicalPruneAction
+): MihomoQuicStallRecoveryAction {
   if (action === 'close_frozen_connection') {
     return 'close_connection'
   }
@@ -210,9 +214,10 @@ function mapPruneActionToRecoveryAction(action: FrozenSurgicalPruneAction): Miho
   return 'none'
 }
 
-function connectionBytesForObservation(
-  observation: MihomoQuicSilentStallObservation,
-): { upload: number; download: number } {
+function connectionBytesForObservation(observation: MihomoQuicSilentStallObservation): {
+  upload: number
+  download: number
+} {
   const connectionId = observation.connectionId?.trim()
   if (!connectionId) {
     return { upload: 0, download: 0 }
@@ -220,12 +225,36 @@ function connectionBytesForObservation(
   const connection = latestConnections.find((entry) => entry.id === connectionId)
   return {
     upload: connection?.upload ?? 0,
-    download: connection?.download ?? 0,
+    download: connection?.download ?? 0
   }
 }
 
+function hasRequestBoundCarrierProof(observation: MihomoQuicSilentStallObservation): boolean {
+  const connectionId = observation.connectionId?.trim() ?? ''
+  if (!connectionId || !latestMarathonRecoveryContext.marathonActive) {
+    return false
+  }
+  const staleRequestIds = new Set(
+    latestMarathonRecoveryContext.staleRequestIds
+      .map((requestId) => requestId.trim())
+      .filter(Boolean)
+  )
+  if (staleRequestIds.size === 0) {
+    return false
+  }
+  for (const record of latestMarathonRecoveryContext.registry.records.values()) {
+    if (
+      staleRequestIds.has(record.originalRequestId) &&
+      record.carrierConnectionId?.trim() === connectionId
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
 function resolveRecoveryHonestyCurrentCarrier(
-  record: RecoveryHonestyAttemptRecord,
+  record: RecoveryHonestyAttemptRecord
 ): { upload: number; download: number } | undefined {
   const connectionId = record.connectionId?.trim()
   if (!connectionId) {
@@ -237,13 +266,13 @@ function resolveRecoveryHonestyCurrentCarrier(
   }
   return {
     upload: connection.upload ?? 0,
-    download: connection.download ?? 0,
+    download: connection.download ?? 0
   }
 }
 
 async function executeStallEscalationLadderIfDue(
   observation: MihomoQuicSilentStallObservation,
-  nowMs: number,
+  nowMs: number
 ): Promise<StallEscalationLadderAction> {
   const bytes = connectionBytesForObservation(observation)
   const plan = resolveStallEscalationLadderPlan({
@@ -251,6 +280,7 @@ async function executeStallEscalationLadderIfDue(
     upload: bytes.upload,
     download: bytes.download,
     nowMs,
+    requestBoundStallProof: hasRequestBoundCarrierProof(observation)
   })
   if (plan.action === 'none' || plan.action === 'observe_exhausted') {
     if (plan.action === 'observe_exhausted') {
@@ -263,8 +293,8 @@ async function executeStallEscalationLadderIfDue(
           host: observation.host,
           stallMs: observation.stallMs,
           upload: bytes.upload,
-          download: bytes.download,
-        }),
+          download: bytes.download
+        })
       )
       try {
         const { persistStallEscalationLadderJsonl } = await import('./stallEscalationLadderJsonl')
@@ -279,7 +309,7 @@ async function executeStallEscalationLadderIfDue(
           leaf: observation.leaf,
           staleRequestIds: latestMarathonRecoveryContext.staleRequestIds,
           cursorConnectionCount: observation.cursorConnectionCount,
-          nowMs,
+          nowMs
         })
       } catch {
         // app-log remains authoritative if jsonl write fails
@@ -300,8 +330,8 @@ async function executeStallEscalationLadderIfDue(
           host: observation.host,
           stallMs: observation.stallMs,
           upload: bytes.upload,
-          download: bytes.download,
-        }),
+          download: bytes.download
+        })
       )
       return plan.action
     }
@@ -309,7 +339,7 @@ async function executeStallEscalationLadderIfDue(
       const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
       const marathonTruth = await resolveMarathonSSETruthNow(observation.cursorConnectionCount)
       const { runHy2ParentSidecarIfDue } = await import('./hy2ParentSidecar')
-      await runHy2ParentSidecarIfDue({
+      const sidecar = await runHy2ParentSidecarIfDue({
         snapshot: latestLongevitySnapshot,
         connections: latestConnections,
         trackedFirstSeenAtMsById: latestTrackedFirstSeenAtMsById,
@@ -317,20 +347,22 @@ async function executeStallEscalationLadderIfDue(
         marathonTruth,
         cursorConnectionCount: observation.cursorConnectionCount,
         nowMs,
-        emergencyStallEscalation: true,
+        emergencyStallEscalation: true
       })
-      markStallEscalationExecuted({ connectionId, action: plan.action, nowMs })
+      if (sidecar.outcome === 'executed') {
+        markStallEscalationExecuted({ connectionId, action: plan.action, nowMs })
+      }
       await logRecovery(
         formatStallEscalationLadderLogLine({
-          outcome: 'executed',
+          outcome: sidecar.outcome,
           action: plan.action,
-          reason: plan.reason,
+          reason: `${plan.reason}:${sidecar.reason}`,
           connectionId,
           host: observation.host,
           stallMs: observation.stallMs,
           upload: bytes.upload,
-          download: bytes.download,
-        }),
+          download: bytes.download
+        })
       )
       try {
         const { persistStallEscalationLadderJsonl } = await import('./stallEscalationLadderJsonl')
@@ -345,7 +377,7 @@ async function executeStallEscalationLadderIfDue(
           leaf: observation.leaf,
           staleRequestIds: latestMarathonRecoveryContext.staleRequestIds,
           cursorConnectionCount: observation.cursorConnectionCount,
-          nowMs,
+          nowMs
         })
       } catch {
         // app-log remains authoritative
@@ -361,27 +393,29 @@ async function executeStallEscalationLadderIfDue(
           stallMs: observation.stallMs,
           upload: bytes.upload,
           download: bytes.download,
-          err: formatUnknownErrorForLog(error),
-        }),
+          err: formatUnknownErrorForLog(error)
+        })
       )
     }
     return plan.action
   }
 
   if (plan.action === 'parent_udp_refresh') {
-    await maybeRunHy2ParentRotationAfterPrune(nowMs, true)
-    markStallEscalationExecuted({ connectionId, action: plan.action, nowMs })
+    const rotation = await maybeRunHy2ParentRotationAfterPrune(nowMs, true)
+    if (rotation.outcome === 'executed') {
+      markStallEscalationExecuted({ connectionId, action: plan.action, nowMs })
+    }
     await logRecovery(
       formatStallEscalationLadderLogLine({
-        outcome: 'executed',
+        outcome: rotation.outcome,
         action: plan.action,
-        reason: plan.reason,
+        reason: `${plan.reason}:${rotation.reason}`,
         connectionId,
         host: observation.host,
         stallMs: observation.stallMs,
         upload: bytes.upload,
-        download: bytes.download,
-      }),
+        download: bytes.download
+      })
     )
     return plan.action
   }
@@ -391,10 +425,10 @@ async function executeStallEscalationLadderIfDue(
 
 async function maybeRunHy2ParentRotationAfterPrune(
   nowMs: number,
-  emergencyStallEscalation = false,
-): Promise<void> {
+  emergencyStallEscalation = false
+): Promise<{ outcome: 'executed' | 'skipped' | 'failed'; reason: string }> {
   if (!latestLongevitySnapshot || latestConnections.length === 0) {
-    return
+    return { outcome: 'skipped', reason: 'missing_longevity_context' }
   }
   const plan: Hy2ParentRotationPlan = resolveHy2ParentRotationAfterPrunePlan({
     snapshot: latestLongevitySnapshot,
@@ -403,10 +437,10 @@ async function maybeRunHy2ParentRotationAfterPrune(
     trackedLastByteChangeAtMsById: latestTrackedLastByteChangeAtMsById,
     lastRotationAtMs: lastHy2ParentRotationAtMs,
     nowMs,
-    emergencyStallEscalation,
+    emergencyStallEscalation
   })
   if (plan.action !== 'close_udp_outbound' || !plan.udpConnectionId) {
-    return
+    return { outcome: 'skipped', reason: plan.reason }
   }
   const closed = await closeStalledConnection(plan.udpConnectionId)
   lastHy2ParentRotationAtMs = nowMs
@@ -415,11 +449,17 @@ async function maybeRunHy2ParentRotationAfterPrune(
       ` udp_connection_id=${plan.udpConnectionId}` +
       ` outbound_hy2_session_age_ms=${latestLongevitySnapshot.outboundHy2SessionAgeMs}` +
       (closed.err ? ` err=${closed.err}` : '') +
-      `\n`,
+      `\n`
   )
+  return {
+    outcome: closed.ok ? 'executed' : 'failed',
+    reason: closed.ok ? plan.reason : (closed.err ?? plan.reason)
+  }
 }
 
-export async function evaluatePendingRecoveryHonestyIfDue(nowMs: number = Date.now()): Promise<void> {
+export async function evaluatePendingRecoveryHonestyIfDue(
+  nowMs: number = Date.now()
+): Promise<void> {
   if (!shouldEvaluateRecoveryHonesty(pendingRecoveryHonesty, nowMs) || !pendingRecoveryHonesty) {
     return
   }
@@ -428,7 +468,7 @@ export async function evaluatePendingRecoveryHonestyIfDue(nowMs: number = Date.n
     nowMs,
     currentMaxGapMs: latestTokenGapSnapshot.maxGapMs,
     staleRequestIds: [],
-    currentCarrier: resolveRecoveryHonestyCurrentCarrier(pendingRecoveryHonesty),
+    currentCarrier: resolveRecoveryHonestyCurrentCarrier(pendingRecoveryHonesty)
   })
   await logRecovery(formatRecoveryHonestyLogLine(evaluation))
   pendingRecoveryHonesty = undefined
@@ -454,21 +494,23 @@ function buildRecoveryTriageLogFields(plan: {
       : undefined
   return {
     httpParentChainAgeMs:
-      latestLongevitySnapshot?.httpParentChainAgeMs ?? latestMarathonRecoveryContext.httpParentChainAgeMs,
+      latestLongevitySnapshot?.httpParentChainAgeMs ??
+      latestMarathonRecoveryContext.httpParentChainAgeMs,
     outboundHy2SessionAgeMs:
-      latestLongevitySnapshot?.outboundHy2SessionAgeMs ?? latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
+      latestLongevitySnapshot?.outboundHy2SessionAgeMs ??
+      latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
     registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
     tokenGapMaxMs: latestTokenGapSnapshot.maxGapMs,
     pruneDenialReason,
     carrierRid: plan.carrierRid,
     staleProofKind: plan.staleProofKind,
-    marathonActive: latestMarathonRecoveryContext.marathonActive,
+    marathonActive: latestMarathonRecoveryContext.marathonActive
   }
 }
 
 export async function executeMihomoQuicStallRecoveryIfDue(
   observation: MihomoQuicSilentStallObservation,
-  nowMs: number = Date.now(),
+  nowMs: number = Date.now()
 ): Promise<MihomoQuicStallRecoveryAction> {
   await evaluatePendingRecoveryHonestyIfDue(nowMs)
 
@@ -483,8 +525,12 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     registryMaxGapSinceActivityMs: latestMarathonRecoveryContext.registryMaxGapSinceActivityMs,
     registry: latestMarathonRecoveryContext.registry,
     staleRequestIds: latestMarathonRecoveryContext.staleRequestIds,
-    httpParentChainAgeMs: latestLongevitySnapshot?.httpParentChainAgeMs ?? latestMarathonRecoveryContext.httpParentChainAgeMs,
-    outboundHy2SessionAgeMs: latestLongevitySnapshot?.outboundHy2SessionAgeMs ?? latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
+    httpParentChainAgeMs:
+      latestLongevitySnapshot?.httpParentChainAgeMs ??
+      latestMarathonRecoveryContext.httpParentChainAgeMs,
+    outboundHy2SessionAgeMs:
+      latestLongevitySnapshot?.outboundHy2SessionAgeMs ??
+      latestMarathonRecoveryContext.outboundHy2SessionAgeMs
   })
   const action = mapPruneActionToRecoveryAction(plan.action)
   const triageFields = buildRecoveryTriageLogFields(plan)
@@ -507,8 +553,8 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         cursorConnectionCount: observation.cursorConnectionCount,
         connectionId: observation.connectionId,
         host: observation.host,
-        ...triageFields,
-      }),
+        ...triageFields
+      })
     )
     return action
   }
@@ -518,14 +564,14 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     const vitality = await runStallVitalityDial(
       observation.leaf,
       observation.cursorConnectionCount,
-      nowMs,
+      nowMs
     )
     if (observation.connectionId) {
       recordVitalityByteSnapshot({
         connectionId: observation.connectionId,
         upload: bytes.upload,
         download: bytes.download,
-        nowMs,
+        nowMs
       })
     }
     markRecovery(observation.connectionId, nowMs)
@@ -541,8 +587,8 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         host: observation.host,
         vitalityDelayMs: vitality.delayMs,
         err: vitality.err,
-        ...triageFields,
-      }),
+        ...triageFields
+      })
     )
     await executeStallEscalationLadderIfDue(observation, nowMs)
     return action
@@ -554,7 +600,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     const vitality = await runStallVitalityDial(
       observation.leaf,
       observation.cursorConnectionCount,
-      nowMs,
+      nowMs
     )
     markRecovery(observation.connectionId, nowMs)
     await logRecovery(
@@ -569,8 +615,8 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         host: observation.host,
         vitalityDelayMs: vitality.delayMs,
         err: vitality.err,
-        ...triageFields,
-      }),
+        ...triageFields
+      })
     )
     return 'vitality_dial'
   }
@@ -586,7 +632,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
       firstSeenAtMs,
       host: connection ? String(connection.metadata?.host ?? '') : '',
       leaf: observation.leaf,
-      network: String(connection?.metadata?.network ?? ''),
+      network: String(connection?.metadata?.network ?? '')
     })
   }
   const closeTargetResolved = resolveStallRecoveryCloseTarget({
@@ -595,7 +641,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     registry: latestMarathonRecoveryContext.registry,
     connections: latestConnections,
     trackedById: trackedByIdForClose,
-    nowMs,
+    nowMs
   })
   const closeConnectionId = closeTargetResolved.connectionId.trim()
   if (!closeConnectionId) {
@@ -606,7 +652,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     const vitality = await runStallVitalityDial(
       observation.leaf,
       observation.cursorConnectionCount,
-      nowMs,
+      nowMs
     )
     markRecovery(observation.connectionId, nowMs)
     await logRecovery(
@@ -623,8 +669,8 @@ export async function executeMihomoQuicStallRecoveryIfDue(
         closeTargetSource: closeTargetResolved.closeTargetSource,
         vitalityDelayMs: vitality.delayMs,
         err: vitality.err,
-        ...triageFields,
-      }),
+        ...triageFields
+      })
     )
     return 'vitality_dial'
   }
@@ -643,7 +689,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     staleRequestIds: plan.carrierRid ? [plan.carrierRid] : [],
     baselineCarrier: { upload: pruneBytes.upload, download: pruneBytes.download },
     requireCarrierBytesRecovery: true,
-    connectionId: closeConnectionId,
+    connectionId: closeConnectionId
   }
   await logRecovery(
     formatMihomoQuicStallRecoveryLogLine({
@@ -658,8 +704,8 @@ export async function executeMihomoQuicStallRecoveryIfDue(
       observationConnectionId: observation.connectionId,
       closeTargetSource: closeTargetResolved.closeTargetSource,
       err: closed.err,
-      ...triageFields,
-    }),
+      ...triageFields
+    })
   )
   if (closed.ok) {
     await maybeRunHy2ParentRotationAfterPrune(nowMs)
@@ -682,7 +728,7 @@ export async function executeTokenGapIneffectiveEscalationIfDue(
     staleRequestIds: readonly string[]
     observation: MihomoQuicSilentStallObservation | undefined
   },
-  nowMs: number = Date.now(),
+  nowMs: number = Date.now()
 ): Promise<MihomoQuicStallRecoveryAction> {
   if (
     nowMs - lastTokenGapIneffectiveEscalationAtMs <
@@ -693,11 +739,11 @@ export async function executeTokenGapIneffectiveEscalationIfDue(
   const staleRequestIdCount = Math.max(
     input.staleRequestIds.length,
     latestTokenGapSnapshot.staleRequestIdCount,
-    input.maxGapMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS ? 1 : 0,
+    input.maxGapMs >= CURSOR_HY2_TOKEN_GAP_FORCE_MS ? 1 : 0
   )
   setMarathonTokenGapSnapshotForRecovery({
     maxGapMs: Math.max(input.maxGapMs, latestTokenGapSnapshot.maxGapMs),
-    staleRequestIdCount,
+    staleRequestIdCount
   })
   if (input.staleRequestIds.length > 0) {
     setMarathonRecoveryContextForPrune({
@@ -706,7 +752,7 @@ export async function executeTokenGapIneffectiveEscalationIfDue(
       httpParentChainAgeMs: latestMarathonRecoveryContext.httpParentChainAgeMs,
       outboundHy2SessionAgeMs: latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
       staleRequestIds: [...input.staleRequestIds],
-      registry: latestMarathonRecoveryContext.registry,
+      registry: latestMarathonRecoveryContext.registry
     })
   }
   const observation = input.observation

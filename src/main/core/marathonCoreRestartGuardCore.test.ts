@@ -4,14 +4,19 @@ import {
   buildMarathonCoreRestartGuardStateFilePayload,
   formatCoreLifecycleBlockedLog,
   isMarathonCoreRestartForceOverride,
-  shouldBlockMarathonCoreColdRestart,
+  shouldBlockMarathonCoreColdRestart
 } from './marathonCoreRestartGuardCore'
 
 describe('marathonCoreRestartGuardCore', () => {
   it('blocks when marathon quiesce is active and cursor_conn is zero', () => {
     const decision = shouldBlockMarathonCoreColdRestart(
-      { quiesceActive: true, cursorConnectionCount: 0, recentActiveLifecycleStreamCount: 0, updatedAtMs: 1_000 },
-      false,
+      {
+        quiesceActive: true,
+        cursorConnectionCount: 0,
+        recentActiveLifecycleStreamCount: 0,
+        updatedAtMs: 1_000
+      },
+      false
     )
     assert.equal(decision.blocked, true)
     assert.equal(decision.reason, 'marathon_quiesce_active')
@@ -19,8 +24,13 @@ describe('marathonCoreRestartGuardCore', () => {
 
   it('blocks at marathon threshold boundary via cursor_conn_active (TIP-1)', () => {
     const decision = shouldBlockMarathonCoreColdRestart(
-      { quiesceActive: false, cursorConnectionCount: 12, recentActiveLifecycleStreamCount: 0, updatedAtMs: 1_000 },
-      false,
+      {
+        quiesceActive: false,
+        cursorConnectionCount: 12,
+        recentActiveLifecycleStreamCount: 0,
+        updatedAtMs: 1_000
+      },
+      false
     )
     assert.equal(decision.blocked, true)
     assert.equal(decision.reason, 'cursor_conn_active')
@@ -28,8 +38,13 @@ describe('marathonCoreRestartGuardCore', () => {
 
   it('blocks when any cursor connection is active (TIP-1 — FORCE cannot override)', () => {
     const decision = shouldBlockMarathonCoreColdRestart(
-      { quiesceActive: false, cursorConnectionCount: 4, recentActiveLifecycleStreamCount: 0, updatedAtMs: 1_000 },
-      false,
+      {
+        quiesceActive: false,
+        cursorConnectionCount: 4,
+        recentActiveLifecycleStreamCount: 0,
+        updatedAtMs: 1_000
+      },
+      false
     )
     assert.equal(decision.blocked, true)
     assert.equal(decision.reason, 'cursor_conn_active')
@@ -37,25 +52,68 @@ describe('marathonCoreRestartGuardCore', () => {
 
   it('allows cold restart only when cursor_conn is zero and idle', () => {
     const decision = shouldBlockMarathonCoreColdRestart(
-      { quiesceActive: false, cursorConnectionCount: 0, recentActiveLifecycleStreamCount: 0, updatedAtMs: 1_000 },
-      false,
+      {
+        quiesceActive: false,
+        cursorConnectionCount: 0,
+        recentActiveLifecycleStreamCount: 0,
+        updatedAtMs: 1_000
+      },
+      false
     )
     assert.equal(decision.blocked, false)
     assert.equal(decision.reason, 'idle')
   })
 
+  it('fails closed when cursor connection observation is unavailable', () => {
+    const decision = shouldBlockMarathonCoreColdRestart(
+      {
+        quiesceActive: false,
+        cursorConnectionCount: -1,
+        recentActiveLifecycleStreamCount: 0,
+        updatedAtMs: 1_000
+      },
+      true
+    )
+    assert.equal(decision.blocked, true)
+    assert.equal(decision.reason, 'cursor_conn_observation_unavailable')
+  })
+
+  it('fails closed when lifecycle observation is unavailable', () => {
+    const decision = shouldBlockMarathonCoreColdRestart(
+      {
+        quiesceActive: false,
+        cursorConnectionCount: 0,
+        recentActiveLifecycleStreamCount: -1,
+        updatedAtMs: 1_000
+      },
+      false
+    )
+    assert.equal(decision.blocked, true)
+    assert.equal(decision.reason, 'lifecycle_observation_unavailable')
+  })
+
   it('honors SPARKLE_FORCE_CORE_RESTART only when cursor_conn is zero', () => {
     assert.equal(isMarathonCoreRestartForceOverride('1'), true)
     const blocked = shouldBlockMarathonCoreColdRestart(
-      { quiesceActive: true, cursorConnectionCount: 20, recentActiveLifecycleStreamCount: 0, updatedAtMs: 1_000 },
-      true,
+      {
+        quiesceActive: true,
+        cursorConnectionCount: 20,
+        recentActiveLifecycleStreamCount: 0,
+        updatedAtMs: 1_000
+      },
+      true
     )
     assert.equal(blocked.blocked, true)
     assert.equal(blocked.reason, 'cursor_conn_active')
 
     const allowed = shouldBlockMarathonCoreColdRestart(
-      { quiesceActive: true, cursorConnectionCount: 0, recentActiveLifecycleStreamCount: 0, updatedAtMs: 1_000 },
-      true,
+      {
+        quiesceActive: true,
+        cursorConnectionCount: 0,
+        recentActiveLifecycleStreamCount: 0,
+        updatedAtMs: 1_000
+      },
+      true
     )
     assert.equal(allowed.blocked, false)
     assert.equal(allowed.reason, 'force_override')
@@ -67,9 +125,9 @@ describe('marathonCoreRestartGuardCore', () => {
         quiesceActive: false,
         cursorConnectionCount: 0,
         recentActiveLifecycleStreamCount: 4,
-        updatedAtMs: 1_000,
+        updatedAtMs: 1_000
       },
-      false,
+      false
     )
     assert.equal(decision.blocked, true)
     assert.equal(decision.reason, 'recent_active_lifecycle_stream')
@@ -81,9 +139,9 @@ describe('marathonCoreRestartGuardCore', () => {
         quiesceActive: true,
         cursorConnectionCount: 13,
         recentActiveLifecycleStreamCount: 0,
-        updatedAtMs: 2_000,
+        updatedAtMs: 2_000
       },
-      false,
+      false
     )
     assert.equal(payload.blockColdRestart, true)
     assert.equal(payload.quiesceActive, true)
@@ -96,7 +154,7 @@ describe('marathonCoreRestartGuardCore', () => {
       quiesceActive: true,
       cursorConnectionCount: 13,
       recentActiveLifecycleStreamCount: 0,
-      updatedAtMs: 3_000,
+      updatedAtMs: 3_000
     }
     const decision = shouldBlockMarathonCoreColdRestart(snapshot, false)
     const line = formatCoreLifecycleBlockedLog('install-sparkle-local', decision, snapshot)

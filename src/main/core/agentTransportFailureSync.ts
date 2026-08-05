@@ -4,14 +4,18 @@
 
 import { appendFile, mkdir, open, readFile, readdir, stat } from 'fs/promises'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { homedir } from 'os'
-import { discoverCursorLogRoots, listCursorLogSessionDirs } from './cursorLogDiscoveryCore'
+import {
+  discoverCursorLogRoots,
+  listCursorLogSessionDirs,
+  resolveCursorLogRouteKind
+} from './cursorLogDiscoveryCore'
 import {
   parseTransportFailureLine,
   rowDedupeKey,
   shouldPersistTransportFailure,
-  type AgentTransportFailureRow,
+  type AgentTransportFailureRow
 } from './agentTransportFailureWriterCore'
 import { validatedLedgerTerminalDedupeKey } from './validatedLedgerTerminalProjectionCore'
 
@@ -84,7 +88,7 @@ export async function listRendererLogFiles(cursorDataDir: string): Promise<strin
 const STRUCTURED_LOG_RELATIVE = join(
   'exthost',
   'anysphere.cursor-always-local',
-  'Cursor Structured Logs.log',
+  'Cursor Structured Logs.log'
 )
 
 export async function listCursorStructuredLogFiles(cursorDataDir: string): Promise<string[]> {
@@ -144,7 +148,7 @@ async function loadExistingDedupeKeys(sinceMs: number): Promise<Set<string>> {
         ts,
         requestId: String(raw.requestId ?? '') || undefined,
         originalRequestId: String(raw.originalRequestId ?? raw.requestId ?? '') || undefined,
-        reasonSub: String(raw.reasonSub ?? ''),
+        reasonSub: String(raw.reasonSub ?? '')
       }
       if (raw.source === 'validated-ledger-projection') {
         keys.add(validatedLedgerTerminalDedupeKey(row))
@@ -160,7 +164,7 @@ async function loadExistingDedupeKeys(sinceMs: number): Promise<Set<string>> {
 
 export async function appendAgentTransportFailureRow(
   row: AgentTransportFailureRow,
-  proxyNodeFallback?: string,
+  proxyNodeFallback?: string
 ): Promise<void> {
   const payload = {
     kind: row.kind?.trim() || 'agent_transport_failure',
@@ -178,10 +182,10 @@ export async function appendAgentTransportFailureRow(
     ...(row.durationMs !== undefined ? { durationMs: row.durationMs } : {}),
     ...(row.streamPrimarySub ? { streamPrimarySub: row.streamPrimarySub } : {}),
     ...(row.disconnectPhase ? { disconnectPhase: row.disconnectPhase } : {}),
+    routeKind: row.routeKind ?? 'unknown',
+    cursorLogRoot: row.cursorLogRoot ?? '',
     source:
-      row.kind === 'validated_ledger_terminal'
-        ? 'validated-ledger-projection'
-        : 'sparkle-sync',
+      row.kind === 'validated_ledger_terminal' ? 'validated-ledger-projection' : 'sparkle-sync'
   }
   await mkdir(join(homedir(), '.sparkle'), { recursive: true })
   await appendFile(sparkleAgentTransportPath(), `${JSON.stringify(payload)}\n`, 'utf8')
@@ -191,6 +195,7 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
   sinceMs?: number
   proxyNodeFallback?: string
   cursorDataDirs?: string[]
+  appPathPrefixes?: readonly string[]
   logWrites?: boolean
 }): Promise<number> {
   if (syncInFlight) {
@@ -199,13 +204,17 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
   syncInFlight = true
   try {
     const sinceMs =
-      options?.sinceMs ??
-      Math.max(0, (lastSyncFinishedAtMs || Date.now()) - SYNC_OVERLAP_MS)
+      options?.sinceMs ?? Math.max(0, (lastSyncFinishedAtMs || Date.now()) - SYNC_OVERLAP_MS)
     const seen = await loadExistingDedupeKeys(sinceMs)
     let written = 0
     const writtenRows: AgentTransportFailureRow[] = []
     const cursorDataDirs = options?.cursorDataDirs ?? (await resolveCursorDataDirs())
+    const dedicatedAppPathPrefixes =
+      options?.appPathPrefixes ??
+      (await (await import('../config/app')).getAppConfig()).cursorProxyAppPathPrefixes ??
+      []
     for (const cursorDataDir of cursorDataDirs) {
+      const routeKind = resolveCursorLogRouteKind(cursorDataDir, dedicatedAppPathPrefixes)
       const ingestLogTail = async (filePath: string, tailBytes: number): Promise<void> => {
         const text = await readLogFileTail(filePath, tailBytes)
         for (const line of text.split('\n')) {
@@ -213,14 +222,25 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
           if (!candidate || candidate.ts < sinceMs || !shouldPersistTransportFailure(candidate)) {
             continue
           }
-          const key = rowDedupeKey(candidate)
+          const attributedCandidate: AgentTransportFailureRow = {
+            ...candidate,
+            routeKind,
+            cursorLogRoot: basename(cursorDataDir),
+            ...(routeKind === 'direct'
+              ? { proxyNode: undefined, reasonType: 'direct-path-transport' }
+              : {})
+          }
+          const key = rowDedupeKey(attributedCandidate)
           if (seen.has(key)) {
             continue
           }
           seen.add(key)
-          await appendAgentTransportFailureRow(candidate, options?.proxyNodeFallback)
+          await appendAgentTransportFailureRow(
+            attributedCandidate,
+            routeKind === 'dedicated-proxy' ? options?.proxyNodeFallback : undefined
+          )
           written += 1
-          writtenRows.push(candidate)
+          writtenRows.push(attributedCandidate)
         }
       }
 
@@ -235,9 +255,8 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
       }
     }
     const ledgerWritten = await (async () => {
-      const { projectValidatedLedgerTerminalsToJsonl } = await import(
-        './validatedLedgerTerminalProjectionCore'
-      )
+      const { projectValidatedLedgerTerminalsToJsonl } =
+        await import('./validatedLedgerTerminalProjectionCore')
       return projectValidatedLedgerTerminalsToJsonl({
         sinceMs,
         seen,
@@ -245,21 +264,22 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
           await appendAgentTransportFailureRow(row, options?.proxyNodeFallback)
           written += 1
           writtenRows.push(row)
-        },
+        }
       })
     })()
     if (ledgerWritten > 0 && options?.logWrites !== false) {
       try {
         const { appendAppLog } = await import('../utils/log')
         await appendAppLog(
-          `[ValidatedLedgerProjection]: wrote ${ledgerWritten} terminal row(s) → ${sparkleAgentTransportPath()}\n`,
+          `[ValidatedLedgerProjection]: wrote ${ledgerWritten} terminal row(s) → ${sparkleAgentTransportPath()}\n`
         )
       } catch {
         // best-effort
       }
     }
     lastSyncFinishedAtMs = Date.now()
-    if (writtenRows.length > 0) {
+    const proxyRecoveryRows = writtenRows.filter((row) => row.routeKind !== 'direct')
+    if (proxyRecoveryRows.length > 0) {
       const { isConnectPingTransportFailure, isHttpSseServerEofTransportFailure } =
         await import('./connectPartitionDetectCore')
       const {
@@ -269,17 +289,19 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
         collectPartitionLatchRequestIds,
         collectLateServerEofPartitionLatchRequestIds,
         armPartitionLatch,
-        formatPartitionMassPingSyncLogLine,
+        formatPartitionMassPingSyncLogLine
       } = await import('./partitionLatchCore')
-      if (shouldArmPartitionLatchFromTransportSync(writtenRows)) {
-        const affectedRequestIds = collectPartitionLatchRequestIds(writtenRows)
+      if (shouldArmPartitionLatchFromTransportSync(proxyRecoveryRows)) {
+        const affectedRequestIds = collectPartitionLatchRequestIds(proxyRecoveryRows)
         armPartitionLatch(lastSyncFinishedAtMs, affectedRequestIds)
         try {
           const { appendAppLog } = await import('../utils/log')
           const { countCursorConnections } = await import('./cursorConnectionHygiene')
-          const pingRows = writtenRows.filter((row) => isConnectPingTransportFailure(row)).length
-          const serverEofRows = writtenRows.filter((row) =>
-            isHttpSseServerEofTransportFailure(row),
+          const pingRows = proxyRecoveryRows.filter((row) =>
+            isConnectPingTransportFailure(row)
+          ).length
+          const serverEofRows = proxyRecoveryRows.filter((row) =>
+            isHttpSseServerEofTransportFailure(row)
           ).length
           const cursorConnectionCount = await countCursorConnections().catch(() => -1)
           await appendAppLog(
@@ -289,29 +311,31 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
               written,
               cursorConnectionCount,
               affectedRequestIds,
-              latchReason: shouldArmPartitionLatchFromMassPingSync(writtenRows)
+              latchReason: shouldArmPartitionLatchFromMassPingSync(proxyRecoveryRows)
                 ? 'mass_ping'
-                : 'mixed_ping_eof',
-            }),
+                : 'mixed_ping_eof'
+            })
           )
         } catch {
           // best-effort observability
         }
-      } else if (shouldMergePartitionLatchFromLateServerEof(writtenRows, lastSyncFinishedAtMs)) {
-        const lateEofRequestIds = collectLateServerEofPartitionLatchRequestIds(writtenRows)
+      } else if (
+        shouldMergePartitionLatchFromLateServerEof(proxyRecoveryRows, lastSyncFinishedAtMs)
+      ) {
+        const lateEofRequestIds = collectLateServerEofPartitionLatchRequestIds(proxyRecoveryRows)
         if (lateEofRequestIds.length > 0) {
           armPartitionLatch(lastSyncFinishedAtMs, lateEofRequestIds)
           try {
             const { appendAppLog } = await import('../utils/log')
             await appendAppLog(
-              `[PartitionLateEofMerge]: merged latch stale_rids=${lateEofRequestIds.slice(0, 8).join(',')} count=${lateEofRequestIds.length}\n`,
+              `[PartitionLateEofMerge]: merged latch stale_rids=${lateEofRequestIds.slice(0, 8).join(',')} count=${lateEofRequestIds.length}\n`
             )
           } catch {
             // best-effort observability
           }
         }
       }
-      for (const row of writtenRows) {
+      for (const row of proxyRecoveryRows) {
         if (row.kind !== 'http_sse_transport_failure') {
           continue
         }
@@ -321,11 +345,10 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
         }
         void (async () => {
           try {
-            const { observeNatStaleSuspectFromTransportFailure } = await import(
-              './natStaleSuspectObserver'
-            )
+            const { observeNatStaleSuspectFromTransportFailure } =
+              await import('./natStaleSuspectObserver')
             await observeNatStaleSuspectFromTransportFailure(row, {
-              proxyNodeFallback: options?.proxyNodeFallback,
+              proxyNodeFallback: options?.proxyNodeFallback
             })
           } catch {
             // P27b observe-only — jsonl row is authoritative
@@ -333,17 +356,16 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
         })()
         void (async () => {
           try {
-            const { collectIncidentBundleAtDisconnect } = await import(
-              './incidentBundleCollectorCore'
-            )
+            const { collectIncidentBundleAtDisconnect } =
+              await import('./incidentBundleCollectorCore')
             const { appendAppLog } = await import('../utils/log')
             const result = await collectIncidentBundleAtDisconnect({
               originalRequestId,
               tsMs: row.ts,
-              reasonSub: row.reasonSub,
+              reasonSub: row.reasonSub
             })
             await appendAppLog(
-              `[IncidentBundle]: collected rid=${originalRequestId} dir=${result.bundleDir} files=${result.filesWritten}\n`,
+              `[IncidentBundle]: collected rid=${originalRequestId} dir=${result.bundleDir} files=${result.filesWritten}\n`
             )
           } catch {
             // best-effort — jsonl row is authoritative
@@ -357,7 +379,7 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
         const roots = cursorDataDirs.length
         if (written > 0) {
           await appendAppLog(
-            `[AgentTransportFailureSync]: wrote ${written} row(s) roots=${roots} → ${sparkleAgentTransportPath()}\n`,
+            `[AgentTransportFailureSync]: wrote ${written} row(s) roots=${roots} → ${sparkleAgentTransportPath()}\n`
           )
         }
       } catch {
@@ -380,14 +402,11 @@ export function startAgentTransportFailureSync(): void {
     const { appendAppLog } = await import('../utils/log')
     const health = await auditCursorLogDiscoveryHealth({
       appPathPrefixes:
-        (await (await import('../config/app')).getAppConfig()).cursorProxyAppPathPrefixes ?? [],
+        (await (await import('../config/app')).getAppConfig()).cursorProxyAppPathPrefixes ?? []
     })
-    const strayNote =
-      health.strayEntries.length > 0
-        ? ` stray=${health.strayEntries.length}`
-        : ''
+    const strayNote = health.strayEntries.length > 0 ? ` stray=${health.strayEntries.length}` : ''
     await appendAppLog(
-      `[LogDiscoveryHealth]: outcome=${health.outcome} roots=${health.rootsChecked} sessions=${health.sessionCount}${strayNote}${health.errors.length > 0 ? ` err=${health.errors.join('; ')}` : ''}\n`,
+      `[LogDiscoveryHealth]: outcome=${health.outcome} roots=${health.rootsChecked} sessions=${health.sessionCount}${strayNote}${health.errors.length > 0 ? ` err=${health.errors.join('; ')}` : ''}\n`
     )
     const { resolveCursorDedicatedActiveNode } = await import('./cursorHy2MarathonKeepalive')
     const proxyNode = await resolveCursorDedicatedActiveNode()

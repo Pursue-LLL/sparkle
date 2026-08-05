@@ -91,131 +91,140 @@ function runStartupTask(name: string, task: Promise<unknown>): void {
 ensureWindowsElevatedStartup(syncConfig.corePermissionMode, exitApp)
 
 const gotTheLock = app.requestSingleInstanceLock()
+const instanceAudit =
+  `[AppLifecycle]: instance_lock acquired=${gotTheLock ? 1 : 0}` +
+  ` pid=${process.pid} ppid=${process.ppid} version=${app.getVersion()}\n`
 
 if (!gotTheLock) {
-  app.quit()
-}
+  void appendAppLog(instanceAudit)
+    .catch(() => {})
+    .finally(() => app.exit(0))
+} else {
+  void appendAppLog(instanceAudit).catch(() => {})
+  useLinuxCustomRelaunch()
+  applyWindowsGpuWorkaround()
 
-useLinuxCustomRelaunch()
-applyWindowsGpuWorkaround()
+  const initPromise = init()
 
-const initPromise = init()
-
-if (syncConfig.disableGPU) {
-  app.disableHardwareAcceleration()
-}
-
-app.on('second-instance', async (_event, commandline) => {
-  showMainWindow()
-  const url = commandline.pop()
-  if (url) {
-    await handleDeepLink(url, { getMainWindow: () => mainWindow, createWindow, showWindow })
-  }
-})
-
-app.on('open-url', async (_event, url) => {
-  showMainWindow()
-  await handleDeepLink(url, { getMainWindow: () => mainWindow, createWindow, showWindow })
-})
-
-function showWindow(): number {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
-    } else if (!mainWindow.isVisible()) {
-      mainWindow.show()
-    }
-    mainWindow.focusOnWebView()
-    mainWindow.setAlwaysOnTop(true, 'pop-up-menu')
-    mainWindow.focus()
-    mainWindow.setAlwaysOnTop(false)
-
-    if (!mainWindow.isMinimized()) {
-      return 100
-    }
-  }
-  return 500
-}
-
-initAppQuitLifecycle({
-  getMainWindow: () => mainWindow,
-  showWindow,
-  clearLightweightTimeout,
-  exitApp
-})
-
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(async () => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('sparkle.app')
-  let appConfig: AppConfig
-  try {
-    appConfig = await initPromise
-  } catch (e) {
-    void showNotification({ title: '应用初始化失败', body: `${e}`, variant: 'danger' })
-    app.quit()
-    return
+  if (syncConfig.disableGPU) {
+    app.disableHardwareAcceleration()
   }
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
-  const { showFloatingWindow: showFloating = false, disableTray = false } = appConfig
-  registerIpcMainHandlers()
-
-  const createWindowPromise = createWindow(appConfig)
-
-  let coreStarted = false
-
-  const coreStartPromise = (async (): Promise<void> => {
-    try {
-      if (is.dev) {
-        await initialWindowDisplayPromise
-      }
-      await bootstrapCursorNetworkDefaults()
-      const [startPromise] = await startCore()
-      void runPostCoreBootstrap(startPromise).catch(async (error) => {
-        await appendAppLog(
-          `[PostCoreBootstrap]: failed: ${error instanceof Error ? error.message : String(error)}\n`
-        )
-      })
-      coreStarted = true
-    } catch (e) {
-      void showNotification({ title: '内核启动出错', body: `${e}`, variant: 'danger' })
-    }
-  })()
-
-  runStartupTask('traffic monitor', startMonitor())
-
-  await createWindowPromise
-
-  const uiTasks: Promise<void>[] = [initShortcut()]
-
-  if (showFloating) {
-    uiTasks.push(Promise.resolve(showFloatingWindow()))
-  }
-  if (!disableTray) {
-    uiTasks.push(createTray())
-  }
-
-  runStartupTask('ui extras', Promise.all(uiTasks))
-  coreStartPromise.then(() => {
-    if (coreStarted) {
-      mainWindow?.webContents.send('core-started')
-    }
-  })
-
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
+  app.on('second-instance', async (_event, commandline) => {
+    await appendAppLog(
+      `[AppLifecycle]: second_instance_event primary_pid=${process.pid} argv_count=${commandline.length}\n`
+    )
     showMainWindow()
+    const url = commandline.pop()
+    if (url) {
+      await handleDeepLink(url, { getMainWindow: () => mainWindow, createWindow, showWindow })
+    }
   })
-})
+
+  app.on('open-url', async (_event, url) => {
+    showMainWindow()
+    await handleDeepLink(url, { getMainWindow: () => mainWindow, createWindow, showWindow })
+  })
+
+  function showWindow(): number {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      } else if (!mainWindow.isVisible()) {
+        mainWindow.show()
+      }
+      mainWindow.focusOnWebView()
+      mainWindow.setAlwaysOnTop(true, 'pop-up-menu')
+      mainWindow.focus()
+      mainWindow.setAlwaysOnTop(false)
+
+      if (!mainWindow.isMinimized()) {
+        return 100
+      }
+    }
+    return 500
+  }
+
+  initAppQuitLifecycle({
+    getMainWindow: () => mainWindow,
+    showWindow,
+    clearLightweightTimeout,
+    exitApp
+  })
+
+  // This method will be called when Electron has finished
+  // initialization and is ready to create browser windows.
+  // Some APIs can only be used after this event occurs.
+  app.whenReady().then(async () => {
+    // Set app user model id for windows
+    electronApp.setAppUserModelId('sparkle.app')
+    let appConfig: AppConfig
+    try {
+      appConfig = await initPromise
+    } catch (e) {
+      void showNotification({ title: '应用初始化失败', body: `${e}`, variant: 'danger' })
+      app.quit()
+      return
+    }
+
+    // Default open or close DevTools by F12 in development
+    // and ignore CommandOrControl + R in production.
+    // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+    const { showFloatingWindow: showFloating = false, disableTray = false } = appConfig
+    registerIpcMainHandlers()
+
+    const createWindowPromise = createWindow(appConfig)
+
+    let coreStarted = false
+
+    const coreStartPromise = (async (): Promise<void> => {
+      try {
+        if (is.dev) {
+          await initialWindowDisplayPromise
+        }
+        await bootstrapCursorNetworkDefaults()
+        const [startPromise] = await startCore()
+        void runPostCoreBootstrap(startPromise).catch(async (error) => {
+          await appendAppLog(
+            `[PostCoreBootstrap]: failed: ${error instanceof Error ? error.message : String(error)}\n`
+          )
+        })
+        coreStarted = true
+      } catch (e) {
+        void showNotification({ title: '内核启动出错', body: `${e}`, variant: 'danger' })
+      }
+    })()
+
+    runStartupTask('traffic monitor', startMonitor())
+
+    await createWindowPromise
+
+    const uiTasks: Promise<void>[] = [initShortcut()]
+
+    if (showFloating) {
+      uiTasks.push(Promise.resolve(showFloatingWindow()))
+    }
+    if (!disableTray) {
+      uiTasks.push(createTray())
+    }
+
+    runStartupTask('ui extras', Promise.all(uiTasks))
+    coreStartPromise.then(() => {
+      if (coreStarted) {
+        mainWindow?.webContents.send('core-started')
+      }
+    })
+
+    app.on('activate', function () {
+      // On macOS it's common to re-create a window in the app when the
+      // dock icon is clicked and there are no other windows open.
+      showMainWindow()
+    })
+  })
+}
 
 export async function createWindow(appConfig?: AppConfig): Promise<void> {
   if (isCreatingWindow) {

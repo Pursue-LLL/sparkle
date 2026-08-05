@@ -22,6 +22,9 @@ export interface AgentTransportFailureRow {
   streamPrimarySub?: string
   /** P25a: renderer agent-error disconnectPhase (e.g. phase1_stream). */
   disconnectPhase?: string
+  /** Actual routing class inferred from the Cursor log root + generated path rules. */
+  routeKind?: 'dedicated-proxy' | 'direct' | 'unknown'
+  cursorLogRoot?: string
 }
 
 /** Align with P14c / cursorStreamTokenGapCore marathon silent EOF gate. */
@@ -59,7 +62,7 @@ function parseLogTimestampMs(line: string): number | undefined {
 function classifyTransportReason(
   errMsg: string,
   connectCode: string,
-  durationMs?: number,
+  durationMs?: number
 ): {
   reasonType: string
   reasonSub: string
@@ -104,7 +107,7 @@ function parseIfmPatch99Line(line: string): AgentTransportFailureRow | undefined
     errMsg: parseLogField(line, 'errMsg') || undefined,
     connectCode: parseLogField(line, 'connectCode') || undefined,
     attempt: parseLogNumber(line, 'attempt') || undefined,
-    activeAgents: parseLogNumber(line, 'activeAgents') || undefined,
+    activeAgents: parseLogNumber(line, 'activeAgents') || undefined
   }
 }
 
@@ -137,7 +140,7 @@ function parseHttpSseServerEofAgentError(line: string): AgentTransportFailureRow
     durationMs,
     streamPrimarySub,
     disconnectPhase,
-    kind: 'http_sse_transport_failure',
+    kind: 'http_sse_transport_failure'
   }
 }
 
@@ -169,7 +172,7 @@ function parseIfmPatch29Line(line: string): AgentTransportFailureRow | undefined
     errMsg: errMsg || undefined,
     connectCode: connectCode || undefined,
     attempt: parseLogNumber(line, 'attempt') || undefined,
-    activeAgents: parseLogNumber(line, 'activeAgents') || undefined,
+    activeAgents: parseLogNumber(line, 'activeAgents') || undefined
   }
 }
 
@@ -205,9 +208,7 @@ function parseIfmEventV1Line(line: string): AgentTransportFailureRow | undefined
   }
   const tsRaw = payload.occurredAtMs ?? nested.terminalMs ?? payload.ts
   const ts =
-    typeof tsRaw === 'number' && Number.isFinite(tsRaw)
-      ? tsRaw
-      : parseLogTimestampMs(line) ?? 0
+    typeof tsRaw === 'number' && Number.isFinite(tsRaw) ? tsRaw : (parseLogTimestampMs(line) ?? 0)
   if (ts <= 0) {
     return undefined
   }
@@ -215,7 +216,8 @@ function parseIfmEventV1Line(line: string): AgentTransportFailureRow | undefined
   return {
     ts,
     requestId: String(payload.requestId ?? '').trim() || undefined,
-    originalRequestId: String(payload.originalRequestId ?? payload.requestId ?? '').trim() || undefined,
+    originalRequestId:
+      String(payload.originalRequestId ?? payload.requestId ?? '').trim() || undefined,
     composerId: String(payload.composerId ?? '').trim() || undefined,
     reasonType: classified.reasonType,
     reasonSub: classified.reasonSub,
@@ -229,7 +231,7 @@ function parseIfmEventV1Line(line: string): AgentTransportFailureRow | undefined
     activeAgents:
       typeof nested.activeAgents === 'number'
         ? nested.activeAgents
-        : parseLogNumber(line, 'activeAgents') || undefined,
+        : parseLogNumber(line, 'activeAgents') || undefined
   }
 }
 
@@ -283,14 +285,14 @@ function parseRendererConnectErrorJsonLine(line: string): AgentTransportFailureR
   }
   const classified = classifyTransportReason(
     causeCode && TRANSPORT_ERR_RE.test(causeCode) ? `${errMsg} ${causeCode}`.trim() : errMsg,
-    connectCode,
+    connectCode
   )
   return {
     ts,
     reasonType: classified.reasonType,
     reasonSub: classified.reasonSub,
     errMsg,
-    connectCode: connectCode || undefined,
+    connectCode: connectCode || undefined
   }
 }
 
@@ -308,19 +310,19 @@ function parseExthostConnectErrorLine(line: string): AgentTransportFailureRow | 
     ts,
     reasonType: classified.reasonType,
     reasonSub: classified.reasonSub,
-    errMsg,
+    errMsg
   }
 }
 
 function isNetworkDiagnosticTransportLine(line: string): boolean {
   return /Network Diagnostic|networkDiagnostics|network.?diagnostic|cursorNetworkDiagnostics/i.test(
-    line,
+    line
   )
 }
 
 function tagNetworkDiagnosticKind(
   row: AgentTransportFailureRow,
-  line: string,
+  line: string
 ): AgentTransportFailureRow {
   if (!isNetworkDiagnosticTransportLine(line)) {
     return row
@@ -371,7 +373,8 @@ function parseCursorStructuredTransportLine(line: string): AgentTransportFailure
   const message = String(payload.message ?? '')
 
   if (message.includes('Stream error reported from extension host')) {
-    const errMsg = metadataString(metadata, 'error.message') || metadataString(metadata, 'errorMessage')
+    const errMsg =
+      metadataString(metadata, 'error.message') || metadataString(metadata, 'errorMessage')
     const connectCode =
       metadataString(metadata, 'errorCode') || metadataString(metadata, 'error.code')
     if (!isPingTransportFailure(errMsg, connectCode)) {
@@ -379,8 +382,7 @@ function parseCursorStructuredTransportLine(line: string): AgentTransportFailure
     }
     const classified = classifyTransportReason(errMsg, connectCode)
     const requestId = metadataString(metadata, 'requestId')
-    const originalRequestId =
-      metadataString(metadata, 'originalRequestId') || requestId
+    const originalRequestId = metadataString(metadata, 'originalRequestId') || requestId
     return {
       ts,
       requestId: requestId || undefined,
@@ -390,7 +392,7 @@ function parseCursorStructuredTransportLine(line: string): AgentTransportFailure
       reasonSub: classified.reasonSub,
       errMsg: errMsg || undefined,
       connectCode: connectCode || undefined,
-      attempt: Number(metadataString(metadata, 'attempt')) || undefined,
+      attempt: Number(metadataString(metadata, 'attempt')) || undefined
     }
   }
 
@@ -406,9 +408,7 @@ function parseCursorStructuredTransportLine(line: string): AgentTransportFailure
       metadataString(metadata, 'error.displayInfo.connectCode')
     const codeName = metadataString(metadata, 'underlyingConnectError.codeName')
     const errMsg =
-      connectCode === '14' || codeName === 'Unavailable'
-        ? '[unavailable] PING timed out'
-        : ''
+      connectCode === '14' || codeName === 'Unavailable' ? '[unavailable] PING timed out' : ''
     if (!isPingTransportFailure(errMsg, connectCode)) {
       return undefined
     }
@@ -421,7 +421,7 @@ function parseCursorStructuredTransportLine(line: string): AgentTransportFailure
       reasonSub: classified.reasonSub,
       errMsg: errMsg || undefined,
       connectCode: connectCode || undefined,
-      attempt: Number(metadataString(metadata, 'attempt')) || undefined,
+      attempt: Number(metadataString(metadata, 'attempt')) || undefined
     }
   }
 
@@ -451,7 +451,7 @@ function parseCursorStructuredTransportLine(line: string): AgentTransportFailure
       reasonSub: classified.reasonSub,
       errMsg: errMsg || undefined,
       connectCode: connectCode || undefined,
-      attempt: Number(metadataString(metadata, 'attempt')) || undefined,
+      attempt: Number(metadataString(metadata, 'attempt')) || undefined
     }
   }
 
@@ -463,9 +463,7 @@ function parseNetworkDiagnosticTransportLine(line: string): AgentTransportFailur
     return undefined
   }
   const row =
-    parseRendererConnectErrorJsonLine(line) ??
-    parseExthostConnectErrorLine(line) ??
-    undefined
+    parseRendererConnectErrorJsonLine(line) ?? parseExthostConnectErrorLine(line) ?? undefined
   if (!row) {
     return undefined
   }

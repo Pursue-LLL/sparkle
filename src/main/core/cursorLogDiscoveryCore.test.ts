@@ -8,6 +8,7 @@ import {
   auditCursorLogDiscoveryHealth,
   discoverCursorLogRoots,
   listCursorLogSessionDirs,
+  resolveCursorLogRouteKind
 } from './cursorLogDiscoveryCore'
 
 describe('cursorLogDiscoveryCore', () => {
@@ -25,7 +26,7 @@ describe('cursorLogDiscoveryCore', () => {
 
     const roots = discoverCursorLogRoots({
       applicationSupportDir: support,
-      appPathPrefixes: ['/Applications/Cursor-custom.app'],
+      appPathPrefixes: ['/Applications/Cursor-custom.app']
     })
 
     assert.ok(roots.includes(join(support, 'Cursor')))
@@ -34,6 +35,15 @@ describe('cursorLogDiscoveryCore', () => {
     assert.ok(!roots.includes(noLogs))
 
     rmSync(home, { recursive: true, force: true })
+  })
+
+  it('attributes log roots from the same path-scoped routing contract as generated rules', () => {
+    const prefixes = ['/Applications/Cursor-3.1.15.app', '/Applications/Cursor-2.app']
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-3.1.15-data', prefixes), 'dedicated-proxy')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-2-data', prefixes), 'dedicated-proxy')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor', prefixes), 'direct')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-preview-data', prefixes), 'unknown')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor', []), 'dedicated-proxy')
   })
 
   it('listCursorLogSessionDirs skips dotfiles (BUG-021)', async () => {

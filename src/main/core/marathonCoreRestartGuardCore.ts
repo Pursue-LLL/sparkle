@@ -30,20 +30,28 @@ export interface MarathonCoreRestartGuardDecision {
 }
 
 export function isMarathonCoreRestartForceOverride(
-  envValue: string | undefined = process.env[MARATHON_CORE_RESTART_FORCE_ENV],
+  envValue: string | undefined = process.env[MARATHON_CORE_RESTART_FORCE_ENV]
 ): boolean {
   return envValue === '1'
 }
 
 export function shouldBlockMarathonCoreColdRestart(
   snapshot: MarathonCoreRestartGuardSnapshot,
-  forceOverride: boolean,
+  forceOverride: boolean
 ): MarathonCoreRestartGuardDecision {
+  if (snapshot.cursorConnectionCount < 0) {
+    return {
+      blocked: true,
+      forceOverride,
+      reason: 'cursor_conn_observation_unavailable'
+    }
+  }
+
   if (snapshot.cursorConnectionCount > 0) {
     return {
       blocked: true,
       forceOverride,
-      reason: 'cursor_conn_active',
+      reason: 'cursor_conn_active'
     }
   }
 
@@ -51,7 +59,7 @@ export function shouldBlockMarathonCoreColdRestart(
     return {
       blocked: false,
       forceOverride: true,
-      reason: 'force_override',
+      reason: 'force_override'
     }
   }
 
@@ -59,7 +67,15 @@ export function shouldBlockMarathonCoreColdRestart(
     return {
       blocked: true,
       forceOverride: false,
-      reason: 'marathon_quiesce_active',
+      reason: 'marathon_quiesce_active'
+    }
+  }
+
+  if (snapshot.recentActiveLifecycleStreamCount < 0) {
+    return {
+      blocked: true,
+      forceOverride: false,
+      reason: 'lifecycle_observation_unavailable'
     }
   }
 
@@ -67,21 +83,21 @@ export function shouldBlockMarathonCoreColdRestart(
     return {
       blocked: true,
       forceOverride: false,
-      reason: 'recent_active_lifecycle_stream',
+      reason: 'recent_active_lifecycle_stream'
     }
   }
 
   return {
     blocked: false,
     forceOverride: false,
-    reason: 'idle',
+    reason: 'idle'
   }
 }
 
 export function formatCoreLifecycleBlockedLog(
   caller: CoreLifecycleCaller,
   decision: MarathonCoreRestartGuardDecision,
-  snapshot: MarathonCoreRestartGuardSnapshot,
+  snapshot: MarathonCoreRestartGuardSnapshot
 ): string {
   return (
     `[CoreLifecycle]: core_cold_restart_blocked caller=${caller} reason=${decision.reason} ` +
@@ -92,7 +108,7 @@ export function formatCoreLifecycleBlockedLog(
 
 export function formatCoreLifecycleScheduledLog(
   caller: CoreLifecycleCaller,
-  snapshot: MarathonCoreRestartGuardSnapshot,
+  snapshot: MarathonCoreRestartGuardSnapshot
 ): string {
   return (
     `[CoreLifecycle]: core_cold_restart_scheduled caller=${caller} ` +
@@ -103,7 +119,7 @@ export function formatCoreLifecycleScheduledLog(
 
 export function buildMarathonCoreRestartGuardStateFilePayload(
   snapshot: MarathonCoreRestartGuardSnapshot,
-  forceOverride: boolean,
+  forceOverride: boolean
 ): {
   updatedAtMs: number
   quiesceActive: boolean
@@ -121,6 +137,6 @@ export function buildMarathonCoreRestartGuardStateFilePayload(
     recentActiveLifecycleStreamCount: snapshot.recentActiveLifecycleStreamCount,
     blockColdRestart: decision.blocked,
     forceOverride,
-    connThreshold: MARATHON_QUIESCE_ENTER_CONN_THRESHOLD,
+    connThreshold: MARATHON_QUIESCE_ENTER_CONN_THRESHOLD
   }
 }

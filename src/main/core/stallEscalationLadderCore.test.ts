@@ -7,7 +7,7 @@ import {
   recordVitalityByteSnapshot,
   resetStallEscalationLadderStateForTests,
   resolveCriticalHostCloseDenialPlan,
-  resolveStallEscalationLadderPlan,
+  resolveStallEscalationLadderPlan
 } from './stallEscalationLadderCore'
 
 describe('stallEscalationLadderCore R-41', () => {
@@ -21,13 +21,25 @@ describe('stallEscalationLadderCore R-41', () => {
     connAgeMs: 93_498,
     frozenQuicCursorCount: 1,
     totalQuicCursorCount: 13,
-    cursorConnectionCount: 28,
+    cursorConnectionCount: 28
   }
 
   it('denies close plan for critical api2 host', () => {
     const denial = resolveCriticalHostCloseDenialPlan('api2.cursor.sh')
     assert.ok(denial)
     assert.equal(denial.reason, 'r41_critical_host_no_close')
+  })
+
+  it('never escalates an unbound idle connection', () => {
+    const plan = resolveStallEscalationLadderPlan({
+      observation: f1ee553dObservation,
+      upload: 2458,
+      download: 4972,
+      nowMs: 1_000_000,
+      requestBoundStallProof: false
+    })
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'missing_request_bound_stall_proof')
   })
 
   it('f1ee553d replay: 88s stall before emergency threshold', () => {
@@ -37,22 +49,23 @@ describe('stallEscalationLadderCore R-41', () => {
       connectionId: f1ee553dObservation.connectionId,
       upload: 2458,
       download: 4972,
-      nowMs: nowMs - STALL_ESCALATION_VITALITY_INEFFECTIVE_MS - 1,
+      nowMs: nowMs - STALL_ESCALATION_VITALITY_INEFFECTIVE_MS - 1
     })
     assert.equal(
       isVitalityIneffectiveForConnection({
         connectionId: f1ee553dObservation.connectionId,
         upload: 2458,
         download: 4972,
-        nowMs,
+        nowMs
       }),
-      true,
+      true
     )
     const plan = resolveStallEscalationLadderPlan({
       observation: f1ee553dObservation,
       upload: 2458,
       download: 4972,
       nowMs,
+      requestBoundStallProof: true
     })
     assert.equal(plan.action, 'emergency_sidecar_dial')
     assert.equal(plan.reason, 'emergency_stall_escalation_r1')
@@ -65,13 +78,14 @@ describe('stallEscalationLadderCore R-41', () => {
       connectionId: f1ee553dObservation.connectionId,
       upload: 2458,
       download: 4972,
-      nowMs: nowMs - 300_000,
+      nowMs: nowMs - 300_000
     })
     const plan = resolveStallEscalationLadderPlan({
       observation: { ...f1ee553dObservation, stallMs: 209_996 },
       upload: 2458,
       download: 4972,
       nowMs,
+      requestBoundStallProof: true
     })
     assert.equal(plan.action, 'parent_udp_refresh')
     assert.equal(plan.reason, 'emergency_stall_escalation_r2')
