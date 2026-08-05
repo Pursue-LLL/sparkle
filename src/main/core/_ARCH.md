@@ -142,6 +142,7 @@ marathon-segments.v1.jsonl + agent-transport-failures.jsonl
 
 ```bash
 pnpm run test:node-quality   # 含 carrierQuiesceRefreshCore · stallEscalationLadder · marathonParentRecoveryStallProof 等
+pnpm run agent:upgrade:mac         # Agent SSOT：build(if needed) + install + post gate
 pnpm run upgrade:mac         # 本地装 /Applications + PostCoreBootstrap 门控（网络失败：SKIP_PREPARE=1）
 tsx scripts/verify-byte-death-recovery-gate.mts --minutes 15   # post-upgrade：byte-death 期间 R2 必须执行或 quiesce bypass
 ```
