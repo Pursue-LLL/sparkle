@@ -66,7 +66,8 @@ for (const line of lines) {
     (line.includes('[CarrierQuiesceRefresh]') &&
       line.includes('outcome=executed') &&
       (line.includes('carrier_quiesce_parent_udp_refresh') ||
-        line.includes('byte_death_ghost_udp_birth_reset_no_outbound'))) ||
+        line.includes('byte_death_ghost_udp_birth_reset_no_outbound') ||
+        line.includes('ghost_udp_parent_birth_reset_before_sidecar_dial'))) ||
     (line.includes('[Hy2ParentSidecar]') &&
       line.includes('byte_death_ghost_udp_recovery') &&
       line.includes('outcome=executed'))
