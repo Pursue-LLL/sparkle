@@ -6,8 +6,10 @@ import { existsSync, unlinkSync } from 'node:fs'
 import http from 'node:http'
 import { promisify } from 'node:util'
 import { appendAppLog } from '../utils/log'
+import { activateUserOwnedMihomoApiSocketFallback } from './mihomoApiSocketOverrideCore'
 import {
   resolveCoreStartFootprintDecision,
+  shouldRemoveStaleMihomoApiSocket,
   type CoreStartFootprintDecision,
 } from './staleMihomoApiSocketCore'
 
@@ -85,6 +87,15 @@ export async function resolveCoreFootprintBeforeStartOnly(input: {
     if (staleSocketRemoved) {
       await appendAppLog(
         `[CoreLifecycle]: stale_mihomo_socket_removed path=${input.socketPath} probe=${probeError}\n`,
+      )
+    } else if (
+      shouldRemoveStaleMihomoApiSocket({ exists: true, probeError }) &&
+      input.socketPath.startsWith('/tmp/')
+    ) {
+      const fallbackPath = activateUserOwnedMihomoApiSocketFallback()
+      staleSocketRemoved = true
+      await appendAppLog(
+        `[CoreLifecycle]: stale_mihomo_socket_fallback path=${fallbackPath} primary=${input.socketPath} probe=${probeError}\n`,
       )
     } else {
       await appendAppLog(

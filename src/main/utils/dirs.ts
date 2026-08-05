@@ -5,6 +5,7 @@ import { app } from 'electron'
 import path from 'path'
 import { execSync } from 'child_process'
 import { getAppConfigSync } from '../config/app'
+import { readMihomoApiSocketOverride } from '../core/mihomoApiSocketOverrideCore'
 import { checkCorePermissionPathSync } from '../core/permission-check'
 
 export const homeDir = app.getPath('home')
@@ -76,6 +77,10 @@ export function themesDir(): string {
 export function mihomoIpcPath(): string {
   if (process.platform === 'win32') {
     return '\\\\.\\pipe\\Sparkle\\mihomo'
+  }
+  const overridePath = readMihomoApiSocketOverride()
+  if (overridePath) {
+    return overridePath
   }
   const { core = 'mihomo' } = getAppConfigSync()
   if (core === 'system') {
