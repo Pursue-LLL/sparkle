@@ -329,6 +329,7 @@ export async function runHy2ParentSidecarIfDue(input: {
           activeLeaf,
           connections: input.connections,
           trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
+          trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
           nowMs,
           maxByteStallMs: input.snapshot.maxByteStallMs,
           cursorConnectionCount: input.cursorConnectionCount,

@@ -13,6 +13,7 @@ import {
   type Hy2ParentRotationPlan
 } from './hy2ParentRotationCore'
 import { isMarathonGlobalByteDeath, resolveCarrierQuiesceRefreshDecision } from './carrierQuiesceRefreshCore'
+import { isByteDeathNoUdpRotationSkip } from './hy2ParentByteDeathRecoveryCore'
 import {
   resolveFrozenSurgicalPrunePlan,
   type FrozenSurgicalPruneAction
@@ -482,6 +483,36 @@ async function maybeRunHy2ParentRotationAfterPrune(
     }).bypassActiveInner,
   })
   if (plan.action !== 'close_udp_outbound' || !plan.udpConnectionId) {
+    if (
+      isByteDeathNoUdpRotationSkip({
+        rotationReason: plan.reason,
+        marathonGlobalByteDeath,
+      }) &&
+      latestLongevitySnapshot.maxByteStallMs >= 90_000
+    ) {
+      const activeLeaf = latestLongevitySnapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+      const { executeByteDeathParentMutation } = await import('./hy2ParentByteDeathRecoveryExecutor')
+      const mutation = await executeByteDeathParentMutation({
+        activeLeaf,
+        connections: latestConnections,
+        trackedFirstSeenAtMsById: latestTrackedFirstSeenAtMsById,
+        trackedLastByteChangeAtMsById: latestTrackedLastByteChangeAtMsById,
+        nowMs,
+        maxByteStallMs: latestLongevitySnapshot.maxByteStallMs,
+        cursorConnectionCount: latestLongevitySnapshot.cursorConnectionCount,
+      })
+      if (mutation.mutated) {
+        lastHy2ParentRotationAtMs = nowMs
+        return {
+          outcome: 'executed',
+          reason: `byte_death_rotation_ssot:${mutation.plan.reason}`,
+        }
+      }
+      return {
+        outcome: 'failed',
+        reason: mutation.err ?? mutation.plan.reason,
+      }
+    }
     return { outcome: 'skipped', reason: plan.reason }
   }
   const closed = await closeStalledConnection(plan.udpConnectionId)

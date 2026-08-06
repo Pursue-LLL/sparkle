@@ -19,6 +19,7 @@ describe('hy2ParentSidecar R-35a execute', () => {
     assert.doesNotMatch(source, /phase=detect_only/)
     assert.match(source, /executeByteDeathParentMutation/)
     assert.match(source, /byte_death_mutation_failed_blocking_sidecar/)
+    assert.match(source, /trackedLastByteChangeAtMsById/)
   })
 
   it('reports the actual sidecar outcome to the escalation caller', () => {
@@ -31,5 +32,14 @@ describe('hy2ParentSidecar R-35a execute', () => {
   it('exposes sidecar action state helpers for tests', () => {
     resetHy2ParentSidecarStateForTests()
     assert.equal(getLastHy2ParentSidecarDetectLogAtMsForTests(), 0)
+  })
+
+  it('SEL rotation path wires byte-death SSOT when rotation finds no_udp_outbound', () => {
+    const source = readFileSync(
+      path.join(ROOT, 'mihomoQuicSilentStallRecovery.ts'),
+      'utf8',
+    )
+    assert.match(source, /executeByteDeathParentMutation/)
+    assert.match(source, /byte_death_rotation_ssot/)
   })
 })
