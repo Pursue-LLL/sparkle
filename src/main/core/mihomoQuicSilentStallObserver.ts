@@ -23,10 +23,13 @@ import {
 } from './mihomoQuicSilentStallCore'
 
 const SCAN_INTERVAL_MS = 5_000
+const HTTP_CURSOR_CONN_RECONCILE_EVERY_N_SCANS = 6
 
 const trackedById = new Map<string, MihomoQuicStallTrackedConnection>()
 const lastEmitAtByKey = new Map<string, number>()
 let lastScanAtMs = 0
+let stallObserverScanGeneration = 0
+let lastHttpReconciledCursorConnectionCount = 0
 let lastObservedFrozenQuicCursorCount = 0
 let lastObservedMaxStallMs = 0
 let lastMaxStallSingleObservation: MihomoQuicSilentStallObservation | undefined
@@ -38,6 +41,8 @@ export function resetMihomoQuicSilentStallObserverForTests(): void {
   lastObservedFrozenQuicCursorCount = 0
   lastObservedMaxStallMs = 0
   lastMaxStallSingleObservation = undefined
+  stallObserverScanGeneration = 0
+  lastHttpReconciledCursorConnectionCount = 0
 }
 
 /** Latest frozen QUIC Cursor transport count from the most recent stall scan (R-24 MTDO breach). */
@@ -92,7 +97,19 @@ export async function observeMihomoConnectionsForQuicSilentStall(
 
   const connections = payload.connections ?? []
   syncTrackedConnections(connections)
-  const cursorConnectionCount = countCursorConnectionsFromMihomo(connections)
+  stallObserverScanGeneration += 1
+  let cursorConnectionCount = countCursorConnectionsFromMihomo(connections)
+  if (stallObserverScanGeneration % HTTP_CURSOR_CONN_RECONCILE_EVERY_N_SCANS === 0) {
+    try {
+      const { countCursorConnections } = await import('./cursorConnectionHygiene')
+      lastHttpReconciledCursorConnectionCount = await countCursorConnections()
+    } catch {
+      // WS count remains authoritative for this tick
+    }
+  }
+  if (lastHttpReconciledCursorConnectionCount > cursorConnectionCount) {
+    cursorConnectionCount = lastHttpReconciledCursorConnectionCount
+  }
   lastObservedFrozenQuicCursorCount = countMarathonFrozenQuicCursorConnections({
     connections,
     trackedById,
