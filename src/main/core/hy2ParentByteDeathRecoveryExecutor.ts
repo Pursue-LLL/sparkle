@@ -1,13 +1,13 @@
 // [INPUT] hy2ParentByteDeathRecoveryCore · mihomoApi
 // [OUTPUT] executeByteDeathParentMutation
-// [POS] C-8.10 executor — prod-safe leaf close with full logging (no silent catch).
+// [POS] C-8.11 executor — surgical leaf close batch + full logging (no silent catch).
 
 import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import {
   buildLeafCloseReport,
-  filterHy2LeafConnections,
   formatByteDeathRecoveryLogLine,
   planByteDeathParentMutation,
+  selectByteDeathLeafCloseTargets,
   type ByteDeathParentMutationPlan,
   type Hy2LeafConnectionCloseReport,
 } from './hy2ParentByteDeathRecoveryCore'
@@ -20,15 +20,34 @@ export interface ByteDeathParentMutationResult {
   err?: string
 }
 
+export interface ByteDeathParentMutationInput {
+  activeLeaf: string
+  connections: readonly ControllerConnectionDetail[]
+  trackedFirstSeenAtMsById: ReadonlyMap<string, number>
+  trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
+  nowMs: number
+  maxByteStallMs: number
+  cursorConnectionCount: number
+}
+
+type CloseConnectionFn = (connectionId: string) => Promise<void>
+
 async function appendRecoveryLog(line: string): Promise<void> {
   const { appendAppLog } = await import('../utils/log')
   await appendAppLog(line)
 }
 
-async function closeUdpOutbound(connectionId: string): Promise<{ ok: boolean; err?: string }> {
+async function defaultCloseConnection(connectionId: string): Promise<void> {
+  const { mihomoCloseConnection } = await import('./mihomoApi')
+  await mihomoCloseConnection(connectionId)
+}
+
+async function closeUdpOutbound(
+  connectionId: string,
+  closeFn: CloseConnectionFn,
+): Promise<{ ok: boolean; err?: string }> {
   try {
-    const { mihomoCloseConnection } = await import('./mihomoApi')
-    await mihomoCloseConnection(connectionId)
+    await closeFn(connectionId)
     return { ok: true }
   } catch (error) {
     return { ok: false, err: formatUnknownErrorForLog(error) }
@@ -41,22 +60,45 @@ async function fetchFreshConnections(): Promise<ControllerConnectionDetail[]> {
   return snapshot.connections ?? []
 }
 
-export async function executeByteDeathParentMutation(input: {
-  activeLeaf: string
-  connections: readonly ControllerConnectionDetail[]
-  trackedFirstSeenAtMsById: ReadonlyMap<string, number>
-  nowMs: number
-  maxByteStallMs: number
-  cursorConnectionCount: number
-}): Promise<ByteDeathParentMutationResult> {
+export async function executeLeafCloseBatch(input: {
+  targets: readonly ControllerConnectionDetail[]
+  closeFn: CloseConnectionFn
+}): Promise<{ closedIds: string[]; failedIds: string[]; err?: string }> {
+  const closedIds: string[] = []
+  const failedIds: string[] = []
+  let batchErr: string | undefined
+  for (const connection of input.targets) {
+    try {
+      await input.closeFn(connection.id)
+      closedIds.push(connection.id)
+    } catch (error) {
+      failedIds.push(connection.id)
+      batchErr ??= formatUnknownErrorForLog(error)
+    }
+  }
+  return { closedIds, failedIds, err: batchErr }
+}
+
+export async function executeByteDeathParentMutation(
+  input: ByteDeathParentMutationInput,
+  deps?: {
+    closeFn?: CloseConnectionFn
+    fetchConnections?: () => Promise<ControllerConnectionDetail[]>
+    appendLog?: (line: string) => Promise<void>
+  },
+): Promise<ByteDeathParentMutationResult> {
+  const closeFn = deps?.closeFn ?? defaultCloseConnection
+  const fetchConnections = deps?.fetchConnections ?? fetchFreshConnections
+  const log = deps?.appendLog ?? appendRecoveryLog
+
   let connections = input.connections
   try {
-    const fresh = await fetchFreshConnections()
+    const fresh = await fetchConnections()
     if (fresh.length > 0) {
       connections = fresh
     }
   } catch (error) {
-    await appendRecoveryLog(
+    await log(
       formatByteDeathRecoveryLogLine({
         outcome: 'failed',
         action: 'none',
@@ -76,7 +118,7 @@ export async function executeByteDeathParentMutation(input: {
     byteDeathFullScan: true,
   })
 
-  await appendRecoveryLog(
+  await log(
     formatByteDeathRecoveryLogLine({
       outcome: 'planned',
       action: 'close_leaf_connections',
@@ -93,12 +135,13 @@ export async function executeByteDeathParentMutation(input: {
     connections,
     activeLeaf: input.activeLeaf,
     trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
+    trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
     nowMs: input.nowMs,
   })
 
   if (plan.action === 'close_udp_outbound' && plan.udpConnectionId) {
-    const closed = await closeUdpOutbound(plan.udpConnectionId)
-    await appendRecoveryLog(
+    const closed = await closeUdpOutbound(plan.udpConnectionId, closeFn)
+    await log(
       formatByteDeathRecoveryLogLine({
         outcome: closed.ok ? 'executed' : 'failed',
         action: 'close_udp_outbound',
@@ -117,33 +160,22 @@ export async function executeByteDeathParentMutation(input: {
   }
 
   if (plan.action === 'close_leaf_connections') {
-    const targets = filterHy2LeafConnections(connections, input.activeLeaf)
-    const closedIds: string[] = []
-    const failedIds: string[] = []
-    let batchErr: string | undefined
-    try {
-      const { mihomoCloseConnection } = await import('./mihomoApi')
-      for (const conn of targets) {
-        try {
-          await mihomoCloseConnection(conn.id)
-          closedIds.push(conn.id)
-        } catch (error) {
-          failedIds.push(conn.id)
-          batchErr ??= formatUnknownErrorForLog(error)
-        }
-      }
-    } catch (error) {
-      batchErr = formatUnknownErrorForLog(error)
-    }
+    const targets = selectByteDeathLeafCloseTargets({
+      connections,
+      activeLeaf: input.activeLeaf,
+      trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
+      nowMs: input.nowMs,
+    })
+    const batch = await executeLeafCloseBatch({ targets, closeFn })
     const leafReport = buildLeafCloseReport({
       activeLeaf: input.activeLeaf,
-      connections,
-      closedIds,
-      failedIds,
-      err: batchErr,
+      targets,
+      closedIds: batch.closedIds,
+      failedIds: batch.failedIds,
+      err: batch.err,
     })
     const mutated = leafReport.closedCount > 0
-    await appendRecoveryLog(
+    await log(
       formatByteDeathRecoveryLogLine({
         outcome: mutated ? 'executed' : 'failed',
         action: 'close_leaf_connections',
@@ -164,7 +196,7 @@ export async function executeByteDeathParentMutation(input: {
     }
   }
 
-  await appendRecoveryLog(
+  await log(
     formatByteDeathRecoveryLogLine({
       outcome: 'failed',
       action: 'none',

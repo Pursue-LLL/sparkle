@@ -13,6 +13,7 @@ import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdent
 import {
   filterHy2LeafConnections,
   planByteDeathParentMutation,
+  selectByteDeathLeafCloseTargets,
 } from './hy2ParentByteDeathRecoveryCore'
 import { resolveMarathonRescueDialAdmissionClass } from './marathonRescueDialExecutor'
 import { resolveHy2ParentRotationAfterPrunePlan } from './hy2ParentRotationCore'
@@ -192,7 +193,7 @@ export function replayBug20260806NoUdpFullScanDiagnostics(): Bug20260806ReplayVe
   }
 }
 
-/** C-8.10: eadc68de no-UDP prod pattern must plan leaf close on Cursor专用→HY2 chains. */
+/** C-8.11: eadc68de no-UDP prod pattern must plan surgical frozen leaf batch. */
 export function replayBug20260806Eadc68deLeafClosePlan(): Bug20260806ReplayVerdict {
   const nowMs = 2_000_000
   const connections = Array.from({ length: 94 }, (_, index) => ({
@@ -200,23 +201,33 @@ export function replayBug20260806Eadc68deLeafClosePlan(): Bug20260806ReplayVerdi
     chains: ['Cursor专用', 'JP-VPS-HY2'],
     metadata: { network: 'tcp', host: 'api2.cursor.sh' },
   })) as ControllerConnectionDetail[]
+  const trackedLastByteChangeAtMsById = new Map(
+    connections.map((conn) => [conn.id, nowMs - 120_000]),
+  )
   const plan = planByteDeathParentMutation({
     connections,
     activeLeaf: 'JP-VPS-HY2',
     trackedFirstSeenAtMsById: new Map(),
+    trackedLastByteChangeAtMsById,
     nowMs,
   })
-  const leafTargets = filterHy2LeafConnections(connections, 'JP-VPS-HY2')
+  const leafTargets = selectByteDeathLeafCloseTargets({
+    connections,
+    activeLeaf: 'JP-VPS-HY2',
+    trackedLastByteChangeAtMsById,
+    nowMs,
+  })
   const ok =
     plan.action === 'close_leaf_connections' &&
-    plan.reason === 'byte_death_close_connections_by_leaf' &&
-    leafTargets.length === 94
+    plan.reason === 'byte_death_close_frozen_leaf_batch' &&
+    plan.leafTargetCount === 8 &&
+    leafTargets.length === 8
   return {
     fixtureId: 'eadc68de_no_udp_leaf_close_plan',
     ok,
     detail: ok
-      ? 'C-8.10 SSOT plans leaf close for 94 HY2 TCP connections when mihomo omits UDP rows'
-      : `plan action=${plan.action} reason=${plan.reason} leafTargets=${leafTargets.length}`,
+      ? 'C-8.11 SSOT plans surgical batch (8) for 94 frozen HY2 TCP when mihomo omits UDP rows'
+      : `plan action=${plan.action} reason=${plan.reason} batch=${leafTargets.length} targetCount=${plan.leafTargetCount ?? 'none'}`,
   }
 }
 
@@ -224,6 +235,8 @@ export function replayBug20260806Eadc68deLeafClosePlan(): Bug20260806ReplayVerdi
 export function replayBug20260806GhostUdpDeleted(): Bug20260806ReplayVerdict {
   const sidecarPath = join(process.cwd(), 'src/main/core/hy2ParentSidecar.ts')
   const sidecar = readFileSync(sidecarPath, 'utf8')
+  const recoveryPath = join(process.cwd(), 'src/main/core/mihomoQuicSilentStallRecovery.ts')
+  const recovery = readFileSync(recoveryPath, 'utf8')
   const corePath = join(process.cwd(), 'src/main/core/hy2ParentByteDeathRecoveryCore.ts')
   const core = readFileSync(corePath, 'utf8')
   const forbidden = [
@@ -236,25 +249,34 @@ export function replayBug20260806GhostUdpDeleted(): Bug20260806ReplayVerdict {
     'executeByteDeathParentMutation',
     'byte_death_mutation_failed_blocking_sidecar',
   ]
+  const requiredRecovery = [
+    'executeByteDeathParentMutation',
+    'byte_death_rotation_ssot',
+    'isByteDeathNoUdpRotationSkip',
+  ]
   const requiredCore = [
     'planByteDeathParentMutation',
     'chainsReferenceActiveLeaf',
+    'selectByteDeathLeafCloseTargets',
     '[Hy2ParentByteDeathRecovery]:',
   ]
-  const hit = forbidden.find((token) => sidecar.includes(token) || core.includes(token))
+  const hit = forbidden.find((token) => sidecar.includes(token) || recovery.includes(token))
   const missingSidecar = requiredSidecar.find((token) => !sidecar.includes(token))
+  const missingRecovery = requiredRecovery.find((token) => !recovery.includes(token))
   const missingCore = requiredCore.find((token) => !core.includes(token))
-  const ok = hit == null && missingSidecar == null && missingCore == null
+  const ok = hit == null && missingSidecar == null && missingRecovery == null && missingCore == null
   return {
     fixtureId: '0806_ghost_udp_deleted',
     ok,
     detail: ok
-      ? 'C-8.10 SSOT wired; no ghost_udp or legacy fallback in sidecar'
+      ? 'C-8.11 SSOT wired in sidecar + SEL rotation; no ghost_udp or legacy fallback'
       : hit != null
         ? `forbidden token still present: ${hit}`
         : missingSidecar != null
           ? `sidecar missing: ${missingSidecar}`
-          : `core missing: ${missingCore}`,
+          : missingRecovery != null
+            ? `recovery missing: ${missingRecovery}`
+            : `core missing: ${missingCore}`,
   }
 }
 

@@ -1,11 +1,15 @@
 // [INPUT] mihomo connection snapshots · carrier identity SSOT · active HY2 leaf
-// [OUTPUT] planByteDeathParentMutation · filterHy2LeafConnections · formatByteDeathRecoveryLogLine
-// [POS] C-8.10 SSOT — single byte-death parent mutation planner (replaces scattered sidecar fallback).
+// [OUTPUT] planByteDeathParentMutation · selectByteDeathLeafCloseTargets · formatByteDeathRecoveryLogLine
+// [POS] C-8.11 SSOT — byte-death parent mutation planner (surgical leaf close, no mass 94-conn wipe).
 
 import {
   resolveHy2ParentUdpOutboundConnectionId,
   type Hy2ParentUdpResolution,
 } from './hy2ParentCarrierIdentityCore'
+
+export const BYTE_DEATH_LEAF_CLOSE_MIN_STALL_MS = 90_000
+/** Cap batch size — avoids mass ECONNRESET while still nudging HY2 parent session. */
+export const BYTE_DEATH_LEAF_CLOSE_MAX_BATCH = 8
 
 export type ByteDeathParentMutationAction =
   | 'none'
@@ -17,6 +21,7 @@ export interface ByteDeathParentMutationPlan {
   reason: string
   udpConnectionId?: string
   udpResolutionSource?: Hy2ParentUdpResolution['source']
+  leafTargetCount?: number
 }
 
 export interface Hy2LeafConnectionCloseReport {
@@ -55,10 +60,61 @@ export function filterHy2LeafConnections(
   )
 }
 
+export function resolveConnectionByteStallMs(
+  connection: ControllerConnectionDetail,
+  trackedLastByteChangeAtMsById: ReadonlyMap<string, number>,
+  nowMs: number,
+): number {
+  const lastChangeMs = trackedLastByteChangeAtMsById.get(connection.id)
+  if (lastChangeMs == null) {
+    return Number.POSITIVE_INFINITY
+  }
+  return nowMs - lastChangeMs
+}
+
+export function selectByteDeathLeafCloseTargets(input: {
+  connections: readonly ControllerConnectionDetail[]
+  activeLeaf: string
+  trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
+  nowMs: number
+  minStallMs?: number
+  maxBatch?: number
+}): ControllerConnectionDetail[] {
+  const minStallMs = input.minStallMs ?? BYTE_DEATH_LEAF_CLOSE_MIN_STALL_MS
+  const maxBatch = input.maxBatch ?? BYTE_DEATH_LEAF_CLOSE_MAX_BATCH
+  const leafConnections = filterHy2LeafConnections(input.connections, input.activeLeaf)
+  const byteFrozen = leafConnections.filter((connection) => {
+    const stallMs = resolveConnectionByteStallMs(
+      connection,
+      input.trackedLastByteChangeAtMsById,
+      input.nowMs,
+    )
+    return stallMs >= minStallMs
+  })
+  const sortedFrozen = [...byteFrozen].sort(
+    (left, right) =>
+      resolveConnectionByteStallMs(right, input.trackedLastByteChangeAtMsById, input.nowMs) -
+      resolveConnectionByteStallMs(left, input.trackedLastByteChangeAtMsById, input.nowMs),
+  )
+  if (sortedFrozen.length > 0) {
+    return sortedFrozen.slice(0, maxBatch)
+  }
+  if (leafConnections.length === 0) {
+    return []
+  }
+  const sortedAll = [...leafConnections].sort(
+    (left, right) =>
+      resolveConnectionByteStallMs(right, input.trackedLastByteChangeAtMsById, input.nowMs) -
+      resolveConnectionByteStallMs(left, input.trackedLastByteChangeAtMsById, input.nowMs),
+  )
+  return sortedAll.slice(0, 1)
+}
+
 export function planByteDeathParentMutation(input: {
   connections: readonly ControllerConnectionDetail[]
   activeLeaf: string
   trackedFirstSeenAtMsById: ReadonlyMap<string, number>
+  trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
   nowMs: number
 }): ByteDeathParentMutationPlan {
   const resolution = resolveHy2ParentUdpOutboundConnectionId({
@@ -76,11 +132,17 @@ export function planByteDeathParentMutation(input: {
       udpResolutionSource: resolution.source,
     }
   }
-  const leafTargets = filterHy2LeafConnections(input.connections, input.activeLeaf)
+  const leafTargets = selectByteDeathLeafCloseTargets({
+    connections: input.connections,
+    activeLeaf: input.activeLeaf,
+    trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
+    nowMs: input.nowMs,
+  })
   if (leafTargets.length > 0) {
     return {
       action: 'close_leaf_connections',
-      reason: 'byte_death_close_connections_by_leaf',
+      reason: 'byte_death_close_frozen_leaf_batch',
+      leafTargetCount: leafTargets.length,
     }
   }
   return {
@@ -144,21 +206,27 @@ export function formatByteDeathRecoveryLogLine(input: {
 
 export function buildLeafCloseReport(input: {
   activeLeaf: string
-  connections: readonly ControllerConnectionDetail[]
+  targets: readonly ControllerConnectionDetail[]
   closedIds: readonly string[]
   failedIds: readonly string[]
   err?: string
 }): Hy2LeafConnectionCloseReport {
-  const targets = filterHy2LeafConnections(input.connections, input.activeLeaf)
-  const sampleChains = targets.slice(0, 3).map((conn) =>
+  const sampleChains = input.targets.slice(0, 3).map((conn) =>
     JSON.stringify(conn.chains ?? []),
   )
   return {
     activeLeaf: input.activeLeaf,
-    attemptedCount: targets.length,
+    attemptedCount: input.targets.length,
     closedCount: input.closedIds.length,
     failedCount: input.failedIds.length,
     sampleChains,
     err: input.err,
   }
+}
+
+export function isByteDeathNoUdpRotationSkip(input: {
+  rotationReason: string
+  marathonGlobalByteDeath: boolean
+}): boolean {
+  return input.marathonGlobalByteDeath && input.rotationReason === 'no_udp_outbound'
 }
