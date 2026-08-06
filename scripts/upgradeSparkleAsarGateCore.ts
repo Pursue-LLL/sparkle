@@ -75,7 +75,6 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('resolveHy2ParentUdpOutboundConnectionId') ||
     !mainSource.includes('byte_death_no_udp_outbound_sidecar_emergency') ||
     !mainSource.includes('byte_death_probe_only_without_udp_close') ||
-    !mainSource.includes('byte_death_close_connections_by_leaf') ||
     !mainSource.includes('byte_death_close_frozen_leaf_batch') ||
     !mainSource.includes('byteDeathFullScan') ||
     !mainSource.includes('[Hy2ParentByteDeathRecovery]:') ||

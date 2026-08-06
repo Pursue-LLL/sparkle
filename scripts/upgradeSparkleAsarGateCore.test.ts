@@ -59,6 +59,12 @@ describe('upgradeSparkleAsarGateCore', () => {
     assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
   })
 
+  it('accepts C-8.11 SSOT without legacy byte_death_close_connections_by_leaf', () => {
+    const source =
+      'foo.markCoreReadyAtMs(); require_log.appendAppLog("x"); frozen_surgical_prune mihomoCloseConnection attempt_rate_pct marathon_sse_carrier_frozen_prune Hy2ParentSidecar phase=execute deny_unbound_critical_host StallEscalationLadder r41_critical_host_no_close TransportMutationGate mtic_v2_transport_mutation_gate MarathonHy2Only marathon_hy2_only below_target_attempt emergency_parent_refresh_bypass requireCarrierBytesRecovery observability_probe_admitted carrier_recovered= resolveHy2ParentUdpOutboundConnectionId byte_death_no_udp_outbound_sidecar_emergency byte_death_probe_only_without_udp_close byte_death_close_frozen_leaf_batch byteDeathFullScan [Hy2ParentByteDeathRecovery]: executeByteDeathParentMutation byte_death_mutation_failed_blocking_sidecar byte_death_rotation_ssot'
+    assert.deepEqual(validateSparkleMainAsarBundle(source), { ok: true })
+  })
+
   it('rejects bundle missing P28b attempt SLO markers', () => {
     const source =
       'appendAppLog .markCoreReadyAtMs( frozen_surgical_prune mihomoCloseConnection maxStepsRateObserver'
