@@ -1,11 +1,69 @@
 # Sparkle Bugfix Log
 
-> **2026-08-05 17:30 最新**：**prod 1.30.17 已装** · gate **PENDING**（继承 byte-death `max_byte_stall=144500`）· Agent SSOT `agent-sparkle-upgrade.sh` 新增
+> **2026-08-06 16:00 最新**：**prod 1.30.26 已装** · **BUG-2026-08-06-001 recurrence definitive** · 同族 **第 15+ 次** · ghost_udp 假修复路径 @ cursor_conn=158 · gate **未验 PASS**
+> **2026-08-05 17:30 上一版**：**prod 1.30.17 已装** · gate **PENDING**（继承 byte-death `max_byte_stall=144500`）· Agent SSOT `agent-sparkle-upgrade.sh` 新增
 > **2026-08-05 17:05 上一版**：**FIX CODE-DONE @1.30.17**（git）· SEL R2 bypass `active_inner` · 11/11 单测 PASS
 > **2026-08-05 16:30 上一版**：**FIX CODE-DONE @1.30.16**（git）· post-install gate PARTIAL · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-06-001 · recurrence · RIDs 0708f0d4 / b1f8b685 / 7420f6dc · 15:33+15:46 CST · prod **1.30.26** · 同族 **第 15+ 次**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **RECURRENCE definitive** · 1.30.13–1.30.17 链路 **未闭合** · **假修复路径 ghost_udp** 在高 conn 暴露 |
+| **发生版本** | Sparkle **1.30.26**（`/Applications` 实测）· Cursor **3.1.15** · leaf **JP-VPS-HY2** |
+| **A 时刻** | **A1** 2026-08-06 **15:33:29 CST**（07:33:29 UTC）五路批量 · **A2** **15:46:38 CST**（07:46:38 UTC）两路（0708+7420 重试代） |
+| **RID 映射** | `b1f8b685`→composer `d167548f`（A1）· `0708f0d4`→`224b8673`（A1+A2）· `7420f6dc`→`b1f07aad`（A1+A2）· 注：generationUUID 非 originalRequestId |
+| **PRIMARY** | **L3** JP-VPS-HY2 global byte-death（`max_byte_stall_ms=286504` @A1 · `161994` @A2）→ Connect TLS 批量 ECONNRESET |
+| **amplifier（本次新暴露）** | `findOldestHy2UdpOutboundConnectionId` → **no_udp_outbound** @ cursor_conn=158 → 走 **ghost_udp_parent_birth_reset**（仅 birth reset · **无 UDP close**）→ `Hy2ParentSidecar sidecar_dial outcome=failed` |
+| **amplifier 2** | `MarathonRescueDial connect_partition skipped_admission err=global_control_inflight` @ 07:33:11 · 07:46:22 |
+| **amplifier 3** | `MihomoQuicStallRecovery skipped reason=marathon_active_zero_data_plane_mutation` — R-34 prune 全拒 |
+| **NOT** | max-steps-cap · Cursor 服务端随机 · L4 VPS（sing-box active · curl 200 · 无 restart）· L0/L1 Sparkle 误杀 |
+
+**A 时刻证据链（节选）：**
+
+| ts UTC | 信号 | 原文要点 |
+| --- | --- | --- |
+| 07:33:04 | CarrierQuiesceRefresh | `reason=ghost_udp_parent_birth_reset_before_sidecar_dial` `max_byte_stall_ms=286504` `active_inner=142` |
+| 07:33:04 | Hy2ParentSidecar | `outcome=failed action=sidecar_dial` |
+| 07:33:11 | MarathonRescueDial | `skipped_admission err=global_control_inflight` |
+| 07:33:29 | renderer | 4× `ECONNRESET host=api2.cursor.sh` · 5 composer generation-ended |
+| 07:46:20 | events snapshot | 四 leaf 同时 `delay=0` @ 15:46:20 |
+| 07:46:38 | renderer | 4× ECONNRESET · 0708+7420 generation-ended |
+
+**对比成功 vs 失败（同文件同日）：**
+
+| 时刻 | max_byte_stall | active_inner | Recovery 路径 | 结果 |
+| --- | --- | --- | --- | --- |
+| 02:24:30 UTC | 120503 | 15 | `carrier_quiesce_parent_udp_refresh` + `close_udp_outbound` | bytes 恢复 |
+| 07:33:04 UTC | 286504 | 142 | **ghost_udp** + sidecar_dial failed | 五路断连 |
+
+**为何 1.30.16/1.30.17「修完」仍复发 — 不是骗你，是半修复被当全修复：**
+
+1. **1.30.13–15** 只开了 bypass **判定**，R2 execute 链路未通（BUG-2026-08-05-001 已记录 gate FAIL）
+2. **1.30.16** 修 age gate，但 **未覆盖** `no_udp_outbound` 分支（`hy2ParentSidecar.ts` L350-372 ghost 回退）
+3. **1.30.17+** 未加 integration test：`active_inner≥100` + byte-death + `no_udp_outbound` → 必须 real UDP refresh
+4. **Ship 纪律违反**：git CODE-DONE / 单测 PASS 被当作「100% 修完」· **G2 gate + G9 soak 从未 PASS** · prod 1.30.26 仍走 ghost 路径
+
+**同族反复统计更新：** HY2 byte-freeze/split-brain **第 15+ 次** triage · 针对 active_inner/R2 的 coded fix **第 6 轮**（1.30.6→…→1.30.17→**1.30.26 仍 FAIL**）· **0 次** G9 soak PASS · **0 次** gate PASS 后交付
+
+**待修复（1.30.28 目标 · 未 CODE-DONE）：**
+
+① byte-death + `no_udp_outbound`：**禁止** ghost_udp 回退 · 强制 alternate parent UDP discovery 或 mihomo 全量 scan UDP outbound  
+② `connect_partition` + stale_rids：**绕过** `global_control_inflight`（rescue 永不 defer）  
+③ byte-death + frozen_quic + connect_ping_failures≥4：允许 R-34 frozen surgical prune（override `marathon_active_zero_data_plane_mutation`）  
+④ integration test + `verify-byte-death-recovery-gate.mts` 新增 case：`cursor_conn≥150` + bytes≥90000  
+⑤ triage 脚本补扫 `Cursor-3.1.15-data/logs`
+
+**踩坑（给后续的人）：**
+
+- `ghost_udp_parent_birth_reset` 日志看起来像 Recovery executed，**实际零数据面 mutation** — 比不修更误导
+- `carrier_recovered=1` + probe 283ms 绿 **≠** Connect 长流活着 — split-brain 仍是 PRIMARY 症状
+- **唯一「修完」定义**：gate PASS + post-incident max_byte_stall 降 ≥50% + G9 attemptRate≥90% — 缺一禁止说修完
 
 ---
 

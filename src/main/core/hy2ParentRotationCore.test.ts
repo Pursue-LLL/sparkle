@@ -90,4 +90,44 @@ describe('resolveHy2ParentRotationAfterPrunePlan @1.30.17', () => {
     assert.equal(plan.action, 'none')
     assert.equal(plan.reason, 'active_inner_critical_flows')
   })
+
+  it('1.30.28: high-conn untracked udp resolves via chain-hop for SEL R2', () => {
+    const nowMs = 2_000_000
+    const plan = resolveHy2ParentRotationAfterPrunePlan({
+      snapshot: {
+        schemaVersion: 2,
+        updatedAtMs: nowMs,
+        cursorConnectionCount: 158,
+        httpParentChainAgeMs: 5493,
+        outboundHy2SessionAgeMs: 5493,
+        maxByteStallMs: 286_504,
+        frozenQuicCursorCount: 10,
+        activeHy2Leaf: 'JP-VPS-HY2',
+      },
+      connections: [
+        {
+          id: 'tcp-live',
+          chains: ['JP-VPS-HY2'],
+          metadata: { network: 'tcp', host: 'api2.cursor.sh' },
+        } as ControllerConnectionDetail,
+        {
+          id: 'udp-untracked-0806',
+          chains: ['JP-VPS-HY2'],
+          metadata: { network: 'udp' },
+        } as ControllerConnectionDetail,
+      ],
+      trackedFirstSeenAtMsById: new Map([['tcp-live', nowMs - 300_000]]),
+      trackedLastByteChangeAtMsById: new Map([
+        ['tcp-live', nowMs - MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS],
+        ['udp-untracked-0806', nowMs - 5493],
+      ]),
+      lastRotationAtMs: nowMs - 30_000,
+      nowMs,
+      emergencyStallEscalation: true,
+      marathonGlobalByteDeath: true,
+    })
+    assert.equal(plan.action, 'close_udp_outbound')
+    assert.match(plan.reason, /^parent_session_refresh_after_prune/)
+    assert.equal(plan.udpConnectionId, 'udp-untracked-0806')
+  })
 })

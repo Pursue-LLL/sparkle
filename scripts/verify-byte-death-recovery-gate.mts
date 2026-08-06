@@ -33,16 +33,32 @@ const lines = text.trim().split('\n')
 const cutoffMs = Date.now() - watchMinutes * 60_000
 
 let maxStallSeen = 0
+let maxCursorConnSeen = 0
 let byteDeathStreakStart: number | undefined
 let sawR2Executed = false
 let sawQuiesceBypass = false
 const failures: string[] = []
+
+const GHOST_UDP_MARKERS = [
+  'ghost_udp',
+  'byte_death_ghost_udp',
+  'ghost_udp_parent_birth_reset',
+]
 
 for (const line of lines) {
   const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/)
   if (!tsMatch) continue
   const ts = Date.parse(tsMatch[1])
   if (ts < cutoffMs) continue
+
+  if (GHOST_UDP_MARKERS.some((marker) => line.includes(marker))) {
+    failures.push(`${tsMatch[1]}: forbidden ghost_udp recovery path detected (C-8 regression)`)
+  }
+
+  const connMatch = line.match(/cursor_conn=(\d+)/)
+  if (connMatch) {
+    maxCursorConnSeen = Math.max(maxCursorConnSeen, Number(connMatch[1]))
+  }
 
   const stallMatch = line.match(/max_byte_stall_ms=(\d+)/)
   if (stallMatch) {
@@ -65,12 +81,11 @@ for (const line of lines) {
       line.includes('outcome=executed')) ||
     (line.includes('[CarrierQuiesceRefresh]') &&
       line.includes('outcome=executed') &&
-      (line.includes('carrier_quiesce_parent_udp_refresh') ||
-        line.includes('byte_death_ghost_udp_birth_reset_no_outbound') ||
-        line.includes('ghost_udp_parent_birth_reset_before_sidecar_dial'))) ||
+      line.includes('carrier_quiesce_parent_udp_refresh')) ||
     (line.includes('[Hy2ParentSidecar]') &&
-      line.includes('byte_death_ghost_udp_recovery') &&
-      line.includes('outcome=executed'))
+      line.includes('action=close_udp_outbound') &&
+      line.includes('outcome=executed') &&
+      line.includes('phase=execute'))
   ) {
     sawR2Executed = true
   }
@@ -82,6 +97,12 @@ for (const line of lines) {
   ) {
     failures.push(`${tsMatch[1]}: R2 still blocked by active_inner after 3min byte-death`)
   }
+}
+
+if (maxCursorConnSeen >= 150 && maxStallSeen >= 90_000 && !sawR2Executed) {
+  failures.push(
+    `high-conn byte-death (cursor_conn=${maxCursorConnSeen} max_stall=${maxStallSeen}) without UDP close recovery`,
+  )
 }
 
 if (maxStallSeen >= 144_000 && !sawR2Executed && !sawQuiesceBypass) {
@@ -97,5 +118,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `BYTE_DEATH_RECOVERY_GATE: PASS (window=${watchMinutes}m max_stall=${maxStallSeen} r2=${sawR2Executed} quiesce=${sawQuiesceBypass})`,
+  `BYTE_DEATH_RECOVERY_GATE: PASS (window=${watchMinutes}m max_stall=${maxStallSeen} max_conn=${maxCursorConnSeen} r2=${sawR2Executed} quiesce=${sawQuiesceBypass})`,
 )

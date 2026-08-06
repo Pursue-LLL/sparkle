@@ -16,7 +16,7 @@ import {
   buildRecoveryIncidentGeneration,
   completeDialIntent,
 } from './dialAdmissionArbiter'
-import type { DialAdmissionOutcome } from './dialAdmissionArbiterCore'
+import type { DialAdmissionClass, DialAdmissionOutcome } from './dialAdmissionArbiterCore'
 import {
   executeHy2SessionDialWithGuard,
   formatMarathonRescueDialLogLine,
@@ -30,6 +30,15 @@ export interface MarathonRescueDialRequest {
   maxGapMs?: number
   staleRequestIdCount?: number
   staleRequestIds?: readonly string[]
+}
+
+export function resolveMarathonRescueDialAdmissionClass(
+  trigger: MarathonWarmthTrigger,
+): DialAdmissionClass {
+  if (trigger === 'connect_partition' || trigger === 'latency_delta_rescue') {
+    return 'emergency_parent_refresh'
+  }
+  return 'active_recovery'
 }
 
 function mapRescueDialAdmissionOutcome(
@@ -113,7 +122,7 @@ export async function executeMarathonRescueDial(
     forceOnWeakProbe: true,
     admissionIntent: {
       dialId,
-      class: 'active_recovery',
+      class: resolveMarathonRescueDialAdmissionClass(trigger),
       caller: 'marathonRescueDialExecutor',
       incidentGeneration,
       node: activeNode,

@@ -18,12 +18,16 @@ import {
 } from './cursorDedicatedNodeResolver'
 
 describe('marathonRescueDialExecutor behavioral', () => {
-  it('skips rescue dial when incident generation is closed (P10-2)', async () => {
+  it('1.30.28: connect_partition bypasses closed incident generation (C-8 emergency)', async () => {
     resetMarathonSessionDialExecutorStateForTests()
     resetDialAdmissionArbiterForTests()
     resetCursorDedicatedNodeResolverStateForTests()
     setSkipMarathonSessionDialAppLogForTests(true)
     setCursorDedicatedActiveNodeOverrideForTests('JP-VPS-HY2')
+    setHy2SessionNudgeDialPairOverrideForTests(async () => ({
+      api2Result: { delay: 320 },
+      api2geoResult: { delay: 310 },
+    }))
     const nowMs = 5_994_000
     const incidentGeneration = buildRecoveryIncidentGeneration(
       'connect_partition',
@@ -43,6 +47,38 @@ describe('marathonRescueDialExecutor behavioral', () => {
     const result = await executeMarathonRescueDial(30, {
       trigger: 'connect_partition',
       nowMs,
+      staleRequestIds: ['rid-closed'],
+    })
+    assert.equal(result.outcome, 'executed')
+  })
+
+  it('skips token_gap rescue when incident generation is closed (P10-2)', async () => {
+    resetMarathonSessionDialExecutorStateForTests()
+    resetDialAdmissionArbiterForTests()
+    resetCursorDedicatedNodeResolverStateForTests()
+    setSkipMarathonSessionDialAppLogForTests(true)
+    setCursorDedicatedActiveNodeOverrideForTests('JP-VPS-HY2')
+    const nowMs = 5_994_000
+    const incidentGeneration = buildRecoveryIncidentGeneration(
+      'token_gap',
+      ['rid-closed'],
+      nowMs,
+    )
+    const seeded = admitDialIntent({
+      dialId: 'seed',
+      class: 'active_recovery',
+      caller: 'marathonRescueDialExecutor',
+      incidentGeneration,
+      submittedAtMs: nowMs - 1,
+    })
+    assert.equal(seeded.admitted, true)
+    completeDialIntent('seed', incidentGeneration, 'INEFFECTIVE')
+
+    const result = await executeMarathonRescueDial(30, {
+      trigger: 'token_gap',
+      nowMs,
+      maxGapMs: 300_000,
+      staleRequestIdCount: 1,
       staleRequestIds: ['rid-closed'],
     })
     assert.equal(result.outcome, 'skipped_admission')

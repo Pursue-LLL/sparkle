@@ -72,6 +72,11 @@ function hasCurrentRequestBoundStallProof(
   input: FrozenSurgicalPruneGateInput,
   marathonActive: boolean
 ): boolean {
+  const marathonGlobalByteDeath = resolveMarathonGlobalByteDeathForPrune(input, marathonActive)
+  const stallMs = input.maxByteStallMs ?? input.observation.stallMs
+  if (marathonGlobalByteDeath && stallMs >= 90_000 && input.staleRequestIdCount > 0) {
+    return true
+  }
   const parentRecovery = resolveMarathonParentRecoveryStallProof({
     marathonActive,
     observation: input.observation,

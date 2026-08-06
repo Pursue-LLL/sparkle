@@ -15,10 +15,8 @@ import {
   resolveHy2ParentSidecarDialPlan,
   type Hy2ParentSidecarPlan,
 } from './hy2ParentSidecarCore'
-import {
-  countActiveInnerCriticalFlows,
-  findOldestHy2UdpOutboundConnectionId,
-} from './hy2ParentRotationCore'
+import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
+import { countActiveInnerCriticalFlows } from './hy2ParentRotationCore'
 import type { MarathonSSETruthResult } from './marathonSSETruthCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 
@@ -123,20 +121,25 @@ export function resolveProactiveUdpClosePlan(input: {
   if (activeInner > 0 && !carrierQuiesce.bypassActiveInner) {
     return { action: 'none', reason: 'active_inner_critical_flows', healthyInnerCount: activeInner }
   }
-  const udpConnectionId = findOldestHy2UdpOutboundConnectionId({
+  const udpResolution = resolveHy2ParentUdpOutboundConnectionId({
     connections: input.connections,
     activeLeaf: input.snapshot.activeHy2Leaf,
     trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
+    nowMs: input.nowMs,
   })
-  if (!udpConnectionId) {
+  if (!udpResolution.connectionId) {
     return { action: 'none', reason: 'no_udp_outbound' }
   }
+  const refreshReason = carrierQuiesce.bypassActiveInner
+    ? 'carrier_quiesce_parent_udp_refresh'
+    : 'proactive_parent_udp_refresh'
   return {
     action: 'close_udp_outbound',
-    reason: carrierQuiesce.bypassActiveInner
-      ? 'carrier_quiesce_parent_udp_refresh'
-      : 'proactive_parent_udp_refresh',
-    udpConnectionId,
+    reason:
+      udpResolution.source === 'mihomo_udp_chain_hop'
+        ? `${refreshReason}_chain_hop`
+        : refreshReason,
+    udpConnectionId: udpResolution.connectionId,
     healthyInnerCount: activeInner,
   }
 }
@@ -217,61 +220,6 @@ export async function runHy2ParentSidecarIfDue(input: {
 
     const shouldAct =
       dialPlan.action === 'sidecar_dial' || rotatePlan.action === 'close_udp_outbound'
-    if (
-      !shouldAct &&
-      marathonGlobalByteDeath &&
-      carrierQuiesce.bypassActiveInner &&
-      rotatePlan.reason === 'no_udp_outbound'
-    ) {
-      const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
-      const { resetTransportLongevityHy2ParentChainBirth } = await import(
-        './transportLongevityTruth'
-      )
-      await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
-      await appendSidecarLog(
-        formatCarrierQuiesceRefreshLogLine({
-          outcome: 'executed',
-          reason: 'byte_death_ghost_udp_birth_reset_no_outbound',
-          activeInnerCriticalCount: countActiveInnerCriticalFlows({
-            connections: input.connections,
-            activeLeaf: input.snapshot.activeHy2Leaf,
-          }),
-          httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
-          maxByteStallMs: input.snapshot.maxByteStallMs,
-          frozenQuicCursorCount: input.snapshot.frozenQuicCursorCount,
-        }),
-      )
-      const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
-      const vitality = await runHy2TunnelVitalityIfDue(
-        activeLeaf,
-        input.cursorConnectionCount,
-        nowMs,
-        input.marathonTruth,
-        {
-          sidecarDial: true,
-          emergencySidecar: true,
-          outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
-          stallRecoveryBypass: true,
-        },
-      )
-      lastHy2ParentSidecarActionAtMs = nowMs
-      await appendSidecarLog(
-        formatHy2ParentSidecarLogLine({
-          outcome: vitality.outcome === 'executed' ? 'executed' : 'failed',
-          action: 'sidecar_dial',
-          reason: 'byte_death_ghost_udp_recovery phase=execute',
-          outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
-          httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
-          connectPathDelayMs: vitality.connectPathDelayMs,
-          err: vitality.err,
-        }),
-      )
-      return {
-        outcome: vitality.outcome === 'executed' ? 'executed' : 'failed',
-        action: 'sidecar_dial',
-        reason: 'byte_death_ghost_udp_recovery',
-      }
-    }
     if (!shouldAct) {
       if (
         marathonGlobalByteDeath &&
@@ -298,117 +246,16 @@ export async function runHy2ParentSidecarIfDue(input: {
       return { outcome: 'skipped', action: 'none', reason: 'sidecar_action_cooldown' }
     }
 
-    if (dialPlan.action === 'sidecar_dial') {
-      const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
-      // Plane B @1.30.3: prefer UDP outbound close+redial before probe-only vitality.
-      if (rotatePlan.action === 'close_udp_outbound' && rotatePlan.udpConnectionId) {
-        const closed = await closeUdpOutbound(rotatePlan.udpConnectionId)
-        if (closed.ok) {
-          await maybeResetHy2ParentChainBirth({
-            activeLeaf,
-            nowMs,
-            snapshot: input.snapshot,
-            marathonActive,
-            recoveryIneffective:
-              input.recoveryIneffective === true || input.emergencyStallEscalation === true,
-          })
-        }
-        if (rotatePlan.reason === 'carrier_quiesce_parent_udp_refresh') {
-          await appendSidecarLog(
-            formatCarrierQuiesceRefreshLogLine({
-              outcome: closed.ok ? 'executed' : 'failed',
-              reason: rotatePlan.reason,
-              activeInnerCriticalCount: rotatePlan.healthyInnerCount ?? 0,
-              httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
-              maxByteStallMs: input.snapshot.maxByteStallMs,
-              frozenQuicCursorCount: input.snapshot.frozenQuicCursorCount,
-              udpConnectionId: rotatePlan.udpConnectionId,
-              err: closed.err,
-            }),
-          )
-        }
-        lastHy2ParentSidecarActionAtMs = nowMs
-        await appendSidecarLog(
-          formatHy2ParentSidecarLogLine({
-            outcome: closed.ok ? 'executed' : 'failed',
-            action: 'close_udp_outbound',
-            reason: `${rotatePlan.reason} phase=execute_before_sidecar_dial`,
-            outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
-            httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
-            healthyInnerCount: rotatePlan.healthyInnerCount,
-            udpConnectionId: rotatePlan.udpConnectionId,
-            err: closed.err,
-          }),
-        )
-        if (!closed.ok) {
-          return {
-            outcome: 'failed',
-            action: 'close_udp_outbound',
-            reason: closed.err ?? rotatePlan.reason,
-          }
-        }
-      } else if (
-        carrierQuiesce.bypassActiveInner &&
-        rotatePlan.action === 'none' &&
-        rotatePlan.reason === 'no_udp_outbound'
-      ) {
-        const { resetTransportLongevityHy2ParentChainBirth } = await import(
-          './transportLongevityTruth'
-        )
-        await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
-        await appendSidecarLog(
-          formatCarrierQuiesceRefreshLogLine({
-            outcome: 'executed',
-            reason: 'ghost_udp_parent_birth_reset_before_sidecar_dial',
-            activeInnerCriticalCount: countActiveInnerCriticalFlows({
-              connections: input.connections,
-              activeLeaf: input.snapshot.activeHy2Leaf,
-            }),
-            httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
-            maxByteStallMs: input.snapshot.maxByteStallMs,
-            frozenQuicCursorCount: input.snapshot.frozenQuicCursorCount,
-          }),
-        )
-      }
-      const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
-      const vitality = await runHy2TunnelVitalityIfDue(
-        activeLeaf,
-        input.cursorConnectionCount,
-        nowMs,
-        input.marathonTruth,
-        {
-          sidecarDial: true,
-          emergencySidecar: input.emergencyStallEscalation === true,
-          outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
-          stallRecoveryBypass: true,
-        },
-      )
-      lastHy2ParentSidecarActionAtMs = nowMs
-      await appendSidecarLog(
-        formatHy2ParentSidecarLogLine({
-          outcome: vitality.outcome === 'executed' ? 'executed' : 'failed',
-          action: 'sidecar_dial',
-          reason: `${dialPlan.reason} phase=execute`,
-          outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
-          httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
-          connectPathDelayMs: vitality.connectPathDelayMs,
-          err: vitality.err,
-        }),
-      )
-      return {
-        outcome: vitality.outcome === 'executed' ? 'executed' : 'failed',
-        action: 'sidecar_dial',
-        reason: vitality.outcome === 'executed' ? dialPlan.reason : vitality.err ?? vitality.outcome,
-      }
-    }
+    let parentUdpClosedThisInvocation = false
 
     if (
       rotatePlan.action === 'close_udp_outbound' &&
       rotatePlan.udpConnectionId
     ) {
+      const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
       const closed = await closeUdpOutbound(rotatePlan.udpConnectionId)
       if (closed.ok) {
-        const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+        parentUdpClosedThisInvocation = true
         await maybeResetHy2ParentChainBirth({
           activeLeaf,
           nowMs,
@@ -418,8 +265,9 @@ export async function runHy2ParentSidecarIfDue(input: {
             input.recoveryIneffective === true || input.emergencyStallEscalation === true,
         })
       }
-      lastHy2ParentSidecarActionAtMs = nowMs
-      if (rotatePlan.reason === 'carrier_quiesce_parent_udp_refresh') {
+      if (
+        rotatePlan.reason.startsWith('carrier_quiesce_parent_udp_refresh')
+      ) {
         await appendSidecarLog(
           formatCarrierQuiesceRefreshLogLine({
             outcome: closed.ok ? 'executed' : 'failed',
@@ -433,6 +281,7 @@ export async function runHy2ParentSidecarIfDue(input: {
           }),
         )
       }
+      lastHy2ParentSidecarActionAtMs = nowMs
       await appendSidecarLog(
         formatHy2ParentSidecarLogLine({
           outcome: closed.ok ? 'executed' : 'failed',
@@ -445,12 +294,89 @@ export async function runHy2ParentSidecarIfDue(input: {
           err: closed.err,
         }),
       )
-      return {
-        outcome: closed.ok ? 'executed' : 'failed',
-        action: 'close_udp_outbound',
-        reason: closed.ok ? rotatePlan.reason : closed.err ?? rotatePlan.reason,
+      if (!closed.ok) {
+        return {
+          outcome: 'failed',
+          action: 'close_udp_outbound',
+          reason: closed.err ?? rotatePlan.reason,
+        }
+      }
+      if (dialPlan.action !== 'sidecar_dial') {
+        return {
+          outcome: 'executed',
+          action: 'close_udp_outbound',
+          reason: rotatePlan.reason,
+        }
       }
     }
+
+    if (dialPlan.action === 'sidecar_dial') {
+      const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+      if (
+        marathonGlobalByteDeath &&
+        rotatePlan.action === 'none' &&
+        rotatePlan.reason === 'no_udp_outbound'
+      ) {
+        await appendSidecarLog(
+          `[Hy2ParentSidecar]: outcome=planned action=sidecar_dial reason=byte_death_no_udp_outbound_sidecar_emergency ` +
+            `max_byte_stall_ms=${input.snapshot.maxByteStallMs} ` +
+            `frozen_quic_cursor=${input.snapshot.frozenQuicCursorCount} ` +
+            `cursor_conn=${input.cursorConnectionCount}\n`,
+        )
+      }
+      const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
+      const vitality = await runHy2TunnelVitalityIfDue(
+        activeLeaf,
+        input.cursorConnectionCount,
+        nowMs,
+        input.marathonTruth,
+        {
+          sidecarDial: true,
+          emergencySidecar:
+            input.emergencyStallEscalation === true ||
+            (marathonGlobalByteDeath && rotatePlan.reason === 'no_udp_outbound'),
+          outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
+          stallRecoveryBypass: true,
+        },
+      )
+      lastHy2ParentSidecarActionAtMs = nowMs
+      const probeOnlyFalseSuccess =
+        marathonGlobalByteDeath &&
+        !parentUdpClosedThisInvocation &&
+        vitality.outcome === 'executed'
+      const sidecarReason =
+        marathonGlobalByteDeath && rotatePlan.reason === 'no_udp_outbound'
+          ? 'byte_death_no_udp_outbound_sidecar_emergency'
+          : dialPlan.reason
+      const resolvedReason = probeOnlyFalseSuccess
+        ? 'byte_death_probe_only_without_udp_close'
+        : sidecarReason
+      const resolvedOutcome = probeOnlyFalseSuccess
+        ? 'failed'
+        : vitality.outcome === 'executed'
+          ? 'executed'
+          : 'failed'
+      await appendSidecarLog(
+        formatHy2ParentSidecarLogLine({
+          outcome: resolvedOutcome,
+          action: 'sidecar_dial',
+          reason: `${resolvedReason} phase=execute`,
+          outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
+          httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
+          connectPathDelayMs: vitality.connectPathDelayMs,
+          err: vitality.err,
+        }),
+      )
+      return {
+        outcome: resolvedOutcome,
+        action: 'sidecar_dial',
+        reason:
+          resolvedOutcome === 'executed'
+            ? sidecarReason
+            : vitality.err ?? resolvedReason,
+      }
+    }
+
     return { outcome: 'skipped', action: 'none', reason: 'no_executable_sidecar_action' }
   } finally {
     sidecarObserveInFlight = false
