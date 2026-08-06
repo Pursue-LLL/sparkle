@@ -11,6 +11,8 @@ import {
   openSync,
   readFileSync,
   readSync,
+  statSync,
+  writeFileSync,
 } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
@@ -19,6 +21,8 @@ import type { StreamLifecycleEvent } from './streamLifecycleTruthCore'
 const JOURNAL_FILE = join(homedir(), '.sparkle', 'stream-lifecycle-journal.v1.jsonl')
 /** Read at most this many trailing bytes — avoids V8 max-string blow-up on long marathon days. */
 export const STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES = 8_388_608
+/** Compact on append when journal exceeds this size — prevents ENOSPC from unbounded growth. */
+export const STREAM_LIFECYCLE_JOURNAL_MAX_BYTES = STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES * 2
 
 let testJournalPathOverride: string | null = null
 
@@ -30,6 +34,20 @@ function journalPath(): string {
   return testJournalPathOverride ?? JOURNAL_FILE
 }
 
+export function compactStreamLifecycleJournalIfOversized(filePath: string): boolean {
+  if (!existsSync(filePath)) {
+    return false
+  }
+  if (statSync(filePath).size <= STREAM_LIFECYCLE_JOURNAL_MAX_BYTES) {
+    return false
+  }
+  const tail = readStreamLifecycleJournalTailText(filePath)
+  const normalized =
+    tail.length > 0 ? (tail.endsWith('\n') ? tail : `${tail}\n`) : ''
+  writeFileSync(filePath, normalized, 'utf8')
+  return true
+}
+
 export function appendStreamLifecycleJournalEvents(events: readonly StreamLifecycleEvent[]): void {
   if (events.length === 0) {
     return
@@ -38,6 +56,7 @@ export function appendStreamLifecycleJournalEvents(events: readonly StreamLifecy
   mkdirSync(dirname(filePath), { recursive: true })
   const lines = events.map((event) => JSON.stringify(event)).join('\n') + '\n'
   appendFileSync(filePath, lines, 'utf8')
+  compactStreamLifecycleJournalIfOversized(filePath)
 }
 
 export function readStreamLifecycleJournalTailText(filePath: string): string {
