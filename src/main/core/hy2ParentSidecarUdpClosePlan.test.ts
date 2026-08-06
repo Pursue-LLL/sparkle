@@ -93,4 +93,24 @@ describe('resolveProactiveUdpClosePlan @1.30.16', () => {
     assert.equal(plan.action, 'close_udp_outbound')
     assert.equal(plan.reason, 'carrier_quiesce_parent_udp_refresh')
   })
+
+  it('1.30.28: high-conn untracked udp resolves via chain-hop', () => {
+    const nowMs = 2_000_000
+    const plan = resolveProactiveUdpClosePlan({
+      snapshot: snapshot(),
+      connections: [tcpLive, udpParent],
+      trackedFirstSeenAtMsById: new Map(),
+      trackedLastByteChangeAtMsById: new Map([
+        ['tcp-live', nowMs - MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS],
+        ['udp-parent', nowMs - 120_000],
+      ]),
+      nowMs,
+      lastRotateActionAtMs: nowMs - 30_000,
+      recoveryIneffective: true,
+      marathonActive: true,
+    })
+    assert.equal(plan.action, 'close_udp_outbound')
+    assert.match(plan.reason, /carrier_quiesce_parent_udp_refresh/)
+    assert.equal(plan.udpConnectionId, 'udp-parent')
+  })
 })

@@ -13,6 +13,7 @@ import {
   resolveConnectionHost,
   resolveMarathonQuIcLeafFromChains,
 } from './mihomoQuicSilentStallCore'
+import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
 
 export const HY2_PARENT_ROTATION_COOLDOWN_MS = 300_000
 
@@ -63,7 +64,7 @@ export function findOldestHy2UdpOutboundConnectionId(input: {
     if (network !== 'udp') {
       continue
     }
-    const firstSeenMs = input.trackedFirstSeenAtMsById.get(connection.id) ?? Number.POSITIVE_INFINITY
+    const firstSeenMs = input.trackedFirstSeenAtMsById.get(connection.id) ?? 0
     if (firstSeenMs < oldestFirstSeenMs) {
       oldestFirstSeenMs = firstSeenMs
       oldestId = connection.id
@@ -110,17 +111,22 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   if (activeInner > 0 && !byteDeathBypass) {
     return { action: 'none', reason: 'active_inner_critical_flows' }
   }
-  const udpConnectionId = findOldestHy2UdpOutboundConnectionId({
+  const udpResolution = resolveHy2ParentUdpOutboundConnectionId({
     connections: input.connections,
     activeLeaf: input.snapshot.activeHy2Leaf,
     trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
+    nowMs: input.nowMs,
   })
-  if (!udpConnectionId) {
+  if (!udpResolution.connectionId) {
     return { action: 'none', reason: 'no_udp_outbound' }
   }
+  const refreshReason =
+    udpResolution.source === 'mihomo_udp_chain_hop'
+      ? 'parent_session_refresh_after_prune_chain_hop'
+      : 'parent_session_refresh_after_prune'
   return {
     action: 'close_udp_outbound',
-    reason: 'parent_session_refresh_after_prune',
-    udpConnectionId,
+    reason: refreshReason,
+    udpConnectionId: udpResolution.connectionId,
   }
 }
