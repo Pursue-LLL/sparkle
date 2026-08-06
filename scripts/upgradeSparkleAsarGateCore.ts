@@ -77,6 +77,9 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('byte_death_probe_only_without_udp_close') ||
     !mainSource.includes('byte_death_close_connections_by_leaf') ||
     !mainSource.includes('byteDeathFullScan') ||
+    !mainSource.includes('[Hy2ParentByteDeathRecovery]:') ||
+    !mainSource.includes('executeByteDeathParentMutation') ||
+    !mainSource.includes('byte_death_mutation_failed_blocking_sidecar') ||
     mainSource.includes('ghost_udp_parent_birth_reset')
   ) {
     return { ok: false, reason: 'missing_bug20260805_control_plane' }

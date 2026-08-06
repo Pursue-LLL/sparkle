@@ -45,14 +45,39 @@ const GHOST_UDP_MARKERS = [
   'ghost_udp_parent_birth_reset',
 ]
 
+interface ByteDeathRecoveryWindow {
+  plannedAt?: string
+  sawExecutedMutation: boolean
+  sawProbeOnlyFailed: boolean
+}
+
+let byteDeathRecoveryWindow: ByteDeathRecoveryWindow | undefined
+
+function closeByteDeathRecoveryWindow(ts: string): void {
+  if (byteDeathRecoveryWindow == null) {
+    return
+  }
+  if (
+    byteDeathRecoveryWindow.plannedAt != null &&
+    !byteDeathRecoveryWindow.sawExecutedMutation &&
+    !byteDeathRecoveryWindow.sawProbeOnlyFailed
+  ) {
+    failures.push(
+      `${byteDeathRecoveryWindow.plannedAt}: Hy2ParentByteDeathRecovery planned without executed mutation (closed_count>0 or close_udp_outbound executed)`,
+    )
+  }
+  byteDeathRecoveryWindow = undefined
+}
+
 for (const line of lines) {
   const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/)
   if (!tsMatch) continue
-  const ts = Date.parse(tsMatch[1])
-  if (ts < cutoffMs) continue
+  const ts = tsMatch[1]
+  const tsMs = Date.parse(ts)
+  if (tsMs < cutoffMs) continue
 
   if (GHOST_UDP_MARKERS.some((marker) => line.includes(marker))) {
-    failures.push(`${tsMatch[1]}: forbidden ghost_udp recovery path detected (C-8 regression)`)
+    failures.push(`${ts}: forbidden ghost_udp recovery path detected (C-8 regression)`)
   }
 
   const connMatch = line.match(/cursor_conn=(\d+)/)
@@ -65,9 +90,31 @@ for (const line of lines) {
     const stall = Number(stallMatch[1])
     maxStallSeen = Math.max(maxStallSeen, stall)
     if (stall >= 90_000) {
-      byteDeathStreakStart ??= ts
+      byteDeathStreakStart ??= tsMs
     } else if (byteDeathStreakStart != null && stall < 45_000) {
       byteDeathStreakStart = undefined
+    }
+  }
+
+  if (line.includes('[Hy2ParentByteDeathRecovery]:')) {
+    if (line.includes('outcome=planned')) {
+      closeByteDeathRecoveryWindow(ts)
+      byteDeathRecoveryWindow = {
+        plannedAt: ts,
+        sawExecutedMutation: false,
+        sawProbeOnlyFailed: false,
+      }
+    }
+    if (
+      line.includes('outcome=executed') &&
+      (line.includes('action=close_udp_outbound') ||
+        (line.includes('action=close_leaf_connections') &&
+          /closed_count=([1-9]\d*)/.test(line)))
+    ) {
+      if (byteDeathRecoveryWindow != null) {
+        byteDeathRecoveryWindow.sawExecutedMutation = true
+      }
+      sawR2Executed = true
     }
   }
 
@@ -91,13 +138,43 @@ for (const line of lines) {
   }
   if (
     byteDeathStreakStart != null &&
-    ts - byteDeathStreakStart > 180_000 &&
+    tsMs - byteDeathStreakStart > 180_000 &&
     line.includes('parent_udp_refresh') &&
     line.includes('active_inner_critical_flows')
   ) {
-    failures.push(`${tsMatch[1]}: R2 still blocked by active_inner after 3min byte-death`)
+    failures.push(`${ts}: R2 still blocked by active_inner after 3min byte-death`)
+  }
+
+  if (
+    line.includes('[Hy2ParentSidecar]') &&
+    line.includes('byte_death_probe_only_without_udp_close') &&
+    line.includes('outcome=failed')
+  ) {
+    if (byteDeathRecoveryWindow != null) {
+      byteDeathRecoveryWindow.sawProbeOnlyFailed = true
+    }
+  } else if (
+    line.includes('[Hy2ParentSidecar]') &&
+    line.includes('byte_death_probe_only_without_udp_close') &&
+    line.includes('outcome=executed')
+  ) {
+    failures.push(`${ts}: probe-only sidecar marked executed without prior mutation (C-8.10 regression)`)
+  }
+
+  if (
+    line.includes('byte_death_probe_only_without_udp_close') &&
+    line.includes('outcome=executed') &&
+    !line.includes('outcome=failed')
+  ) {
+    const priorMutation =
+      byteDeathRecoveryWindow?.sawExecutedMutation === true || sawR2Executed
+    if (!priorMutation) {
+      failures.push(`${ts}: byte_death_probe_only_without_udp_close succeeded without prior mutation`)
+    }
   }
 }
+
+closeByteDeathRecoveryWindow('window_end')
 
 if (maxCursorConnSeen >= 150 && maxStallSeen >= 90_000 && !sawR2Executed) {
   failures.push(

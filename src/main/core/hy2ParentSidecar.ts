@@ -15,6 +15,7 @@ import {
   resolveHy2ParentSidecarDialPlan,
   type Hy2ParentSidecarPlan,
 } from './hy2ParentSidecarCore'
+import { executeByteDeathParentMutation } from './hy2ParentByteDeathRecoveryExecutor'
 import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
 import { countActiveInnerCriticalFlows } from './hy2ParentRotationCore'
 import type { MarathonSSETruthResult } from './marathonSSETruthCore'
@@ -72,100 +73,6 @@ async function closeUdpOutbound(connectionId: string): Promise<{ ok: boolean; er
     return { ok: true }
   } catch (error) {
     return { ok: false, err: formatUnknownErrorForLog(error) }
-  }
-}
-
-async function executeByteDeathNoUdpFallback(input: {
-  activeLeaf: string
-  connections: readonly ControllerConnectionDetail[]
-  trackedFirstSeenAtMsById: ReadonlyMap<string, number>
-  nowMs: number
-  snapshot: TransportLongevityTruthSnapshot
-  cursorConnectionCount: number
-}): Promise<{
-  closed: boolean
-  method: string
-  udpConnectionId?: string
-  closedCount?: number
-  err?: string
-}> {
-  let connections = input.connections
-  try {
-    const { mihomoGetConnections } = await import('./mihomoApi')
-    const fresh = await mihomoGetConnections()
-    if (fresh.connections && fresh.connections.length > 0) {
-      connections = fresh.connections
-    }
-  } catch {
-    // use caller snapshot
-  }
-
-  const resolution = resolveHy2ParentUdpOutboundConnectionId({
-    connections,
-    activeLeaf: input.activeLeaf,
-    trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
-    nowMs: input.nowMs,
-    byteDeathFullScan: true,
-  })
-  if (resolution.connectionId) {
-    const closed = await closeUdpOutbound(resolution.connectionId)
-    await appendSidecarLog(
-      `[Hy2ParentSidecar]: outcome=${closed.ok ? 'executed' : 'failed'} action=close_udp_outbound ` +
-        `reason=byte_death_full_scan_${resolution.source} phase=execute ` +
-        `udp_connection_id=${resolution.connectionId} ` +
-        `max_byte_stall_ms=${input.snapshot.maxByteStallMs} cursor_conn=${input.cursorConnectionCount}` +
-        `${closed.err ? ` err=${closed.err}` : ''}\n`,
-    )
-    return {
-      closed: closed.ok,
-      method: `full_scan_${resolution.source}`,
-      udpConnectionId: resolution.connectionId,
-      err: closed.err,
-    }
-  }
-
-  const diagnostics = resolution.diagnostics
-  await appendSidecarLog(
-    `[Hy2ParentSidecar]: outcome=planned action=close_connections_by_leaf ` +
-      `reason=byte_death_no_udp_outbound_leaf_fallback ` +
-      `max_byte_stall_ms=${input.snapshot.maxByteStallMs} cursor_conn=${input.cursorConnectionCount} ` +
-      `total_conn=${diagnostics?.totalConnections ?? connections.length} ` +
-      `udp_leaf_strict=${diagnostics?.udpOnLeafStrict ?? 0} ` +
-      `udp_full_scan=${diagnostics?.udpFullScanCandidates ?? 0}\n`,
-  )
-
-  try {
-    const { mihomoGetConnections, mihomoCloseConnection } = await import('./mihomoApi')
-    const snapshot = await mihomoGetConnections()
-    const targets =
-      snapshot.connections?.filter((conn) => conn.chains?.includes(input.activeLeaf)) ?? []
-    let closedCount = 0
-    for (const conn of targets) {
-      try {
-        await mihomoCloseConnection(conn.id)
-        closedCount += 1
-      } catch {
-        // continue closing remaining leaf connections
-      }
-    }
-    const closed = closedCount > 0
-    await appendSidecarLog(
-      `[Hy2ParentSidecar]: outcome=${closed ? 'executed' : 'failed'} action=close_connections_by_leaf ` +
-        `reason=byte_death_close_connections_by_leaf phase=execute ` +
-        `leaf=${input.activeLeaf} closed_count=${closedCount} ` +
-        `max_byte_stall_ms=${input.snapshot.maxByteStallMs} cursor_conn=${input.cursorConnectionCount}\n`,
-    )
-    return {
-      closed,
-      method: 'byte_death_close_connections_by_leaf',
-      closedCount,
-    }
-  } catch (error) {
-    return {
-      closed: false,
-      method: 'byte_death_close_connections_by_leaf',
-      err: formatUnknownErrorForLog(error),
-    }
   }
 }
 
@@ -418,15 +325,15 @@ export async function runHy2ParentSidecarIfDue(input: {
             `frozen_quic_cursor=${input.snapshot.frozenQuicCursorCount} ` +
             `cursor_conn=${input.cursorConnectionCount}\n`,
         )
-        const fallback = await executeByteDeathNoUdpFallback({
+        const mutation = await executeByteDeathParentMutation({
           activeLeaf,
           connections: input.connections,
           trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
           nowMs,
-          snapshot: input.snapshot,
+          maxByteStallMs: input.snapshot.maxByteStallMs,
           cursorConnectionCount: input.cursorConnectionCount,
         })
-        if (fallback.closed) {
+        if (mutation.mutated) {
           parentUdpClosedThisInvocation = true
           await maybeResetHy2ParentChainBirth({
             activeLeaf,
@@ -436,6 +343,24 @@ export async function runHy2ParentSidecarIfDue(input: {
             recoveryIneffective:
               input.recoveryIneffective === true || input.emergencyStallEscalation === true,
           })
+        } else {
+          lastHy2ParentSidecarActionAtMs = nowMs
+          const blockReason = mutation.err ?? mutation.plan.reason
+          await appendSidecarLog(
+            formatHy2ParentSidecarLogLine({
+              outcome: 'failed',
+              action: 'sidecar_dial',
+              reason: `byte_death_mutation_failed_blocking_sidecar phase=execute plan=${mutation.plan.action}`,
+              outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
+              httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
+              err: blockReason,
+            }),
+          )
+          return {
+            outcome: 'failed',
+            action: 'sidecar_dial',
+            reason: blockReason,
+          }
         }
       }
       const { runHy2TunnelVitalityIfDue } = await import('./hy2TunnelVitality')
