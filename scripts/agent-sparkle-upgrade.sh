@@ -15,6 +15,11 @@ DIST_APP="$ROOT/dist/mac-arm64/Sparkle.app"
 TSX="$ROOT/node_modules/.bin/tsx"
 GATE_MINUTES="${SPARKLE_AGENT_GATE_MINUTES:-15}"
 
+log "Pre-install hygiene (journal truncate + disk pressure gate)..."
+if ! "$TSX" "$ROOT/scripts/sparkle-pre-install-hygiene.mts"; then
+  fail "pre-install hygiene blocked upgrade — free disk space or truncate ~/.sparkle journals"
+fi
+
 dist_version_matches() {
   [[ -d "$DIST_APP" ]] || return 1
   local built_ver
