@@ -159,7 +159,36 @@ export function replayBug20260806SelR2RotationChainHop(): Bug20260806ReplayVerdi
   }
 }
 
-/** C-8.7: ghost_udp paths must be deleted from hy2ParentSidecar source. */
+/** C-8.9: byte-death + mihomo omits UDP rows must expose diagnostics for leaf fallback. */
+export function replayBug20260806NoUdpFullScanDiagnostics(): Bug20260806ReplayVerdict {
+  const nowMs = 2_000_000
+  const resolution = resolveHy2ParentUdpOutboundConnectionId({
+    connections: [
+      {
+        id: 'tcp-cursor',
+        chains: ['JP-VPS-HY2'],
+        metadata: { network: 'tcp', host: 'api2.cursor.sh' },
+      } as ControllerConnectionDetail,
+    ],
+    activeLeaf: 'JP-VPS-HY2',
+    trackedFirstSeenAtMsById: new Map(),
+    nowMs,
+    byteDeathFullScan: true,
+  })
+  const ok =
+    resolution.source === 'none' &&
+    resolution.diagnostics?.udpFullScanCandidates === 0 &&
+    resolution.diagnostics?.totalConnections === 1
+  return {
+    fixtureId: '0806_no_udp_full_scan_diagnostics',
+    ok,
+    detail: ok
+      ? 'byte-death full scan exposes diagnostics when mihomo omits UDP parent rows'
+      : `resolution source=${resolution.source} diagnostics=${JSON.stringify(resolution.diagnostics)}`,
+  }
+}
+
+/** C-8.9: ghost_udp paths must be deleted from hy2ParentSidecar source. */
 export function replayBug20260806GhostUdpDeleted(): Bug20260806ReplayVerdict {
   const sourcePath = join(process.cwd(), 'src/main/core/hy2ParentSidecar.ts')
   const source = readFileSync(sourcePath, 'utf8')
@@ -168,12 +197,21 @@ export function replayBug20260806GhostUdpDeleted(): Bug20260806ReplayVerdict {
     'byte_death_ghost_udp',
     'ghost_udp_parent_birth_reset',
   ]
+  const required = [
+    'byte_death_close_connections_by_leaf',
+    'byteDeathFullScan',
+  ]
   const hit = forbidden.find((token) => source.includes(token))
-  const ok = hit == null
+  const missing = required.find((token) => !source.includes(token))
+  const ok = hit == null && missing == null
   return {
     fixtureId: '0806_ghost_udp_deleted',
     ok,
-    detail: ok ? 'hy2ParentSidecar has no ghost_udp paths' : `forbidden token still present: ${hit}`,
+    detail: ok
+      ? 'hy2ParentSidecar has no ghost_udp paths and includes C-8.9 leaf fallback'
+      : hit != null
+        ? `forbidden token still present: ${hit}`
+        : `missing required token: ${missing}`,
   }
 }
 
@@ -183,6 +221,7 @@ export function runBug20260806ControlPlaneReplayGate(): Bug20260806ControlPlaneR
     replayBug20260806ConnectPartitionEmergencyAdmission(),
     replayBug20260806FrozenPruneByteDeathBypass(),
     replayBug20260806SelR2RotationChainHop(),
+    replayBug20260806NoUdpFullScanDiagnostics(),
     replayBug20260806GhostUdpDeleted(),
   ]
   return {
