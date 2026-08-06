@@ -1,12 +1,34 @@
 # Sparkle Bugfix Log
 
-> **2026-08-06 16:00 最新**：**prod 1.30.26 已装** · **BUG-2026-08-06-001 recurrence definitive** · 同族 **第 15+ 次** · ghost_udp 假修复路径 @ cursor_conn=158 · gate **未验 PASS**
+> **2026-08-06 18:50 最新**：**prod 1.30.31 已装** · **BUG-2026-08-06-001 新失败模式** · C-8.11 `closed_count>0` ✅ · **collateral leaf close 掐 SSE** ❌ · G3 attemptRate **0%** · gate **未 PASS**
+> **2026-08-06 16:00 上一版**：**prod 1.30.26 已装** · **BUG-2026-08-06-001 recurrence definitive** · 同族 **第 15+ 次** · ghost_udp 假修复路径 @ cursor_conn=158 · gate **未验 PASS**
 > **2026-08-05 17:30 上一版**：**prod 1.30.17 已装** · gate **PENDING**（继承 byte-death `max_byte_stall=144500`）· Agent SSOT `agent-sparkle-upgrade.sh` 新增
 > **2026-08-05 17:05 上一版**：**FIX CODE-DONE @1.30.17**（git）· SEL R2 bypass `active_inner` · 11/11 单测 PASS
 > **2026-08-05 16:30 上一版**：**FIX CODE-DONE @1.30.16**（git）· post-install gate PARTIAL · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-06-001 · C-8.11 @1.30.31 · 18:20 CST · collateral close 新暴露 · **非 ghost_udp 复发**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **NEW FAILURE MODE** · execute 链路通（`closed_count=38` post-install）· **marathon SSE 被手术关流** · G3 **0%** |
+| **发生版本** | Sparkle **1.30.31** · Cursor **3.1.15** · leaf **JP-VPS-HY2** |
+| **A 时刻** | **18:20:07 CST** `closed_count=4` · **18:36:00 CST** `closed_count=1` |
+| **PRIMARY** | **L3** C-8.11 byte-death leaf close → `mihomoCloseConnection` → agent SSE RST → Included 碎片计费 |
+| **amplifier** | `udp_full_scan=0` 全程 · parent 未 mutate · byte-death **每 ~90s 复发** |
+| **amplifier 2** | `TypeError: mihomoGetConnections is not a function`（dynamic import 打包丢失）· stale snapshot 选 target |
+| **VPS @ A** | sing-box `stream canceled by **remote**` @ 18:21:21 · conntrack 565/7680 · **非 VPS 踢连接** |
+| **NOT** | max-steps-cap · ghost_udp（1.30.31 已删）· probe_only 假成功 · VPS 宕机 |
+
+**Goodhart 证据：** G2 目标 `closed_count>0` 达成 → 用户目标（G3 attemptRate≥90%、单次 userMessage 长跑）**更差**（20×Included 碎片）。
+
+**待修复 C-8.12：** static import mihomoApi · collateral gate（禁关 active_inner SSE）· udp_full_scan=0 三轮后 parent birth reset · G3 gate 作 ship 硬门槛。
+
+**禁止声称 FIXED** 直至：G2 PASS（post-install window only）+ G3 attemptRate≥90% + 30min soak 零 collateral ECONNRESET。
 
 ---
 
