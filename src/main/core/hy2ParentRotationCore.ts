@@ -116,6 +116,7 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
     activeLeaf: input.snapshot.activeHy2Leaf,
     trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
     nowMs: input.nowMs,
+    byteDeathFullScan: byteDeathBypass,
   })
   if (!udpResolution.connectionId) {
     return { action: 'none', reason: 'no_udp_outbound' }
@@ -123,7 +124,11 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   const refreshReason =
     udpResolution.source === 'mihomo_udp_chain_hop'
       ? 'parent_session_refresh_after_prune_chain_hop'
-      : 'parent_session_refresh_after_prune'
+      : udpResolution.source === 'mihomo_udp_chain_contains'
+        ? 'parent_session_refresh_after_prune_chain_contains'
+        : udpResolution.source === 'mihomo_full_scan_hy2_udp'
+          ? 'parent_session_refresh_after_prune_full_scan'
+          : 'parent_session_refresh_after_prune'
   return {
     action: 'close_udp_outbound',
     reason: refreshReason,
