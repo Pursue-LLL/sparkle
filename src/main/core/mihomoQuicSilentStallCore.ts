@@ -4,6 +4,7 @@
 
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 import { isCursorAppBundleProcessPath } from './cursorAppBundlePathsCore'
+import { CURSOR_PROCESS_NAMES } from './cursorRuleInjection'
 import {
   CURSOR_HY2_MARATHON_CONN_THRESHOLD,
   isMarathonQuIcInboundCursorNode,
@@ -153,8 +154,15 @@ export function countCursorConnectionsFromMihomo(
   for (const connection of connections) {
     const metadata = connection.metadata ?? ({} as ControllerConnectionDetail['metadata'])
     const processPath = String(metadata.processPath ?? '')
-    const process = String(metadata.process ?? '')
-    if (isCursorAppBundleProcessPath(processPath) || process === 'Cursor' || process.startsWith('Cursor ')) {
+    const process = String(metadata.process ?? '').trim()
+    if (isCursorAppBundleProcessPath(processPath)) {
+      count += 1
+      continue
+    }
+    if (
+      process &&
+      CURSOR_PROCESS_NAMES.some((name) => process === name || process.startsWith(`${name} `))
+    ) {
       count += 1
     }
   }
