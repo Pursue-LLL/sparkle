@@ -17,7 +17,8 @@ describe('hy2ParentSidecar R-35a execute', () => {
     assert.match(source, /mihomoCloseConnection/)
     assert.match(source, /phase=execute/)
     assert.doesNotMatch(source, /phase=detect_only/)
-    assert.match(source, /Promise<Hy2ParentSidecarExecutionResult>/)
+    assert.match(source, /executeByteDeathParentMutation/)
+    assert.match(source, /byte_death_mutation_failed_blocking_sidecar/)
   })
 
   it('reports the actual sidecar outcome to the escalation caller', () => {

@@ -10,6 +10,10 @@ import {
 } from './dialAdmissionArbiterCore'
 import { resolveFrozenSurgicalPrunePlan } from './frozenSurgicalPruneCore'
 import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
+import {
+  filterHy2LeafConnections,
+  planByteDeathParentMutation,
+} from './hy2ParentByteDeathRecoveryCore'
 import { resolveMarathonRescueDialAdmissionClass } from './marathonRescueDialExecutor'
 import { resolveHy2ParentRotationAfterPrunePlan } from './hy2ParentRotationCore'
 import { MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS } from './marathonSseCarrierPruneCore'
@@ -188,30 +192,69 @@ export function replayBug20260806NoUdpFullScanDiagnostics(): Bug20260806ReplayVe
   }
 }
 
-/** C-8.9: ghost_udp paths must be deleted from hy2ParentSidecar source. */
+/** C-8.10: eadc68de no-UDP prod pattern must plan leaf close on Cursor专用→HY2 chains. */
+export function replayBug20260806Eadc68deLeafClosePlan(): Bug20260806ReplayVerdict {
+  const nowMs = 2_000_000
+  const connections = Array.from({ length: 94 }, (_, index) => ({
+    id: `tcp-${index}`,
+    chains: ['Cursor专用', 'JP-VPS-HY2'],
+    metadata: { network: 'tcp', host: 'api2.cursor.sh' },
+  })) as ControllerConnectionDetail[]
+  const plan = planByteDeathParentMutation({
+    connections,
+    activeLeaf: 'JP-VPS-HY2',
+    trackedFirstSeenAtMsById: new Map(),
+    nowMs,
+  })
+  const leafTargets = filterHy2LeafConnections(connections, 'JP-VPS-HY2')
+  const ok =
+    plan.action === 'close_leaf_connections' &&
+    plan.reason === 'byte_death_close_connections_by_leaf' &&
+    leafTargets.length === 94
+  return {
+    fixtureId: 'eadc68de_no_udp_leaf_close_plan',
+    ok,
+    detail: ok
+      ? 'C-8.10 SSOT plans leaf close for 94 HY2 TCP connections when mihomo omits UDP rows'
+      : `plan action=${plan.action} reason=${plan.reason} leafTargets=${leafTargets.length}`,
+  }
+}
+
+/** C-8.9/10: ghost_udp paths deleted; byte-death SSOT lives in hy2ParentByteDeathRecovery*. */
 export function replayBug20260806GhostUdpDeleted(): Bug20260806ReplayVerdict {
-  const sourcePath = join(process.cwd(), 'src/main/core/hy2ParentSidecar.ts')
-  const source = readFileSync(sourcePath, 'utf8')
+  const sidecarPath = join(process.cwd(), 'src/main/core/hy2ParentSidecar.ts')
+  const sidecar = readFileSync(sidecarPath, 'utf8')
+  const corePath = join(process.cwd(), 'src/main/core/hy2ParentByteDeathRecoveryCore.ts')
+  const core = readFileSync(corePath, 'utf8')
   const forbidden = [
     'ghost_udp',
     'byte_death_ghost_udp',
     'ghost_udp_parent_birth_reset',
+    'executeByteDeathNoUdpFallback',
   ]
-  const required = [
-    'byte_death_close_connections_by_leaf',
-    'byteDeathFullScan',
+  const requiredSidecar = [
+    'executeByteDeathParentMutation',
+    'byte_death_mutation_failed_blocking_sidecar',
   ]
-  const hit = forbidden.find((token) => source.includes(token))
-  const missing = required.find((token) => !source.includes(token))
-  const ok = hit == null && missing == null
+  const requiredCore = [
+    'planByteDeathParentMutation',
+    'chainsReferenceActiveLeaf',
+    '[Hy2ParentByteDeathRecovery]:',
+  ]
+  const hit = forbidden.find((token) => sidecar.includes(token) || core.includes(token))
+  const missingSidecar = requiredSidecar.find((token) => !sidecar.includes(token))
+  const missingCore = requiredCore.find((token) => !core.includes(token))
+  const ok = hit == null && missingSidecar == null && missingCore == null
   return {
     fixtureId: '0806_ghost_udp_deleted',
     ok,
     detail: ok
-      ? 'hy2ParentSidecar has no ghost_udp paths and includes C-8.9 leaf fallback'
+      ? 'C-8.10 SSOT wired; no ghost_udp or legacy fallback in sidecar'
       : hit != null
         ? `forbidden token still present: ${hit}`
-        : `missing required token: ${missing}`,
+        : missingSidecar != null
+          ? `sidecar missing: ${missingSidecar}`
+          : `core missing: ${missingCore}`,
   }
 }
 
@@ -222,6 +265,7 @@ export function runBug20260806ControlPlaneReplayGate(): Bug20260806ControlPlaneR
     replayBug20260806FrozenPruneByteDeathBypass(),
     replayBug20260806SelR2RotationChainHop(),
     replayBug20260806NoUdpFullScanDiagnostics(),
+    replayBug20260806Eadc68deLeafClosePlan(),
     replayBug20260806GhostUdpDeleted(),
   ]
   return {
