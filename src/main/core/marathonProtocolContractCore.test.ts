@@ -182,6 +182,29 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(decision.reason, 'protocol_downgrade_from_tls')
   })
 
+  it('allows manual switch to DIRECT from VPS even during marathon truth', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 18,
+      marathonTruthActive: true,
+      fromNode: 'JP-VPS-HY2',
+      toNode: 'DIRECT',
+      source: 'manual',
+    })
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.reason, 'protocol_upgrade_to_tls')
+  })
+
+  it('does not cold-start gate when active leaf is DIRECT', () => {
+    const gate = evaluateMarathonProtocolColdStartGate({
+      cursorConnectionCount: 0,
+      marathonTruthActive: false,
+      activeNode: 'DIRECT',
+      manualSelectionNode: 'DIRECT',
+    })
+    assert.equal(gate.required, false)
+    assert.equal(gate.riskClass, 'none')
+  })
+
   it('allows trusted idle lateral switch', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,

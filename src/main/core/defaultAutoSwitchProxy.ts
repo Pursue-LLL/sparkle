@@ -7,7 +7,8 @@ import {
   isAutoSwitchingProxyName,
   isCursorDedicatedGroupName,
   isNestedAutoSwitchSelection,
-  isSparkleRegionalAutoSelectGroup
+  isSparkleRegionalAutoSelectGroup,
+  prependCursorDedicatedDirectOption,
 } from './cursorProxyGroup'
 import { filterMarathonCursorEligibleVpsLeaves } from './marathonHy2OnlyCore'
 import {
@@ -234,17 +235,18 @@ export function appendRegionalAutoGroupsToCursorDedicated(
     return
   }
 
-  // Provider-mode Cursor group: only VPS leaves via use (+ optional -vps suffix).
+  // Provider-mode Cursor group: DIRECT + VPS leaves via use (+ optional -vps suffix).
   if (cursorGroup.use?.length) {
-    delete cursorGroup.proxies
+    cursorGroup.proxies = prependCursorDedicatedDirectOption(cursorGroup.proxies ?? [])
     return
   }
 
-  // Legacy leaf-list mode: keep only marathon-eligible VPS members (exclude TLS canary).
+  // Legacy leaf-list mode: DIRECT first, then marathon-eligible VPS members (exclude TLS canary).
   const existing = cursorGroup.proxies ?? []
-  cursorGroup.proxies = filterMarathonCursorEligibleVpsLeaves(
+  const vpsLeaves = filterMarathonCursorEligibleVpsLeaves(
     existing.filter((ref) => /vps/i.test(ref)),
   )
+  cursorGroup.proxies = prependCursorDedicatedDirectOption(vpsLeaves)
 }
 
 export function resolvePreferredAutoSwitchProxy(

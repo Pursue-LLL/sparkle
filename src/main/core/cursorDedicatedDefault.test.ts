@@ -46,5 +46,6 @@ describe('cursorDedicatedDefault', () => {
     assert.equal(shouldApplyCursorDedicatedDefault('Sparkle-自动-新加坡'), false)
     assert.equal(shouldApplyCursorDedicatedDefault('JP-VPS-TUIC'), false)
     assert.equal(shouldApplyCursorDedicatedDefault('JP-VPS-Reality'), false)
+    assert.equal(shouldApplyCursorDedicatedDefault('DIRECT'), false)
   })
 })
