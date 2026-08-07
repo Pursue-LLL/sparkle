@@ -92,6 +92,7 @@ describe('latencyTruthFromLedgerCore', () => {
     const summary = ledgerRowsToLatencyTruthSummary(rows, 'JP-VPS-HY2')
     assert.equal(summary.macFullPathSamples, 2)
     assert.equal(summary.macFullPathP50, 296.5)
+    assert.equal(summary.macFullPathLastTs, '2026-07-24T06:03:00.000Z')
   })
 
   it('ledgerRowsToLatencyTruthSummary splits vps body vs mac full path per node', () => {
@@ -112,7 +113,9 @@ describe('latencyTruthFromLedgerCore', () => {
     const summary = ledgerRowsToLatencyTruthSummary(rows, 'JP-VPS-HY2')
     assert.equal(summary.vpsBodySamples, 2)
     assert.equal(summary.vpsBodyP50, 520)
+    assert.equal(summary.vpsBodyLastTs, '2026-07-24T06:01:00.000Z')
     assert.equal(summary.macFullPathSamples, 2)
     assert.equal(summary.macFullPathP50, 290)
+    assert.equal(summary.macFullPathLastTs, '2026-07-24T06:03:00.000Z')
   })
 })

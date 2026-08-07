@@ -7,8 +7,10 @@ describe('latencyDeltaGateCore', () => {
     const result = evaluateLatencyDeltaFromSummary({
       vpsBodyP50: 300,
       vpsBodySamples: 2,
+      vpsBodyLastTs: null,
       macFullPathP50: 520,
       macFullPathSamples: 2,
+      macFullPathLastTs: null,
     })
     assert.equal(result.high, false)
     assert.equal(result.deltaMs, null)
@@ -18,8 +20,10 @@ describe('latencyDeltaGateCore', () => {
     const result = evaluateLatencyDeltaFromSummary({
       vpsBodyP50: 300,
       vpsBodySamples: 6,
+      vpsBodyLastTs: null,
       macFullPathP50: 520,
       macFullPathSamples: 6,
+      macFullPathLastTs: null,
     })
     assert.equal(result.high, true)
     assert.equal(result.deltaMs, 220)

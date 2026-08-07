@@ -11,8 +11,31 @@ export const MAC_FULL_PATH_LATENCY_METHOD = 'transport_pair' as const
 export interface LatencyTruthSummary {
   vpsBodyP50: number | null
   vpsBodySamples: number
+  /** ISO timestamp of the newest VPS ssh_curl body sample in the lookback window. */
+  vpsBodyLastTs: string | null
   macFullPathP50: number | null
   macFullPathSamples: number
+  /** ISO timestamp of the newest Mac full-path transport sample in the lookback window. */
+  macFullPathLastTs: string | null
+}
+
+function pickLatestIsoTs(current: string | null, candidate: string): string | null {
+  const trimmed = candidate.trim()
+  if (!trimmed) {
+    return current
+  }
+  const candidateMs = Date.parse(trimmed)
+  if (!Number.isFinite(candidateMs)) {
+    return current
+  }
+  if (!current) {
+    return trimmed
+  }
+  const currentMs = Date.parse(current)
+  if (!Number.isFinite(currentMs)) {
+    return trimmed
+  }
+  return candidateMs >= currentMs ? trimmed : current
 }
 
 export function computeDelayP50(delays: readonly number[]): number | null {
@@ -61,18 +84,23 @@ export function ledgerRowsToLatencyTruthSummary(
     return {
       vpsBodyP50: null,
       vpsBodySamples: 0,
+      vpsBodyLastTs: null,
       macFullPathP50: null,
       macFullPathSamples: 0,
+      macFullPathLastTs: null,
     }
   }
 
   const vpsRegionKey = resolveVpsRegionFromLeafNode(normalizedNode)
   const vpsDelays: number[] = []
   const macDelays: number[] = []
+  let vpsBodyLastTs: string | null = null
+  let macFullPathLastTs: string | null = null
   for (const row of rows) {
     if (isVpsBodyBenchmarkLedgerRow(row)) {
       if (vpsRegionKey && row.node === vpsRegionKey) {
         vpsDelays.push(row.latency_ms)
+        vpsBodyLastTs = pickLatestIsoTs(vpsBodyLastTs, row.ts)
       }
       continue
     }
@@ -81,13 +109,16 @@ export function ledgerRowsToLatencyTruthSummary(
     }
     if (isMacFullPathLatencyLedgerRow(row)) {
       macDelays.push(row.latency_ms)
+      macFullPathLastTs = pickLatestIsoTs(macFullPathLastTs, row.ts)
     }
   }
 
   return {
     vpsBodyP50: computeDelayP50(vpsDelays),
     vpsBodySamples: vpsDelays.length,
+    vpsBodyLastTs,
     macFullPathP50: computeDelayP50(macDelays),
     macFullPathSamples: macDelays.length,
+    macFullPathLastTs,
   }
 }

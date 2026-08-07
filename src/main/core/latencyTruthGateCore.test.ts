@@ -9,8 +9,10 @@ describe('latencyTruthGateCore', () => {
     const summary: LatencyTruthSummary = {
       macFullPathP50: 271,
       macFullPathSamples: 437,
+      macFullPathLastTs: '2026-08-07T06:00:00.000Z',
       vpsBodyP50: 519,
       vpsBodySamples: 277,
+      vpsBodyLastTs: '2026-08-07T06:00:00.000Z',
     }
     const gate = evaluateLatencyDeltaFromSummary(summary)
     const line = formatLatencyTruthGateLogLine('JP-VPS-HY2', summary, gate)
@@ -24,8 +26,10 @@ describe('latencyTruthGateCore', () => {
     const summary: LatencyTruthSummary = {
       macFullPathP50: 520,
       macFullPathSamples: 6,
+      macFullPathLastTs: '2026-08-07T06:00:00.000Z',
       vpsBodyP50: 300,
       vpsBodySamples: 6,
+      vpsBodyLastTs: '2026-08-07T06:00:00.000Z',
     }
     const gate = evaluateLatencyDeltaFromSummary(summary)
     assert.equal(gate.high, true)
