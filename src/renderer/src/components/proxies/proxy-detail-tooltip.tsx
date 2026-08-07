@@ -2,6 +2,7 @@ import { Chip, Separator, Surface } from '@heroui-v3/react'
 import {
   filterProxyDelayHistoryForMarathonDisplay,
   excludeSessionNudgeSamplesFromProviderHistory,
+  formatProxyDelaySampleAge,
   resolveVpsLeafEffectiveAlive,
   resolveVpsLeafProxyDelayDisplay,
   shouldShowMarathonQuiesceDelayBadge,
@@ -84,6 +85,22 @@ function formatLatencyP50(value: number | null | undefined, samples: number): st
     return '—'
   }
   return `${Math.round(value)}ms (${samples})`
+}
+
+function formatLatencyP50WithLastSample(
+  p50: number | null | undefined,
+  samples: number,
+  lastTs: string | null | undefined,
+): string {
+  const base = formatLatencyP50(p50, samples)
+  if (!lastTs?.trim()) {
+    return base
+  }
+  const age = formatProxyDelaySampleAge(lastTs)
+  if (!age) {
+    return base
+  }
+  return `${base} · 末采样 ${age}`
 }
 
 const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchmarkScore }) => {
@@ -340,11 +357,19 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
               <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] mb-1.5">
                 <span className="text-muted">VPS 本体 P50</span>
                 <span className="justify-self-end">
-                  {formatLatencyP50(latencyTruth?.vpsBodyP50, latencyTruth?.vpsBodySamples ?? 0)}
+                  {formatLatencyP50WithLastSample(
+                    latencyTruth?.vpsBodyP50,
+                    latencyTruth?.vpsBodySamples ?? 0,
+                    latencyTruth?.vpsBodyLastTs,
+                  )}
                 </span>
                 <span className="text-muted">Mac 全路径 P50</span>
                 <span className="justify-self-end">
-                  {formatLatencyP50(latencyTruth?.macFullPathP50, latencyTruth?.macFullPathSamples ?? 0)}
+                  {formatLatencyP50WithLastSample(
+                    latencyTruth?.macFullPathP50,
+                    latencyTruth?.macFullPathSamples ?? 0,
+                    latencyTruth?.macFullPathLastTs,
+                  )}
                 </span>
               </div>
               <span className="text-[10px] text-muted block mb-1">VPS 本体 badge (ssh_curl · scope=vps)</span>

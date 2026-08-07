@@ -15,9 +15,13 @@ export type ProxyDelayDisplaySource =
   | 'vps_body_ssh'
   | 'none'
 
+/** How the delay number was derived — drives honest age labeling in the list UI. */
+export type ProxyDelayKind = 'none' | 'p50' | 'last_probe' | 'probe_timeout'
+
 export interface ProxyDelayDisplay {
   delayMs: number
   source: ProxyDelayDisplaySource
+  delayKind: ProxyDelayKind
   sampleTime?: string
   mihomoProbeTimedOut: boolean
 }
@@ -66,6 +70,7 @@ export function resolveVpsLeafProxyDelayDisplay(
     return {
       delayMs: Math.round(macP50),
       source: 'mac_full_path',
+      delayKind: 'p50',
       sampleTime: macLastTs || undefined,
       mihomoProbeTimedOut: false,
     }
@@ -76,6 +81,7 @@ export function resolveVpsLeafProxyDelayDisplay(
     return {
       delayMs: successfulHistory.delay,
       source: 'mihomo_history',
+      delayKind: 'last_probe',
       sampleTime: successfulHistory.time,
       mihomoProbeTimedOut: false,
     }
@@ -87,6 +93,7 @@ export function resolveVpsLeafProxyDelayDisplay(
     return {
       delayMs: Math.round(truth!.vpsBodyP50!),
       source: 'vps_body_ssh',
+      delayKind: 'p50',
       sampleTime: vpsLastTs || undefined,
       mihomoProbeTimedOut: true,
     }
@@ -97,6 +104,7 @@ export function resolveVpsLeafProxyDelayDisplay(
     return {
       delayMs: 0,
       source: 'none',
+      delayKind: 'probe_timeout',
       sampleTime: latest?.time,
       mihomoProbeTimedOut: true,
     }
@@ -105,7 +113,30 @@ export function resolveVpsLeafProxyDelayDisplay(
   return {
     delayMs: -1,
     source: 'none',
+    delayKind: 'none',
     mihomoProbeTimedOut: false,
+  }
+}
+
+/** Contract: positive delays must declare kind; last_probe must carry sampleTime. */
+export function assertProxyDelayDisplaySampleIntegrity(display: ProxyDelayDisplay): void {
+  if (display.delayMs === -1) {
+    if (display.delayKind !== 'none') {
+      throw new Error(`untested delay must use delayKind=none, got ${display.delayKind}`)
+    }
+    return
+  }
+  if (display.delayMs === 0) {
+    if (display.delayKind !== 'probe_timeout') {
+      throw new Error(`timeout delay must use delayKind=probe_timeout, got ${display.delayKind}`)
+    }
+    return
+  }
+  if (display.delayKind === 'last_probe' && !display.sampleTime?.trim()) {
+    throw new Error('last_probe display requires sampleTime from mihomo history')
+  }
+  if (display.delayKind === 'p50' && display.source !== 'mac_full_path' && display.source !== 'vps_body_ssh') {
+    throw new Error(`p50 delayKind requires mac_full_path or vps_body_ssh source, got ${display.source}`)
   }
 }
 

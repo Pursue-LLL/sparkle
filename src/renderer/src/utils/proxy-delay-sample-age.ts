@@ -1,11 +1,11 @@
-import type { ProxyDelayDisplaySource } from '@sparkle-core/proxyDelayDisplayCore'
+import type { ProxyDelayDisplaySource, ProxyDelayKind } from '@sparkle-core/proxyDelayDisplayCore'
 
 export interface ProxyDelayHistoryEntry {
   time: string
   delay: number
 }
 
-export type { ProxyDelayDisplay, ProxyDelayDisplaySource } from '@sparkle-core/proxyDelayDisplayCore'
+export type { ProxyDelayDisplay, ProxyDelayDisplaySource, ProxyDelayKind } from '@sparkle-core/proxyDelayDisplayCore'
 export {
   hasTrailingMihomoDelayTimeout,
   isVpsBodyBenchmarkHealthy,
@@ -120,6 +120,42 @@ export function formatProxyDelaySampleAge(
   return locale === 'zh' ? `${ageDay}天前` : `${ageDay}d ago`
 }
 
+const PROXY_DELAY_AGE_TICK_MS = 30_000
+
+export { PROXY_DELAY_AGE_TICK_MS }
+
+/** List UI age line: prefixes P50 vs last manual probe so users do not confuse aggregate vs spot. */
+export function formatProxyDelayAgeLabel(
+  delayKind: ProxyDelayKind | undefined,
+  sampledAtIso: string | undefined,
+  nowMs: number = Date.now(),
+  locale: 'zh' | 'en' = 'zh',
+): string | undefined {
+  if (!delayKind || delayKind === 'none') {
+    return undefined
+  }
+  const age = formatProxyDelaySampleAge(sampledAtIso, nowMs, locale)
+  if (delayKind === 'p50') {
+    if (!age) {
+      return locale === 'zh' ? 'P50·时间未知' : 'P50·time unknown'
+    }
+    return locale === 'zh' ? `P50·${age}` : `P50·${age}`
+  }
+  if (delayKind === 'last_probe') {
+    if (!age) {
+      return undefined
+    }
+    return locale === 'zh' ? `实测·${age}` : `probe·${age}`
+  }
+  if (delayKind === 'probe_timeout') {
+    if (!age) {
+      return locale === 'zh' ? '探针超时' : 'Probe timeout'
+    }
+    return locale === 'zh' ? `探针·${age}` : `probe·${age}`
+  }
+  return age
+}
+
 export function formatProxyDelayTooltip(
   delay: number,
   sampledAtIso: string | undefined,
@@ -127,6 +163,7 @@ export function formatProxyDelayTooltip(
   locale: 'zh' | 'en' = 'zh',
   options?: {
     source?: ProxyDelayDisplaySource
+    delayKind?: ProxyDelayKind
     mihomoProbeTimedOut?: boolean
   },
 ): string | undefined {
@@ -150,8 +187,14 @@ export function formatProxyDelayTooltip(
 
   if (source === 'mac_full_path' && age) {
     return locale === 'zh'
-      ? `Mac 全路径 P50 · 采样于 ${age} · ${delay}ms`
-      : `Mac full path P50 · sampled ${age} · ${delay} ms`
+      ? `Mac 全路径 24h P50 · 末次采样 ${age} · ${delay}ms`
+      : `Mac full path 24h P50 · last sample ${age} · ${delay} ms`
+  }
+
+  if (options?.delayKind === 'last_probe' && age) {
+    return locale === 'zh'
+      ? `mihomo 实测 · ${age} · ${delay}ms`
+      : `mihomo probe · ${age} · ${delay} ms`
   }
 
   if (!age) {

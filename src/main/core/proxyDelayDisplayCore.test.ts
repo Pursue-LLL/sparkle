@@ -6,6 +6,7 @@ import {
   proxyDelayDisplayColor,
   resolveVpsLeafEffectiveAlive,
   resolveVpsLeafProxyDelayDisplay,
+  assertProxyDelayDisplaySampleIntegrity,
 } from './proxyDelayDisplayCore'
 import type { LatencyTruthSummary } from './latencyTruthFromLedgerCore'
 
@@ -96,5 +97,49 @@ describe('proxyDelayDisplayCore', () => {
       resolveVpsLeafEffectiveAlive(false, healthyVpsBody, false),
       false,
     )
+  })
+
+  it('enforces sample integrity contract on all display branches', () => {
+    const cases = [
+      resolveVpsLeafProxyDelayDisplay(
+        [{ time: '2026-08-07T06:00:00.000Z', delay: 420 }],
+        {
+          vpsBodyP50: 510,
+          vpsBodySamples: 2,
+          vpsBodyLastTs: '2026-08-07T06:10:00.000Z',
+          macFullPathP50: 296,
+          macFullPathSamples: 4,
+          macFullPathLastTs: '2026-08-07T06:15:00.000Z',
+        },
+      ),
+      resolveVpsLeafProxyDelayDisplay(
+        [{ time: '2026-08-07T06:19:00.000Z', delay: 420 }],
+        healthyVpsBody,
+      ),
+      resolveVpsLeafProxyDelayDisplay(
+        [{ time: '2026-08-07T06:19:00.000Z', delay: 0 }],
+        healthyVpsBody,
+      ),
+      resolveVpsLeafProxyDelayDisplay(
+        [{ time: '2026-08-07T06:19:00.000Z', delay: 0 }],
+        {
+          vpsBodyP50: null,
+          vpsBodySamples: 0,
+          vpsBodyLastTs: null,
+          macFullPathP50: null,
+          macFullPathSamples: 0,
+          macFullPathLastTs: null,
+        },
+      ),
+      resolveVpsLeafProxyDelayDisplay(undefined, null),
+    ]
+    for (const display of cases) {
+      assert.doesNotThrow(() => assertProxyDelayDisplaySampleIntegrity(display))
+    }
+    assert.equal(cases[0]?.delayKind, 'p50')
+    assert.equal(cases[1]?.delayKind, 'last_probe')
+    assert.equal(cases[2]?.delayKind, 'p50')
+    assert.equal(cases[3]?.delayKind, 'probe_timeout')
+    assert.equal(cases[4]?.delayKind, 'none')
   })
 })

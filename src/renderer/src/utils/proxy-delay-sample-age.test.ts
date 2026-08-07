@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   filterProxyDelayHistoryForMarathonDisplay,
   excludeSessionNudgeSamplesFromProviderHistory,
+  formatProxyDelayAgeLabel,
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
   latestProxyDelayHistoryEntry,
@@ -61,7 +62,20 @@ describe('proxyDelaySampleAgeCore', () => {
       'zh',
       { source: 'mac_full_path' },
     )
-    assert.match(tip ?? '', /Mac 全路径 P50 · 采样于 15分前 · 277ms/)
+    assert.match(tip ?? '', /Mac 全路径 24h P50 · 末次采样 15分前 · 277ms/)
+  })
+
+  it('formats age label with P50 vs last probe prefix', () => {
+    const now = Date.parse('2026-07-01T10:05:30.000Z')
+    assert.equal(
+      formatProxyDelayAgeLabel('p50', '2026-07-01T09:50:00.000Z', now, 'zh'),
+      'P50·15分前',
+    )
+    assert.equal(
+      formatProxyDelayAgeLabel('last_probe', '2026-07-01T10:05:00.000Z', now, 'zh'),
+      '实测·30秒前',
+    )
+    assert.equal(formatProxyDelayAgeLabel('p50', undefined, now, 'zh'), 'P50·时间未知')
   })
 
   it('builds vps body tooltip with ledger sample age when udp probe timed out', () => {

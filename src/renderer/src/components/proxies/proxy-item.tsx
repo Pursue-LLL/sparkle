@@ -5,8 +5,9 @@ import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FaMapPin } from 'react-icons/fa6'
 import {
-  formatProxyDelaySampleAge,
+  formatProxyDelayAgeLabel,
   formatProxyDelayTooltip,
+  PROXY_DELAY_AGE_TICK_MS,
   proxyDelayDisplayColor,
   resolveVpsLeafProxyDelayDisplay,
 } from '@renderer/utils/proxy-delay-sample-age'
@@ -34,10 +35,16 @@ const isGroup = (
   return 'now' in proxy && typeof (proxy as ControllerGroupDetail).now === 'string'
 }
 
-function delayColor(delay: number, displaySource?: 'mac_full_path' | 'mihomo_history' | 'vps_body_ssh' | 'none', mihomoProbeTimedOut?: boolean): 'primary' | 'success' | 'warning' | 'danger' {
+function delayColor(
+  delay: number,
+  displaySource?: 'mac_full_path' | 'mihomo_history' | 'vps_body_ssh' | 'none',
+  mihomoProbeTimedOut?: boolean,
+  delayKind?: 'none' | 'p50' | 'last_probe' | 'probe_timeout',
+): 'primary' | 'success' | 'warning' | 'danger' {
   return proxyDelayDisplayColor({
     delayMs: delay,
     source: displaySource ?? 'none',
+    delayKind: delayKind ?? 'none',
     mihomoProbeTimedOut: mihomoProbeTimedOut === true,
   })
 }
@@ -54,6 +61,7 @@ function delayText(delay: number, displaySource?: 'mac_full_path' | 'mihomo_hist
 interface ProxyDelayControlProps {
   delay: number
   sampleTime?: string
+  delayKind?: 'none' | 'p50' | 'last_probe' | 'probe_timeout'
   loading: boolean
   onDelay: () => void
   buttonClassName: string
@@ -65,6 +73,7 @@ interface ProxyDelayControlProps {
 const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   delay,
   sampleTime,
+  delayKind,
   loading,
   onDelay,
   buttonClassName,
@@ -72,24 +81,37 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   displaySource,
   mihomoProbeTimedOut,
 }) => {
+  const [ageNowMs, setAgeNowMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (delay === -1) {
+      return
+    }
+    const timer = setInterval(() => {
+      setAgeNowMs(Date.now())
+    }, PROXY_DELAY_AGE_TICK_MS)
+    return () => clearInterval(timer)
+  }, [delay])
+
   const ageLabel = useMemo(
-    () => (delay === -1 ? undefined : formatProxyDelaySampleAge(sampleTime)),
-    [delay, sampleTime]
+    () => formatProxyDelayAgeLabel(delayKind, sampleTime, ageNowMs, 'zh'),
+    [ageNowMs, delayKind, sampleTime]
   )
   const tooltip = useMemo(
     () =>
-      formatProxyDelayTooltip(delay, sampleTime, Date.now(), 'zh', {
+      formatProxyDelayTooltip(delay, sampleTime, ageNowMs, 'zh', {
         source: displaySource,
+        delayKind,
         mihomoProbeTimedOut,
       }),
-    [delay, displaySource, mihomoProbeTimedOut, sampleTime]
+    [ageNowMs, delay, delayKind, displaySource, mihomoProbeTimedOut, sampleTime]
   )
 
   const button = (
     <Button
       isIconOnly
       isLoading={loading}
-      color={delayColor(delay, displaySource, mihomoProbeTimedOut)}
+      color={delayColor(delay, displaySource, mihomoProbeTimedOut, delayKind)}
       onPress={onDelay}
       variant="light"
       className={buttonClassName}
@@ -177,6 +199,7 @@ const ProxyItem: React.FC<Props> = (props) => {
 
   const delay = isGroup(proxy) ? -1 : delaySample.delayMs
   const delaySampleTime = isGroup(proxy) ? undefined : delaySample.sampleTime
+  const delayKind = isGroup(proxy) ? undefined : delaySample.delayKind
   const delayDisplaySource = isGroup(proxy) ? undefined : delaySample.source
   const mihomoProbeTimedOut = isGroup(proxy) ? false : delaySample.mihomoProbeTimedOut
 
@@ -394,6 +417,7 @@ const ProxyItem: React.FC<Props> = (props) => {
                   <ProxyDelayControl
                     delay={delay}
                     sampleTime={delaySampleTime}
+                    delayKind={delayKind}
                     loading={loading}
                     onDelay={onDelay}
                     buttonClassName="h-8 w-8 min-w-8 p-0 text-xs"
@@ -440,6 +464,7 @@ const ProxyItem: React.FC<Props> = (props) => {
                     <ProxyDelayControl
                       delay={delay}
                       sampleTime={delaySampleTime}
+                      delayKind={delayKind}
                       loading={loading}
                       onDelay={onDelay}
                       buttonClassName="h-full w-8 min-w-8 p-0 text-sm"
