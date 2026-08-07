@@ -1,5 +1,7 @@
 import {
   CURSOR_2_APP_PATH_PREFIX,
+  CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES,
+  CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES,
   MARATHON_CURSOR_APP_PATH_PREFIXES
 } from './cursorAppBundlePathsCore'
 import {
@@ -8,15 +10,21 @@ import {
   resolveCursorStableSelectorGroup
 } from './cursorProxyGroup'
 
-/** Optional macOS bundle path prefixes for path-scoped AND rules (advanced; default routes all Cursor traffic). */
-export const DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES = [] as const
+/** Default dedicated bundles — Cursor-2 only (see CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES). */
+export const DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES = CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES
 
-/** When dedicated path prefixes are set, stock Cursor.app gets path-scoped DIRECT for Cursor domains. */
-export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES = ['/Applications/Cursor.app'] as const
+/** Non-dedicated Cursor bundles get path-scoped DIRECT before subscription cursor rules. */
+export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES =
+  CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES
 
-export { MARATHON_CURSOR_APP_PATH_PREFIXES, CURSOR_2_APP_PATH_PREFIX }
+export {
+  CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES,
+  CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES,
+  MARATHON_CURSOR_APP_PATH_PREFIXES,
+  CURSOR_2_APP_PATH_PREFIX
+}
 
-/** macOS / Electron Cursor outbound processes — legacy fallback when no app path prefixes. */
+/** macOS / Electron Cursor outbound processes — used by tests and legacy rule stripping. */
 export const CURSOR_PROCESS_NAMES = [
   'Cursor',
   'Cursor Helper',
@@ -57,18 +65,6 @@ function pushRuleIfMissing(prefix: string[], existing: Set<string>, rule: string
   if (!existing.has(rule)) {
     prefix.push(rule)
     existing.add(rule)
-  }
-}
-
-function injectLegacyProcessRules(prefix: string[], existing: Set<string>, mainGroup: string): void {
-  for (const domain of CURSOR_PROXY_DOMAINS) {
-    pushRuleIfMissing(prefix, existing, `DOMAIN,${domain},${mainGroup}`)
-  }
-  pushRuleIfMissing(prefix, existing, `DOMAIN-SUFFIX,cursor.sh,${mainGroup}`)
-  pushRuleIfMissing(prefix, existing, `DOMAIN-SUFFIX,cursor.com,${mainGroup}`)
-
-  for (const processName of CURSOR_PROCESS_NAMES) {
-    pushRuleIfMissing(prefix, existing, `PROCESS-NAME,${processName},${mainGroup}`)
   }
 }
 
@@ -221,15 +217,13 @@ function injectPathScopedRules(
 }
 
 /**
- * Prepend Cursor domain + process rules so Agent/Chat traffic uses a fixed Selector (never UrlTest).
- * Default (empty appPathPrefixes): all Cursor PROCESS-NAME + DOMAIN traffic → dedicated group.
- * Non-empty appPathPrefixes: path-scoped AND rules for specific .app bundles → dedicated;
- * other configured fallback bundles → path-scoped DIRECT (before subscription cursor.sh rules).
+ * Prepend path-scoped Cursor domain rules: dedicated bundles → fixed Selector; others → DIRECT.
+ * Default: Cursor-2 → 🎯 Cursor 专用; Cursor-3.1.15 + stock Cursor.app → DIRECT.
  */
 export function injectCursorDomainRules(
   profile: MihomoConfig,
   appPathPrefixes: readonly string[] = DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES,
-  directFallbackPathPrefixes?: readonly string[]
+  directFallbackPathPrefixes: readonly string[] = DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES
 ): void {
   const groups = profile['proxy-groups'] as ControllerMixedGroup[] | undefined
   const mainGroup = resolveCursorStableSelectorGroup(groups ?? [])?.name
@@ -239,18 +233,21 @@ export function injectCursorDomainRules(
   const existing = new Set(rules.map((rule) => rule.trim()))
   const prefix: string[] = []
 
-  const normalizedPrefixes = appPathPrefixes.map((item) => item.trim()).filter((item) => item.length > 0)
-  if (normalizedPrefixes.length > 0) {
-    stripUnscopedCursorDedicatedRules(profile)
-    injectPathScopedRules(prefix, existing, mainGroup, normalizedPrefixes)
-    const fallbackPaths = resolveDirectFallbackPathPrefixes(
-      normalizedPrefixes,
-      directFallbackPathPrefixes
-    )
-    injectPathScopedDirectFallbackRules(prefix, existing, fallbackPaths)
-  } else {
-    injectLegacyProcessRules(prefix, existing, mainGroup)
-  }
+  const normalizedDedicated = appPathPrefixes
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+  const effectiveDedicated =
+    normalizedDedicated.length > 0
+      ? normalizedDedicated
+      : [...DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES]
+
+  stripUnscopedCursorDedicatedRules(profile)
+  injectPathScopedRules(prefix, existing, mainGroup, effectiveDedicated)
+  const fallbackPaths = resolveDirectFallbackPathPrefixes(
+    effectiveDedicated,
+    directFallbackPathPrefixes
+  )
+  injectPathScopedDirectFallbackRules(prefix, existing, fallbackPaths)
 
   if (prefix.length > 0) {
     const remainingRules = (profile.rules as string[] | undefined) ?? []
