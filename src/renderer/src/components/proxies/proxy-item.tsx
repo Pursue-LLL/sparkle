@@ -73,11 +73,8 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   mihomoProbeTimedOut,
 }) => {
   const ageLabel = useMemo(
-    () =>
-      delay === -1 || (displaySource === 'vps_body_ssh' && mihomoProbeTimedOut)
-        ? undefined
-        : formatProxyDelaySampleAge(sampleTime),
-    [delay, displaySource, mihomoProbeTimedOut, sampleTime]
+    () => (delay === -1 ? undefined : formatProxyDelaySampleAge(sampleTime)),
+    [delay, sampleTime]
   )
   const tooltip = useMemo(
     () =>

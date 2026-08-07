@@ -138,9 +138,20 @@ export function formatProxyDelayTooltip(
   const mihomoProbeTimedOut = options?.mihomoProbeTimedOut === true
 
   if (source === 'vps_body_ssh' && mihomoProbeTimedOut) {
+    if (age) {
+      return locale === 'zh'
+        ? `VPS SSH 本体 ~${delay}ms · 采样于 ${age} · UDP 探针超时`
+        : `VPS SSH body ~${delay}ms · sampled ${age} · UDP probe timed out`
+    }
     return locale === 'zh'
       ? `UDP 探针超时 · VPS SSH 本体 ~${delay}ms 正常 (24h ledger)`
       : `UDP probe timed out · VPS SSH body ~${delay}ms healthy (24h ledger)`
+  }
+
+  if (source === 'mac_full_path' && age) {
+    return locale === 'zh'
+      ? `Mac 全路径 P50 · 采样于 ${age} · ${delay}ms`
+      : `Mac full path P50 · sampled ${age} · ${delay} ms`
   }
 
   if (!age) {

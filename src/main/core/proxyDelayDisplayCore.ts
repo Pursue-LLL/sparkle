@@ -62,9 +62,11 @@ export function resolveVpsLeafProxyDelayDisplay(
 ): ProxyDelayDisplay {
   const macP50 = truth?.macFullPathP50
   if (typeof macP50 === 'number' && macP50 > 0) {
+    const macLastTs = truth?.macFullPathLastTs?.trim()
     return {
       delayMs: Math.round(macP50),
       source: 'mac_full_path',
+      sampleTime: macLastTs || undefined,
       mihomoProbeTimedOut: false,
     }
   }
@@ -81,9 +83,11 @@ export function resolveVpsLeafProxyDelayDisplay(
 
   const mihomoProbeTimedOut = hasTrailingMihomoDelayTimeout(history)
   if (mihomoProbeTimedOut && isVpsBodyBenchmarkHealthy(truth)) {
+    const vpsLastTs = truth!.vpsBodyLastTs?.trim()
     return {
       delayMs: Math.round(truth!.vpsBodyP50!),
       source: 'vps_body_ssh',
+      sampleTime: vpsLastTs || undefined,
       mihomoProbeTimedOut: true,
     }
   }

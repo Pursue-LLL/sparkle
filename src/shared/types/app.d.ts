@@ -238,8 +238,10 @@ interface SubStoreSub {
 interface LatencyTruthSummary {
   vpsBodyP50: number | null
   vpsBodySamples: number
+  vpsBodyLastTs: string | null
   macFullPathP50: number | null
   macFullPathSamples: number
+  macFullPathLastTs: string | null
 }
 
 interface CommercialNodeStabilityEntry {

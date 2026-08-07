@@ -52,6 +52,30 @@ describe('proxyDelaySampleAgeCore', () => {
     )
   })
 
+  it('builds mac full path tooltip with ledger sample age', () => {
+    const now = Date.parse('2026-07-01T10:05:30.000Z')
+    const tip = formatProxyDelayTooltip(
+      277,
+      '2026-07-01T09:50:00.000Z',
+      now,
+      'zh',
+      { source: 'mac_full_path' },
+    )
+    assert.match(tip ?? '', /Mac 全路径 P50 · 采样于 15分前 · 277ms/)
+  })
+
+  it('builds vps body tooltip with ledger sample age when udp probe timed out', () => {
+    const now = Date.parse('2026-07-01T10:05:30.000Z')
+    const tip = formatProxyDelayTooltip(
+      510,
+      '2026-07-01T09:50:00.000Z',
+      now,
+      'zh',
+      { source: 'vps_body_ssh', mihomoProbeTimedOut: true },
+    )
+    assert.match(tip ?? '', /VPS SSH 本体 ~510ms · 采样于 15分前 · UDP 探针超时/)
+  })
+
   it('builds delay tooltip with stale sample hint', () => {
     const now = Date.parse('2026-07-01T10:05:30.000Z')
     const tip = formatProxyDelayTooltip(

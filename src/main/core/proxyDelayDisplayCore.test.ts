@@ -12,8 +12,10 @@ import type { LatencyTruthSummary } from './latencyTruthFromLedgerCore'
 const healthyVpsBody: LatencyTruthSummary = {
   vpsBodyP50: 510,
   vpsBodySamples: 3,
+  vpsBodyLastTs: '2026-08-07T06:18:00.000Z',
   macFullPathP50: null,
   macFullPathSamples: 0,
+  macFullPathLastTs: null,
 }
 
 describe('proxyDelayDisplayCore', () => {
@@ -23,12 +25,15 @@ describe('proxyDelayDisplayCore', () => {
       {
         vpsBodyP50: 510,
         vpsBodySamples: 2,
+        vpsBodyLastTs: '2026-08-07T06:10:00.000Z',
         macFullPathP50: 296,
         macFullPathSamples: 4,
+        macFullPathLastTs: '2026-08-07T06:15:00.000Z',
       },
     )
     assert.equal(display.delayMs, 296)
     assert.equal(display.source, 'mac_full_path')
+    assert.equal(display.sampleTime, '2026-08-07T06:15:00.000Z')
   })
 
   it('uses mihomo history when successful samples exist', () => {
@@ -51,6 +56,7 @@ describe('proxyDelayDisplayCore', () => {
     )
     assert.equal(display.delayMs, 510)
     assert.equal(display.source, 'vps_body_ssh')
+    assert.equal(display.sampleTime, '2026-08-07T06:18:00.000Z')
     assert.equal(display.mihomoProbeTimedOut, true)
     assert.equal(proxyDelayDisplayColor(display), 'warning')
   })
@@ -70,8 +76,10 @@ describe('proxyDelayDisplayCore', () => {
       {
         vpsBodyP50: null,
         vpsBodySamples: 0,
+        vpsBodyLastTs: null,
         macFullPathP50: null,
         macFullPathSamples: 0,
+        macFullPathLastTs: null,
       },
     )
     assert.equal(display.delayMs, 0)
