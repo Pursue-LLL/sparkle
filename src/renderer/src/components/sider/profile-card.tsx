@@ -18,7 +18,7 @@ import {
   formatSubscriptionExpireDate,
   subscriptionExpireDisplayLabel,
   subscriptionUpdateDisplayLabel,
-} from '../../../main/core/profileSubscriptionDisplayCore'
+} from '@sparkle-core/profileSubscriptionDisplayCore'
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
