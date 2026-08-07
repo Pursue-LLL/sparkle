@@ -1,7 +1,19 @@
+import type { ProxyDelayDisplaySource } from '../../../main/core/proxyDelayDisplayCore'
+
 export interface ProxyDelayHistoryEntry {
   time: string
   delay: number
 }
+
+export type { ProxyDelayDisplay, ProxyDelayDisplaySource } from '../../../main/core/proxyDelayDisplayCore'
+export {
+  hasTrailingMihomoDelayTimeout,
+  isVpsBodyBenchmarkHealthy,
+  latestSuccessfulProxyDelayHistoryEntry,
+  proxyDelayDisplayColor,
+  resolveVpsLeafEffectiveAlive,
+  resolveVpsLeafProxyDelayDisplay,
+} from '../../../main/core/proxyDelayDisplayCore'
 
 export function latestProxyDelayHistoryEntry(
   history: ProxyDelayHistoryEntry[] | undefined,
@@ -10,23 +22,6 @@ export function latestProxyDelayHistoryEntry(
     return undefined
   }
   return history[history.length - 1]
-}
-
-/** Skip trailing health-check timeouts (delay=0) — matches mihomoApi provider delay fallback. */
-export function latestSuccessfulProxyDelayHistoryEntry(
-  history: ProxyDelayHistoryEntry[] | undefined,
-): ProxyDelayHistoryEntry | undefined {
-  if (!history?.length) {
-    return undefined
-  }
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const entry = history[index]
-    if (entry && entry.delay > 0) {
-      return entry
-    }
-  }
-  const latest = history[history.length - 1]
-  return latest?.delay === 0 ? latest : undefined
 }
 
 /** Hide trailing delay=0 health-check spikes during Marathon congestion (P9 UI). */
@@ -130,11 +125,24 @@ export function formatProxyDelayTooltip(
   sampledAtIso: string | undefined,
   nowMs: number = Date.now(),
   locale: 'zh' | 'en' = 'zh',
+  options?: {
+    source?: ProxyDelayDisplaySource
+    mihomoProbeTimedOut?: boolean
+  },
 ): string | undefined {
   if (delay === -1) {
     return undefined
   }
   const age = formatProxyDelaySampleAge(sampledAtIso, nowMs, locale)
+  const source = options?.source
+  const mihomoProbeTimedOut = options?.mihomoProbeTimedOut === true
+
+  if (source === 'vps_body_ssh' && mihomoProbeTimedOut) {
+    return locale === 'zh'
+      ? `UDP 探针超时 · VPS SSH 本体 ~${delay}ms 正常 (24h ledger)`
+      : `UDP probe timed out · VPS SSH body ~${delay}ms healthy (24h ledger)`
+  }
+
   if (!age) {
     return delay === 0
       ? locale === 'zh'

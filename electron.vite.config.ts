@@ -39,7 +39,8 @@ export default defineConfig({
     },
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
+        '@renderer': resolve('src/renderer/src'),
+        '@sparkle-core': resolve('src/main/core')
       }
     },
     plugins: [

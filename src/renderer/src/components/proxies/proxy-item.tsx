@@ -7,7 +7,8 @@ import { FaMapPin } from 'react-icons/fa6'
 import {
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
-  latestSuccessfulProxyDelayHistoryEntry
+  proxyDelayDisplayColor,
+  resolveVpsLeafProxyDelayDisplay,
 } from '@renderer/utils/proxy-delay-sample-age'
 import { getLatencyTruthSummaryForNode } from '@renderer/utils/ipc'
 import { isVpsCursorLeafNode } from '@renderer/utils/delay-test'
@@ -33,16 +34,20 @@ const isGroup = (
   return 'now' in proxy && typeof (proxy as ControllerGroupDetail).now === 'string'
 }
 
-function delayColor(delay: number): 'primary' | 'success' | 'warning' | 'danger' {
-  if (delay === -1) return 'primary'
-  if (delay === 0) return 'danger'
-  if (delay < 500) return 'success'
-  return 'warning'
+function delayColor(delay: number, displaySource?: 'mac_full_path' | 'mihomo_history' | 'vps_body_ssh' | 'none', mihomoProbeTimedOut?: boolean): 'primary' | 'success' | 'warning' | 'danger' {
+  return proxyDelayDisplayColor({
+    delayMs: delay,
+    source: displaySource ?? 'none',
+    mihomoProbeTimedOut: mihomoProbeTimedOut === true,
+  })
 }
 
-function delayText(delay: number): string {
+function delayText(delay: number, displaySource?: 'mac_full_path' | 'mihomo_history' | 'vps_body_ssh' | 'none', mihomoProbeTimedOut?: boolean): string {
   if (delay === -1) return '测试'
   if (delay === 0) return '超时'
+  if (displaySource === 'vps_body_ssh' && mihomoProbeTimedOut) {
+    return `~${delay}`
+  }
   return delay.toString()
 }
 
@@ -53,6 +58,8 @@ interface ProxyDelayControlProps {
   onDelay: () => void
   buttonClassName: string
   textClassName?: string
+  displaySource?: 'mac_full_path' | 'mihomo_history' | 'vps_body_ssh' | 'none'
+  mihomoProbeTimedOut?: boolean
 }
 
 const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
@@ -61,27 +68,36 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   loading,
   onDelay,
   buttonClassName,
-  textClassName = 'text-xs'
+  textClassName = 'text-xs',
+  displaySource,
+  mihomoProbeTimedOut,
 }) => {
   const ageLabel = useMemo(
-    () => (delay === -1 ? undefined : formatProxyDelaySampleAge(sampleTime)),
-    [delay, sampleTime]
+    () =>
+      delay === -1 || (displaySource === 'vps_body_ssh' && mihomoProbeTimedOut)
+        ? undefined
+        : formatProxyDelaySampleAge(sampleTime),
+    [delay, displaySource, mihomoProbeTimedOut, sampleTime]
   )
   const tooltip = useMemo(
-    () => formatProxyDelayTooltip(delay, sampleTime),
-    [delay, sampleTime]
+    () =>
+      formatProxyDelayTooltip(delay, sampleTime, Date.now(), 'zh', {
+        source: displaySource,
+        mihomoProbeTimedOut,
+      }),
+    [delay, displaySource, mihomoProbeTimedOut, sampleTime]
   )
 
   const button = (
     <Button
       isIconOnly
       isLoading={loading}
-      color={delayColor(delay)}
+      color={delayColor(delay, displaySource, mihomoProbeTimedOut)}
       onPress={onDelay}
       variant="light"
       className={buttonClassName}
     >
-      <span className={textClassName}>{delayText(delay)}</span>
+      <span className={textClassName}>{delayText(delay, displaySource, mihomoProbeTimedOut)}</span>
     </Button>
   )
 
@@ -133,31 +149,23 @@ const ProxyItem: React.FC<Props> = (props) => {
   const shouldShowGroupSelectedProxy =
     showGroupSelectedProxy && isGroup(proxy) && Boolean(proxy.now)
 
-  const delaySample = useMemo(
-    () => latestSuccessfulProxyDelayHistoryEntry(proxy.history),
-    [proxy.history]
-  )
-  const [authoritativeMacDelayMs, setAuthoritativeMacDelayMs] = useState<number | null>(null)
+  const [latencyTruth, setLatencyTruth] = useState<LatencyTruthSummary | null>(null)
 
   useEffect(() => {
     if (isGroup(proxy) || !isVpsCursorLeafNode(proxy.name)) {
-      setAuthoritativeMacDelayMs(null)
+      setLatencyTruth(null)
       return
     }
     let cancelled = false
     void getLatencyTruthSummaryForNode(proxy.name)
       .then((summary) => {
-        if (cancelled) {
-          return
-        }
-        const macP50 = summary?.macFullPathP50
-        if (typeof macP50 === 'number' && macP50 > 0) {
-          setAuthoritativeMacDelayMs(macP50)
+        if (!cancelled) {
+          setLatencyTruth(summary)
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setAuthoritativeMacDelayMs(null)
+          setLatencyTruth(null)
         }
       })
     return () => {
@@ -165,8 +173,15 @@ const ProxyItem: React.FC<Props> = (props) => {
     }
   }, [proxy])
 
-  const delay = authoritativeMacDelayMs ?? delaySample?.delay ?? -1
-  const delaySampleTime = authoritativeMacDelayMs != null ? undefined : delaySample?.time
+  const delaySample = useMemo(
+    () => resolveVpsLeafProxyDelayDisplay(isGroup(proxy) ? undefined : proxy.history, latencyTruth),
+    [proxy, latencyTruth]
+  )
+
+  const delay = isGroup(proxy) ? -1 : delaySample.delayMs
+  const delaySampleTime = isGroup(proxy) ? undefined : delaySample.sampleTime
+  const delayDisplaySource = isGroup(proxy) ? undefined : delaySample.source
+  const mihomoProbeTimedOut = isGroup(proxy) ? false : delaySample.mihomoProbeTimedOut
 
   const [loading, setLoading] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -385,6 +400,8 @@ const ProxyItem: React.FC<Props> = (props) => {
                     loading={loading}
                     onDelay={onDelay}
                     buttonClassName="h-8 w-8 min-w-8 p-0 text-xs"
+                    displaySource={delayDisplaySource}
+                    mihomoProbeTimedOut={mihomoProbeTimedOut}
                   />
                 </div>
               </>
@@ -430,6 +447,8 @@ const ProxyItem: React.FC<Props> = (props) => {
                       onDelay={onDelay}
                       buttonClassName="h-full w-8 min-w-8 p-0 text-sm"
                       textClassName="text-sm"
+                      displaySource={delayDisplaySource}
+                      mihomoProbeTimedOut={mihomoProbeTimedOut}
                     />
                   </div>
                 </div>

@@ -20,6 +20,7 @@ import { deepMerge } from '../utils/merge'
 import { getUserAgent } from '../utils/userAgent'
 import { execWithElevation } from '../utils/elevation'
 import { deleteProvider } from '../core/provider'
+import { normalizeSubscriptionExpireTimestamp } from '../core/profileSubscriptionDisplayCore'
 
 let profileConfig: ProfileConfig // profile.yaml
 const FILE_PERMISSION_ELEVATION_REQUIRED = 'FILE_PERMISSION_ELEVATION_REQUIRED'
@@ -378,6 +379,12 @@ function parseSubinfo(str: string): SubscriptionUserInfo {
     const [key, value] = part.trim().split('=')
     obj[key] = parseInt(value)
   })
+  if (obj.expire) {
+    const normalized = normalizeSubscriptionExpireTimestamp(obj.expire)
+    if (normalized) {
+      obj.expire = normalized
+    }
+  }
   return obj
 }
 
