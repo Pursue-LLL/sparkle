@@ -117,6 +117,9 @@ export function resolveCursorLogRouteKind(
   if (rootName === 'Cursor') {
     return 'direct'
   }
+  if (rootName.startsWith('Cursor-') && rootName.endsWith('-data')) {
+    return 'direct'
+  }
   return 'unknown'
 }
 

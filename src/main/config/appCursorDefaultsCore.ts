@@ -29,16 +29,15 @@ export function migrateLegacyCursorDefaults(config: AppConfig): {
     migrated = true
   }
   if (result.cursorProxyAppPathPrefixes === undefined) {
-    result.cursorProxyAppPathPrefixes = []
+    result.cursorProxyAppPathPrefixes = [CURSOR_2_APP_PATH_PREFIX]
     migrated = true
   }
 
   const prefixes = result.cursorProxyAppPathPrefixes ?? []
-  if (
-    prefixes.includes(MARATHON_CURSOR_APP_PATH_PREFIX) &&
-    !prefixes.includes(CURSOR_2_APP_PATH_PREFIX)
-  ) {
-    result.cursorProxyAppPathPrefixes = [...prefixes, CURSOR_2_APP_PATH_PREFIX]
+  const isCursor2OnlyDedicated =
+    prefixes.length === 1 && prefixes[0] === CURSOR_2_APP_PATH_PREFIX
+  if (!isCursor2OnlyDedicated) {
+    result.cursorProxyAppPathPrefixes = [CURSOR_2_APP_PATH_PREFIX]
     migrated = true
   }
   if (result.cursorSysProxyLock === undefined && result.cursorBidiOptimize !== false) {

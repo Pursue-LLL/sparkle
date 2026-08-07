@@ -37,12 +37,12 @@ describe('cursorLogDiscoveryCore', () => {
     rmSync(home, { recursive: true, force: true })
   })
 
-  it('attributes log roots from the same path-scoped routing contract as generated rules', () => {
-    const prefixes = ['/Applications/Cursor-3.1.15.app', '/Applications/Cursor-2.app']
-    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-3.1.15-data', prefixes), 'dedicated-proxy')
+  it('attributes log roots from Cursor-2-only dedicated routing contract', () => {
+    const prefixes = ['/Applications/Cursor-2.app']
     assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-2-data', prefixes), 'dedicated-proxy')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-3.1.15-data', prefixes), 'direct')
     assert.equal(resolveCursorLogRouteKind('/tmp/Cursor', prefixes), 'direct')
-    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-preview-data', prefixes), 'unknown')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-preview-data', prefixes), 'direct')
     assert.equal(resolveCursorLogRouteKind('/tmp/Cursor', []), 'dedicated-proxy')
   })
 
