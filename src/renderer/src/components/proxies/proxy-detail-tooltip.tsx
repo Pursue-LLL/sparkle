@@ -2,7 +2,8 @@ import { Chip, Separator, Surface } from '@heroui-v3/react'
 import {
   filterProxyDelayHistoryForMarathonDisplay,
   excludeSessionNudgeSamplesFromProviderHistory,
-  latestSuccessfulProxyDelayHistoryEntry,
+  resolveVpsLeafEffectiveAlive,
+  resolveVpsLeafProxyDelayDisplay,
   shouldShowMarathonQuiesceDelayBadge,
   type SessionNudgeDelayAnchor,
   type ProxyDelayHistoryEntry,
@@ -172,8 +173,24 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
   const tooltipH = panelRef.current?.offsetHeight ?? 120
   const arrowTop = Math.max(10, Math.min(anchorMidRelative - 6, tooltipH - 22))
 
-  const delaySample = latestSuccessfulProxyDelayHistoryEntry(proxy.history)
-  const delay = delaySample?.delay ?? -1
+  const delayDisplay = isGroupProxy(proxy)
+    ? null
+    : resolveVpsLeafProxyDelayDisplay(proxy.history, latencyTruth)
+  const delay = delayDisplay?.delayMs ?? -1
+  const effectiveAlive = isGroupProxy(proxy)
+    ? true
+    : resolveVpsLeafEffectiveAlive(
+        proxy.alive,
+        latencyTruth,
+        delayDisplay?.mihomoProbeTimedOut === true,
+      )
+  const aliveStatusHint =
+    !isGroupProxy(proxy) &&
+    proxy.alive === false &&
+    effectiveAlive &&
+    delayDisplay?.source === 'vps_body_ssh'
+      ? 'UDP探针离线·VPS在线'
+      : undefined
 
   const rawHistory = (proxy.history ?? []).slice(-8)
   const marathonFiltered = filterProxyDelayHistoryForMarathonDisplay(rawHistory)
@@ -182,8 +199,8 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
     history = ledgerHistory
   } else {
     history = excludeSessionNudgeSamplesFromProviderHistory(marathonFiltered, nudgeAnchors)
-    if (history.length === 0 && delaySample && delaySample.delay > 0) {
-      history = [delaySample]
+    if (history.length === 0 && delayDisplay && delayDisplay.delayMs > 0) {
+      history = [{ time: delayDisplay.sampleTime ?? '', delay: delayDisplay.delayMs }]
     }
   }
   const historyFromLedger = ledgerHistory.length > 0 && history === ledgerHistory
@@ -365,11 +382,12 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
           <span className="text-[10px] text-muted">状态</span>
           <Chip
             className="justify-self-end"
-            color={proxy.alive ? 'success' : 'danger'}
+            color={effectiveAlive ? 'success' : 'danger'}
             variant="soft"
             size="sm"
+            title={aliveStatusHint}
           >
-            {proxy.alive ? '在线' : '离线'}
+            {effectiveAlive ? (aliveStatusHint ?? '在线') : '离线'}
           </Chip>
 
           {proxy.udp !== undefined && (

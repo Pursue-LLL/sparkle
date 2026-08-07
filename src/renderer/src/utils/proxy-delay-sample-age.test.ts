@@ -29,11 +29,11 @@ describe('proxyDelaySampleAgeCore', () => {
     assert.equal(latest?.time, '2026-07-01T08:00:00.000Z')
   })
 
-  it('returns trailing zero when entire history failed', () => {
+  it('returns undefined when entire history failed without successful sample', () => {
     const latest = latestSuccessfulProxyDelayHistoryEntry([
       { time: '2026-07-01T09:00:00.000Z', delay: 0 }
     ])
-    assert.equal(latest?.delay, 0)
+    assert.equal(latest, undefined)
   })
 
   it('formats relative age buckets', () => {

@@ -31,6 +31,8 @@ import {
   runDelayTestsWithConcurrency
 } from '@renderer/utils/delay-test'
 import ConfirmModal from '@renderer/components/base/base-confirm'
+import { notify } from '@renderer/utils/notification'
+import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
 import {
   cursorProxySwitchConfirmDescription,
   formatDelayTestUrlDisplay,
@@ -38,6 +40,10 @@ import {
   resolveDelayTestUrl,
   resolveEffectiveDelayTestUrl
 } from '@renderer/utils/cursor-proxy-groups'
+import {
+  partitionGroupMembersForDelayTest,
+  shouldRunManagedVpsGroupDelayTest,
+} from '../../../main/core/groupDelayTestCore'
 
 type ProxyLike = ControllerProxiesDetail | ControllerGroupDetail
 
@@ -435,26 +441,42 @@ const Proxies: React.FC = () => {
 
       try {
         const proxyNames = proxies.map((proxy) => proxy.name)
-        if (isVpsCursorLeafBatch(proxyNames)) {
+        const partition = partitionGroupMembersForDelayTest(proxyNames)
+
+        if (shouldRunManagedVpsGroupDelayTest(partition)) {
+          await runManagedVpsDelayTests(partition.vpsLeafNames, testUrl, {
+            explicitUserRequest: true,
+          })
+        } else if (isVpsCursorLeafBatch(proxyNames)) {
           await runManagedVpsDelayTests(proxyNames, testUrl, { explicitUserRequest: true })
-          return
-        }
-
-        if (delayTestUseGroupApi) {
+        } else if (delayTestUseGroupApi) {
           await mihomoGroupDelay(group.name, testUrl)
-          return
+        } else {
+          const delayConcurrency = resolveDelayTestConcurrencyForProxies(
+            proxyNames,
+            delayTestConcurrency,
+          )
+          await runDelayTestsWithConcurrency(proxies, delayConcurrency, async (proxy) => {
+            if (proxy.name === 'DIRECT') {
+              return
+            }
+            try {
+              if ('all' in proxy) {
+                await mihomoGroupDelay(proxy.name, testUrl)
+                return
+              }
+              await mihomoProxyDelay(proxy.name, testUrl, { purpose: 'user_explicit' })
+            } catch {
+              // ignore per-node failures; group batch continues
+            }
+          })
         }
-
-        const delayConcurrency = resolveDelayTestConcurrencyForProxies(proxyNames, delayTestConcurrency)
-        await runDelayTestsWithConcurrency(proxies, delayConcurrency, async (proxy) => {
-          try {
-            await mihomoProxyDelay(proxy.name, testUrl)
-          } catch {
-            // ignore
-          }
+      } catch (error: unknown) {
+        notify(`组测速失败：${formatUnknownErrorForUi(error)}`, {
+          forceToast: true,
+          variant: 'warning',
+          timeout: 6000,
         })
-      } catch {
-        // ignore
       } finally {
         mutate()
         setGroupDelaying(index, false)
