@@ -1,8 +1,10 @@
 import {
   CURSOR_DEDICATED_GROUP_NAME,
+  CURSOR_DEDICATED_DIRECT_PROXY,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   isAutoSwitchingGroupType,
-  isCursorDedicatedGroupName
+  isCursorDedicatedGroupName,
+  prependCursorDedicatedDirectOption,
 } from './cursorProxyGroup'
 import {
   filterMarathonCursorEligibleVpsLeaves,
@@ -239,19 +241,19 @@ function buildCursorGroupConfig(
     return {
       name: CURSOR_DEDICATED_GROUP_NAME,
       type: 'select',
+      proxies: [CURSOR_DEDICATED_DIRECT_PROXY],
       use: [resolveVpsProviderId(profileId)],
       filter: MARATHON_CURSOR_VPS_PROVIDER_FILTER,
     }
   }
 
-  const members = [...vpsNodes]
-  if (members.length === 0) {
+  if (vpsNodes.length === 0) {
     return null
   }
   return {
     name: CURSOR_DEDICATED_GROUP_NAME,
     type: 'select',
-    proxies: members
+    proxies: prependCursorDedicatedDirectOption(vpsNodes),
   }
 }
 

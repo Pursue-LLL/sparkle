@@ -30,6 +30,14 @@ export const LEGACY_CURSOR_DEDICATED_GROUP_NAMES = [
 
 export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 
+/** Built-in Mihomo leaf — lets operators bypass VPS for Cursor traffic (L1 baseline / company network). */
+export const CURSOR_DEDICATED_DIRECT_PROXY = 'DIRECT' as const
+
+export function prependCursorDedicatedDirectOption(members: readonly string[]): string[] {
+  const withoutDirect = members.filter((name) => name !== CURSOR_DEDICATED_DIRECT_PROXY)
+  return [CURSOR_DEDICATED_DIRECT_PROXY, ...withoutDirect]
+}
+
 export const CURSOR_DELAY_TEST_URL = 'https://api2.cursor.sh' as const
 export const DEFAULT_GENERAL_DELAY_TEST_URL = 'https://www.gstatic.com/generate_204' as const
 /** Regional Sparkle 自动选择 url-test groups probe ChatGPT reachability, not generic 204. */

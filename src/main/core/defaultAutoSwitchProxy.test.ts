@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { AUTO_SELECT_DELAY_TEST_URL, CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { AUTO_SELECT_DELAY_TEST_URL, CURSOR_DEDICATED_DIRECT_PROXY, CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import {
+  appendRegionalAutoGroupsToCursorDedicated,
   applyDefaultAutoSwitchSelections,
   ensureSelectGroupsDefaultToAutoSwitch,
   isGroupOnAutoSwitch,
@@ -128,26 +129,44 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(sgGroup?.proxies, undefined)
   })
 
-  it('keeps Cursor dedicated selector VPS-only when using provider mode', () => {
+  it('appendRegionalAutoGroupsToCursorDedicated is idempotent for DIRECT', () => {
+    const profile = {
+      'proxy-groups': [
+        {
+          name: CURSOR_DEDICATED_GROUP_NAME,
+          type: 'select',
+          proxies: [CURSOR_DEDICATED_DIRECT_PROXY, 'KR-VPS-HY2', 'JP-VPS-TLS'],
+        },
+      ],
+    } as unknown as MihomoConfig
+
+    appendRegionalAutoGroupsToCursorDedicated(profile, [])
+    appendRegionalAutoGroupsToCursorDedicated(profile, [])
+
+    const cursorGroup = (profile['proxy-groups'] as { proxies?: string[] }[])[0]
+    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY, 'KR-VPS-HY2'])
+  })
+
+  it('prepends DIRECT to Cursor dedicated provider-mode group', () => {
     const profile = {
       'proxy-groups': [
         { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', use: ['test-profile-vps'] },
-        { name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }
-      ]
+        { name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] },
+      ],
     } as unknown as MihomoConfig
 
     ensureSelectGroupsDefaultToAutoSwitch(profile, 'test-profile', {
-      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01', 'KR-VPS-HY2']
+      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01', 'KR-VPS-HY2'],
     })
 
     const cursorGroup = (profile['proxy-groups'] as { name: string; proxies?: string[]; use?: string[] }[]).find(
-      (group) => group.name === CURSOR_DEDICATED_GROUP_NAME
+      (group) => group.name === CURSOR_DEDICATED_GROUP_NAME,
     )
-    assert.equal(cursorGroup?.proxies, undefined)
+    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY])
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
   })
 
-  it('appends 自动选择 to non-Cursor select groups and keeps Cursor VPS-only', () => {
+  it('appends 自动选择 to non-Cursor select groups and keeps Cursor DIRECT + VPS-only', () => {
     const profile = {
       'proxy-groups': [
         { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['KR-VPS-HY2'] },
@@ -165,7 +184,7 @@ describe('defaultAutoSwitchProxy', () => {
     const groups = profile['proxy-groups'] as { name: string; proxies?: string[] }[]
     const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
     assert.equal(cursorGroup?.proxies?.includes('Sparkle-自动-新加坡'), false)
-    assert.deepEqual(cursorGroup?.proxies, ['KR-VPS-HY2'])
+    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY, 'KR-VPS-HY2'])
     assert.deepEqual(groups.find((group) => group.name === '🚀 节点选择')?.proxies, [
       'SG-01',
       'TW-01',
