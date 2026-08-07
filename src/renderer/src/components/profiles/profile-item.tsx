@@ -27,7 +27,7 @@ import {
   formatSubscriptionExpireDate,
   subscriptionExpireDisplayLabel,
   subscriptionUpdateDisplayLabel,
-} from '../../../main/core/profileSubscriptionDisplayCore'
+} from '@sparkle-core/profileSubscriptionDisplayCore'
 
 interface Props {
   info: ProfileItem

@@ -1,11 +1,11 @@
-import type { ProxyDelayDisplaySource } from '../../../main/core/proxyDelayDisplayCore'
+import type { ProxyDelayDisplaySource } from '@sparkle-core/proxyDelayDisplayCore'
 
 export interface ProxyDelayHistoryEntry {
   time: string
   delay: number
 }
 
-export type { ProxyDelayDisplay, ProxyDelayDisplaySource } from '../../../main/core/proxyDelayDisplayCore'
+export type { ProxyDelayDisplay, ProxyDelayDisplaySource } from '@sparkle-core/proxyDelayDisplayCore'
 export {
   hasTrailingMihomoDelayTimeout,
   isVpsBodyBenchmarkHealthy,
@@ -13,7 +13,7 @@ export {
   proxyDelayDisplayColor,
   resolveVpsLeafEffectiveAlive,
   resolveVpsLeafProxyDelayDisplay,
-} from '../../../main/core/proxyDelayDisplayCore'
+} from '@sparkle-core/proxyDelayDisplayCore'
 
 export function latestProxyDelayHistoryEntry(
   history: ProxyDelayHistoryEntry[] | undefined,

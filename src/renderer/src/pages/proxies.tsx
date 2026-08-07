@@ -43,7 +43,7 @@ import {
 import {
   partitionGroupMembersForDelayTest,
   shouldRunManagedVpsGroupDelayTest,
-} from '../../../main/core/groupDelayTestCore'
+} from '@sparkle-core/groupDelayTestCore'
 
 type ProxyLike = ControllerProxiesDetail | ControllerGroupDetail
 
