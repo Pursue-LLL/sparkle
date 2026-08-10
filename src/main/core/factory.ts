@@ -32,6 +32,7 @@ import {
   rewriteMissingRuleProxyGroupTargets
 } from './profileGroupNormalize'
 import { ensureCustomProxyGroups } from './customProxyGroups'
+import { injectHongKongTrafficRules } from './hongKongTrafficRuleInjection'
 import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import { ensureVpsDirectBypass } from './vpsDirectBypass'
@@ -191,6 +192,7 @@ async function generateProfileImpl(): Promise<void> {
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
   const providerProfileId = current && current !== 'default' ? current : undefined
   const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
+  injectHongKongTrafficRules(profile)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
     cursorDedicatedGroupRenameNotified = true
     const detail =
