@@ -213,6 +213,10 @@ marathon_guard_clear_pre_quit_snapshot
 restore_cursor_path_prefixes_after_launch || true
 log "Installed Sparkle $VER at $DEST (CDHash $NEW_CDHASH)"
 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  bash "$ROOT/scripts/install-sparkle-gui-watchdog.sh" || log "WARN: GUI watchdog install failed (non-fatal)"
+fi
+
 launch_sparkle_via_finder
 sleep 5
 if pgrep -x Sparkle >/dev/null 2>&1; then

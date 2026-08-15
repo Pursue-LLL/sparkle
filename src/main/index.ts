@@ -21,6 +21,8 @@ import {
   ensureWindowsElevatedStartup,
   useLinuxCustomRelaunch
 } from './sys/startup'
+import { shouldForceDisableGpu } from './sys/macos26ElectronMitigationCore'
+import os from 'os'
 import { handleDeepLink } from './resolve/deepLink'
 import { initAppQuitLifecycle } from './resolve/appLifecycle'
 import { showNotification } from './utils/notification'
@@ -106,7 +108,7 @@ if (!gotTheLock) {
 
   const initPromise = init()
 
-  if (syncConfig.disableGPU) {
+  if (shouldForceDisableGpu(process.platform, os.release(), syncConfig.disableGPU ?? false)) {
     app.disableHardwareAcceleration()
   }
 
