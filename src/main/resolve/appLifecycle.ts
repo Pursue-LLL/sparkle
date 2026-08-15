@@ -1,6 +1,7 @@
 import { app, ipcMain, powerMonitor, type BrowserWindow, type IpcMainEvent } from 'electron'
 import { stopCore } from '../core/manager'
 import { disableSysProxySync, triggerSysProxy } from '../sys/sysproxy'
+import { markGracefulGuiQuit } from '../sys/guiGracefulQuitMarker'
 import { appendAppLog } from '../utils/log'
 
 interface AppQuitLifecycleContext {
@@ -61,6 +62,7 @@ async function quit(context: AppQuitLifecycleContext): Promise<void> {
 }
 
 async function cleanupBeforeExit(useRegistry: boolean): Promise<void> {
+  markGracefulGuiQuit()
   await Promise.all([
     (async (): Promise<void> => {
       try {

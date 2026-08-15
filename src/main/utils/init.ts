@@ -27,6 +27,7 @@ import {
 import { stringifyYaml } from './yaml'
 import { mkdir, writeFile, cp, rm, readdir } from 'fs/promises'
 import { existsSync } from 'fs'
+import os from 'os'
 import path from 'path'
 import {
   startPacServer,
@@ -45,6 +46,7 @@ import { startSSIDCheck } from '../sys/ssid'
 import { startNetworkDetection } from '../core/manager'
 import { initKeyManager } from '../service/manager'
 import { appendAppLog } from './log'
+import { computeMacOs26MitigationPatch } from '../sys/macos26ElectronMitigationCore'
 
 async function initDirs(): Promise<void> {
   if (!existsSync(dataDir())) {
@@ -203,6 +205,30 @@ async function migration(): Promise<void> {
   if (Object.keys(appConfigPatch).length > 0) {
     await patchAppConfig(appConfigPatch)
   }
+
+  await applyMacOs26ElectronMitigationMigration()
+}
+
+async function applyMacOs26ElectronMitigationMigration(): Promise<void> {
+  if (process.platform !== 'darwin') return
+
+  const appConfig = await getAppConfig()
+  const serviceBin = path.join(resourcesFilesDir(), 'sparkle-service')
+  const mitigationPatch = computeMacOs26MitigationPatch({
+    platform: process.platform,
+    release: os.release(),
+    disableGPU: appConfig.disableGPU ?? false,
+    corePermissionMode: appConfig.corePermissionMode ?? 'elevated',
+    sparkleServiceBinaryExists: existsSync(serviceBin),
+  })
+
+  if (Object.keys(mitigationPatch).length === 0) return
+
+  await patchAppConfig(mitigationPatch)
+  await appendAppLog(
+    `[MacOs26Mitigation]: applied patch=${JSON.stringify(mitigationPatch)}` +
+      ` darwin=${os.release()} service_bin=${existsSync(serviceBin) ? 1 : 0}\n`,
+  )
 }
 
 function initDeeplink(): void {

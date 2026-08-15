@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-07 14:00 最新**：**BUG-2026-08-07-001 FIXED @1.30.32 prod** · JP-VPS OOM reboot + fail2ban SSH ban + VpsL4Probe SSH backoff · VPS swap 2.3G + fail2ban whitelist
+> **2026-08-15 最新**：**BUG-2026-08-15-001 CODE-DONE** · macOS 26 V8 ThreadIsolation SIGTRAP · GUI watchdog LaunchAgent + service decouple + log.fs sync + disableGPU
+> **2026-08-07 14:00 上一版**：**BUG-2026-08-07-001 FIXED @1.30.32 prod** · JP-VPS OOM reboot + fail2ban SSH ban + VpsL4Probe SSH backoff · VPS swap 2.3G + fail2ban whitelist
 > **2026-08-06 19:10 上一版**：**C-8.12 CODE-DONE @1.30.32**（git）· collateral gate + static mihomo import · **已装 prod** · G2/G3 soak PENDING
 > **2026-08-06 18:50 上一版**：**prod 1.30.31 已装** · **BUG-2026-08-06-001 新失败模式** · C-8.11 `closed_count>0` ✅ · **collateral leaf close 掐 SSE** ❌ · G3 attemptRate **0%** · gate **未 PASS**
 > **2026-08-06 16:00 上一版**：**prod 1.30.26 已装** · **BUG-2026-08-06-001 recurrence definitive** · 同族 **第 15+ 次** · ghost_udp 假修复路径 @ cursor_conn=158 · gate **未验 PASS**
@@ -10,6 +11,20 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-15-001 · macOS 26.5 GUI SIGTRAP · V8 ThreadIsolation · **CODE-DONE**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **CODE-DONE**（git）· 待 `agent:upgrade:mac` 装包 + 48h soak |
+| **症状** | macOS 弹「Sparkle 意外退出」· DiagnosticReports `EXC_BREAKPOINT/SIGTRAP` · 8/14+8/15 栈 100% 相同 |
+| **根因** | Electron 42 / V8 `ThreadIsolation::JitPageReference::AllocationContaining` CHECK 失败 @ macOS 26.5 ARM64（同族 electron#49522） |
+| **放大** | `corePermissionMode: elevated` → GUI 崩溃连带 mihomo 子进程死亡；主进程 hot path async fs（log.ts stat 回调） |
+| **修复** | ① LaunchAgent GUI watchdog（`scripts/sparkle-gui-watchdog.sh` + crash-loop 熔断）② macOS≥26 自动 `corePermissionMode: service` + `disableGPU` ③ log.fs 热路径改 sync + 内存计大小 ④ 正常退出写 `gui-graceful-quit.stamp` |
+| **禁止** | ❌ 依赖 in-process `app.relaunch()` 处理 SIGTRAP（进程已被 exc handler 杀死） |
+| **验证** | 单测 PASS · 装包后 `launchctl print gui/$UID/com.sparkle.gui-watchdog` · 模拟 SIGTRAP 后 mihomo 仍活（service mode）· GUI 10s 内自动 reopen · 48h DiagnosticReports 零新增或 ledger 有记录且代理不断 |
 
 ---
 

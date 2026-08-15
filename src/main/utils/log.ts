@@ -1,9 +1,14 @@
 import { BrowserWindow } from 'electron'
-import { createWriteStream, type WriteStream } from 'fs'
-import { readFile, stat, writeFile } from 'fs/promises'
+import { createWriteStream, readFileSync, statSync, type WriteStream, writeFileSync } from 'fs'
 import { Writable } from 'stream'
 import { getAppConfig } from '../config/app'
 import { appLogPath, coreLogPath, substoreLogPath, ensureLogDir } from './dirs'
+import {
+  nextLogFileSizeAfterAppend,
+  resolveCachedLogFileSize,
+  shouldTrimLogFile,
+  trimTargetBytes,
+} from './logFileSizeCore'
 
 type LogTarget = 'app' | 'core' | 'substore'
 type MihomoLogSource = 'out' | 'ws'
@@ -157,14 +162,15 @@ function parseFileLines(content: string): { lines: string[]; hasTrailingNewline:
   }
 }
 
-async function getLogFileSize(target: LogTarget, path: string): Promise<number> {
+function getLogFileSize(target: LogTarget, path: string): number {
   const state = logFileSizeMap.get(target)
-  if (state?.path === path && state.size !== null) {
-    return state.size
+  const cached = resolveCachedLogFileSize(state, path)
+  if (cached !== null) {
+    return cached
   }
 
   try {
-    const fileStat = await stat(path)
+    const fileStat = statSync(path)
     logFileSizeMap.set(target, { path, size: fileStat.size })
     return fileStat.size
   } catch {
@@ -179,7 +185,12 @@ async function trimLogFileToSize(
   targetBytes: number
 ): Promise<void> {
   await closeWriteStream(target)
-  const content = await readFile(path, 'utf-8').catch(() => '')
+  let content = ''
+  try {
+    content = readFileSync(path, 'utf-8')
+  } catch {
+    content = ''
+  }
   const { lines, hasTrailingNewline } = parseFileLines(content)
   const normalizedContent = content.replace(/\r\n/g, '\n')
   let currentSize = Buffer.byteLength(normalizedContent, 'utf-8')
@@ -202,7 +213,7 @@ async function trimLogFileToSize(
   const trimmedContent =
     trimmedLines.join('\n') + (trimmedLines.length > 0 && hasTrailingNewline ? '\n' : '')
 
-  await writeFile(path, trimmedContent, 'utf-8')
+  writeFileSync(path, trimmedContent, 'utf-8')
   logFileSizeMap.set(target, { path, size: Buffer.byteLength(trimmedContent, 'utf-8') })
 }
 
@@ -212,13 +223,12 @@ async function enforceLogFileSizeLimit(
   appendedBytes: number,
   maxBytes: number
 ): Promise<void> {
-  const nextSize = (await getLogFileSize(target, path)) + appendedBytes
+  const nextSize = nextLogFileSizeAfterAppend(getLogFileSize(target, path), appendedBytes)
   logFileSizeMap.set(target, { path, size: nextSize })
 
-  if (nextSize <= maxBytes) return
+  if (!shouldTrimLogFile(nextSize, maxBytes)) return
 
-  const trimTargetBytes = Math.max(1, Math.floor(maxBytes * logTrimLowWatermarkRatio))
-  await trimLogFileToSize(target, path, trimTargetBytes)
+  await trimLogFileToSize(target, path, trimTargetBytes(maxBytes, logTrimLowWatermarkRatio))
 }
 
 function unquoteLogfmtValue(value: string): string {
