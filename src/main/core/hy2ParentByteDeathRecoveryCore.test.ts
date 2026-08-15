@@ -6,6 +6,7 @@ import {
   chainsReferenceActiveLeaf,
   filterHy2LeafConnections,
   formatByteDeathRecoveryLogLine,
+  isByteDeathUdpParentAbsent,
   planByteDeathParentMutation,
   selectByteDeathLeafCloseTargets,
 } from './hy2ParentByteDeathRecoveryCore'
@@ -20,7 +21,7 @@ function prodLikeConnections(count: number): ControllerConnectionDetail[] {
   })) as ControllerConnectionDetail[]
 }
 
-describe('hy2ParentByteDeathRecoveryCore @1.30.31', () => {
+describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
   it('chainsReferenceActiveLeaf matches prod chain hop Cursor专用 → JP-VPS-HY2', () => {
     assert.equal(
       chainsReferenceActiveLeaf(['Cursor专用', 'JP-VPS-HY2'], 'JP-VPS-HY2'),
@@ -29,7 +30,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.31', () => {
     assert.equal(chainsReferenceActiveLeaf(['DIRECT'], 'JP-VPS-HY2'), false)
   })
 
-  it('eadc68de: 94 frozen conns → surgical batch cap 8 not mass 94', () => {
+  it('C-8.12: udp absent + 94 frozen conns → parent birth reset not leaf close', () => {
     const connections = prodLikeConnections(94)
     const trackedLastByteChangeAtMsById = new Map(
       connections.map((conn) => [conn.id, nowMs - 120_000]),
@@ -48,9 +49,8 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.31', () => {
       trackedLastByteChangeAtMsById,
       nowMs,
     })
-    assert.equal(plan.action, 'close_leaf_connections')
-    assert.equal(plan.reason, 'byte_death_close_frozen_leaf_batch')
-    assert.equal(plan.leafTargetCount, BYTE_DEATH_LEAF_CLOSE_MAX_BATCH)
+    assert.equal(plan.action, 'reset_parent_chain_birth')
+    assert.equal(plan.reason, 'byte_death_udp_absent_parent_birth_reset')
   })
 
   it('skips healthy leaf conns with stall below 90s threshold', () => {
@@ -74,6 +74,20 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.31', () => {
     }
   })
 
+  it('C-8.12: no non-frozen fallback close when all leaves healthy', () => {
+    const connections = prodLikeConnections(5)
+    const trackedLastByteChangeAtMsById = new Map(
+      connections.map((conn) => [conn.id, nowMs - 30_000]),
+    )
+    const targets = selectByteDeathLeafCloseTargets({
+      connections,
+      activeLeaf: 'JP-VPS-HY2',
+      trackedLastByteChangeAtMsById,
+      nowMs,
+    })
+    assert.equal(targets.length, 0)
+  })
+
   it('prefers close_udp_outbound when full scan finds HY2 UDP parent', () => {
     const connections = [
       {
@@ -94,6 +108,45 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.31', () => {
     assert.equal(plan.udpConnectionId, 'udp-parent')
   })
 
+  it('close_leaf_connections only when UDP parent identifiable', () => {
+    const connections = [
+      {
+        id: 'udp-parent',
+        chains: ['OTHER', 'JP-VPS-HY2'],
+        metadata: { network: 'udp' },
+      },
+      ...prodLikeConnections(12),
+    ] as ControllerConnectionDetail[]
+    const trackedLastByteChangeAtMsById = new Map(
+      connections
+        .filter((conn) => conn.id.startsWith('tcp-'))
+        .map((conn) => [conn.id, nowMs - 150_000]),
+    )
+    const plan = planByteDeathParentMutation({
+      connections,
+      activeLeaf: 'JP-VPS-HY2',
+      trackedFirstSeenAtMsById: new Map([['udp-parent', nowMs - 500_000]]),
+      trackedLastByteChangeAtMsById,
+      nowMs,
+    })
+    assert.equal(plan.action, 'close_udp_outbound')
+  })
+
+  it('isByteDeathUdpParentAbsent true when diagnostics all zero', () => {
+    assert.equal(
+      isByteDeathUdpParentAbsent({ source: 'none', diagnostics: { totalConnections: 94, udpOnLeafStrict: 0, udpFullScanCandidates: 0 } }),
+      true,
+    )
+    assert.equal(
+      isByteDeathUdpParentAbsent({
+        source: 'mihomo_full_scan_hy2_udp',
+        connectionId: 'udp-1',
+        diagnostics: { totalConnections: 94, udpOnLeafStrict: 0, udpFullScanCandidates: 1 },
+      }),
+      false,
+    )
+  })
+
   it('formatByteDeathRecoveryLogLine includes closed_count for G2 gate', () => {
     const line = formatByteDeathRecoveryLogLine({
       outcome: 'executed',
@@ -106,7 +159,18 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.31', () => {
     assert.match(line, /closed_count=8/)
   })
 
-  it('returns none when no HY2 leaf targets and no UDP parent', () => {
+  it('C-8.12: untracked leaf conns are never close targets', () => {
+    const connections = prodLikeConnections(10)
+    const targets = selectByteDeathLeafCloseTargets({
+      connections,
+      activeLeaf: 'JP-VPS-HY2',
+      trackedLastByteChangeAtMsById: new Map(),
+      nowMs,
+    })
+    assert.equal(targets.length, 0)
+  })
+
+  it('no HY2 leaf targets → parent birth reset not none', () => {
     const plan = planByteDeathParentMutation({
       connections: [
         {
@@ -120,7 +184,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.31', () => {
       trackedLastByteChangeAtMsById: new Map(),
       nowMs,
     })
-    assert.equal(plan.action, 'none')
+    assert.equal(plan.action, 'reset_parent_chain_birth')
     assert.equal(filterHy2LeafConnections([], 'JP-VPS-HY2').length, 0)
   })
 })

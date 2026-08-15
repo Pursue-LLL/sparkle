@@ -1,6 +1,6 @@
 // [INPUT] mihomo connection snapshots · carrier identity SSOT · active HY2 leaf
 // [OUTPUT] planByteDeathParentMutation · selectByteDeathLeafCloseTargets · formatByteDeathRecoveryLogLine
-// [POS] C-8.11 SSOT — byte-death parent mutation planner (surgical leaf close, no mass 94-conn wipe).
+// [POS] C-8.12 SSOT — byte-death parent mutation planner (UDP-first; no collateral leaf close when UDP absent).
 
 import {
   resolveHy2ParentUdpOutboundConnectionId,
@@ -15,6 +15,7 @@ export type ByteDeathParentMutationAction =
   | 'none'
   | 'close_udp_outbound'
   | 'close_leaf_connections'
+  | 'reset_parent_chain_birth'
 
 export interface ByteDeathParentMutationPlan {
   action: ByteDeathParentMutationAction
@@ -84,6 +85,10 @@ export function selectByteDeathLeafCloseTargets(input: {
   const maxBatch = input.maxBatch ?? BYTE_DEATH_LEAF_CLOSE_MAX_BATCH
   const leafConnections = filterHy2LeafConnections(input.connections, input.activeLeaf)
   const byteFrozen = leafConnections.filter((connection) => {
+    const lastChangeMs = input.trackedLastByteChangeAtMsById.get(connection.id)
+    if (lastChangeMs == null) {
+      return false
+    }
     const stallMs = resolveConnectionByteStallMs(
       connection,
       input.trackedLastByteChangeAtMsById,
@@ -99,15 +104,18 @@ export function selectByteDeathLeafCloseTargets(input: {
   if (sortedFrozen.length > 0) {
     return sortedFrozen.slice(0, maxBatch)
   }
-  if (leafConnections.length === 0) {
-    return []
+  return []
+}
+
+/** Leaf TCP close is collateral during marathon when mihomo omits HY2 UDP parent rows. */
+export function isByteDeathUdpParentAbsent(
+  resolution: Hy2ParentUdpResolution,
+): boolean {
+  const diag = resolution.diagnostics
+  if (!diag) {
+    return true
   }
-  const sortedAll = [...leafConnections].sort(
-    (left, right) =>
-      resolveConnectionByteStallMs(right, input.trackedLastByteChangeAtMsById, input.nowMs) -
-      resolveConnectionByteStallMs(left, input.trackedLastByteChangeAtMsById, input.nowMs),
-  )
-  return sortedAll.slice(0, 1)
+  return diag.udpOnLeafStrict <= 0 && diag.udpFullScanCandidates <= 0
 }
 
 export function planByteDeathParentMutation(input: {
@@ -132,6 +140,12 @@ export function planByteDeathParentMutation(input: {
       udpResolutionSource: resolution.source,
     }
   }
+  if (isByteDeathUdpParentAbsent(resolution)) {
+    return {
+      action: 'reset_parent_chain_birth',
+      reason: 'byte_death_udp_absent_parent_birth_reset',
+    }
+  }
   const leafTargets = selectByteDeathLeafCloseTargets({
     connections: input.connections,
     activeLeaf: input.activeLeaf,
@@ -146,8 +160,8 @@ export function planByteDeathParentMutation(input: {
     }
   }
   return {
-    action: 'none',
-    reason: 'byte_death_no_mutation_targets',
+    action: 'reset_parent_chain_birth',
+    reason: 'byte_death_no_frozen_leaf_parent_birth_reset',
   }
 }
 

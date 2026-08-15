@@ -5,10 +5,36 @@ import { isPublicIpv4 } from './vpsDirectBypass'
 const execFileAsync = promisify(execFile)
 
 export const VPS_L4_PROBE_INTERVAL_MS = 300_000
+/** After this many consecutive SSH probe failures, stretch interval to avoid fail2ban. */
+export const VPS_L4_PROBE_SSH_FAIL_BACKOFF_AFTER = 3
+export const VPS_L4_PROBE_SSH_FAIL_INTERVAL_MS = 3_600_000
 export const VPS_SSH_CONNECT_TIMEOUT_SEC = 10
 export const VPS_L4_CURL_TIMEOUT_SEC = 10
 
 export const VPS_SSH_HOSTS = [{ sshHost: 'jp-vps', region: 'JP-VPS' as const }]
+
+let consecutiveVpsSshProbeFailures = 0
+
+export function recordVpsL4ProbeSshOutcome(result: VpsL4ProbeResult): void {
+  if (result.api2Ok) {
+    consecutiveVpsSshProbeFailures = 0
+    return
+  }
+  if (result.errorDetail) {
+    consecutiveVpsSshProbeFailures += 1
+  }
+}
+
+export function resolveVpsL4ProbeIntervalMs(): number {
+  if (consecutiveVpsSshProbeFailures >= VPS_L4_PROBE_SSH_FAIL_BACKOFF_AFTER) {
+    return VPS_L4_PROBE_SSH_FAIL_INTERVAL_MS
+  }
+  return VPS_L4_PROBE_INTERVAL_MS
+}
+
+export function resetVpsL4ProbeSshFailureBackoffForTests(): void {
+  consecutiveVpsSshProbeFailures = 0
+}
 
 const IPV4_PATTERN = /^(\d{1,3}\.){3}\d{1,3}$/
 

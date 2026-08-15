@@ -336,14 +336,16 @@ export async function runHy2ParentSidecarIfDue(input: {
         })
         if (mutation.mutated) {
           parentUdpClosedThisInvocation = true
-          await maybeResetHy2ParentChainBirth({
-            activeLeaf,
-            nowMs,
-            snapshot: input.snapshot,
-            marathonActive,
-            recoveryIneffective:
-              input.recoveryIneffective === true || input.emergencyStallEscalation === true,
-          })
+          if (mutation.plan.action !== 'reset_parent_chain_birth') {
+            await maybeResetHy2ParentChainBirth({
+              activeLeaf,
+              nowMs,
+              snapshot: input.snapshot,
+              marathonActive,
+              recoveryIneffective:
+                input.recoveryIneffective === true || input.emergencyStallEscalation === true,
+            })
+          }
         } else {
           lastHy2ParentSidecarActionAtMs = nowMs
           const blockReason = mutation.err ?? mutation.plan.reason

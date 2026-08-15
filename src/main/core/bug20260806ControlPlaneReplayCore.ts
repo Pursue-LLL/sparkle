@@ -193,7 +193,7 @@ export function replayBug20260806NoUdpFullScanDiagnostics(): Bug20260806ReplayVe
   }
 }
 
-/** C-8.11: eadc68de no-UDP prod pattern must plan surgical frozen leaf batch. */
+/** C-8.12: eadc68de no-UDP prod pattern must plan parent birth reset (no collateral leaf close). */
 export function replayBug20260806Eadc68deLeafClosePlan(): Bug20260806ReplayVerdict {
   const nowMs = 2_000_000
   const connections = Array.from({ length: 94 }, (_, index) => ({
@@ -218,16 +218,15 @@ export function replayBug20260806Eadc68deLeafClosePlan(): Bug20260806ReplayVerdi
     nowMs,
   })
   const ok =
-    plan.action === 'close_leaf_connections' &&
-    plan.reason === 'byte_death_close_frozen_leaf_batch' &&
-    plan.leafTargetCount === 8 &&
+    plan.action === 'reset_parent_chain_birth' &&
+    plan.reason === 'byte_death_udp_absent_parent_birth_reset' &&
     leafTargets.length === 8
   return {
-    fixtureId: 'eadc68de_no_udp_leaf_close_plan',
+    fixtureId: 'eadc68de_no_udp_parent_birth_reset_plan',
     ok,
     detail: ok
-      ? 'C-8.11 SSOT plans surgical batch (8) for 94 frozen HY2 TCP when mihomo omits UDP rows'
-      : `plan action=${plan.action} reason=${plan.reason} batch=${leafTargets.length} targetCount=${plan.leafTargetCount ?? 'none'}`,
+      ? 'C-8.12 SSOT plans parent birth reset (zero leaf close) when mihomo omits UDP rows'
+      : `plan action=${plan.action} reason=${plan.reason} frozenBatch=${leafTargets.length}`,
   }
 }
 
