@@ -8,8 +8,14 @@ import {
   isUnresolvedSshHostName,
   parseSshGOutput,
   parseVpsL4CurlOutput,
+  recordVpsL4ProbeSshOutcome,
+  resetVpsL4ProbeSshFailureBackoffForTests,
+  resolveVpsL4ProbeIntervalMs,
   resolveVpsServerIpByRegion,
-  resolveVpsSshTarget
+  resolveVpsSshTarget,
+  VPS_L4_PROBE_INTERVAL_MS,
+  VPS_L4_PROBE_SSH_FAIL_BACKOFF_AFTER,
+  VPS_L4_PROBE_SSH_FAIL_INTERVAL_MS
 } from './vpsL4ProbeCore'
 
 describe('vpsL4ProbeCore', () => {
@@ -125,5 +131,26 @@ describe('vpsL4ProbeCore', () => {
       true
     )
     assert.equal(detectFakeIpMisroute('Connection timed out'), false)
+  })
+
+  it('backs off probe interval after consecutive SSH failures', () => {
+    resetVpsL4ProbeSshFailureBackoffForTests()
+    assert.equal(resolveVpsL4ProbeIntervalMs(), VPS_L4_PROBE_INTERVAL_MS)
+
+    const sshFail = buildVpsL4ProbeResult('jp-vps', 'JP-VPS', '', 'ssh timeout')
+    for (let i = 0; i < VPS_L4_PROBE_SSH_FAIL_BACKOFF_AFTER; i += 1) {
+      recordVpsL4ProbeSshOutcome(sshFail)
+    }
+    assert.equal(resolveVpsL4ProbeIntervalMs(), VPS_L4_PROBE_SSH_FAIL_INTERVAL_MS)
+
+    const ok = buildVpsL4ProbeResult(
+      'jp-vps',
+      'JP-VPS',
+      'api2 0.621000 200\nmarketplace 0.249000 200\n',
+      ''
+    )
+    recordVpsL4ProbeSshOutcome(ok)
+    assert.equal(resolveVpsL4ProbeIntervalMs(), VPS_L4_PROBE_INTERVAL_MS)
+    resetVpsL4ProbeSshFailureBackoffForTests()
   })
 })

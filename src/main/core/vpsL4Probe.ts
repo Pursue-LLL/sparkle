@@ -4,8 +4,10 @@ import { getProfile } from '../config/profile'
 import { appendApi2ProbeLedgerRow } from './api2ProbeLedgerCore'
 import { extractProxies } from './provider'
 import {
+  recordVpsL4ProbeSshOutcome,
+  resolveVpsL4ProbeIntervalMs,
+  resetVpsL4ProbeSshFailureBackoffForTests,
   runVpsL4ProbeViaSsh,
-  VPS_L4_PROBE_INTERVAL_MS,
   VPS_SSH_HOSTS,
   type VpsL4ProbeResult,
   type VpsProbeAttribution
@@ -51,7 +53,7 @@ function resultToLedgerRow(result: VpsL4ProbeResult) {
 }
 
 export function shouldRunVpsL4ProbeCycle(nowMs: number = Date.now()): boolean {
-  return nowMs - lastVpsL4ProbeAtMs >= VPS_L4_PROBE_INTERVAL_MS
+  return nowMs - lastVpsL4ProbeAtMs >= resolveVpsL4ProbeIntervalMs()
 }
 
 export async function runVpsL4ProbeBatch(): Promise<VpsL4ProbeResult[]> {
@@ -64,6 +66,7 @@ export async function runVpsL4ProbeBatch(): Promise<VpsL4ProbeResult[]> {
     const results: VpsL4ProbeResult[] = []
     for (const host of VPS_SSH_HOSTS) {
       const result = await runVpsL4ProbeViaSsh(host.sshHost, host.region, leafProxies)
+      recordVpsL4ProbeSshOutcome(result)
       results.push(result)
       await appendApi2ProbeLedgerRow(resultToLedgerRow(result))
       await appendAppLog(
@@ -94,4 +97,5 @@ export async function maybeRunVpsL4ProbeCycle(nowMs: number = Date.now()): Promi
 export function resetVpsL4ProbeScheduleForTests(): void {
   lastVpsL4ProbeAtMs = 0
   vpsL4ProbeInFlight = false
+  resetVpsL4ProbeSshFailureBackoffForTests()
 }

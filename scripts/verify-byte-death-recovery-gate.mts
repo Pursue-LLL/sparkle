@@ -96,6 +96,19 @@ for (const line of lines) {
     }
   }
 
+  if (
+    line.includes('[Hy2ParentByteDeathRecovery]:') &&
+    line.includes('action=close_leaf_connections') &&
+    line.includes('outcome=executed') &&
+    /closed_count=([1-9]\d*)/.test(line) &&
+    /udp_full_scan=0/.test(line) &&
+    /udp_leaf_strict=0/.test(line)
+  ) {
+    failures.push(
+      `${ts}: C-8.12 collateral regression — leaf close with udp_full_scan=0 (kills marathon SSE)`,
+    )
+  }
+
   if (line.includes('[Hy2ParentByteDeathRecovery]:')) {
     if (line.includes('outcome=planned')) {
       closeByteDeathRecoveryWindow(ts)
@@ -108,6 +121,7 @@ for (const line of lines) {
     if (
       line.includes('outcome=executed') &&
       (line.includes('action=close_udp_outbound') ||
+        line.includes('action=reset_parent_chain_birth') ||
         (line.includes('action=close_leaf_connections') &&
           /closed_count=([1-9]\d*)/.test(line)))
     ) {

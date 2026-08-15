@@ -1,6 +1,8 @@
 # Sparkle Bugfix Log
 
-> **2026-08-06 18:50 最新**：**prod 1.30.31 已装** · **BUG-2026-08-06-001 新失败模式** · C-8.11 `closed_count>0` ✅ · **collateral leaf close 掐 SSE** ❌ · G3 attemptRate **0%** · gate **未 PASS**
+> **2026-08-07 14:00 最新**：**BUG-2026-08-07-001 FIXED @1.30.32 prod** · JP-VPS OOM reboot + fail2ban SSH ban + VpsL4Probe SSH backoff · VPS swap 2.3G + fail2ban whitelist
+> **2026-08-06 19:10 上一版**：**C-8.12 CODE-DONE @1.30.32**（git）· collateral gate + static mihomo import · **已装 prod** · G2/G3 soak PENDING
+> **2026-08-06 18:50 上一版**：**prod 1.30.31 已装** · **BUG-2026-08-06-001 新失败模式** · C-8.11 `closed_count>0` ✅ · **collateral leaf close 掐 SSE** ❌ · G3 attemptRate **0%** · gate **未 PASS**
 > **2026-08-06 16:00 上一版**：**prod 1.30.26 已装** · **BUG-2026-08-06-001 recurrence definitive** · 同族 **第 15+ 次** · ghost_udp 假修复路径 @ cursor_conn=158 · gate **未验 PASS**
 > **2026-08-05 17:30 上一版**：**prod 1.30.17 已装** · gate **PENDING**（继承 byte-death `max_byte_stall=144500`）· Agent SSOT `agent-sparkle-upgrade.sh` 新增
 > **2026-08-05 17:05 上一版**：**FIX CODE-DONE @1.30.17**（git）· SEL R2 bypass `active_inner` · 11/11 单测 PASS
@@ -8,6 +10,25 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-07-001 · JP-VPS leaf 全红 + SSH ban · OOM reboot · **FIXED @1.30.32**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **FIXED**（VPS 加固 + Sparkle 1.30.32 装包）· byte-death gate **PENDING**（marathon 中） |
+| **发生版本** | Sparkle **1.30.31 hot-patch** → **1.30.32 prod** · JP-VPS Tokyo 1GB |
+| **A 时刻** | ~09:47 CST VPS 整机 reboot（`uptime -s` 2026-08-07 01:46:49 UTC） |
+| **PRIMARY** | **VPS OOM** → reboot → HY2 父链僵死 → UI 四 leaf delay=0 |
+| **amplifier** | `VpsL4Probe` 300s SSH + 手动诊断 SSH → **fail2ban**（maxretry=3）→ Mac IP DROP |
+| **NOT** | cron/timer 重启 sing-box · TUN 常态 +200ms 加税 · 切节点问题 |
+| **修复** | VPS：`/swapfile` 2.3G · swappiness=10 · fail2ban ignoreip IPv6+IPv4 maxretry=10 · Sparkle：`VpsL4Probe` SSH 失败≥3 → 3600s 间隔（`vpsL4ProbeCore.ts`） |
+| **验证** | ssh jp-vps OK · api2 VPS ~0.5s · Mac :7890 ~1.0s · `connect_path_delay_ms=284` · sing-box active 未重启 |
+| **复发条件** | swap 被删 / fail2ban 白名单丢失 / 回滚 1.30.31 且无 backoff / 新 OOM（>2GB 压力） |
+| **踩坑** | 密码 SSH 已禁用（`prohibit-password`）· 面板 root 密码**仅 Console** · Agent SSH 重试会**续封** fail2ban |
+
+**如何避免：** 1GB VPS 必须有 swap · VpsL4Probe 禁 hammer · 诊断 SSH 用 backoff · 勿把 leaf 全红当 sing-box 定时重启。
 
 ---
 
@@ -26,7 +47,15 @@
 
 **Goodhart 证据：** G2 目标 `closed_count>0` 达成 → 用户目标（G3 attemptRate≥90%、单次 userMessage 长跑）**更差**（20×Included 碎片）。
 
-**待修复 C-8.12：** static import mihomoApi · collateral gate（禁关 active_inner SSE）· udp_full_scan=0 三轮后 parent birth reset · G3 gate 作 ship 硬门槛。
+**待修复 C-8.12：** ~~static import mihomoApi · collateral gate（禁关 active_inner SSE）· udp_full_scan=0 三轮后 parent birth reset · G3 gate 作 ship 硬门槛~~ → **CODE-DONE @1.30.32**：udp absent → `reset_parent_chain_birth`（禁 leaf close）· refresh fail abort · verify gate 拒 collateral。
+
+### C-8.12 @1.30.32 · collateral gate · **CODE-DONE 待装**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **CODE-DONE** · 单测 PASS · **未装 prod** · G2/G3 **PENDING** |
+| **修复** | `udp_full_scan=0` → `reset_parent_chain_birth` 替代 `close_leaf_connections` · 删除非 frozen fallback · static `mihomoGetConnections`/`mihomoCloseConnection` · refresh fail 立即 abort |
+| **ship gate** | verify-byte-death：拒 `closed_count>0 && udp_full_scan=0` · 接受 `reset_parent_chain_birth` 为有效 R2 |
 
 **禁止声称 FIXED** 直至：G2 PASS（post-install window only）+ G3 attemptRate≥90% + 30min soak 零 collateral ECONNRESET。
 
