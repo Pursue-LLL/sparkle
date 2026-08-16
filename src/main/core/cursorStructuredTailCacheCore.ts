@@ -17,6 +17,26 @@ export async function readStructuredLogTailCached(
   statFile: (path: string) => Promise<{ mtimeMs: number; size: number }>,
 ): Promise<string> {
   const stat = await statFile(filePath)
+  return readStructuredLogTailCachedWithStat(filePath, maxBytes, readTail, stat)
+}
+
+/** Sync stat on hot paths — avoids libuv fs callbacks on Electron main thread (macOS 26 SIGTRAP). */
+export async function readStructuredLogTailCachedWithSyncStat(
+  filePath: string,
+  maxBytes: number,
+  readTail: (path: string, bytes: number) => Promise<string>,
+  statFileSync: (path: string) => { mtimeMs: number; size: number },
+): Promise<string> {
+  const stat = statFileSync(filePath)
+  return readStructuredLogTailCachedWithStat(filePath, maxBytes, readTail, stat)
+}
+
+async function readStructuredLogTailCachedWithStat(
+  filePath: string,
+  maxBytes: number,
+  readTail: (path: string, bytes: number) => Promise<string>,
+  stat: { mtimeMs: number; size: number },
+): Promise<string> {
   const cached = tailCache.get(filePath)
   if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
     return cached.text

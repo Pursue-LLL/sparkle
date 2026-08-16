@@ -20,6 +20,9 @@ if ! "$TSX" "$ROOT/scripts/sparkle-pre-install-hygiene.mts"; then
   fail "pre-install hygiene blocked upgrade — free disk space or truncate ~/.sparkle journals"
 fi
 
+log "Pre-install GUI watchdog fuse gate..."
+bash "$ROOT/scripts/test-gui-watchdog-fuse.sh"
+
 dist_version_matches() {
   [[ -d "$DIST_APP" ]] || return 1
   local built_ver

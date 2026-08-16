@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { describe, it } from 'node:test'
@@ -7,6 +7,7 @@ import type { HttpSegmentStartedSample } from './cursorSegmentHandoffCore'
 import {
   MARATHON_SEGMENT_CACHE_MAX_AGE_MS,
   MARATHON_SEGMENT_CACHE_READ_TAIL_BYTES,
+  compactMarathonSegmentCacheFile,
   mergeMarathonSegmentRecords,
   parseMarathonSegmentCacheLine,
   readMarathonSegmentCacheText,
@@ -98,5 +99,33 @@ describe('marathonSegmentCache', () => {
 
   it('MARATHON_SEGMENT_CACHE_MAX_AGE_MS covers full marathon day', () => {
     assert.equal(MARATHON_SEGMENT_CACHE_MAX_AGE_MS, 86_400_000)
+  })
+
+  it('compactMarathonSegmentCacheFile shrinks oversized append-only files', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sparkle-seg-compact-'))
+    try {
+      const path = join(dir, 'marathon-segments.v1.jsonl')
+      const nowMs = Date.now()
+      const freshLine = JSON.stringify({
+        segmentId: 'fresh-seg',
+        requestId: 'fresh-rid',
+        originalRequestId: 'fresh-parent',
+        composerId: 'c1',
+        actionCase: 'userMessageAction',
+        httpStartMs: nowMs - 1_000,
+        recordedAtMs: nowMs,
+      })
+      const padding = 'x'.repeat(8192)
+      await writeFile(path, `${padding}\n${freshLine}\n`, 'utf8')
+      const before = await stat(path)
+      assert.ok(before.size > 1024)
+      const compacted = await compactMarathonSegmentCacheFile(path, nowMs, 1024)
+      assert.equal(compacted, true)
+      const after = await stat(path)
+      assert.ok(after.size < before.size)
+      assert.ok(after.size < 4096)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })
