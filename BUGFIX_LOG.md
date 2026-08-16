@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-15 最新**：**BUG-2026-08-15-001 CODE-DONE** · macOS 26 V8 ThreadIsolation SIGTRAP · GUI watchdog LaunchAgent + service decouple + log.fs sync + disableGPU
+> **2026-08-16 最新**：**BUG-2026-08-16-001 CODE-DONE** · macOS 26 GUI crash-loop · watchdog fuse python3 + backoff · hung_scan statSync · marathon-segments compact
+> **2026-08-15 上一版**：**BUG-2026-08-15-001 CODE-DONE** · macOS 26 V8 ThreadIsolation SIGTRAP · GUI watchdog LaunchAgent + service decouple + log.fs sync + disableGPU
 > **2026-08-07 14:00 上一版**：**BUG-2026-08-07-001 FIXED @1.30.32 prod** · JP-VPS OOM reboot + fail2ban SSH ban + VpsL4Probe SSH backoff · VPS swap 2.3G + fail2ban whitelist
 > **2026-08-06 19:10 上一版**：**C-8.12 CODE-DONE @1.30.32**（git）· collateral gate + static mihomo import · **已装 prod** · G2/G3 soak PENDING
 > **2026-08-06 18:50 上一版**：**prod 1.30.31 已装** · **BUG-2026-08-06-001 新失败模式** · C-8.11 `closed_count>0` ✅ · **collateral leaf close 掐 SSE** ❌ · G3 attemptRate **0%** · gate **未 PASS**
@@ -11,6 +12,21 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-16-001 · macOS 26.5 GUI crash-loop · watchdog fuse broken · **CODE-DONE**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **CODE-DONE**（git）· 待 `agent:upgrade:mac` + fuse 自证 + 5min smoke |
+| **症状** | 8/16 10:42 SIGTRAP 后 watchdog relaunch → **49s/52s 再崩** · ledger 4 条全 `restart_count_window:1` · 用户见 crash-loop |
+| **PRIMARY** | `sparkle-gui-watchdog.sh` `count_recent_restarts` 依赖 `node` · LaunchAgent PATH 无 node → **60s/3次熔断永不触发** |
+| **amplifier** | 8/15 仅改 `log.ts` statSync · `cursorStructuredTransportIngestCore` hung_scan 仍 async `stat` |
+| **amplifier 2** | `marathon-segments.v1.jsonl` **715MB** append-only · kernel triage VM memory shortage |
+| **修复** | ① watchdog 改 `/usr/bin/python3` 解析 ledger + fast-crash 指数退避 ② `readStructuredLogTailCachedWithSyncStat` ③ `compactMarathonSegmentCacheIfNeeded` ≤100MB ④ `scripts/test-gui-watchdog-fuse.sh` 装包前 gate |
+| **NOT** | 100% 消除 Electron 42 SIGTRAP（仍依赖上游） |
+| **验证** | `bash scripts/test-gui-watchdog-fuse.sh` · 单测 guiWatchdogCore + marathonSegmentCache · 装包后 ledger 无 crash-loop · GUI stable >5min |
 
 ---
 

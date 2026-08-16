@@ -2,7 +2,7 @@
 // [OUTPUT] readMarathonSegmentCache · appendMarathonSegmentCache · mergeMarathonSegmentRecords
 // [POS] P22b append-only ~/.sparkle/marathon-segments.v1.jsonl — immune to renderer log rotation.
 
-import { appendFile, mkdir, open, readFile, stat } from 'fs/promises'
+import { appendFile, mkdir, open, readFile, stat, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -10,6 +10,8 @@ import type { HttpSegmentStartedSample } from './cursorSegmentHandoffCore'
 
 export const MARATHON_SEGMENT_CACHE_FILENAME = 'marathon-segments.v1.jsonl'
 export const MARATHON_SEGMENT_CACHE_MAX_AGE_MS = 86_400_000
+/** Compact when on-disk cache exceeds this size (append-only growth guard). */
+export const MARATHON_SEGMENT_CACHE_MAX_FILE_BYTES = 100 * 1024 * 1024
 /** Read at most this many trailing bytes — avoids full-file scan on long marathon days. */
 export const MARATHON_SEGMENT_CACHE_READ_TAIL_BYTES = 512_000
 
@@ -95,6 +97,54 @@ export async function readMarathonSegmentCacheText(path: string): Promise<string
   }
 }
 
+export async function compactMarathonSegmentCacheFile(
+  path: string,
+  nowMs: number,
+  maxFileBytes: number = MARATHON_SEGMENT_CACHE_MAX_FILE_BYTES,
+): Promise<boolean> {
+  if (!existsSync(path)) {
+    return false
+  }
+  const fileStat = await stat(path)
+  if (fileStat.size <= maxFileBytes) {
+    return false
+  }
+
+  const text = await readMarathonSegmentCacheText(path)
+  if (!text) {
+    return false
+  }
+
+  const sinceMs = nowMs - MARATHON_SEGMENT_CACHE_MAX_AGE_MS
+  const bySegmentId = new Map<string, MarathonSegmentCacheRecord>()
+  for (const line of text.split('\n')) {
+    const record = parseMarathonSegmentCacheLine(line)
+    if (!record || record.httpStartMs < sinceMs) {
+      continue
+    }
+    const prev = bySegmentId.get(record.segmentId)
+    if (!prev || record.httpStartMs >= prev.httpStartMs) {
+      bySegmentId.set(record.segmentId, record)
+    }
+  }
+
+  const compacted = [...bySegmentId.values()]
+    .sort((left, right) => left.httpStartMs - right.httpStartMs)
+    .map((record) => JSON.stringify(record))
+    .join('\n')
+
+  const nextBody = compacted.length > 0 ? `${compacted}\n` : ''
+  await writeFile(path, nextBody, 'utf8')
+  return true
+}
+
+export async function compactMarathonSegmentCacheIfNeeded(
+  nowMs: number,
+  maxFileBytes: number = MARATHON_SEGMENT_CACHE_MAX_FILE_BYTES,
+): Promise<boolean> {
+  return compactMarathonSegmentCacheFile(marathonSegmentCachePath(), nowMs, maxFileBytes)
+}
+
 export async function readMarathonSegmentCache(nowMs: number): Promise<MarathonSegmentCacheRecord[]> {
   const path = marathonSegmentCachePath()
   const text = await readMarathonSegmentCacheText(path)
@@ -127,6 +177,7 @@ export async function appendMarathonSegmentCache(
   }
   const dir = join(homedir(), '.sparkle')
   await mkdir(dir, { recursive: true })
+  await compactMarathonSegmentCacheIfNeeded(nowMs)
   const lines = fresh
     .map((sample) => JSON.stringify(segmentSampleToCacheRecord(sample, nowMs)))
     .join('\n')

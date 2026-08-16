@@ -2,7 +2,7 @@
 // [OUTPUT] readRecentStructuredTransportFailures · merge into connect partition hot path
 // [POS] P17 hung_scan hot path — Structured tail without waiting for jsonl round-trip · P18 tail cache.
 
-import { stat } from 'fs/promises'
+import { statSync } from 'fs'
 import {
   listCursorStructuredLogFiles,
   readLogFileTail,
@@ -13,7 +13,7 @@ import {
   shouldPersistTransportFailure,
   type AgentTransportFailureRow,
 } from './agentTransportFailureWriterCore'
-import { readStructuredLogTailCached } from './cursorStructuredTailCacheCore'
+import { readStructuredLogTailCachedWithSyncStat } from './cursorStructuredTailCacheCore'
 
 const STRUCTURED_HOT_TAIL_BYTES = 512_000
 const HOT_LOOKBACK_MS = 120_000
@@ -33,12 +33,12 @@ async function readStructuredTransportFromRoots(
   for (const cursorDataDir of cursorDataDirs) {
     for (const filePath of await listCursorStructuredLogFiles(cursorDataDir)) {
       structuredFiles += 1
-      const text = await readStructuredLogTailCached(
+      const text = await readStructuredLogTailCachedWithSyncStat(
         filePath,
         STRUCTURED_HOT_TAIL_BYTES,
         readLogFileTail,
-        async (path) => {
-          const fileStat = await stat(path)
+        (path) => {
+          const fileStat = statSync(path)
           return { mtimeMs: fileStat.mtimeMs, size: fileStat.size }
         },
       )
