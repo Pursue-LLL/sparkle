@@ -21,7 +21,8 @@ import {
   ensureWindowsElevatedStartup,
   useLinuxCustomRelaunch
 } from './sys/startup'
-import { shouldForceDisableGpu } from './sys/macos26ElectronMitigationCore'
+import { shouldForceDisableGpu, shouldUseMacOs26HeadlessBootstrap, wantsMacOs26ForceGui } from './sys/macos26ElectronMitigationCore'
+import { runMacOs26HeadlessBootstrap } from './sys/macos26HeadlessBootstrap'
 import os from 'os'
 import { handleDeepLink } from './resolve/deepLink'
 import { initAppQuitLifecycle } from './resolve/appLifecycle'
@@ -106,7 +107,15 @@ if (!gotTheLock) {
   useLinuxCustomRelaunch()
   applyWindowsGpuWorkaround()
 
-  const initPromise = init()
+  const syncConfigForHeadless = getAppConfigSync()
+  const macOs26HeadlessLaunch =
+    shouldUseMacOs26HeadlessBootstrap(
+      process.platform,
+      os.release(),
+      wantsMacOs26ForceGui(process.argv, process.env, syncConfigForHeadless.macos26ForceGui),
+    )
+
+  const initPromise = init({ skipBackgroundInit: macOs26HeadlessLaunch })
 
   if (shouldForceDisableGpu(process.platform, os.release(), syncConfig.disableGPU ?? false)) {
     app.disableHardwareAcceleration()
@@ -176,6 +185,17 @@ if (!gotTheLock) {
       optimizer.watchWindowShortcuts(window)
     })
     const { showFloatingWindow: showFloating = false, disableTray = false } = appConfig
+
+    const forceGui = wantsMacOs26ForceGui(
+      process.argv,
+      process.env,
+      appConfig.macos26ForceGui,
+    )
+    if (shouldUseMacOs26HeadlessBootstrap(process.platform, os.release(), forceGui)) {
+      await runMacOs26HeadlessBootstrap()
+      return
+    }
+
     registerIpcMainHandlers()
 
     const createWindowPromise = createWindow(appConfig)

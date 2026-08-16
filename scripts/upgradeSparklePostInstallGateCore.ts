@@ -10,6 +10,8 @@ export const POST_CORE_BOOTSTRAP_NOT_REACHABLE_RE =
 
 export const MIHOMO_API_READY_RE = /\[PostCoreBootstrap\]: mihomo API ready/
 
+export const MACOS26_HEADLESS_COMPLETE_RE = /\[MacOs26Headless\]: bootstrap complete/
+
 export const API2_PROBE_PLANE_ON_RE = /\[Api2ProbePlane\]:.*ON/
 
 function linesSinceExclusive(logText: string, sinceLineExclusive: number): string[] {
@@ -62,4 +64,19 @@ export function hasApi2ProbePlaneOnSinceLine(
   return linesSinceExclusive(logText, sinceLineExclusive).some((line) =>
     API2_PROBE_PLANE_ON_RE.test(line),
   )
+}
+
+export function hasMacOs26HeadlessBootstrapCompleteSinceLine(
+  logText: string,
+  sinceLineExclusive: number,
+): boolean {
+  return linesSinceExclusive(logText, sinceLineExclusive).some((line) =>
+    MACOS26_HEADLESS_COMPLETE_RE.test(line),
+  )
+}
+
+export function isMacOsProductVersion26OrNewer(productVersion: string): boolean {
+  const head = productVersion.split('.')[0] ?? '0'
+  const major = parseInt(head, 10)
+  return Number.isFinite(major) && major >= 26
 }

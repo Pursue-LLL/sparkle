@@ -131,6 +131,8 @@ interface AppConfig {
   commercialNodeBenchmarkRegions?: string[]
   /** @deprecated Legacy — periodic VPS batch probe removed. */
   commercialNodeBenchmarkIncludeVps?: boolean
+  /** macOS 26+: keep Electron GUI open (default is headless bootstrap + exit). */
+  macos26ForceGui?: boolean
   silentStart: boolean
   autoCloseConnection: boolean
   closeMode: 'all' | 'group'

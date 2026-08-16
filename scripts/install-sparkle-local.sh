@@ -218,8 +218,27 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 fi
 
 launch_sparkle_via_finder
-sleep 5
-if pgrep -x Sparkle >/dev/null 2>&1; then
+sleep 8
+
+is_macos_26_or_newer() {
+  local major
+  major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
+  [[ "${major:-0}" -ge 26 ]]
+}
+
+if is_macos_26_or_newer; then
+  log "macOS 26: headless bootstrap — GUI may exit; verifying mihomo + headless log..."
+  wait_for_mihomo_after_install
+  APP_LOG="$(ls -t "$HOME/Library/Application Support/sparkle/logs"/app-*.log 2>/dev/null | head -1 || true)"
+  if [[ -n "$APP_LOG" && -f "$APP_LOG" ]]; then
+    if grep -q '\[MacOs26Headless\]: bootstrap complete' "$APP_LOG" 2>/dev/null; then
+      log "macOS 26 headless bootstrap log OK"
+    else
+      log "WARN: MacOs26Headless complete line not found yet in $APP_LOG"
+    fi
+  fi
+  log "Done. Sparkle $VER installed (macOS 26 headless path)"
+elif pgrep -x Sparkle >/dev/null 2>&1; then
   log "Done. Sparkle $VER GUI running from /Applications"
   wait_for_mihomo_after_install
 else
