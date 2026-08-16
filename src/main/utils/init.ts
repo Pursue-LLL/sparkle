@@ -277,7 +277,7 @@ function startBackgroundInit(appConfig: AppConfig): void {
   )
 }
 
-export async function init(): Promise<AppConfig> {
+export async function init(options?: { skipBackgroundInit?: boolean }): Promise<AppConfig> {
   ensureUserDataDirs()
   await initDirs()
   await Promise.all([initConfig(), initFiles()])
@@ -292,6 +292,8 @@ export async function init(): Promise<AppConfig> {
   ])
 
   initDeeplink()
-  startBackgroundInit(appConfig)
+  if (!options?.skipBackgroundInit) {
+    startBackgroundInit(appConfig)
+  }
   return appConfig
 }

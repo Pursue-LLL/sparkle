@@ -1,6 +1,9 @@
 import path from 'path'
 
 export const GUI_WATCHDOG_LAUNCH_AGENT_LABEL = 'com.sparkle.gui-watchdog'
+export const GUI_WATCHDOG_FUSE_WINDOW_MS = 300_000
+export const GUI_WATCHDOG_MAX_RESTARTS = 3
+export const GUI_WATCHDOG_FAST_CRASH_STREAK_LIMIT = 3
 
 export interface GuiCrashLedgerEntry {
   ts: string
@@ -25,12 +28,24 @@ export function guiWatchdogScriptPath(homeDir: string): string {
   return path.join(sparkleStateDir(homeDir), 'sparkle-gui-watchdog.sh')
 }
 
+export function guiDownHandledMarkerPath(homeDir: string): string {
+  return path.join(sparkleStateDir(homeDir), 'gui-watchdog-down-handled')
+}
+
 export function launchAgentPlistPath(homeDir: string): string {
   return path.join(homeDir, 'Library', 'LaunchAgents', `${GUI_WATCHDOG_LAUNCH_AGENT_LABEL}.plist`)
 }
 
 export function buildCrashLedgerLine(entry: GuiCrashLedgerEntry): string {
   return `${JSON.stringify(entry)}\n`
+}
+
+export function shouldDisableGuiAutoRelaunchOnMacOs26(productVersionMajor: number): boolean {
+  return Number.isFinite(productVersionMajor) && productVersionMajor >= 26
+}
+
+export function shouldOpenFastCrashStreakFuse(streak: number): boolean {
+  return streak >= GUI_WATCHDOG_FAST_CRASH_STREAK_LIMIT
 }
 
 export function countRecentCrashRestarts(

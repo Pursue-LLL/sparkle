@@ -98,6 +98,35 @@ log "Post-install checks..."
 VER="$(defaults read /Applications/Sparkle.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo unknown)"
 [[ "$VER" == "$EXPECTED_VER" ]] || fail "installed version=$VER expected=$EXPECTED_VER"
 
+MACOS_PRODUCT_MAJOR="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
+if [[ "${MACOS_PRODUCT_MAJOR:-0}" -ge 26 ]]; then
+  log "Post-install: macOS 26 headless path (GUI may exit after bootstrap)"
+  headless_ok=0
+  for _ in $(seq 1 30); do
+    APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
+    if [[ -n "$APP_LOG" && -f "$APP_LOG" ]]; then
+      headless_ok="$(
+        "$ROOT/node_modules/.bin/tsx" -e "
+          import { readFileSync } from 'node:fs';
+          import { hasMacOs26HeadlessBootstrapCompleteSinceLine } from './scripts/upgradeSparklePostInstallGateCore.ts';
+          const text = readFileSync(process.argv[1], 'utf8');
+          process.stdout.write(
+            hasMacOs26HeadlessBootstrapCompleteSinceLine(text, Number(process.argv[2])) ? '1' : '0',
+          );
+        " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
+      )"
+      [[ "$headless_ok" == "1" ]] && break
+    fi
+    sleep 2
+  done
+  [[ "$headless_ok" == "1" ]] || fail "macOS 26 headless bootstrap not logged — check $APP_LOG"
+  curl -sf --max-time 10 -x http://127.0.0.1:7890 https://api2.cursor.sh/ >/dev/null \
+    || fail "macOS 26 post-install: proxy :7890 not reachable after headless bootstrap"
+  log "macOS 26 headless post-install OK (bootstrap log + proxy :7890)"
+  log "Done. Sparkle $VER installed (headless); proxy via sparkle-service"
+  exit 0
+fi
+
 if ! pgrep -x Sparkle >/dev/null 2>&1; then
   fail "Sparkle not running after install — see install-sparkle log above"
 fi

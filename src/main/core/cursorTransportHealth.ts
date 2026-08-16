@@ -17,6 +17,10 @@ import {
 } from './mihomoApi'
 import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import {
+  currentPlatformRelease,
+  shouldDisableHungScanOnMacOs26,
+} from '../sys/macos26ElectronMitigationCore'
+import {
   decideRecoveryAction,
   describeRecoveryBlockReason,
   HUNG_SCAN_INTERVAL_MS,
@@ -577,6 +581,13 @@ async function runHungConnectionScanCycle(): Promise<void> {
 export function startCursorTransportHealth(): void {
   stopCursorTransportHealth()
   resetCursorTransportHealthState()
+  const { platform, release } = currentPlatformRelease()
+  if (shouldDisableHungScanOnMacOs26(platform, release)) {
+    void appendAppLog(
+      '[CursorTransportHealth]: hung_scan disabled on macOS 26 (Electron V8 SIGTRAP mitigation)\n',
+    )
+    return
+  }
   void runHungConnectionScanCycle()
   hungScanTimer = setInterval(() => {
     void runHungConnectionScanCycle()

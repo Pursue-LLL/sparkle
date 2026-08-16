@@ -4,6 +4,10 @@ import {
   buildCrashLedgerLine,
   countRecentCrashRestarts,
   gracefulQuitMarkerPath,
+  guiDownHandledMarkerPath,
+  GUI_WATCHDOG_FUSE_WINDOW_MS,
+  shouldDisableGuiAutoRelaunchOnMacOs26,
+  shouldOpenFastCrashStreakFuse,
 } from './guiWatchdogCore'
 
 describe('guiWatchdogCore', () => {
@@ -11,6 +15,13 @@ describe('guiWatchdogCore', () => {
     assert.equal(
       gracefulQuitMarkerPath('/Users/test'),
       '/Users/test/.sparkle/gui-graceful-quit.stamp',
+    )
+  })
+
+  it('down-handled marker lives under ~/.sparkle', () => {
+    assert.equal(
+      guiDownHandledMarkerPath('/Users/test'),
+      '/Users/test/.sparkle/gui-watchdog-down-handled',
     )
   })
 
@@ -56,5 +67,19 @@ describe('guiWatchdogCore', () => {
       }).trim(),
     ]
     assert.equal(countRecentCrashRestarts(lines, nowMs, 60_000), 3)
+  })
+
+  it('disables GUI auto-relaunch on macOS 26 product version', () => {
+    assert.equal(shouldDisableGuiAutoRelaunchOnMacOs26(26), true)
+    assert.equal(shouldDisableGuiAutoRelaunchOnMacOs26(25), false)
+  })
+
+  it('opens fast-crash streak fuse at limit', () => {
+    assert.equal(shouldOpenFastCrashStreakFuse(2), false)
+    assert.equal(shouldOpenFastCrashStreakFuse(3), true)
+  })
+
+  it('uses 5-minute fuse window constant', () => {
+    assert.equal(GUI_WATCHDOG_FUSE_WINDOW_MS, 300_000)
   })
 })

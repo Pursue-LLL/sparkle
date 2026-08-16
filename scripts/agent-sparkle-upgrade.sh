@@ -38,7 +38,22 @@ run_post_install_gates() {
   local installed_ver gate_result preflight_ok=true
   installed_ver="$(defaults read /Applications/Sparkle.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo unknown)"
   [[ "$installed_ver" == "$EXPECTED_VER" ]] || fail "installed version=$installed_ver expected=$EXPECTED_VER"
-  pgrep -x Sparkle >/dev/null 2>&1 || fail "Sparkle not running after install"
+  local macos_major
+  macos_major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
+  if [[ "${macos_major:-0}" -ge 26 ]]; then
+    log "macOS 26: Sparkle GUI may exit after headless bootstrap — checking proxy instead of pgrep"
+    local proxy_ok=false
+    for _ in $(seq 1 20); do
+      if curl -sf --max-time 8 -x http://127.0.0.1:7890 https://api2.cursor.sh/ >/dev/null; then
+        proxy_ok=true
+        break
+      fi
+      sleep 2
+    done
+    [[ "$proxy_ok" == true ]] || fail "macOS 26 post-install: proxy :7890 not reachable after retries"
+  else
+    pgrep -x Sparkle >/dev/null 2>&1 || fail "Sparkle not running after install"
+  fi
 
   log "Post-install byte-death gate (${GATE_MINUTES}m window)..."
   if "$TSX" "$ROOT/scripts/verify-byte-death-recovery-gate.mts" --minutes "$GATE_MINUTES"; then

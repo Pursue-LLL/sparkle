@@ -4,6 +4,8 @@ import {
   countBug014RescueFailuresSinceLine,
   countPostCoreBootstrapFailuresSinceLine,
   hasApi2ProbePlaneOnSinceLine,
+  hasMacOs26HeadlessBootstrapCompleteSinceLine,
+  isMacOsProductVersion26OrNewer,
 } from './upgradeSparklePostInstallGateCore'
 
 describe('upgradeSparklePostInstallGateCore', () => {
@@ -37,5 +39,20 @@ describe('upgradeSparklePostInstallGateCore', () => {
       '[PostCoreBootstrap]: failed: core offline',
     ].join('\n')
     assert.equal(countPostCoreBootstrapFailuresSinceLine(log, 1), 1)
+  })
+
+  it('detects macOS 26 headless bootstrap complete since offset', () => {
+    const log = [
+      'install marker',
+      '[MacOs26Headless]: bootstrap start (no BrowserWindow)',
+      '[MacOs26Headless]: bootstrap complete api_ready=1',
+    ].join('\n')
+    assert.equal(hasMacOs26HeadlessBootstrapCompleteSinceLine(log, 1), true)
+    assert.equal(hasMacOs26HeadlessBootstrapCompleteSinceLine(log, 3), false)
+  })
+
+  it('detects macOS 26 product version', () => {
+    assert.equal(isMacOsProductVersion26OrNewer('26.5.2'), true)
+    assert.equal(isMacOsProductVersion26OrNewer('15.6'), false)
   })
 })

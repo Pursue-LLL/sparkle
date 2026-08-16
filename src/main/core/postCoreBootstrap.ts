@@ -1,5 +1,9 @@
 import { appendAppLog } from '../utils/log'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
+import {
+  currentPlatformRelease,
+  shouldSkipMacOs26GuiPostCoreObservabilityStack,
+} from '../sys/macos26ElectronMitigationCore'
 
 const MIHOMO_API_READY_MAX_WAIT_MS = 30_000
 const CORE_INIT_RACE_MS = 8_000
@@ -167,6 +171,14 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
         await appendAppLog(
           `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`,
         )
+      }
+
+      const { platform, release } = currentPlatformRelease()
+      if (shouldSkipMacOs26GuiPostCoreObservabilityStack(platform, release)) {
+        await appendAppLog(
+          '[PostCoreBootstrap]: macOS 26 GUI — observability stack skipped (Electron V8 SIGTRAP mitigation)\n',
+        )
+        return
       }
 
       const { startApi2ProbePlane } = await import('./api2ProbePlane')
