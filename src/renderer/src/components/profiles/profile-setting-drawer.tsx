@@ -1,7 +1,7 @@
 import { Button, Drawer, Input, InputGroup, Switch, Tooltip } from '@heroui-v3/react'
 import React, { useState, useEffect, useRef } from 'react'
 import SettingItem from '../base/base-setting-item'
-import { SettingTabs, settingItemProps } from '../base/base-controls'
+import { settingItemProps } from '../base/base-controls'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { getGistUrl, getUserAgent } from '@renderer/utils/ipc'
 import debounce from '@renderer/utils/debounce'
@@ -21,7 +21,6 @@ const ProfileSettingDrawer: React.FC<Props> = (props) => {
   const { appConfig, patchAppConfig } = useAppConfig()
 
   const {
-    profileDisplayDate = 'update',
     userAgent,
     diffWorkDir = false,
     githubToken = '',
@@ -96,21 +95,6 @@ const ProfileSettingDrawer: React.FC<Props> = (props) => {
           </Drawer.Header>
           <Drawer.Body className="no-scrollbar flex-1 overflow-y-auto px-5 py-3">
             <div className="flex flex-col gap-1">
-              <SettingItem title="显示日期" {...settingItemProps} divider>
-                <SettingTabs
-                  ariaLabel="显示日期"
-                  selectedKey={profileDisplayDate}
-                  options={[
-                    { id: 'update', label: '更新时间' },
-                    { id: 'expire', label: '到期时间' }
-                  ]}
-                  onChange={async (v) => {
-                    await patchAppConfig({
-                      profileDisplayDate: v as 'expire' | 'update'
-                    })
-                  }}
-                />
-              </SettingItem>
               <SettingItem
                 title="为不同订阅分别指定工作目录"
                 actions={

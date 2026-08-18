@@ -20,14 +20,9 @@ import EditInfoModal from './edit-info-modal'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { openFile } from '@renderer/utils/ipc'
-import { useAppConfig } from '@renderer/hooks/use-app-config'
 import ConfirmModal from '../base/base-confirm'
 import QRCodeModal from '../base/base-qrcode-modal'
-import {
-  formatSubscriptionExpireDate,
-  subscriptionExpireDisplayLabel,
-  subscriptionUpdateDisplayLabel,
-} from '@sparkle-core/profileSubscriptionDisplayCore'
+import { subscriptionUpdateDisplayLabel } from '@sparkle-core/profileSubscriptionDisplayCore'
 
 interface Props {
   info: ProfileItem
@@ -62,8 +57,6 @@ const ProfileItem: React.FC<Props> = (props) => {
   const extra = info?.extra
   const usage = (extra?.upload ?? 0) + (extra?.download ?? 0)
   const total = extra?.total ?? 0
-  const { appConfig, patchAppConfig } = useAppConfig()
-  const { profileDisplayDate = 'expire' } = appConfig || {}
   const [updating, setUpdating] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [openInfoEditor, setOpenInfoEditor] = useState(false)
@@ -297,39 +290,14 @@ const ProfileItem: React.FC<Props> = (props) => {
                 className={`mt-2 flex justify-between ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
               >
                 <small>{`${calcTraffic(usage)}/${calcTraffic(total)}`}</small>
-                {profileDisplayDate === 'expire' ? (
-                  <Tooltip
-                    placement="left"
-                    content={`上次更新：${dayjs(info.updated).format('YYYY-MM-DD HH:mm')}`}
-                  >
-                    <Button
-                      size="sm"
-                      variant="light"
-                      className={`h-5 p-1 m-0 ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
-                      onPress={async () => {
-                        await patchAppConfig({ profileDisplayDate: 'update' })
-                      }}
-                    >
-                      {subscriptionExpireDisplayLabel(extra.expire)}
-                    </Button>
-                  </Tooltip>
-                ) : (
-                  <Tooltip
-                    placement="left"
-                    content={`到期：${formatSubscriptionExpireDate(extra.expire)}`}
-                  >
-                    <Button
-                      size="sm"
-                      variant="light"
-                      className={`h-5 p-1 m-0 ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
-                      onPress={async () => {
-                        await patchAppConfig({ profileDisplayDate: 'expire' })
-                      }}
-                    >
-                      {subscriptionUpdateDisplayLabel(info.updated, dayjs(info.updated).fromNow())}
-                    </Button>
-                  </Tooltip>
-                )}
+                <Tooltip
+                  placement="left"
+                  content={`上次更新：${dayjs(info.updated).format('YYYY-MM-DD HH:mm')}`}
+                >
+                  <small className="cursor-default">
+                    {subscriptionUpdateDisplayLabel(info.updated, dayjs(info.updated).fromNow())}
+                  </small>
+                </Tooltip>
               </div>
             )}
           </CardBody>
