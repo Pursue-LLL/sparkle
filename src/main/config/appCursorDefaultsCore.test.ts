@@ -16,7 +16,7 @@ function baseConfig(): AppConfig {
 }
 
 describe('migrateLegacyCursorDefaults', () => {
-  it('migrates legacy Cursor-3.1.15 dedicated prefix to Cursor-2 only', () => {
+  it('migrates legacy Cursor-3.1.15 dedicated prefix to empty (node-select default)', () => {
     const input = {
       ...baseConfig(),
       cursorProxyAppPathPrefixes: ['/Applications/Cursor-3.1.15.app']
@@ -24,11 +24,11 @@ describe('migrateLegacyCursorDefaults', () => {
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)
 
-    assert.deepEqual(config.cursorProxyAppPathPrefixes, [CURSOR_2_APP_PATH_PREFIX])
+    assert.deepEqual(config.cursorProxyAppPathPrefixes, [])
     assert.equal(migrated, true)
   })
 
-  it('defaults missing cursorProxyAppPathPrefixes to Cursor-2 only', () => {
+  it('defaults missing cursorProxyAppPathPrefixes to empty', () => {
     const input = {
       sysProxy: { enable: false, mode: 'manual' },
       cursorBidiOptimize: true,
@@ -37,11 +37,11 @@ describe('migrateLegacyCursorDefaults', () => {
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)
 
-    assert.deepEqual(config.cursorProxyAppPathPrefixes, [CURSOR_2_APP_PATH_PREFIX])
+    assert.deepEqual(config.cursorProxyAppPathPrefixes, [])
     assert.equal(migrated, true)
   })
 
-  it('migrates dual-prefix legacy config to Cursor-2 only', () => {
+  it('migrates dual-prefix legacy config to empty', () => {
     const input = {
       ...baseConfig(),
       cursorProxyAppPathPrefixes: [
@@ -52,11 +52,11 @@ describe('migrateLegacyCursorDefaults', () => {
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)
 
-    assert.deepEqual(config.cursorProxyAppPathPrefixes, [CURSOR_2_APP_PATH_PREFIX])
+    assert.deepEqual(config.cursorProxyAppPathPrefixes, [])
     assert.equal(migrated, true)
   })
 
-  it('preserves Cursor-2-only dedicated prefix', () => {
+  it('migrates Cursor-2-only dedicated prefix to empty', () => {
     const input = {
       ...baseConfig(),
       cursorProxyAppPathPrefixes: [CURSOR_2_APP_PATH_PREFIX]
@@ -64,7 +64,19 @@ describe('migrateLegacyCursorDefaults', () => {
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)
 
-    assert.deepEqual(config.cursorProxyAppPathPrefixes, [CURSOR_2_APP_PATH_PREFIX])
+    assert.deepEqual(config.cursorProxyAppPathPrefixes, [])
+    assert.equal(migrated, true)
+  })
+
+  it('preserves empty dedicated prefix', () => {
+    const input = {
+      ...baseConfig(),
+      cursorProxyAppPathPrefixes: []
+    } as AppConfig
+
+    const { config, migrated } = migrateLegacyCursorDefaults(input)
+
+    assert.deepEqual(config.cursorProxyAppPathPrefixes, [])
     assert.equal(migrated, false)
   })
 

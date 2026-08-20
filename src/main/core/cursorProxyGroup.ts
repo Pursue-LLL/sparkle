@@ -30,6 +30,8 @@ export const LEGACY_CURSOR_DEDICATED_GROUP_NAMES = [
 
 export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 
+export const GENERAL_PROXY_GROUP_NAME = '🚀 节点选择' as const
+
 /** Built-in Mihomo leaf — lets operators bypass VPS for Cursor traffic (L1 baseline / company network). */
 export const CURSOR_DEDICATED_DIRECT_PROXY = 'DIRECT' as const
 
@@ -103,6 +105,15 @@ export function resolveCursorStableSelectorGroup(
   }
   return groups.find(
     (group) => isCursorDedicatedGroupName(group.name) && isCursorSelectorGroupType(group.type)
+  )
+}
+
+export function resolveGeneralProxySelectGroup(
+  groups: ControllerMixedGroup[]
+): ControllerMixedGroup | undefined {
+  return groups.find(
+    (group) =>
+      group.name === GENERAL_PROXY_GROUP_NAME && isCursorSelectorGroupType(group.type)
   )
 }
 

@@ -37,13 +37,14 @@ describe('cursorLogDiscoveryCore', () => {
     rmSync(home, { recursive: true, force: true })
   })
 
-  it('attributes log roots from Cursor-2-only dedicated routing contract', () => {
+  it('attributes log roots from Cursor routing contract', () => {
     const prefixes = ['/Applications/Cursor-2.app']
     assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-2-data', prefixes), 'dedicated-proxy')
     assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-3.1.15-data', prefixes), 'direct')
-    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor', prefixes), 'direct')
-    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-preview-data', prefixes), 'direct')
-    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor', []), 'dedicated-proxy')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor', prefixes), 'node-select')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-preview-data', prefixes), 'unknown')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor', []), 'node-select')
+    assert.equal(resolveCursorLogRouteKind('/tmp/Cursor-2-data', []), 'node-select')
   })
 
   it('listCursorLogSessionDirs skips dotfiles (BUG-021)', async () => {

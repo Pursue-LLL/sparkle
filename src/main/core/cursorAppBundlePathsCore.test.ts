@@ -7,7 +7,7 @@ import {
 } from './cursorAppBundlePathsCore'
 
 describe('cursorAppBundlePathsCore', () => {
-  it('includes Cursor-2 as dedicated and marathon bundles for observability', () => {
+  it('includes Cursor-2 in marathon observability bundles', () => {
     assert.deepEqual(MARATHON_CURSOR_APP_PATH_PREFIXES, [
       '/Applications/Cursor-3.1.15.app',
       CURSOR_2_APP_PATH_PREFIX
