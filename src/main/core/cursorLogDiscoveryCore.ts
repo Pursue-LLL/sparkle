@@ -7,10 +7,14 @@ import { realpathSync } from 'fs'
 import { readdir, stat } from 'fs/promises'
 import { basename, join } from 'path'
 import { homedir } from 'os'
+import {
+  CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES,
+  CURSOR_NODE_SELECT_APP_PATH_PREFIXES
+} from './cursorAppBundlePathsCore'
 
 const MAX_LOG_SESSIONS = 6
 
-export type CursorLogRouteKind = 'dedicated-proxy' | 'direct' | 'unknown'
+export type CursorLogRouteKind = 'dedicated-proxy' | 'node-select' | 'direct' | 'unknown'
 
 export interface LogDiscoveryHealthResult {
   outcome: 'ok' | 'fail'
@@ -97,28 +101,46 @@ function cursorDataDirFromAppPrefix(appPrefix: string, supportDir: string): stri
   return join(supportDir, stem === 'Cursor' ? 'Cursor' : `${stem}-data`)
 }
 
+function cursorDataRootForAppPrefix(appPrefix: string): string {
+  const appName = basename(appPrefix.trim())
+  const stem = appName.endsWith('.app') ? appName.slice(0, -4) : appName
+  return stem === 'Cursor' ? 'Cursor' : `${stem}-data`
+}
+
+function matchesAppPrefixDataRoot(rootName: string, appPrefix: string): boolean {
+  return rootName === cursorDataRootForAppPrefix(appPrefix)
+}
+
 /** Mirror cursorRuleInjection routing for a Cursor log root without guessing from the active selector. */
 export function resolveCursorLogRouteKind(
   cursorDataDir: string,
   dedicatedAppPathPrefixes: readonly string[]
 ): CursorLogRouteKind {
-  if (dedicatedAppPathPrefixes.length === 0) {
-    return 'dedicated-proxy'
-  }
   const rootName = basename(cursorDataDir.trim())
+
   for (const appPrefix of dedicatedAppPathPrefixes) {
-    const appName = basename(appPrefix.trim())
-    const stem = appName.endsWith('.app') ? appName.slice(0, -4) : appName
-    const expectedRoot = stem === 'Cursor' ? 'Cursor' : `${stem}-data`
-    if (rootName === expectedRoot) {
+    if (matchesAppPrefixDataRoot(rootName, appPrefix)) {
       return 'dedicated-proxy'
     }
   }
+
+  for (const appPrefix of CURSOR_NODE_SELECT_APP_PATH_PREFIXES) {
+    if (matchesAppPrefixDataRoot(rootName, appPrefix)) {
+      return 'node-select'
+    }
+  }
+
+  for (const appPrefix of CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES) {
+    if (matchesAppPrefixDataRoot(rootName, appPrefix)) {
+      return 'direct'
+    }
+  }
+
   if (rootName === 'Cursor') {
-    return 'direct'
+    return dedicatedAppPathPrefixes.length === 0 ? 'node-select' : 'direct'
   }
   if (rootName.startsWith('Cursor-') && rootName.endsWith('-data')) {
-    return 'direct'
+    return 'unknown'
   }
   return 'unknown'
 }

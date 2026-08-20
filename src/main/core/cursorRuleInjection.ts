@@ -2,16 +2,21 @@ import {
   CURSOR_2_APP_PATH_PREFIX,
   CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES,
   CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES,
+  CURSOR_NODE_SELECT_APP_PATH_PREFIXES,
   MARATHON_CURSOR_APP_PATH_PREFIXES
 } from './cursorAppBundlePathsCore'
 import {
   CURSOR_DEDICATED_GROUP_NAME,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
-  resolveCursorStableSelectorGroup
+  resolveCursorStableSelectorGroup,
+  resolveGeneralProxySelectGroup
 } from './cursorProxyGroup'
 
-/** Default dedicated bundles — Cursor-2 only (see CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES). */
+/** Default dedicated bundles — empty; opt-in via app config (see CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES). */
 export const DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES = CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES
+
+/** Cursor.app + Cursor-2 route through 🚀 节点选择. */
+export const DEFAULT_CURSOR_NODE_SELECT_APP_PATH_PREFIXES = CURSOR_NODE_SELECT_APP_PATH_PREFIXES
 
 /** Non-dedicated Cursor bundles get path-scoped DIRECT before subscription cursor rules. */
 export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES =
@@ -20,6 +25,7 @@ export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES =
 export {
   CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES,
   CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES,
+  CURSOR_NODE_SELECT_APP_PATH_PREFIXES,
   MARATHON_CURSOR_APP_PATH_PREFIXES,
   CURSOR_2_APP_PATH_PREFIX
 }
@@ -169,15 +175,32 @@ function injectPathScopedDirectFallbackRules(
 
 function resolveDirectFallbackPathPrefixes(
   dedicatedPathPrefixes: readonly string[],
+  nodeSelectPathPrefixes: readonly string[],
   explicitFallbackPathPrefixes: readonly string[] | undefined
 ): string[] {
-  const dedicated = new Set(
-    dedicatedPathPrefixes.map((item) => item.trim()).filter((item) => item.length > 0)
+  const reserved = new Set(
+    [...dedicatedPathPrefixes, ...nodeSelectPathPrefixes]
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
   )
   const source =
     explicitFallbackPathPrefixes !== undefined
       ? explicitFallbackPathPrefixes
       : DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES
+  return source.map((item) => item.trim()).filter((item) => item.length > 0 && !reserved.has(item))
+}
+
+function resolveNodeSelectPathPrefixes(
+  dedicatedPathPrefixes: readonly string[],
+  explicitNodeSelectPathPrefixes: readonly string[] | undefined
+): string[] {
+  const dedicated = new Set(
+    dedicatedPathPrefixes.map((item) => item.trim()).filter((item) => item.length > 0)
+  )
+  const source =
+    explicitNodeSelectPathPrefixes !== undefined
+      ? explicitNodeSelectPathPrefixes
+      : DEFAULT_CURSOR_NODE_SELECT_APP_PATH_PREFIXES
   return source.map((item) => item.trim()).filter((item) => item.length > 0 && !dedicated.has(item))
 }
 
@@ -217,17 +240,20 @@ function injectPathScopedRules(
 }
 
 /**
- * Prepend path-scoped Cursor domain rules: dedicated bundles → fixed Selector; others → DIRECT.
- * Default: Cursor-2 → 🎯 Cursor 专用; Cursor-3.1.15 + stock Cursor.app → DIRECT.
+ * Prepend path-scoped Cursor domain rules:
+ * - dedicated bundles (config opt-in) → 🎯 Cursor 专用
+ * - Cursor.app + Cursor-2 → 🚀 节点选择
+ * - Cursor-3.1.15 → DIRECT
  */
 export function injectCursorDomainRules(
   profile: MihomoConfig,
   appPathPrefixes: readonly string[] = DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES,
-  directFallbackPathPrefixes: readonly string[] = DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES
+  directFallbackPathPrefixes: readonly string[] = DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES,
+  nodeSelectPathPrefixes: readonly string[] = DEFAULT_CURSOR_NODE_SELECT_APP_PATH_PREFIXES
 ): void {
   const groups = profile['proxy-groups'] as ControllerMixedGroup[] | undefined
-  const mainGroup = resolveCursorStableSelectorGroup(groups ?? [])?.name
-  if (!mainGroup) return
+  const dedicatedGroup = resolveCursorStableSelectorGroup(groups ?? [])?.name
+  const nodeSelectGroup = resolveGeneralProxySelectGroup(groups ?? [])?.name
 
   const rules = (profile.rules as string[] | undefined) ?? []
   const existing = new Set(rules.map((rule) => rule.trim()))
@@ -241,13 +267,29 @@ export function injectCursorDomainRules(
       ? normalizedDedicated
       : [...DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES]
 
-  stripUnscopedCursorDedicatedRules(profile)
-  injectPathScopedRules(prefix, existing, mainGroup, effectiveDedicated)
+  const nodeSelectPaths = resolveNodeSelectPathPrefixes(effectiveDedicated, nodeSelectPathPrefixes)
   const fallbackPaths = resolveDirectFallbackPathPrefixes(
     effectiveDedicated,
+    nodeSelectPaths,
     directFallbackPathPrefixes
   )
-  injectPathScopedDirectFallbackRules(prefix, existing, fallbackPaths)
+  const hasDedicatedWork = Boolean(dedicatedGroup && effectiveDedicated.length > 0)
+  const hasNodeSelectWork = Boolean(nodeSelectGroup && nodeSelectPaths.length > 0)
+  const hasDirectFallbackWork = fallbackPaths.length > 0
+  if (!hasDedicatedWork && !hasNodeSelectWork && !hasDirectFallbackWork) {
+    return
+  }
+
+  stripUnscopedCursorDedicatedRules(profile)
+  if (hasDedicatedWork && dedicatedGroup) {
+    injectPathScopedRules(prefix, existing, dedicatedGroup, effectiveDedicated)
+  }
+  if (hasNodeSelectWork && nodeSelectGroup) {
+    injectPathScopedRules(prefix, existing, nodeSelectGroup, nodeSelectPaths)
+  }
+  if (hasDirectFallbackWork) {
+    injectPathScopedDirectFallbackRules(prefix, existing, fallbackPaths)
+  }
 
   if (prefix.length > 0) {
     const remainingRules = (profile.rules as string[] | undefined) ?? []

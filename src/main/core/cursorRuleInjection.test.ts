@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   CURSOR_DEDICATED_GROUP_NAME,
-  resolveCursorStableSelectorGroup
+  GENERAL_PROXY_GROUP_NAME,
+  resolveCursorStableSelectorGroup,
+  resolveGeneralProxySelectGroup
 } from './cursorProxyGroup'
 import { CURSOR_2_APP_PATH_PREFIX } from './cursorAppBundlePathsCore'
 import {
@@ -12,6 +14,18 @@ import {
 
 function ruleLines(profile: MihomoConfig): string[] {
   return ((profile.rules as string[] | undefined) ?? []).map((rule) => rule.trim())
+}
+
+function profileWithCursorGroups(
+  dedicatedProxies: string[] = ['KR-VPS-TUIC']
+): MihomoConfig {
+  return {
+    'proxy-groups': [
+      { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: dedicatedProxies },
+      { name: GENERAL_PROXY_GROUP_NAME, type: 'select', proxies: ['SG-01'] }
+    ],
+    rules: ['GEOIP,us,🚀 节点选择', 'MATCH,DIRECT']
+  } as unknown as MihomoConfig
 }
 
 describe('resolveCursorStableSelectorGroup', () => {
@@ -27,90 +41,133 @@ describe('resolveCursorStableSelectorGroup', () => {
   })
 })
 
+describe('resolveGeneralProxySelectGroup', () => {
+  it('finds 🚀 节点选择 select group', () => {
+    const group = resolveGeneralProxySelectGroup([
+      { name: GENERAL_PROXY_GROUP_NAME, type: 'select', proxies: ['SG-01'] }
+    ] as unknown as ControllerMixedGroup[])
+    assert.equal(group?.name, GENERAL_PROXY_GROUP_NAME)
+  })
+})
+
 describe('injectCursorDomainRules', () => {
-  const productionLikeProfile = {
-    'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['KR-VPS-TUIC'] }],
-    rules: ['GEOIP,us,🚀 节点选择', 'MATCH,DIRECT']
-  } as unknown as MihomoConfig
+  it('defaults to Cursor.app + Cursor-2 on 节点选择 and Cursor-3.1.15 on DIRECT', () => {
+    const profile = profileWithCursorGroups()
+    injectCursorDomainRules(profile)
 
-  it('defaults to Cursor-2 dedicated and Cursor-3.1.15 DIRECT', () => {
-    injectCursorDomainRules(productionLikeProfile)
-
-    const rules = ruleLines(productionLikeProfile)
+    const rules = ruleLines(profile)
     const cursor2Regex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/'
+    const cursorMainRegex = 'PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/'
     const cursor315Regex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/'
+
     assert.ok(
       rules.some(
         (rule) =>
-          rule === `AND,((DOMAIN,cursor-cdn.com),(${cursor2Regex})),${CURSOR_DEDICATED_GROUP_NAME}`
+          rule ===
+          `AND,((DOMAIN,cursor-cdn.com),(${cursor2Regex})),${GENERAL_PROXY_GROUP_NAME}`
       )
     )
-    assert.ok(rules.some((rule) => rule === `${cursor2Regex},${CURSOR_DEDICATED_GROUP_NAME}`))
+    assert.ok(
+      rules.some((rule) => rule === `${cursorMainRegex},${GENERAL_PROXY_GROUP_NAME}`)
+    )
     assert.ok(
       rules.some(
         (rule) => rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursor315Regex})),DIRECT`
       )
     )
     assert.ok(!rules.some((rule) => rule.startsWith('PROCESS-NAME,')))
-    assert.ok(!rules.some((rule) => rule === `DOMAIN,cursor-cdn.com,${CURSOR_DEDICATED_GROUP_NAME}`))
+    assert.ok(
+      !rules.some((rule) => rule === `DOMAIN,cursor-cdn.com,${CURSOR_DEDICATED_GROUP_NAME}`)
+    )
 
     const geoipIndex = rules.indexOf('GEOIP,us,🚀 节点选择')
-    const dedicatedPathIndex = rules.findIndex(
-      (rule) => rule === `${cursor2Regex},${CURSOR_DEDICATED_GROUP_NAME}`
+    const nodeSelectPathIndex = rules.findIndex(
+      (rule) => rule === `${cursorMainRegex},${GENERAL_PROXY_GROUP_NAME}`
     )
-    assert.ok(dedicatedPathIndex >= 0)
-    assert.ok(geoipIndex > dedicatedPathIndex)
+    assert.ok(nodeSelectPathIndex >= 0)
+    assert.ok(geoipIndex > nodeSelectPathIndex)
   })
 
-  it('uses path-scoped rules when explicit prefixes are empty (Cursor-2 SSOT)', () => {
-    const profile = {
-      'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['KR-VPS-TUIC'] }],
-      rules: ['GEOIP,us,🚀 节点选择']
-    } as unknown as MihomoConfig
-
+  it('uses path-scoped node-select rules when explicit dedicated prefixes are empty', () => {
+    const profile = profileWithCursorGroups()
     injectCursorDomainRules(profile, [])
 
     const rules = ruleLines(profile)
     assert.ok(
       rules.some((rule) =>
-        rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/')
+        rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/') &&
+        rule.endsWith(`,${GENERAL_PROXY_GROUP_NAME}`)
       )
     )
     assert.ok(
-      rules.some((rule) =>
-        rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/') &&
-        rule.endsWith(',DIRECT')
+      rules.some(
+        (rule) =>
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/') &&
+          rule.endsWith(',DIRECT')
       )
     )
     assert.ok(!rules.some((rule) => rule.startsWith('PROCESS-NAME,')))
   })
 
-  it('skips injection when Cursor dedicated group is absent', () => {
+  it('injects node-select rules when only 🚀 节点选择 exists', () => {
     const profile = {
-      'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }],
+      'proxy-groups': [{ name: GENERAL_PROXY_GROUP_NAME, type: 'select', proxies: ['SG-01'] }],
       rules: ['GEOIP,us,🚀 节点选择']
     } as unknown as MihomoConfig
 
     injectCursorDomainRules(profile)
 
-    assert.deepEqual(ruleLines(profile), ['GEOIP,us,🚀 节点选择'])
+    const rules = ruleLines(profile)
+    assert.ok(
+      rules.some(
+        (rule) =>
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/') &&
+          rule.endsWith(`,${GENERAL_PROXY_GROUP_NAME}`)
+      )
+    )
+    assert.ok(rules.includes('GEOIP,us,🚀 节点选择'))
+  })
+
+  it('still injects DIRECT fallback when only built-in DIRECT policy is available', () => {
+    const profile = {
+      'proxy-groups': [{ name: '自定义组', type: 'select', proxies: ['SG-01'] }],
+      rules: ['GEOIP,us,DIRECT']
+    } as unknown as MihomoConfig
+
+    injectCursorDomainRules(profile)
+
+    const rules = ruleLines(profile)
+    assert.ok(
+      rules.some(
+        (rule) =>
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/') &&
+          rule.endsWith(',DIRECT')
+      )
+    )
+    assert.ok(
+      !rules.some(
+        (rule) =>
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/') ||
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/')
+      )
+    )
+    assert.ok(rules.includes('GEOIP,us,DIRECT'))
   })
 
   it('does not duplicate rules on repeated injection', () => {
-    const profile = {
-      'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['KR-VPS-TUIC'] }],
-      rules: ['GEOIP,us,🚀 节点选择']
-    } as unknown as MihomoConfig
-
-    injectCursorDomainRules(profile, [CURSOR_2_APP_PATH_PREFIX])
+    const profile = profileWithCursorGroups()
+    injectCursorDomainRules(profile, [])
     const afterFirst = ruleLines(profile)
-    injectCursorDomainRules(profile, [CURSOR_2_APP_PATH_PREFIX])
+    injectCursorDomainRules(profile, [])
     assert.deepEqual(ruleLines(profile), afterFirst)
   })
 
   it('removes subscription PROCESS-NAME Cursor rules when path prefixes are configured', () => {
     const profile = {
-      'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['JP-VPS-Reality'] }],
+      'proxy-groups': [
+        { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['JP-VPS-Reality'] },
+        { name: GENERAL_PROXY_GROUP_NAME, type: 'select', proxies: ['SG-01'] }
+      ],
       rules: [
         `DOMAIN,us-only.gcpp.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
         `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
@@ -126,46 +183,49 @@ describe('injectCursorDomainRules', () => {
 
     const rules = ruleLines(profile)
     const cursor2Regex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/'
-    assert.ok(rules.some((rule) => rule.includes(cursor2Regex)))
+    assert.ok(
+      rules.some(
+        (rule) =>
+          rule.includes(cursor2Regex) && rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
+      )
+    )
     assert.ok(!rules.some((rule) => rule.startsWith('PROCESS-NAME,Cursor')))
     assert.ok(!rules.some((rule) => rule === `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`))
     assert.ok(rules.includes('GEOIP,us,🚀 节点选择'))
   })
 
-  it('routes stock Cursor.app and Cursor-3.1.15 to DIRECT; only Cursor-2 to dedicated', () => {
-    const profile = {
-      'proxy-groups': [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['JP-VPS-HY2'] }],
-      rules: ['DOMAIN-SUFFIX,cursor.sh,🌍 国外媒体', 'GEOIP,us,DIRECT']
-    } as unknown as MihomoConfig
+  it('routes stock Cursor.app and Cursor-2 to 节点选择; Cursor-3.1.15 to DIRECT', () => {
+    const profile = profileWithCursorGroups(['JP-VPS-HY2'])
+    profile.rules = ['DOMAIN-SUFFIX,cursor.sh,🌍 国外媒体', 'GEOIP,us,DIRECT']
 
-    injectCursorDomainRules(profile, [CURSOR_2_APP_PATH_PREFIX])
+    injectCursorDomainRules(profile, [])
 
     const rules = ruleLines(profile)
     const cursorAppPath = 'PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/'
     const cursor315Path = 'PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/'
     assert.ok(
       rules.some(
-        (rule) => rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursorAppPath})),DIRECT`
+        (rule) =>
+          rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursorAppPath})),${GENERAL_PROXY_GROUP_NAME}`
       )
     )
     assert.ok(
-      rules.some(
-        (rule) => rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursor315Path})),DIRECT`
-      )
+      rules.some((rule) => rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursor315Path})),DIRECT`)
     )
     assert.ok(
       rules.some(
         (rule) =>
           rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/') &&
-          rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
+          rule.endsWith(`,${GENERAL_PROXY_GROUP_NAME}`)
       )
     )
 
     const mediaRuleIndex = rules.indexOf('DOMAIN-SUFFIX,cursor.sh,🌍 国外媒体')
-    const directCursorAppIndex = rules.findIndex(
-      (rule) => rule.includes(cursorAppPath) && rule.endsWith(',DIRECT')
+    const nodeSelectCursorAppIndex = rules.findIndex(
+      (rule) =>
+        rule.includes(cursorAppPath) && rule.endsWith(`,${GENERAL_PROXY_GROUP_NAME}`)
     )
-    assert.ok(mediaRuleIndex > directCursorAppIndex)
+    assert.ok(mediaRuleIndex > nodeSelectCursorAppIndex)
   })
 
   it('stripUnscopedCursorDedicatedRules keeps unrelated PROCESS-NAME rules', () => {

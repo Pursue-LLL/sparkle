@@ -238,7 +238,9 @@ export async function syncAgentTransportFailuresFromCursorLogs(options?: {
           seen.add(key)
           await appendAgentTransportFailureRow(
             attributedCandidate,
-            routeKind === 'dedicated-proxy' ? options?.proxyNodeFallback : undefined
+            routeKind === 'dedicated-proxy' || routeKind === 'node-select'
+              ? options?.proxyNodeFallback
+              : undefined
           )
           written += 1
           writtenRows.push(attributedCandidate)
