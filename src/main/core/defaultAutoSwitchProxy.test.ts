@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { AUTO_SELECT_DELAY_TEST_URL, CURSOR_DEDICATED_DIRECT_PROXY, CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { AUTO_SELECT_DELAY_TEST_URL, CURSOR_AUTO_SELECT_GROUP_NAME, CURSOR_DEDICATED_DIRECT_PROXY, CURSOR_DEDICATED_GROUP_NAME, CURSOR_DELAY_TEST_URL } from './cursorProxyGroup'
 import {
   appendRegionalAutoGroupsToCursorDedicated,
   applyDefaultAutoSwitchSelections,
@@ -164,6 +164,57 @@ describe('defaultAutoSwitchProxy', () => {
     )
     assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY])
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
+  })
+
+  it('appends Sparkle-自动-Cursor to 自动选择 fallback when VPS leaves exist', () => {
+    const profile = {
+      'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }],
+    } as unknown as MihomoConfig
+
+    ensureSelectGroupsDefaultToAutoSwitch(profile, 'test-profile', {
+      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01', 'KR-VPS-HY2', 'JP-VPS-TLS'],
+    })
+
+    const groups = profile['proxy-groups'] as {
+      name: string
+      type?: string
+      url?: string
+      use?: string[]
+      filter?: string
+      proxies?: string[]
+    }[]
+    const autoSelect = groups.find((group) => group.name === '自动选择')
+    assert.deepEqual(autoSelect?.proxies, [
+      'Sparkle-自动-新加坡',
+      'Sparkle-自动-日本',
+      'Sparkle-自动-台湾',
+      'Sparkle-自动-韩国',
+      'Sparkle-自动-美国',
+      CURSOR_AUTO_SELECT_GROUP_NAME,
+    ])
+
+    const cursorAutoGroup = groups.find((group) => group.name === CURSOR_AUTO_SELECT_GROUP_NAME)
+    assert.equal(cursorAutoGroup?.type, 'url-test')
+    assert.equal(cursorAutoGroup?.url, CURSOR_DELAY_TEST_URL)
+    assert.deepEqual(cursorAutoGroup?.use, ['test-profile-vps'])
+    assert.equal(cursorAutoGroup?.filter, '(?i)-VPS-(HY2|Reality|TUIC)$')
+    assert.equal(cursorAutoGroup?.proxies, undefined)
+  })
+
+  it('builds Sparkle-自动-Cursor from VPS leaf list when profileId is absent', () => {
+    const profile = {
+      'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }],
+    } as unknown as MihomoConfig
+
+    ensureSelectGroupsDefaultToAutoSwitch(profile, undefined, {
+      leafProxyNames: ['SG-01', 'KR-VPS-HY2', 'JP-VPS-TLS', 'JP-VPS-HY2'],
+    })
+
+    const groups = profile['proxy-groups'] as { name: string; proxies?: string[]; url?: string }[]
+    const cursorAutoGroup = groups.find((group) => group.name === CURSOR_AUTO_SELECT_GROUP_NAME)
+    assert.deepEqual(cursorAutoGroup?.proxies, ['KR-VPS-HY2', 'JP-VPS-HY2'])
+    assert.equal(cursorAutoGroup?.url, CURSOR_DELAY_TEST_URL)
+    assert.equal(cursorAutoGroup?.proxies?.includes('JP-VPS-TLS'), false)
   })
 
   it('appends 自动选择 to non-Cursor select groups and keeps Cursor DIRECT + VPS-only', () => {

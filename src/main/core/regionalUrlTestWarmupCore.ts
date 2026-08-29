@@ -1,4 +1,4 @@
-import { AUTO_SELECT_DELAY_TEST_URL, isSparkleRegionalAutoSelectGroup } from './cursorProxyGroup'
+import { isSparkleAutoSelectSubGroup, resolveDelayTestUrl } from './cursorProxyGroup'
 import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'
 
 export type RegionalUrlTestWarmupApi = Pick<
@@ -33,14 +33,14 @@ export async function warmupRegionalUrlTestGroupsCore(
   let warmed = 0
   const failures: Array<{ group: string; error: string }> = []
   for (const group of groups) {
-    if (!isSparkleRegionalAutoSelectGroup(group.name)) {
+    if (!isSparkleAutoSelectSubGroup(group.name)) {
       continue
     }
     if (group.type !== 'URLTest') {
       continue
     }
     try {
-      await mihomoGroupDelay(group.name, AUTO_SELECT_DELAY_TEST_URL)
+      await mihomoGroupDelay(group.name, resolveDelayTestUrl({ groupName: group.name }))
       warmed += 1
     } catch (error) {
       failures.push({

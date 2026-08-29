@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   AUTO_SELECT_DELAY_TEST_URL,
+  CURSOR_AUTO_SELECT_GROUP_NAME,
   CURSOR_DELAY_TEST_URL,
   CURSOR_DEDICATED_GROUP_NAME,
   DEFAULT_GENERAL_DELAY_TEST_URL,
@@ -24,6 +25,13 @@ describe('cursor-proxy-groups probe url helpers', () => {
         delayTestUrlScope: 'group'
       }),
       AUTO_SELECT_DELAY_TEST_URL
+    )
+    assert.equal(
+      resolveEffectiveDelayTestUrl({
+        groupName: CURSOR_AUTO_SELECT_GROUP_NAME,
+        delayTestUrlScope: 'group'
+      }),
+      CURSOR_DELAY_TEST_URL
     )
     assert.equal(
       resolveEffectiveDelayTestUrl({

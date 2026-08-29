@@ -1,16 +1,22 @@
 import {
   AUTO_SELECT_DELAY_TEST_URL,
+  CURSOR_AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
+  CURSOR_DELAY_TEST_URL,
   DEFAULT_GENERAL_DELAY_TEST_URL,
   HONG_KONG_DELAY_TEST_URL,
   isAutoSwitchingGroupType,
   isAutoSwitchingProxyName,
   isCursorDedicatedGroupName,
   isNestedAutoSwitchSelection,
-  isSparkleRegionalAutoSelectGroup,
+  isSparkleAutoSelectSubGroup,
   prependCursorDedicatedDirectOption,
 } from './cursorProxyGroup'
-import { filterMarathonCursorEligibleVpsLeaves } from './marathonHy2OnlyCore'
+import {
+  filterMarathonCursorEligibleVpsLeaves,
+  MARATHON_CURSOR_VPS_PROVIDER_FILTER,
+} from './marathonHy2OnlyCore'
+import { resolveVpsProviderId } from './vpsProviderSplitCore'
 import {
   buildRegionProviderFilter,
   DEFAULT_REGION_PRIORITY,
@@ -66,6 +72,44 @@ function appendAutoSwitchRefs(proxies: string[], refs: string[]): string[] {
 
 function buildRegionalAutoSelectGroupName(region: string): string {
   return `${REGION_AUTO_SELECT_PREFIX}${region}`
+}
+
+function resolveCursorVpsLeafNames(leafNames: string[] | undefined): string[] {
+  return filterMarathonCursorEligibleVpsLeaves(
+    (leafNames ?? []).filter((name) => /vps/i.test(name)),
+  )
+}
+
+function buildCursorVpsAutoSelectGroup(
+  profileId: string | undefined,
+  leafNames: string[] | undefined,
+  interval: number
+): ProxyGroupConfig | null {
+  const vpsLeaves = resolveCursorVpsLeafNames(leafNames)
+  if (profileId) {
+    if (vpsLeaves.length === 0) {
+      return null
+    }
+    return {
+      name: CURSOR_AUTO_SELECT_GROUP_NAME,
+      type: 'url-test',
+      url: CURSOR_DELAY_TEST_URL,
+      interval,
+      use: [resolveVpsProviderId(profileId)],
+      filter: MARATHON_CURSOR_VPS_PROVIDER_FILTER,
+    }
+  }
+
+  if (vpsLeaves.length === 0) {
+    return null
+  }
+  return {
+    name: CURSOR_AUTO_SELECT_GROUP_NAME,
+    type: 'url-test',
+    url: CURSOR_DELAY_TEST_URL,
+    interval,
+    proxies: vpsLeaves,
+  }
 }
 
 function buildRegionalUrlTestGroup(
@@ -134,6 +178,12 @@ function ensureRegionPriorityAutoSelect(
     }
   }
 
+  const cursorAutoGroup = buildCursorVpsAutoSelectGroup(profileId, leafNames, defaults.interval)
+  if (cursorAutoGroup) {
+    regionalGroups.push(cursorAutoGroup)
+    fallbackRefs.push(cursorAutoGroup.name)
+  }
+
   if (fallbackRefs.length === 0) {
     return
   }
@@ -147,7 +197,7 @@ function ensureRegionPriorityAutoSelect(
   }
 
   const withoutAutoSelect = groups.filter(
-    (group) => group.name !== AUTO_SELECT_GROUP_NAME && !isSparkleRegionalAutoSelectGroup(group.name)
+    (group) => group.name !== AUTO_SELECT_GROUP_NAME && !isSparkleAutoSelectSubGroup(group.name)
   )
 
   const autoSelectIndex = groups.findIndex((group) => group.name === AUTO_SELECT_GROUP_NAME)

@@ -49,8 +49,21 @@ export const HONG_KONG_DELAY_TEST_URL = 'https://grok.com' as const
 
 const REGION_AUTO_SELECT_PREFIX = 'Sparkle-自动-' as const
 
+/** Url-test sub-group inside 自动选择 fallback — marathon-eligible VPS leaves only. */
+export const CURSOR_AUTO_SELECT_GROUP_NAME = 'Sparkle-自动-Cursor' as const
+
+export function isSparkleCursorAutoSelectGroup(groupName: string): boolean {
+  return groupName === CURSOR_AUTO_SELECT_GROUP_NAME
+}
+
 export function isSparkleRegionalAutoSelectGroup(groupName: string): boolean {
-  return groupName.startsWith(REGION_AUTO_SELECT_PREFIX)
+  return (
+    groupName.startsWith(REGION_AUTO_SELECT_PREFIX) && !isSparkleCursorAutoSelectGroup(groupName)
+  )
+}
+
+export function isSparkleAutoSelectSubGroup(groupName: string): boolean {
+  return isSparkleRegionalAutoSelectGroup(groupName) || isSparkleCursorAutoSelectGroup(groupName)
 }
 
 export function isHongKongFilterGroupName(groupName: string): boolean {
@@ -74,6 +87,9 @@ export function resolveDelayTestUrl(options?: {
     (options?.groupName && isCursorSelectorGroupName(options.groupName))
   ) {
     return CURSOR_DELAY_TEST_URL
+  }
+  if (options?.groupName && isSparkleCursorAutoSelectGroup(options.groupName)) {
+    return options.groupTestUrl || CURSOR_DELAY_TEST_URL
   }
   if (options?.groupName && isSparkleRegionalAutoSelectGroup(options.groupName)) {
     return options.groupTestUrl || AUTO_SELECT_DELAY_TEST_URL
