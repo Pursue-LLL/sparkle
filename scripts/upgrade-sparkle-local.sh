@@ -52,6 +52,8 @@ rm -rf "$DIST_ARM64"
 export CSC_IDENTITY_AUTO_DISCOVERY=false
 
 run_electron_builder_dir() {
+  # GitHub releases via TUN often hit 600s got timeout; npmmirror is the stable fallback.
+  export ELECTRON_MIRROR="${ELECTRON_MIRROR:-https://npmmirror.com/mirrors/electron/}"
   npx electron-builder --publish never --mac dir
 }
 
