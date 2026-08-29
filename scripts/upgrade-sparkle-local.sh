@@ -74,6 +74,9 @@ fi
 log "Stage-B bundle gate (app.asar, post electron-builder)..."
 "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/verify-sparkle-main-asar.mts" "$APP/Contents/Resources/app.asar"
 
+log "Writing dist source fingerprint meta (DistFreshness gate SSOT)..."
+"$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/write-sparkle-dist-build-meta.mts" "$APP"
+
 log "Build OK ($BUILT_VER). Installing..."
 
 SPARKLE_LOG_DIR="$HOME/Library/Application Support/sparkle/logs"

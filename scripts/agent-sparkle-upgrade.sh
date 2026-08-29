@@ -75,9 +75,31 @@ run_post_install_gates() {
   [[ "$gate_result" == PASS ]]
 }
 
+install_profile_scheduler() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    return 0
+  fi
+  log "Installing profile scheduler LaunchAgent (5m due-check)..."
+  if bash "$ROOT/scripts/install-sparkle-profile-scheduler.sh"; then
+    log "Profile scheduler LaunchAgent OK"
+  else
+    log "WARN: profile scheduler install failed (non-fatal)"
+  fi
+}
+
+DIST_FRESH=0
 if dist_version_matches && dist_signature_valid; then
-  log "dist already $EXPECTED_VER with valid signature — install only"
+  if "$TSX" "$ROOT/scripts/evaluate-sparkle-dist-freshness.mts" "$DIST_APP"; then
+    DIST_FRESH=1
+  else
+    log "dist semver/signature OK but source fingerprint stale — full upgrade (DistFreshness gate)"
+  fi
+fi
+
+if [[ "$DIST_FRESH" == "1" ]]; then
+  log "dist already $EXPECTED_VER with valid signature + fresh source fingerprint — install only"
   bash "$ROOT/scripts/install-sparkle-local.sh"
+  install_profile_scheduler
   if run_post_install_gates; then
     log "Done. Sparkle $EXPECTED_VER installed; all post gates PASS"
     exit 0
@@ -86,8 +108,9 @@ if dist_version_matches && dist_signature_valid; then
   exit 0
 fi
 
-log "dist missing, stale, or unsigned — full upgrade (vite + dir + install + bootstrap gates)"
+log "dist missing, stale, unsigned, or source fingerprint drift — full upgrade (vite + dir + install + bootstrap gates)"
 bash "$ROOT/scripts/upgrade-sparkle-local.sh"
+install_profile_scheduler
 
 log "Post-upgrade byte-death gate (${GATE_MINUTES}m window)..."
 if "$TSX" "$ROOT/scripts/verify-byte-death-recovery-gate.mts" --minutes "$GATE_MINUTES"; then
