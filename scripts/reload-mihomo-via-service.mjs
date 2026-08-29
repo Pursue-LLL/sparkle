@@ -1,9 +1,11 @@
 import axios from 'axios'
 import crypto from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 const SERVICE_SOCKET = '/tmp/sparkle-service.sock'
-const CONTROLLER_BASE = 'http://localhost/core/controller'
+const GUARD_STATE_PATH = join(homedir(), '.sparkle/marathon-core-restart-guard.json')
 
 function canonicalizeQuery(urlObj) {
   const source = new URLSearchParams(urlObj.search)
@@ -51,7 +53,44 @@ function signRequest(method, pathWithQuery, body, auth) {
   }
 }
 
+function shouldDeferFromGuardPayload(payload) {
+  if (payload?.blockColdRestart === true) {
+    return true
+  }
+  const cursorConn = payload?.cursorConnectionCount
+  if (typeof cursorConn === 'number' && cursorConn > 0) {
+    return true
+  }
+  if (payload?.quiesceActive === true) {
+    return true
+  }
+  const lifecycle = payload?.recentActiveLifecycleStreamCount
+  if (typeof lifecycle === 'number' && lifecycle > 0) {
+    return true
+  }
+  if (cursorConn === -1 || lifecycle === -1) {
+    return true
+  }
+  return false
+}
+
+async function readGuardDeferDecision() {
+  try {
+    const raw = await readFile(GUARD_STATE_PATH, 'utf8')
+    const payload = JSON.parse(raw)
+    return { defer: shouldDeferFromGuardPayload(payload), payload }
+  } catch {
+    return { defer: false, payload: null }
+  }
+}
+
 async function main() {
+  const guard = await readGuardDeferDecision()
+  if (guard.defer) {
+    console.log('reload_deferred', guard.payload ?? { reason: 'guard_state_unreadable_fail_open' })
+    process.exit(0)
+  }
+
   const authPath = `${process.env.HOME}/Library/Application Support/sparkle/service-auth.json`
   const auth = JSON.parse(await readFile(authPath, 'utf8'))
 

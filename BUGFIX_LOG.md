@@ -1,6 +1,11 @@
 # Sparkle Bugfix Log
 
-> **2026-08-16 最新**：**BUG-2026-08-16-001 R6 CODE-DONE @1.30.40** · macOS 26 GUI 跳过 PostCoreBootstrap 观测栈（Api2Probe/agentTransportFailureSync/networkPathMonitor）· Electron 43.1.0
+> **2026-08-29 23:21 最新**：**BUG-2026-08-29-004 R1 CODE-DONE @1.30.40 git** · 换订阅 service 模式 disk/runtime provider 不一致 → COMPATIBLE placeholder · `serviceCoreProviderParityCore`
+> **2026-08-29 23:21 最新**：**BUG-2026-08-29-005 R1 CODE-DONE @1.30.40 git** · Cursor 专用 manual Reality→HY2 被 `blocked_suboptimal_lateral` 拦截
+> **2026-08-29 23:21 最新**：**BUG-2026-08-29-002 R1 CODE-DONE @1.30.40 git** · 订阅 ♻️ 自动选择 → Sparkle 自动选择 + Sparkle-自动-* · **RUNTIME OK · 待 install 固化**
+> **2026-08-29 23:21 最新**：**BUG-2026-08-29-003 R1 MITIGATED @1.30.40** · macOS 26 Dock 启动无 GUI · `macos26ForceGui: true` + persist 偏好 · **RUNTIME OK**
+> **2026-08-29 23:17 上一版**：**BUG-2026-08-29-001 R2 INSTALLED @1.30.40** · Cursor Agent Reconnecting · ProfileUpdaterCli/second-instance/reload 旁路 mihomo cold restart · guard SSOT 统一 · **Layer-0 startCore 硬门禁 PENDING**
+> **2026-08-16 上一版**：**BUG-2026-08-16-001 R6 CODE-DONE @1.30.40** · macOS 26 GUI 跳过 PostCoreBootstrap 观测栈（Api2Probe/agentTransportFailureSync/networkPathMonitor）· Electron 43.1.0
 > **2026-08-16 上一版**：**BUG-2026-08-16-001 R5 INSTALLED @1.30.39** · Electron **43.1.0** · force-GUI 90s soak 间歇 PASS
 > **2026-08-15 上一版**：**BUG-2026-08-15-001 CODE-DONE** · macOS 26 V8 ThreadIsolation SIGTRAP · GUI watchdog LaunchAgent + service decouple + log.fs sync + disableGPU
 > **2026-08-07 14:00 上一版**：**BUG-2026-08-07-001 FIXED @1.30.32 prod** · JP-VPS OOM reboot + fail2ban SSH ban + VpsL4Probe SSH backoff · VPS swap 2.3G + fail2ban whitelist
@@ -13,6 +18,197 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-29-002 · 订阅 ♻️ 自动选择 未走 Sparkle 区域自动选择 · **R1 CODE-DONE · 待 install**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 CODE-DONE @1.30.40 git**（2026-08-29 23:21 CST）· 单测 14/14 · **RUNTIME OK**（patch + verify）· **/Applications asar 未含补丁** |
+| **症状** | 订阅 select 组首项为 `♻️ 自动选择`（flat url-test 全节点）；与 Sparkle `自动选择`→`Sparkle-自动-*` 并行；用户选 ♻️ 不走 ChatGPT 探针区域链 |
+| **关联** | Sparkle **1.30.40 installed** · 订阅 `77caf1sub001` · composer `3d9338e6-094a-45ba-a652-53077afbc757` |
+| **同族 recurrence** | **第 1 次记录**（结构性：订阅模板与 Sparkle factory 注入并存，非偶发 typo） |
+| **PRIMARY** | `ensureSelectGroupsDefaultToAutoSwitch` 只处理订阅 `自动选择` url-test，**不处理** `♻️ 自动选择` 独立组名 |
+| **NOT** | 香港硬编码全局 · provider 拉取失败 · marathon 切换拦截 |
+
+**修复（R1 git）：**
+
+- `rewriteLegacySubscriptionAutoSelectInGroups` — 删除 `♻️ 自动选择` 组；proxies 引用替换为 `自动选择`
+- `rewriteLegacyAutoSelectRuleTargets` — 规则 policy 中 ♻️ → 自动选择
+- `collectSparkleAutoSelectGroupRefs` — select 组 append `自动选择` + `Sparkle-自动-*` + `故障转移`
+- 单测：`rewrites subscription ♻️ 自动选择 to Sparkle 自动选择 and exposes regional groups`
+
+**验证（2026-08-29 23:21）：**
+
+```text
+work/config.yaml: ♻️ count = 0
+mihomo runtime: manual_now = 自动选择, recycle groups = 0
+proxy :7890 → 204
+```
+
+**为何未 100% 固化：**
+
+- 已装 **1.30.40 asar 无 R1 代码**；每次 `generateProfile`（headless/GUI bootstrap）**会还原 ♻️**
+- 过渡：`pnpm exec tsx scripts/patch-work-config.ts`（`HOME` 必须指向真实用户目录）
+- **根治**：`pnpm run agent:upgrade:mac` 装 git 补丁
+
+**踩坑 / 防复发：**
+
+1. 换订阅后若见 COMPATIBLE placeholder → 先查 provider parity（BUG 同会话 serviceCoreProviderParityCore），再查 ♻️
+2. Agent 禁止用旧 asar 逻辑推断 disk 已正确 — 必须 `rg ♻️ work/config.yaml` + mihomo API 双验
+3. `patch-work-config.ts` 不是 SSOT 长期方案 — 仅 install 前过渡
+4. **反思**：订阅兼容应 factory 一层消歧，不能靠 UI 默认或用户手动选第二个「自动选择」
+
+**关联文件** · `defaultAutoSwitchProxy.ts` · `factory.ts` · `scripts/patch-work-config.ts` · `VERSION_LOG.md` 2026-08-29 基线条目
+
+---
+
+### BUG-2026-08-29-003 · macOS 26 Dock 启动「没启动」/ 无 GUI 窗口 · **R1 MITIGATED**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 MITIGATED @1.30.40**（2026-08-29 23:21 CST）· 用户 config `macos26ForceGui: true` · git persist 偏好 · **GUI 运行 verified** |
+| **症状** | 用户 `open -a Sparkle` / Agent 启动后无窗口；以为未启动；实际 headless bootstrap 秒退，仅 mihomo/service 常驻 |
+| **关联** | macOS **26.5.2** · Sparkle **1.30.40** · BUG-2026-08-16-001 同族（headless 为 SIGTRAP 缓解） |
+| **同族 recurrence** | **第 3+ 次用户困惑**（设计如此但 UX 易误解；此前 session 曾 force-GUI 成功，普通 open 又 headless） |
+| **PRIMARY** | `shouldUseMacOs26HeadlessBootstrap` 默认 true（`!forceGui`）· Dock 不带 `--sparkle-force-gui` |
+| **NOT** | mihomo 未启动 · 代理挂了 · Sparkle.app 缺失 |
+
+**修复（R1）：**
+
+| 层 | 动作 |
+| --- | --- |
+| **用户 config（立即）** | `~/Library/Application Support/sparkle/config.yaml` → `macos26ForceGui: true` |
+| **git** | `persistMacOs26ForceGuiIfRequested` — 曾用 flag/env 启动则写入 config |
+| **脚本 SSOT** | `scripts/open-sparkle-gui-macos26.sh` → `open -a Sparkle --args --sparkle-force-gui` |
+
+**验证：**
+
+```text
+pgrep -x Sparkle → running
+PostCoreBootstrap log（非 MacOs26Headless-only 秒退）
+macos26ForceGui: true in config.yaml
+```
+
+**Agent 卡死关联（本 bug 副产品）：**
+
+- Agent 同步等 `agent:upgrade:mac` marathon safe window（~10min）→ 用户感知「卡死」
+- `reload-mihomo-via-service.mjs` axios 30s 无响应 → 应 perl alarm / 短超时
+- **禁止** Agent block_until >60s 等 install
+
+**踩坑 / 防复发：**
+
+1. macOS 26：**无窗口 ≠ 未启动** — 先 `curl -x :7890` + `pgrep mihomo`
+2. 要 GUI：`macos26ForceGui: true`（推荐）或 `--sparkle-force-gui`
+3. headless bootstrap 会 **regen profile** → 可能触发 BUG-002 ♻️ 回归（装包前）
+4. watchdog macOS26 **不自动 relaunch GUI**（`macos26_no_relaunch: true`）— 勿依赖 watchdog 开窗口
+
+**待 install 固化** · `macos26ForceGuiPreferenceCore.ts` · `index.ts`
+
+---
+
+### BUG-2026-08-29-004 · 换订阅后 HK/区域组 COMPATIBLE · service provider 不一致 · **R1 CODE-DONE**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 CODE-DONE @1.30.40 git** · 同会话 verified 冷重启后 HK 节点正常 · **待 install** |
+| **症状** | 切换订阅 `678a1sub001`→`77caf1sub001` 后 `🇭🇰 香港节点` 仅 **COMPATIBLE Compatible UDP** placeholder |
+| **PRIMARY** | service 模式 `startCore()` 仅 regen disk config，**未 restart service mihomo** → runtime provider 仍为旧 ID |
+| **修复** | `serviceCoreProviderParityCore.ts` + `manager.ts` — provider ID 不一致时 trigger service restart（marathon guard 可 defer） |
+| **踩坑** | GUI 重启 ≠ mihomo cold restart；kill 用户态 mihomo 无效（root service）· 必须 service API 或 parity restart |
+
+---
+
+### BUG-2026-08-29-005 · Cursor 专用 manual 切 JP-VPS-HY2 被 marathon 拦截 · **R1 CODE-DONE**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 CODE-DONE @1.30.40 git** · 单测 24/24 · 同会话 API bypass 临时生效 · **待 install** |
+| **症状** | UI/API 切换 `JP-VPS-Reality`→`JP-VPS-HY2` 日志 `blocked_suboptimal_lateral` |
+| **PRIMARY** | `marathonProtocolContractCore.ts` 禁止 suboptimal↔suboptimal 横向切换，未豁免 optimal VPS（HY2） |
+| **修复** | manual 切到 `MARATHON_CURSOR_OPTIMAL_VPS_NODE`（JP-VPS-HY2）允许；仍拦 HY2↔TUIC 等 |
+| **踩坑** | 临时 bypass：direct mihomo API + `~/.sparkle/cursor-dedicated-selection.json` — 非 SSOT，装包后走 contract |
+
+---
+
+### BUG-2026-08-29-001 · Cursor Agent Reconnecting · ProfileUpdaterCli 旁路 mihomo cold restart · **R2 INSTALLED · Layer-0 PENDING**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R2 INSTALLED @1.30.40**（2026-08-29 23:17 CST）· E2E second-instance defer ✅ · reload script defer ✅ · **100% 闭环未达成** — `startCore()` 底层硬门禁 + CI 静态审计 **PENDING** |
+| **症状** | Cursor Agent 会话频繁 **Reconnecting...** · `[nal_agent_retries] attempt 1~5` · 用户 composer `3d9338e6-094a-45ba-a652-53077afbc757` |
+| **关联产品** | Sparkle **1.30.40** · Cursor **3.x**（patch-315）· macOS **26.5** headless + service core |
+| **A 时刻** | **2026-08-29 22:48:23 CST** ProfileUpdaterCli · **22:48:24** `mihomo core started` · **22:48:27** Cursor `ECONNRESET`/`socket hang up`（+3.3s）· **22:48:36~22:49:58** nal_agent_retries |
+| **PRIMARY** | Sparkle **数据面冷突变**（mihomo process replace / TUN reset）在 Cursor 活跃连接存在时发生 → Agent SSE/TLS 被 RST |
+| **amplifier** | Cursor 原生 `[nal_agent_retries]` 重连 UI（**非根因**，仅为症状放大器） |
+| **NOT** | Cursor 原生 bug · Cursor 补丁 bug · BUG-MAIN-009（127.0.0.1 路由）· VPS 宕机 · max-steps-cap |
+| **同族 recurrence** | **第 4+ 次**「马拉松/活跃 conn 期 data-plane mutation 自伤」— 前序：BUG-2026-07-28-025（L3 restartCore）· BUG-2026-07-28-024（force install）· BUG-2026-08-06-001（byte-death collateral close）· 本次为 **P10 guard 已存在但 caller 旁路** |
+
+**A 时刻证据链（Sparkle app-2026-8-29.log + Cursor renderer）：**
+
+| ts CST | 组件 | 信号 |
+| --- | --- | --- |
+| 22:45:58 | CoreLifecycle | `core_cold_restart_blocked cursor_conn=2`（restartCore 门禁 **有效**） |
+| 22:48:23 | ProfileUpdaterCli | `bootstrap start` → `generateProfile done` |
+| 22:48:24 | CoreLifecycle | `mihomo core started pid=35922`（**冷重启成功**） |
+| 22:48:27 | Cursor transport | `ECONNRESET` / `socket hang up` → `agentn.global.api5.cursor.sh` |
+| 22:48:36~49:58 | nal_agent_retries | attempt 1~5 · UI **Reconnecting...** |
+| 22:49:58 | Cursor | `conversation_action_abort`（用户 /jx） |
+
+**根因（架构级，非单点 typo）：**
+
+1. **Guard 是 caller 层 opt-in**，不是 data-plane 层 opt-out — 每新增入口就漏一个旁路。
+2. **阈值分裂**：`shouldDeferAppConfigMihomoReload` 曾 defer @ conn≥12，而 cold restart guard @ conn>0 — conn=7 时热 reload 不被拦。
+3. **LaunchAgent 5min 定时器** 对已运行 Sparkle 走 **`second-instance`** 路径，直接 `runDueProfileUpdates('cli')` **完全绕过** P10 guard（22:48 主因）。
+4. **`profileUpdateDueCli` cold 路径**、**`macos26HeadlessBootstrap`**、**`reload-mihomo-via-service.mjs`** 亦曾无 guard。
+
+**修复历程（为何前几轮「修了个屁」）：**
+
+| 轮次 | 版本 | 改了什么 | 为何未闭合 |
+| --- | --- | --- | --- |
+| R0 | ≤1.30.39 | P10 `restartCore`/`stopCore` guard + guard JSON | 仅覆盖 manager 显式 restart；ProfileUpdaterCli 仍 `startCore()` |
+| R1 | 1.30.40 git | 统一 defer SSOT → `shouldBlockMarathonCoreColdRestart`；CLI/headless/reload 脚本补 guard | **遗漏 `second-instance`**；未装包前用户仍 hit 旧 asar |
+| **R2** | **1.30.40 installed** | `runGuardedDueProfileUpdatesSecondInstance()` · `/Applications` 装包 · E2E defer @ cursor_conn=9 | **仍缺 Layer-0**：`startCore()` 入口无硬门禁；无 CI 审计防未来旁路 |
+
+**R2 代码面（git @1.30.40）：**
+
+- `appConfigMihomoReloadGuardCore.ts` — defer 统一 SSOT（conn>0 即 block）
+- `profileUpdateDueCli.ts` — CLI guard + **`runGuardedDueProfileUpdatesSecondInstance`**
+- `index.ts` — second-instance 改走 guarded path
+- `macos26HeadlessBootstrap.ts` — headless bootstrap guard
+- `scripts/reload-mihomo-via-service.mjs` — 读 `~/.sparkle/marathon-core-restart-guard.json`
+- `marathonCoreRestartGuardCore.ts` — caller 类型扩展
+
+**R2 装包后 E2E（2026-08-29 23:17 CST）：**
+
+```text
+reload_deferred { cursorConnectionCount: 2, blockColdRestart: true }
+[ProfileUpdaterCli]: second-instance deferred data_plane_mutation_blocked cursor_conn=9
+curl -x :7890 api2.cursor.sh → proxy_ok
+```
+
+**仍未完成（根治 Layer-0 + 防复发）：**
+
+| 项 | 说明 |
+| --- | --- |
+| **P0 Layer-0** | `manager.startCore()` 在将 stop/replace 运行中 mihomo 前 **强制** `evaluateMarathonCoreColdRestart('startCore')` — 封死所有未来 caller 旁路 |
+| **P1 CI 审计** | `scripts/verify-marathon-mutation-callers.mts` — 静态扫描 `startCore`/`restartCore`/`force=true` 调用点；非 allowlist 则 build fail |
+| **P2 Deferred queue** | guard block 时写 `core_cold_restart_scheduled` + conn→0 后补跑 profile update（避免永久 stale subscription） |
+| **P3 Soak gate** | 马拉松 30min 窗口：app-log 零 `mihomo core started` while `cursor_conn>0`；Cursor 零 transport ECONNRESET 簇 |
+
+**如何避免再次翻车（踩坑 SSOT）：**
+
+1. **禁止**在 caller 层单独写 guard — 一切 mutation 必须经 `manager.startCore/restartCore/stopCore` 或 `mihomoApi` provider guard。
+2. **禁止**新增 `PUT /configs?force=true` 脚本而不读 guard JSON。
+3. LaunchAgent / second-instance / CLI **共用同一 guarded 函数**（`runGuardedDueProfileUpdates*`），禁止复制粘贴路径。
+4. 阈值 **单一 SSOT**：`shouldBlockMarathonCoreColdRestart`（conn>0 / quiesce / recent lifecycle），禁止再出现 conn≥12 分裂。
+5. 装包 **必须** `pnpm run agent:upgrade:mac` + 验证 asar 含 guard 字符串 + E2E defer 日志。
+6. **反思**：同 bug 反复因「每修一个入口加一个 if」— 正确做法是 **mutation 层硬门禁 + CI 防回归**。
+
+**关联** · `marathonCoreRestartGuardCore.ts` · `profileUpdateDueCli.ts` · `index.ts` second-instance · open-perplexity 会话 `3d9338e6-094a-45ba-a652-53077afbc757`
+
+**禁止声称 100% FIXED** 直至：P0 Layer-0 + P1 CI 审计合并 + P3 30min soak PASS。
 
 ---
 
@@ -1856,6 +2052,7 @@ bash scripts/install-sparkle-local.sh
 | 必须 | 禁止 |
 | --- | --- |
 | **`pnpm run agent:upgrade:mac`** 或 **`bash scripts/agent-sparkle-upgrade.sh`**（Agent 唯一入口） | 裸跑 `pnpm build:mac` / 后台 build 后忘记 install |
+| **DistFreshness gate**（`evaluate-sparkle-dist-freshness.mts` · `.sparkle-build-meta.json` git+tree 指纹）— 同 semver 源码变更禁止 install-only | 手动 `rm -rf dist` 绕过 agent 后仍用旧 asar；仅比 version 不比 commit |
 | `pnpm run upgrade:mac` 或 `bash scripts/upgrade-sparkle-local.sh`（人工 full upgrade） | 只跑 `electron-builder` 不先 `electron-vite build`（stale asar） |
 | **Stage-A**（vite 后 ~30s）：`pnpm run verify:bundle` 或自动 gate 扫 `out/main/*.js` | 只查 `out/main/index.js`（Vite code-split 后 R-34 可能在 chunk） |
 | **Stage-B**（打包后）：同一 SSOT 扫 `app.asar` 全部 `out/main/*.js` | 打包 10min 后才发现 marker 缺失 |

@@ -132,6 +132,18 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(decision.reason, 'blocked_suboptimal_lateral')
   })
 
+  it('allows manual switch to marathon-optimal HY2 from other suboptimal VPS leaves', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 7,
+      marathonTruthActive: false,
+      fromNode: 'JP-VPS-Reality',
+      toNode: 'JP-VPS-HY2',
+      source: 'manual',
+    })
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.reason, 'allowed_manual_operator')
+  })
+
   it('1.30.1 blocks protocol_contract HY2 to TLS even when MTIC invariants green', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,

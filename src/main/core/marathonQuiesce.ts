@@ -96,6 +96,13 @@ export async function syncMarathonQuiesceIfNeeded(
   }
 
   await refreshMarathonCoreRestartGuardStateAfterQuiesce(cursorConnectionCount)
+
+  if (cursorConnectionCount === 0) {
+    const { readMarathonCoreRestartGuardSnapshot } = await import('./marathonCoreRestartGuard')
+    const { maybeExecuteDeferredProfileUpdateDue } = await import('./deferredProfileUpdateDue')
+    const snapshot = await readMarathonCoreRestartGuardSnapshot()
+    await maybeExecuteDeferredProfileUpdateDue(snapshot)
+  }
 }
 
 async function refreshMarathonCoreRestartGuardStateAfterQuiesce(

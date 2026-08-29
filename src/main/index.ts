@@ -22,7 +22,10 @@ import {
   useLinuxCustomRelaunch
 } from './sys/startup'
 import { shouldForceDisableGpu, shouldUseMacOs26HeadlessBootstrap, wantsMacOs26ForceGui } from './sys/macos26ElectronMitigationCore'
+import { persistMacOs26ForceGuiIfRequested } from './sys/macos26ForceGuiPreferenceCore'
 import { runMacOs26HeadlessBootstrap } from './sys/macos26HeadlessBootstrap'
+import { PROFILE_UPDATE_DUE_ARG } from './core/profileUpdaterCore'
+import { runGuardedDueProfileUpdatesSecondInstance, runProfileUpdateDueCli } from './core/profileUpdateDueCli'
 import os from 'os'
 import { handleDeepLink } from './resolve/deepLink'
 import { initAppQuitLifecycle } from './resolve/appLifecycle'
@@ -125,6 +128,20 @@ if (!gotTheLock) {
     await appendAppLog(
       `[AppLifecycle]: second_instance_event primary_pid=${process.pid} argv_count=${commandline.length}\n`
     )
+    if (commandline.includes(PROFILE_UPDATE_DUE_ARG)) {
+      try {
+        const updatedCount = await runGuardedDueProfileUpdatesSecondInstance()
+        if (updatedCount === null) {
+          return
+        }
+        await appendAppLog(`[ProfileUpdaterCli]: second-instance updated_count=${updatedCount}\n`)
+      } catch (error) {
+        await appendAppLog(
+          `[ProfileUpdaterCli]: second-instance failed: ${error instanceof Error ? error.message : String(error)}\n`
+        )
+      }
+      return
+    }
     showMainWindow()
     const url = commandline.pop()
     if (url) {
@@ -191,6 +208,27 @@ if (!gotTheLock) {
       process.env,
       appConfig.macos26ForceGui,
     )
+
+    void persistMacOs26ForceGuiIfRequested(
+      process.argv,
+      process.env,
+      appConfig.macos26ForceGui,
+    ).catch(() => {})
+
+    if (process.argv.includes(PROFILE_UPDATE_DUE_ARG)) {
+      try {
+        await runProfileUpdateDueCli()
+      } catch (error) {
+        await appendAppLog(
+          `[ProfileUpdaterCli]: exit error: ${error instanceof Error ? error.message : String(error)}\n`
+        )
+        app.exit(1)
+        return
+      }
+      app.exit(0)
+      return
+    }
+
     if (shouldUseMacOs26HeadlessBootstrap(process.platform, os.release(), forceGui)) {
       await runMacOs26HeadlessBootstrap()
       return

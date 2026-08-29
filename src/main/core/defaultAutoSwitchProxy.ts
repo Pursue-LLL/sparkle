@@ -1,8 +1,6 @@
 import {
   AUTO_SELECT_DELAY_TEST_URL,
-  CURSOR_AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
-  CURSOR_DELAY_TEST_URL,
   DEFAULT_GENERAL_DELAY_TEST_URL,
   HONG_KONG_DELAY_TEST_URL,
   isAutoSwitchingGroupType,
@@ -10,13 +8,12 @@ import {
   isCursorDedicatedGroupName,
   isNestedAutoSwitchSelection,
   isSparkleAutoSelectSubGroup,
+  isSparkleRegionalAutoSelectGroup,
   prependCursorDedicatedDirectOption,
 } from './cursorProxyGroup'
 import {
   filterMarathonCursorEligibleVpsLeaves,
-  MARATHON_CURSOR_VPS_PROVIDER_FILTER,
 } from './marathonHy2OnlyCore'
-import { resolveVpsProviderId } from './vpsProviderSplitCore'
 import {
   buildRegionProviderFilter,
   DEFAULT_REGION_PRIORITY,
@@ -55,9 +52,75 @@ export interface EnsureAutoSwitchOptions {
 const AUTO_SELECT_GROUP_NAME = '自动选择' as const
 const REGION_AUTO_SELECT_PREFIX = 'Sparkle-自动-' as const
 
-function collectSubscriptionAutoSwitchRefs(groups: ProxyGroupConfig[]): string[] {
+/** Subscription url-test auto-select — replaced by Sparkle {@link AUTO_SELECT_GROUP_NAME}. */
+const LEGACY_SUBSCRIPTION_AUTO_SELECT_NAMES = ['♻️ 自动选择'] as const
+
+function isLegacySubscriptionAutoSelectName(name: string): boolean {
+  return (LEGACY_SUBSCRIPTION_AUTO_SELECT_NAMES as readonly string[]).includes(name)
+}
+
+function rewriteLegacySubscriptionAutoSelectRefs(proxies: string[]): string[] {
+  const seen = new Set<string>()
+  const rewritten: string[] = []
+  for (const ref of proxies) {
+    const target = isLegacySubscriptionAutoSelectName(ref) ? AUTO_SELECT_GROUP_NAME : ref
+    if (!seen.has(target)) {
+      seen.add(target)
+      rewritten.push(target)
+    }
+  }
+  return rewritten
+}
+
+function rewriteLegacySubscriptionAutoSelectInGroups(groups: ProxyGroupConfig[]): void {
+  const withoutLegacy = groups.filter((group) => !isLegacySubscriptionAutoSelectName(group.name))
+  groups.length = 0
+  groups.push(...withoutLegacy)
+
+  for (const group of groups) {
+    if (group.proxies?.length) {
+      group.proxies = rewriteLegacySubscriptionAutoSelectRefs(group.proxies)
+    }
+  }
+}
+
+function rewriteLegacyAutoSelectRuleTargets(profile: MihomoConfig): void {
+  const rules = profile.rules as string[] | undefined
+  if (!rules?.length) {
+    return
+  }
+
+  profile.rules = rules.map((rule) => {
+    let updated = rule
+    for (const legacy of LEGACY_SUBSCRIPTION_AUTO_SELECT_NAMES) {
+      if (updated.includes(legacy)) {
+        updated = updated.replaceAll(legacy, AUTO_SELECT_GROUP_NAME)
+      }
+    }
+    return updated
+  }) as MihomoConfig['rules']
+}
+
+/** Sparkle 自动选择 + regional url-test sub-groups (+ subscription 故障转移 when present). */
+function collectSparkleAutoSelectGroupRefs(groups: ProxyGroupConfig[]): string[] {
   const names = new Set(groups.map((group) => group.name))
-  return PREFERRED_AUTO_SWITCH_NAMES.filter((name) => names.has(name))
+  const refs: string[] = []
+
+  if (names.has(AUTO_SELECT_GROUP_NAME)) {
+    refs.push(AUTO_SELECT_GROUP_NAME)
+  }
+
+  for (const group of groups) {
+    if (isSparkleRegionalAutoSelectGroup(group.name)) {
+      refs.push(group.name)
+    }
+  }
+
+  if (names.has('故障转移')) {
+    refs.push('故障转移')
+  }
+
+  return refs
 }
 
 function appendAutoSwitchRefs(proxies: string[], refs: string[]): string[] {
@@ -72,44 +135,6 @@ function appendAutoSwitchRefs(proxies: string[], refs: string[]): string[] {
 
 function buildRegionalAutoSelectGroupName(region: string): string {
   return `${REGION_AUTO_SELECT_PREFIX}${region}`
-}
-
-function resolveCursorVpsLeafNames(leafNames: string[] | undefined): string[] {
-  return filterMarathonCursorEligibleVpsLeaves(
-    (leafNames ?? []).filter((name) => /vps/i.test(name)),
-  )
-}
-
-function buildCursorVpsAutoSelectGroup(
-  profileId: string | undefined,
-  leafNames: string[] | undefined,
-  interval: number
-): ProxyGroupConfig | null {
-  const vpsLeaves = resolveCursorVpsLeafNames(leafNames)
-  if (profileId) {
-    if (vpsLeaves.length === 0) {
-      return null
-    }
-    return {
-      name: CURSOR_AUTO_SELECT_GROUP_NAME,
-      type: 'url-test',
-      url: CURSOR_DELAY_TEST_URL,
-      interval,
-      use: [resolveVpsProviderId(profileId)],
-      filter: MARATHON_CURSOR_VPS_PROVIDER_FILTER,
-    }
-  }
-
-  if (vpsLeaves.length === 0) {
-    return null
-  }
-  return {
-    name: CURSOR_AUTO_SELECT_GROUP_NAME,
-    type: 'url-test',
-    url: CURSOR_DELAY_TEST_URL,
-    interval,
-    proxies: vpsLeaves,
-  }
 }
 
 function buildRegionalUrlTestGroup(
@@ -155,8 +180,8 @@ function resolveAutoSelectLeafNames(
 }
 
 /**
- * Rewrite 自动选择 as a fallback chain: SG → JP → TW → KR → US regional url-test sub-groups.
- * Within each region mihomo picks the lowest-delay node; fallback advances when a region is down.
+ * Rewrite 自动选择 as a manual-select group over regional url-test sub-groups + Cursor hops.
+ * Each member remains its own url-test/select group; picking one in GUI switches immediately.
  */
 function ensureRegionPriorityAutoSelect(
   groups: ProxyGroupConfig[],
@@ -178,21 +203,18 @@ function ensureRegionPriorityAutoSelect(
     }
   }
 
-  const cursorAutoGroup = buildCursorVpsAutoSelectGroup(profileId, leafNames, defaults.interval)
-  if (cursorAutoGroup) {
-    regionalGroups.push(cursorAutoGroup)
-    fallbackRefs.push(cursorAutoGroup.name)
+  const hasCursorDedicatedGroup = groups.some((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
+  if (hasCursorDedicatedGroup && !fallbackRefs.includes(CURSOR_DEDICATED_GROUP_NAME)) {
+    fallbackRefs.push(CURSOR_DEDICATED_GROUP_NAME)
   }
 
   if (fallbackRefs.length === 0) {
     return
   }
 
-  const fallbackGroup: ProxyGroupConfig = {
+  const autoSelectGroup: ProxyGroupConfig = {
     name: AUTO_SELECT_GROUP_NAME,
-    type: 'fallback',
-    url: defaults.url,
-    interval: defaults.interval,
+    type: 'select',
     proxies: fallbackRefs
   }
 
@@ -202,7 +224,7 @@ function ensureRegionPriorityAutoSelect(
 
   const autoSelectIndex = groups.findIndex((group) => group.name === AUTO_SELECT_GROUP_NAME)
   const insertAt = autoSelectIndex >= 0 ? autoSelectIndex : 0
-  withoutAutoSelect.splice(insertAt, 0, ...regionalGroups, fallbackGroup)
+  withoutAutoSelect.splice(insertAt, 0, ...regionalGroups, autoSelectGroup)
 
   groups.length = 0
   groups.push(...withoutAutoSelect)
@@ -250,15 +272,20 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
 
   ensureAutoSelectUrlTestGroup(groups, profileId)
   ensureRegionPriorityAutoSelect(groups, profileId, regionPriority, options.leafProxyNames)
+  rewriteLegacySubscriptionAutoSelectInGroups(groups)
   profile['proxy-groups'] = groups as MihomoConfig['proxy-groups']
+  rewriteLegacyAutoSelectRuleTargets(profile)
 
-  const autoSwitchRefs = collectSubscriptionAutoSwitchRefs(groups)
+  const autoSwitchRefs = collectSparkleAutoSelectGroupRefs(groups)
   if (autoSwitchRefs.length === 0) {
     return
   }
 
   for (const group of groups) {
     if (isCursorDedicatedGroupName(group.name)) {
+      continue
+    }
+    if (group.name === AUTO_SELECT_GROUP_NAME || isAutoSwitchingProxyName(group.name)) {
       continue
     }
 

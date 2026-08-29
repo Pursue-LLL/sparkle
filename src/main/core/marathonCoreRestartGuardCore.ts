@@ -11,6 +11,10 @@ export type CoreLifecycleCaller =
   | 'restartCore'
   | 'install-sparkle-local'
   | 'upgrade-sparkle-local'
+  | 'profile-update-cli'
+  | 'macos26-headless-bootstrap'
+  | 'reload-mihomo-via-service'
+  | 'startCore'
 
 /** Block cold restart when recent userMessage segments exist (conn may briefly hit 0). */
 export const MARATHON_CORE_RESTART_SEGMENT_LOOKBACK_MS = 30 * 60 * 1000

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { AUTO_SELECT_DELAY_TEST_URL, CURSOR_AUTO_SELECT_GROUP_NAME, CURSOR_DEDICATED_DIRECT_PROXY, CURSOR_DEDICATED_GROUP_NAME, CURSOR_DELAY_TEST_URL } from './cursorProxyGroup'
+import { AUTO_SELECT_DELAY_TEST_URL, CURSOR_DEDICATED_DIRECT_PROXY, CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import {
   appendRegionalAutoGroupsToCursorDedicated,
   applyDefaultAutoSwitchSelections,
@@ -31,7 +31,7 @@ describe('defaultAutoSwitchProxy', () => {
       proxies?: string[]
     }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    assert.equal(autoSelect?.type, 'fallback')
+    assert.equal(autoSelect?.type, 'select')
     assert.deepEqual(autoSelect?.proxies, [
       'Sparkle-自动-新加坡',
       'Sparkle-自动-日本',
@@ -49,7 +49,12 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(sgGroup?.proxies, undefined)
     assert.deepEqual(groups.find((group) => group.name === '🚀 节点选择')?.proxies, [
       'SG-01',
-      '自动选择'
+      '自动选择',
+      'Sparkle-自动-新加坡',
+      'Sparkle-自动-日本',
+      'Sparkle-自动-台湾',
+      'Sparkle-自动-韩国',
+      'Sparkle-自动-美国'
     ])
   })
 
@@ -71,8 +76,8 @@ describe('defaultAutoSwitchProxy', () => {
     }
 
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    assert.equal(autoSelect?.type, 'fallback')
-    assert.equal(autoSelect?.url, AUTO_SELECT_DELAY_TEST_URL)
+    assert.equal(autoSelect?.type, 'select')
+    assert.equal(autoSelect?.url, undefined)
   })
 
   it('rewrites subscription 自动选择 url-test into regional fallback chain', () => {
@@ -89,7 +94,7 @@ describe('defaultAutoSwitchProxy', () => {
 
     const groups = profile['proxy-groups'] as { name: string; type?: string; proxies?: string[] }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    assert.equal(autoSelect?.type, 'fallback')
+    assert.equal(autoSelect?.type, 'select')
     assert.deepEqual(autoSelect?.proxies, [
       'Sparkle-自动-新加坡',
       'Sparkle-自动-日本',
@@ -166,55 +171,31 @@ describe('defaultAutoSwitchProxy', () => {
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
   })
 
-  it('appends Sparkle-自动-Cursor to 自动选择 fallback when VPS leaves exist', () => {
+  it('appends 🎯 Cursor 专用 to 自动选择 when Cursor dedicated group exists', () => {
     const profile = {
-      'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }],
+      'proxy-groups': [
+        {
+          name: CURSOR_DEDICATED_GROUP_NAME,
+          type: 'select',
+          proxies: [CURSOR_DEDICATED_DIRECT_PROXY],
+          use: ['test-profile-vps'],
+          filter: '(?i)-VPS-(HY2|Reality|TUIC)$',
+        },
+        { name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] },
+      ],
     } as unknown as MihomoConfig
 
     ensureSelectGroupsDefaultToAutoSwitch(profile, 'test-profile', {
-      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01', 'KR-VPS-HY2', 'JP-VPS-TLS'],
+      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01', 'KR-VPS-HY2'],
     })
 
-    const groups = profile['proxy-groups'] as {
-      name: string
-      type?: string
-      url?: string
-      use?: string[]
-      filter?: string
-      proxies?: string[]
-    }[]
+    const groups = profile['proxy-groups'] as { name: string; proxies?: string[] }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    assert.deepEqual(autoSelect?.proxies, [
-      'Sparkle-自动-新加坡',
-      'Sparkle-自动-日本',
-      'Sparkle-自动-台湾',
-      'Sparkle-自动-韩国',
-      'Sparkle-自动-美国',
-      CURSOR_AUTO_SELECT_GROUP_NAME,
-    ])
-
-    const cursorAutoGroup = groups.find((group) => group.name === CURSOR_AUTO_SELECT_GROUP_NAME)
-    assert.equal(cursorAutoGroup?.type, 'url-test')
-    assert.equal(cursorAutoGroup?.url, CURSOR_DELAY_TEST_URL)
-    assert.deepEqual(cursorAutoGroup?.use, ['test-profile-vps'])
-    assert.equal(cursorAutoGroup?.filter, '(?i)-VPS-(HY2|Reality|TUIC)$')
-    assert.equal(cursorAutoGroup?.proxies, undefined)
-  })
-
-  it('builds Sparkle-自动-Cursor from VPS leaf list when profileId is absent', () => {
-    const profile = {
-      'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }],
-    } as unknown as MihomoConfig
-
-    ensureSelectGroupsDefaultToAutoSwitch(profile, undefined, {
-      leafProxyNames: ['SG-01', 'KR-VPS-HY2', 'JP-VPS-TLS', 'JP-VPS-HY2'],
-    })
-
-    const groups = profile['proxy-groups'] as { name: string; proxies?: string[]; url?: string }[]
-    const cursorAutoGroup = groups.find((group) => group.name === CURSOR_AUTO_SELECT_GROUP_NAME)
-    assert.deepEqual(cursorAutoGroup?.proxies, ['KR-VPS-HY2', 'JP-VPS-HY2'])
-    assert.equal(cursorAutoGroup?.url, CURSOR_DELAY_TEST_URL)
-    assert.equal(cursorAutoGroup?.proxies?.includes('JP-VPS-TLS'), false)
+    assert.equal(autoSelect?.proxies?.at(-1), CURSOR_DEDICATED_GROUP_NAME)
+    assert.equal(
+      groups.some((group) => group.name === 'Sparkle-自动-Cursor'),
+      false,
+    )
   })
 
   it('appends 自动选择 to non-Cursor select groups and keeps Cursor DIRECT + VPS-only', () => {
@@ -240,6 +221,11 @@ describe('defaultAutoSwitchProxy', () => {
       'SG-01',
       'TW-01',
       '自动选择',
+      'Sparkle-自动-新加坡',
+      'Sparkle-自动-日本',
+      'Sparkle-自动-台湾',
+      'Sparkle-自动-韩国',
+      'Sparkle-自动-美国',
       '故障转移'
     ])
   })
@@ -259,7 +245,14 @@ describe('defaultAutoSwitchProxy', () => {
     const directGroup = (profile['proxy-groups'] as { name: string; proxies?: string[] }[]).find(
       (group) => group.name === '🎯 全球直连'
     )
-    assert.deepEqual(directGroup?.proxies, ['DIRECT', '🚀 节点选择', 'SG-01', '自动选择'])
+    assert.deepEqual(directGroup?.proxies, [
+      'DIRECT',
+      '🚀 节点选择',
+      'SG-01',
+      '自动选择',
+      'Sparkle-自动-新加坡',
+      'Sparkle-自动-台湾'
+    ])
     assert.equal(directGroup?.proxies?.[0], 'DIRECT')
   })
 
@@ -291,6 +284,33 @@ describe('defaultAutoSwitchProxy', () => {
     } as unknown as ControllerMixedGroup
 
     assert.equal(shouldApplyDefaultAutoSwitch(group), false)
+  })
+
+  it('rewrites subscription ♻️ 自动选择 to Sparkle 自动选择 and exposes regional groups', () => {
+    const profile = {
+      'proxy-groups': [
+        { name: '♻️ 自动选择', type: 'url-test', use: ['sub'], proxies: ['SG-01', 'JP-01'] },
+        { name: '🔰 手动选择', type: 'select', proxies: ['♻️ 自动选择', 'DIRECT'] },
+        { name: '🚀 节点选择', type: 'select', proxies: ['♻️ 自动选择', 'SG-01'] }
+      ],
+      rules: ['DOMAIN,example.com,♻️ 自动选择', 'MATCH,♻️ 自动选择']
+    } as unknown as MihomoConfig
+
+    ensureSelectGroupsDefaultToAutoSwitch(profile, 'test-profile', {
+      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01']
+    })
+
+    const groups = profile['proxy-groups'] as { name: string; proxies?: string[] }[]
+    assert.equal(groups.some((group) => group.name === '♻️ 自动选择'), false)
+
+    const manual = groups.find((group) => group.name === '🔰 手动选择')
+    assert.equal(manual?.proxies?.[0], '自动选择')
+    assert.equal(manual?.proxies?.includes('♻️ 自动选择'), false)
+    assert.equal(manual?.proxies?.includes('Sparkle-自动-新加坡'), true)
+
+    const rules = profile.rules as string[]
+    assert.equal(rules.every((rule) => !rule.includes('♻️ 自动选择')), true)
+    assert.equal(rules.some((rule) => rule.includes('自动选择')), true)
   })
 
   it('detects nested auto-switch selections', () => {
