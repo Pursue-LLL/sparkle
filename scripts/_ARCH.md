@@ -14,6 +14,10 @@ Shell/TS 脚本：本地升级、安装门禁、断连 triage、post-upgrade 验
 | `verify-sparkle-bundle.mts` | Stage-A：vite 后 out/main bundle marker 门禁 |
 | `lib/marathon-core-restart-guard.sh` | 马拉松期 install/upgrade PRE-gate；override `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` |
 | `triage-cursor-disconnect.sh` | Cursor 断连一键采集 |
+| `open-sparkle-gui-macos26.sh` | macOS 26 SSOT：带 GUI 启动（`--sparkle-force-gui`） |
+| `sparkle-profile-scheduler.sh` | LaunchAgent worker：远程订阅到期刷新 |
+| `install-sparkle-profile-scheduler.sh` | 安装 profile scheduler LaunchAgent |
+| `verify-marathon-mutation-callers.mts` | CI：静态审计 startCore/restartCore/reload 调用点 |
 
 ## Agent 升级（唯一入口）
 

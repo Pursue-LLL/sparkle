@@ -199,7 +199,11 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
 
   // R-31: operator manual switches bypass mid-session / marathon locks (UI warns disconnect).
   if (input.source === 'manual') {
-    if (isCursorSuboptimalNode(fromNode) && isCursorSuboptimalNode(toNode)) {
+    if (
+      isCursorSuboptimalNode(fromNode) &&
+      isCursorSuboptimalNode(toNode) &&
+      toNode !== MARATHON_CURSOR_OPTIMAL_VPS_NODE
+    ) {
       return { allowed: false, reason: 'blocked_suboptimal_lateral' }
     }
     if (isCursorProtocolUpgrade(fromNode, toNode)) {

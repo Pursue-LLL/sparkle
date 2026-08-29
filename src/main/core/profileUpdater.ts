@@ -1,178 +1,184 @@
 import { addProfileItem, getCurrentProfileItem, getProfileConfig } from '../config'
+import { appendAppLog } from '../utils/log'
+import {
+  calculateUpdateDelay,
+  computeScheduleDelayMs,
+  isProfileUpdateDueNow,
+  shouldScheduleProfileUpdater,
+  wasProfileUpdatedRecently,
+} from './profileUpdaterCore'
 
 const intervalPool: Record<string, NodeJS.Timeout> = {}
 
-/**
- * 计算到指定时间点的延迟（毫秒）
- * @param time 时间点，格式为 "HH:mm"（如 "04:00"）
- * @returns 延迟毫秒数，如果时间点无效返回 -1
- */
-function calculateDelayToTime(time: string): number {
-  const match = time.match(/^(\d{1,2}):(\d{2})$/)
-  if (!match) {
-    return -1
-  }
+const CURRENT_PROFILE_SCHEDULE_OFFSET_MS = 10_000
 
-  const hours = parseInt(match[1], 10)
-  const minutes = parseInt(match[2], 10)
-
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-    return -1
-  }
-
-  const now = new Date()
-  const target = new Date()
-  target.setHours(hours, minutes, 0, 0)
-
-  if (target <= now) {
-    target.setDate(target.getDate() + 1)
-  }
-
-  return target.getTime() - now.getTime()
+function formatProfileUpdaterError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
-function getRepeatDelayMs(item: ProfileItem): number {
-  if (item.updateTime) {
-    return 24 * 60 * 60 * 1000
-  }
-  if (item.interval) {
-    return item.interval * 60 * 1000
-  }
-  return -1
+async function getFreshProfileItem(id: string): Promise<ProfileItem | undefined> {
+  const { items } = await getProfileConfig(true)
+  return items.find((item) => item.id === id)
 }
 
-function calculateUpdateDelay(item: ProfileItem): number {
-  if (item.updateTime) {
-    const delay = calculateDelayToTime(item.updateTime)
-    if (delay !== -1) {
-      return delay
+async function enqueueProfileUpdateTimer(
+  item: ProfileItem,
+  scheduleDelayMs: number,
+): Promise<void> {
+  if (intervalPool[item.id]) {
+    clearTimeout(intervalPool[item.id])
+  }
+
+  const nextRunAt = new Date(Date.now() + scheduleDelayMs)
+  intervalPool[item.id] = setTimeout(() => {
+    void runScheduledProfileUpdate(item.id)
+  }, scheduleDelayMs)
+
+  const scheduleLabel = item.updateTime
+    ? `daily@${item.updateTime}`
+    : `interval=${item.interval}m`
+  await appendAppLog(
+    `[ProfileUpdater]: scheduled id=${item.id} mode=${scheduleLabel} next=${nextRunAt.toISOString()}\n`,
+  )
+}
+
+async function runScheduledProfileUpdate(profileId: string): Promise<void> {
+  try {
+    const item = await getFreshProfileItem(profileId)
+    if (!shouldScheduleProfileUpdater(item)) {
+      return
+    }
+
+    if (wasProfileUpdatedRecently(item)) {
+      await appendAppLog(
+        `[ProfileUpdater]: skipped id=${profileId} reason=recently_updated updated=${item.updated}\n`,
+      )
+      await scheduleProfileUpdater(item)
+      return
+    }
+
+    await addProfileItem(item)
+    await appendAppLog(
+      `[ProfileUpdater]: scheduled update succeeded id=${profileId} name=${item.name}\n`,
+    )
+  } catch (error) {
+    await appendAppLog(
+      `[ProfileUpdater]: scheduled update failed id=${profileId}: ${formatProfileUpdaterError(error)}\n`,
+    )
+
+    try {
+      const item = await getFreshProfileItem(profileId)
+      if (!shouldScheduleProfileUpdater(item)) {
+        return
+      }
+
+      const scheduleDelayMs = computeScheduleDelayMs(item)
+      if (scheduleDelayMs === -1) {
+        return
+      }
+
+      await enqueueProfileUpdateTimer(item, scheduleDelayMs)
+    } catch (rescheduleError) {
+      await appendAppLog(
+        `[ProfileUpdater]: failed to reschedule id=${profileId}: ${formatProfileUpdaterError(rescheduleError)}\n`,
+      )
+    }
+  }
+}
+
+async function scheduleProfileUpdater(
+  item: ProfileItem,
+  offsetMs = 0,
+): Promise<void> {
+  if (!shouldScheduleProfileUpdater(item)) {
+    return
+  }
+
+  if (intervalPool[item.id]) {
+    clearTimeout(intervalPool[item.id])
+  }
+
+  const delay = calculateUpdateDelay(item)
+  if (delay === -1) {
+    return
+  }
+
+  if (delay === 0) {
+    await runScheduledProfileUpdate(item.id)
+    return
+  }
+
+  const scheduleDelayMs = computeScheduleDelayMs(item, offsetMs)
+  if (scheduleDelayMs === -1) {
+    return
+  }
+
+  await enqueueProfileUpdateTimer(item, scheduleDelayMs)
+}
+
+export async function runDueProfileUpdates(source: 'timer' | 'cli' = 'cli'): Promise<number> {
+  const { items } = await getProfileConfig(true)
+  let updatedCount = 0
+
+  for (const item of items) {
+    if (!shouldScheduleProfileUpdater(item)) {
+      continue
+    }
+
+    if (!isProfileUpdateDueNow(item)) {
+      continue
+    }
+
+    if (wasProfileUpdatedRecently(item)) {
+      await appendAppLog(
+        `[ProfileUpdater]: cli skipped id=${item.id} reason=recently_updated source=${source}\n`,
+      )
+      continue
+    }
+
+    try {
+      await addProfileItem(item)
+      updatedCount += 1
+      await appendAppLog(
+        `[ProfileUpdater]: cli update succeeded id=${item.id} name=${item.name} source=${source}\n`,
+      )
+    } catch (error) {
+      await appendAppLog(
+        `[ProfileUpdater]: cli update failed id=${item.id} source=${source}: ${formatProfileUpdaterError(error)}\n`,
+      )
     }
   }
 
-  if (!item.interval) {
-    return -1
-  }
-
-  const now = Date.now()
-  const lastUpdated = item.updated || 0
-  const intervalMs = item.interval * 60 * 1000
-  const timeSinceLastUpdate = now - lastUpdated
-
-  if (timeSinceLastUpdate >= intervalMs) {
-    return 0
-  }
-
-  return intervalMs - timeSinceLastUpdate
+  return updatedCount
 }
 
 export async function initProfileUpdater(): Promise<void> {
-  const { items, current } = await getProfileConfig()
-  const currentItem = await getCurrentProfileItem()
+  const { items, current } = await getProfileConfig(true)
+  const currentItem = (await getFreshProfileItem(current)) ?? (await getCurrentProfileItem())
   for (const item of items.filter((i) => i.id !== current)) {
-    if (item.type === 'remote' && (item.interval || item.updateTime) && item.autoUpdate !== false) {
-      const delay = calculateUpdateDelay(item)
-
-      if (delay === -1) {
-        continue
-      }
-
-      if (delay === 0) {
-        try {
-          await addProfileItem(item)
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      const repeatDelay = getRepeatDelayMs(item)
-      if (repeatDelay === -1) {
-        continue
-      }
-
-      intervalPool[item.id] = setTimeout(
-        async () => {
-          try {
-            await addProfileItem(item)
-          } catch (e) {
-            // ignore
-          }
-        },
-        delay === 0 ? repeatDelay : delay
-      )
+    if (shouldScheduleProfileUpdater(item)) {
+      await scheduleProfileUpdater(item)
     }
   }
 
-  if (
-    currentItem?.type === 'remote' &&
-    (currentItem.interval || currentItem.updateTime) &&
-    currentItem.autoUpdate !== false
-  ) {
-    const delay = calculateUpdateDelay(currentItem)
-
-    if (delay === 0) {
-      try {
-        await addProfileItem(currentItem)
-      } catch (e) {
-        // ignore
-      }
-    }
-
-    const repeatDelay = getRepeatDelayMs(currentItem)
-    if (repeatDelay !== -1) {
-      intervalPool[currentItem.id] = setTimeout(
-        async () => {
-          try {
-            await addProfileItem(currentItem)
-          } catch (e) {
-            // ignore
-          }
-        },
-        (delay === 0 ? repeatDelay : delay) + 10000
-      )
-    }
+  if (shouldScheduleProfileUpdater(currentItem)) {
+    await scheduleProfileUpdater(currentItem, CURRENT_PROFILE_SCHEDULE_OFFSET_MS)
   }
 }
 
 export async function addProfileUpdater(item: ProfileItem): Promise<void> {
-  if (item.type === 'remote' && (item.interval || item.updateTime) && item.autoUpdate !== false) {
-    if (intervalPool[item.id]) {
-      clearTimeout(intervalPool[item.id])
-    }
-
-    const delay = calculateUpdateDelay(item)
-
-    if (delay === -1) {
-      return
-    }
-
-    if (delay === 0) {
-      try {
-        await addProfileItem(item)
-      } catch (e) {
-        // ignore
-      }
-    }
-
-    const repeatDelay = getRepeatDelayMs(item)
-    if (repeatDelay === -1) {
-      return
-    }
-
-    intervalPool[item.id] = setTimeout(
-      async () => {
-        try {
-          await addProfileItem(item)
-        } catch (e) {
-          // ignore
-        }
-      },
-      delay === 0 ? repeatDelay : delay
-    )
-  }
+  await scheduleProfileUpdater(item)
 }
 
 export async function delProfileUpdater(id: string): Promise<void> {
   if (intervalPool[id]) {
+    clearTimeout(intervalPool[id])
+    delete intervalPool[id]
+  }
+}
+
+export async function resetProfileUpdaterForTests(): Promise<void> {
+  for (const id of Object.keys(intervalPool)) {
     clearTimeout(intervalPool[id])
     delete intervalPool[id]
   }

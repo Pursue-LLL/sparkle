@@ -13,7 +13,8 @@ import {
   stopMihomoLogs,
   stopMihomoMemory,
   patchMihomoConfig,
-  mihomoGroups
+  mihomoGroups,
+  mihomoProxyProviders
 } from './mihomoApi'
 import { readFile, rm, writeFile } from 'fs/promises'
 import { mainWindow } from '..'
@@ -27,6 +28,7 @@ import { getAxios } from './mihomoApi'
 import {
   getCoreStatus,
   startCore as startServiceCore,
+  restartCore as restartServiceCoreApi,
   stopCore as stopServiceCore,
   startServiceCoreEventStream,
   stopServiceCoreEventStream,
@@ -374,6 +376,93 @@ async function getServiceStatusAfterConnectionError(): Promise<
   }
 }
 
+type ServiceCoreLaunchAction = 'start' | 'restart' | 'keep'
+
+async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Promise<ServiceCoreLaunchAction> {
+  if (!serviceCoreRunning) {
+    return 'start'
+  }
+
+  try {
+    const runtime = await getRuntimeConfig()
+    const {
+      collectProxyProviderIds,
+      collectRunningProxyProviderIds,
+      formatProviderParityMismatchLog,
+      shouldRestartServiceCoreForProviderParity
+    } = await import('./serviceCoreProviderParityCore')
+    const expectedIds = collectProxyProviderIds(runtime)
+    const providerResponse = await mihomoProxyProviders()
+    const runningIds = collectRunningProxyProviderIds(providerResponse.providers)
+    if (!shouldRestartServiceCoreForProviderParity(expectedIds, providerResponse.providers)) {
+      return 'keep'
+    }
+
+    const mismatch = formatProviderParityMismatchLog(expectedIds, runningIds)
+    const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+    const guard = await evaluateMarathonCoreColdRestart('restartCore', false)
+    if (guard.blocked) {
+      await appendAppLog(
+        `[Manager]: defer service core provider reload reason=${guard.reason} ${mismatch}\n`
+      )
+      return 'keep'
+    }
+
+    await appendAppLog(`[Manager]: service core proxy-provider mismatch — restarting ${mismatch}\n`)
+    return 'restart'
+  } catch (error) {
+    await appendAppLog(
+      `[Manager]: service core provider parity check skipped: ${error instanceof Error ? error.message : String(error)}\n`
+    )
+    return 'keep'
+  }
+}
+
+async function launchServiceCore(
+  serviceProfile: ServiceCoreLaunchProfile,
+  serviceCoreRunning: boolean
+): Promise<void> {
+  const action = await resolveServiceCoreLaunchAction(serviceCoreRunning)
+  if (action === 'start') {
+    await startServiceCore(serviceProfile)
+    return
+  }
+  if (action === 'restart') {
+    await restartServiceCoreApi(serviceProfile)
+  }
+}
+
+async function resolveStartCoreMutationIntent(
+  useServiceCore: boolean,
+  serviceCoreRunning: boolean,
+): Promise<{ wouldMutate: boolean; reason: string }> {
+  const {
+    resolveElevatedStartCoreMutationIntent,
+    resolveServiceStartCoreMutationIntent,
+  } = await import('./startCoreMutationGuardCore')
+
+  if (useServiceCore) {
+    if (!serviceCoreRunning) {
+      return { wouldMutate: false, reason: 'no_live_core' }
+    }
+    const action = await resolveServiceCoreLaunchAction(serviceCoreRunning)
+    const intent = resolveServiceStartCoreMutationIntent(action)
+    return { wouldMutate: intent.wouldMutate, reason: intent.reason }
+  }
+
+  const { resolveCoreFootprintBeforeStartOnly } = await import('./staleMihomoApiSocketHygiene')
+  const footprint = await resolveCoreFootprintBeforeStartOnly({
+    hasChildProcess: Boolean(child && !child.killed),
+    corePidPath: path.join(dataDir(), 'core.pid'),
+    socketPath: mihomoIpcPath(),
+  })
+  const intent = resolveElevatedStartCoreMutationIntent({
+    hasChildProcess: Boolean(child && !child.killed),
+    footprint,
+  })
+  return { wouldMutate: intent.wouldMutate, reason: intent.reason }
+}
+
 export async function startCore(detached = false): Promise<Promise<void>[]> {
   const {
     core = 'mihomo',
@@ -406,10 +495,8 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
     throw error
   }
 
-  await generateProfile()
-  await checkProfile()
   let serviceCoreRunning = false
-  if (useServiceCore) {
+  if (corePermissionMode === 'service' && !detached) {
     try {
       await getCoreStatus()
       serviceCoreRunning = true
@@ -423,6 +510,22 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
       }
     }
   }
+
+  const mutationIntent = await resolveStartCoreMutationIntent(useServiceCore, serviceCoreRunning)
+  if (mutationIntent.wouldMutate) {
+    const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+    const guard = await evaluateMarathonCoreColdRestart('startCore', false)
+    if (guard.blocked) {
+      await deferCoreRestartForActiveCursorStreams()
+      await appendAppLog(
+        `[CoreLifecycle]: core_start_blocked reason=${mutationIntent.reason} data_plane_action=none\n`,
+      )
+      return [Promise.resolve()]
+    }
+  }
+
+  await generateProfile()
+  await checkProfile()
   if (!serviceCoreRunning) {
     const stopped = await stopCoreWithOutcome()
     if (!stopped) {
@@ -512,9 +615,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
     serviceCoreStartupActive = true
     try {
       await startServiceCoreEventStream()
-      if (!serviceCoreRunning) {
-        await startServiceCore(serviceProfile)
-      }
+      await launchServiceCore(serviceProfile, serviceCoreRunning)
       serviceCoreManaged = true
     } catch (error) {
       if (isServiceUnavailableError(error)) {
@@ -523,9 +624,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
           return fallbackToElevatedCore(detached, probe.error)
         }
         await startServiceCoreEventStream()
-        if (!probe.running) {
-          await startServiceCore(serviceProfile)
-        }
+        await launchServiceCore(serviceProfile, probe.running)
         serviceCoreManaged = true
       } else {
         throw error

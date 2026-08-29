@@ -15,6 +15,52 @@ cd "$ROOT"
 fail() { echo "[upgrade-sparkle] FAIL: $*" >&2; exit 1; }
 log() { echo "[upgrade-sparkle] $*" >&2; }
 
+# electron-builder 26 node module collector runs `pnpm list --depth Infinity`.
+# A stale system pnpm (e.g. /usr/local/bin/pnpm v7) exits 1 → collector fails with no fallback.
+# package.json pins pnpm@11.1.1 — prepend a corepack wrapper so `which pnpm` resolves correctly.
+resolve_corepack_bin() {
+  local node_bin d nvm_corepack
+  if [[ -n "${SPARKLE_COREPACK_BIN:-}" && -x "${SPARKLE_COREPACK_BIN}" ]]; then
+    echo "${SPARKLE_COREPACK_BIN}"
+    return 0
+  fi
+  if command -v corepack >/dev/null 2>&1; then
+    command -v corepack
+    return 0
+  fi
+  node_bin="$(command -v node 2>/dev/null || true)"
+  if [[ -n "$node_bin" ]]; then
+    d="$(dirname "$node_bin")"
+    if [[ -x "${d}/corepack" ]]; then
+      echo "${d}/corepack"
+      return 0
+    fi
+  fi
+  nvm_corepack="${HOME}/.nvm/versions/node/$(node -p 'process.version.slice(1)' 2>/dev/null)/bin/corepack"
+  if [[ -x "$nvm_corepack" ]]; then
+    echo "$nvm_corepack"
+    return 0
+  fi
+  return 1
+}
+
+ensure_electron_builder_pnpm() {
+  local pm_ver corepack_bin wrap_dir resolved_ver
+  pm_ver="$(node -p "(require('./package.json').packageManager||'pnpm@11.1.1').split('@')[1]")"
+  corepack_bin="$(resolve_corepack_bin || true)"
+  [[ -n "$corepack_bin" ]] || fail "corepack not found — required for pnpm@${pm_ver} (electron-builder node module collector)"
+  "$corepack_bin" enable >/dev/null 2>&1 || true
+  "$corepack_bin" prepare "pnpm@${pm_ver}" --activate
+  wrap_dir="${SPARKLE_PNPM_SHIM_DIR:-$(mktemp -d)}"
+  export SPARKLE_PNPM_SHIM_DIR="$wrap_dir"
+  printf '#!/usr/bin/env bash\nexec "%s" pnpm "$@"\n' "$corepack_bin" > "${wrap_dir}/pnpm"
+  chmod +x "${wrap_dir}/pnpm"
+  export PATH="${wrap_dir}:${PATH}"
+  resolved_ver="$(pnpm --version 2>/dev/null || echo unknown)"
+  [[ "$resolved_ver" == "$pm_ver" ]] || fail "pnpm shim version=$resolved_ver expected=$pm_ver (PATH/corepack mismatch)"
+  log "electron-builder pnpm shim active: $resolved_ver"
+}
+
 EXPECTED_VER="$(node -p "require('./package.json').version")"
 DIST_ARM64="$ROOT/dist/mac-arm64"
 APP="$DIST_ARM64/Sparkle.app"
@@ -42,6 +88,7 @@ pnpm exec electron-vite build
 
 log "Stage-A bundle gate (out/main, fail-fast before electron-builder)..."
 "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/verify-sparkle-main-bundle.mts" "$ROOT/out/main"
+"$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/verify-marathon-mutation-callers.mts"
 
 # Stale dist/mac-arm64 (e.g. interrupted packaging leaves Electron.app only) causes
 # @electron/osx-sign "Sparkle.app could not be found" — always clean before dir build.
@@ -50,6 +97,8 @@ rm -rf "$DIST_ARM64"
 
 # Adhoc deep sign only — matches electron-builder.yml mac.identity: "-"
 export CSC_IDENTITY_AUTO_DISCOVERY=false
+
+ensure_electron_builder_pnpm
 
 run_electron_builder_dir() {
   # GitHub releases via TUN often hit 600s got timeout; npmmirror is the stable fallback.
@@ -78,6 +127,14 @@ log "Stage-B bundle gate (app.asar, post electron-builder)..."
 
 log "Writing dist source fingerprint meta (DistFreshness gate SSOT)..."
 "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/write-sparkle-dist-build-meta.mts" "$APP"
+
+# Meta is written after electron-builder afterSign — re-deep-sign so install gate passes.
+log "Re-signing after build-meta write (deepSignMac parity)..."
+codesign --deep --force --sign - "$APP"
+xattr -cr "$APP" 2>/dev/null || true
+if ! codesign --verify --deep --strict "$APP" >/dev/null 2>&1; then
+  fail "dist app signature invalid after build-meta re-sign"
+fi
 
 log "Build OK ($BUILT_VER). Installing..."
 

@@ -16,6 +16,18 @@ function delay(ms: number): Promise<void> {
 /** Start core + cursor defaults, then exit GUI cleanly (sparkle-service keeps proxy on macOS 26). */
 export async function runMacOs26HeadlessBootstrap(): Promise<void> {
   await appendAppLog('[MacOs26Headless]: bootstrap start (no BrowserWindow)\n')
+
+  const { evaluateMarathonCoreColdRestart } = await import('../core/marathonCoreRestartGuard')
+  const guard = await evaluateMarathonCoreColdRestart('macos26-headless-bootstrap', false)
+  if (guard.blocked) {
+    await appendAppLog(
+      `[MacOs26Headless]: deferred data_plane_mutation_blocked cursor_conn=${guard.snapshot.cursorConnectionCount} ` +
+        `recent_active_lifecycle=${guard.snapshot.recentActiveLifecycleStreamCount} quiesce=${guard.snapshot.quiesceActive ? 1 : 0}\n`,
+    )
+    markGracefulGuiQuit()
+    return
+  }
+
   let apiReady = false
   try {
     await bootstrapCursorNetworkDefaults()
