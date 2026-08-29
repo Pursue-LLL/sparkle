@@ -12,12 +12,19 @@ export const CURSOR_DELAY_TEST_URL = 'https://api2.cursor.sh' as const
 export const DEFAULT_GENERAL_DELAY_TEST_URL = 'https://www.gstatic.com/generate_204' as const
 export const AUTO_SELECT_DELAY_TEST_URL = 'https://chatgpt.com' as const
 export const HONG_KONG_DELAY_TEST_URL = 'https://grok.com' as const
+export const CURSOR_AUTO_SELECT_GROUP_NAME = 'Sparkle-自动-Cursor' as const
 
 const REGION_AUTO_SELECT_PREFIX = 'Sparkle-自动-' as const
 const HONG_KONG_FILTER_GROUP_NAME = '🇭🇰 香港节点' as const
 
+function isSparkleCursorAutoSelectGroup(groupName: string): boolean {
+  return groupName === CURSOR_AUTO_SELECT_GROUP_NAME
+}
+
 function isSparkleRegionalAutoSelectGroup(groupName: string): boolean {
-  return groupName.startsWith(REGION_AUTO_SELECT_PREFIX)
+  return (
+    groupName.startsWith(REGION_AUTO_SELECT_PREFIX) && !isSparkleCursorAutoSelectGroup(groupName)
+  )
 }
 
 function isHongKongFilterGroupName(groupName: string): boolean {
@@ -34,6 +41,9 @@ export function isCursorDedicatedGroupName(groupName: string): boolean {
 export function resolveDelayTestUrl(groupName?: string, groupTestUrl?: string): string {
   if (groupName && isCursorSelectorGroupName(groupName)) {
     return CURSOR_DELAY_TEST_URL
+  }
+  if (groupName && isSparkleCursorAutoSelectGroup(groupName)) {
+    return groupTestUrl || CURSOR_DELAY_TEST_URL
   }
   if (groupName && isSparkleRegionalAutoSelectGroup(groupName)) {
     return groupTestUrl || AUTO_SELECT_DELAY_TEST_URL
