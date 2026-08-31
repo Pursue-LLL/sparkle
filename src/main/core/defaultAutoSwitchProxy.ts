@@ -21,6 +21,13 @@ import {
   resolveEffectiveRegionPriority
 } from './regionPriority'
 import type { MihomoChangeProxyOptions } from './mihomoApi'
+import {
+  buildNonAnyTlsRegionalMembers,
+  excludeAnyTlsFromAutoSelectUrlTestGroups,
+  proxyCatalogHasTypes,
+  type AutoSelectAnyTlsExclusionResult,
+  type ProxyCatalogEntry,
+} from './autoSelectAnyTlsExclusionCore'
 
 export interface MihomoAutoSwitchApi {
   mihomoGroups: () => Promise<ControllerMixedGroup[]>
@@ -46,6 +53,7 @@ interface ProxyGroupConfig {
 
 export interface EnsureAutoSwitchOptions {
   leafProxyNames?: string[]
+  leafProxyCatalog?: ProxyCatalogEntry[]
   regionPriority?: string[]
 }
 
@@ -141,8 +149,21 @@ function buildRegionalUrlTestGroup(
   region: string,
   profileId: string | undefined,
   leafNames: string[] | undefined,
+  leafProxyCatalog: ProxyCatalogEntry[] | undefined,
   defaults: ReturnType<typeof buildRegionalAutoSelectUrlTestDefaults>
 ): ProxyGroupConfig | null {
+  if (leafProxyCatalog?.length && proxyCatalogHasTypes(leafProxyCatalog)) {
+    const nonAnyTlsMembers = buildNonAnyTlsRegionalMembers(region, leafProxyCatalog)
+    if (nonAnyTlsMembers.length === 0) {
+      return null
+    }
+    return {
+      name: buildRegionalAutoSelectGroupName(region),
+      ...defaults,
+      proxies: nonAnyTlsMembers,
+    }
+  }
+
   if (profileId) {
     const filter = buildRegionProviderFilter(region)
     if (filter) {
@@ -187,7 +208,8 @@ function ensureRegionPriorityAutoSelect(
   groups: ProxyGroupConfig[],
   profileId: string | undefined,
   regionPriority: readonly string[],
-  leafProxyNames: string[] | undefined
+  leafProxyNames: string[] | undefined,
+  leafProxyCatalog: ProxyCatalogEntry[] | undefined
 ): void {
   const defaults = buildRegionalAutoSelectUrlTestDefaults()
   const leafNames = resolveAutoSelectLeafNames(groups, leafProxyNames)
@@ -196,7 +218,13 @@ function ensureRegionPriorityAutoSelect(
   const fallbackRefs: string[] = []
 
   for (const region of regionPriority) {
-    const regional = buildRegionalUrlTestGroup(region, profileId, leafNames, defaults)
+    const regional = buildRegionalUrlTestGroup(
+      region,
+      profileId,
+      leafNames,
+      leafProxyCatalog,
+      defaults,
+    )
     if (regional) {
       regionalGroups.push(regional)
       fallbackRefs.push(regional.name)
@@ -258,10 +286,10 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
   profile: MihomoConfig,
   profileId?: string,
   options: EnsureAutoSwitchOptions = {}
-): void {
+): AutoSelectAnyTlsExclusionResult {
   const groups = (profile['proxy-groups'] as ProxyGroupConfig[] | undefined) ?? []
   if (groups.length === 0) {
-    return
+    return { groupsMutated: 0, proxiesRemoved: 0, removedLeaves: [] }
   }
 
   const regionPriority = resolveEffectiveRegionPriority(
@@ -269,14 +297,24 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
   )
 
   ensureAutoSelectUrlTestGroup(groups, profileId)
-  ensureRegionPriorityAutoSelect(groups, profileId, regionPriority, options.leafProxyNames)
+  ensureRegionPriorityAutoSelect(
+    groups,
+    profileId,
+    regionPriority,
+    options.leafProxyNames,
+    options.leafProxyCatalog,
+  )
   rewriteLegacySubscriptionAutoSelectInGroups(groups)
+  const anyTlsExclusion = excludeAnyTlsFromAutoSelectUrlTestGroups(
+    groups,
+    options.leafProxyCatalog ?? [],
+  )
   profile['proxy-groups'] = groups as MihomoConfig['proxy-groups']
   rewriteLegacyAutoSelectRuleTargets(profile)
 
   const autoSwitchRefs = collectSparkleAutoSelectGroupRefs(groups)
   if (autoSwitchRefs.length === 0) {
-    return
+    return anyTlsExclusion
   }
 
   for (const group of groups) {
@@ -297,6 +335,7 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
   }
 
   appendRegionalAutoGroupsToCursorDedicated(profile, regionPriority)
+  return anyTlsExclusion
 }
 
 /** Cursor 专用组：DIRECT + VPS leaf + 自动选择（切啥就走啥，可选手动切 commercial）。 */

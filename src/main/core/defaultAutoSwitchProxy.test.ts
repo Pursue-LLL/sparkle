@@ -134,6 +134,42 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(sgGroup?.proxies, undefined)
   })
 
+  it('builds regional url-test from typed catalog excluding anytls while select groups keep all', () => {
+    const catalog = [
+      { name: '🇸🇬 新加坡 01', type: 'anytls' },
+      { name: '🇸🇬 新加坡 02', type: 'hysteria2' },
+      { name: '🇯🇵 日本 01', type: 'anytls' },
+      { name: '🇯🇵 日本 02', type: 'hysteria2' },
+    ]
+    const profile = {
+      'proxy-groups': [
+        {
+          name: '🤖 AI',
+          type: 'select',
+          proxies: ['🇸🇬 新加坡 01', '🇸🇬 新加坡 02', '自动选择'],
+        },
+      ],
+    } as unknown as MihomoConfig
+
+    ensureSelectGroupsDefaultToAutoSwitch(profile, 'test-profile', {
+      leafProxyNames: catalog.map((entry) => entry.name),
+      leafProxyCatalog: catalog,
+    })
+
+    const groups = profile['proxy-groups'] as {
+      name: string
+      type?: string
+      proxies?: string[]
+      use?: string[]
+    }[]
+    const sgAuto = groups.find((group) => group.name === 'Sparkle-自动-新加坡')
+    assert.deepEqual(sgAuto?.proxies, ['🇸🇬 新加坡 02'])
+    assert.equal(sgAuto?.use, undefined)
+    const aiGroup = groups.find((group) => group.name === '🤖 AI')
+    assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 01'), true)
+    assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 02'), true)
+  })
+
   it('appendRegionalAutoGroupsToCursorDedicated is idempotent for DIRECT', () => {
     const profile = {
       'proxy-groups': [
