@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-31 17:30 最新**：**BUG-2026-08-31-001 P1 CODE-DONE @1.30.41 git** · Recovery Circuit Breaker — CarrierQuiesce/sidecar 自激坏环熔断 · Codex SSE `decoding response body` 止损
+> **2026-08-31 18:25 最新**：**BUG-2026-08-31-002 R1 CODE-DONE @1.30.43 git** · 三 Cursor 客户端默认走 🎯 Cursor 专用 · 组内可选 自动选择（切啥就走啥）
+> **2026-08-31 17:30 上一版**：**BUG-2026-08-31-001 P1 CODE-DONE @1.30.41 git** · Recovery Circuit Breaker — CarrierQuiesce/sidecar 自激坏环熔断 · Codex SSE `decoding response body` 止损
 > **2026-08-29 23:31 上一版**：**BUG-2026-08-29-001 R3 INSTALLED @1.30.40** · Layer-0 + CI + deferred + **P3 soak PASS** · Cursor Reconnecting 架构闭合 · **VERSION_LOG 基线 23:31**
 > **2026-08-29 23:28 上一版**：**BUG-2026-08-29-001 R3 INSTALLED** · Layer-0 装包 · soak 待验
 > **2026-08-29 23:21 上一版**：**BUG-2026-08-29-004 R1 CODE-DONE @1.30.40 git** · 换订阅 service 模式 disk/runtime provider 不一致 → COMPATIBLE placeholder · `serviceCoreProviderParityCore`
@@ -21,6 +22,26 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-31-002 · 三 Cursor 客户端未走 Cursor 专用 · **R1 CODE-DONE @1.30.43**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 CODE-DONE @1.30.43 git**（2026-08-31）· 37/37 相关单测 PASS · **待 install** |
+| **症状** | Cursor.app / Cursor-2 / Cursor-3.1.15 分别走 节点选择 / DIRECT / GFW 默认规则 · 用户在 Cursor 专用组切节点不生效 |
+| **PRIMARY** | `CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES` 默认空 · `resolveGeneralProxySelectGroup` 不认 `自动选择` 别名 · 自动选择↔Cursor专用 双向嵌套循环 |
+| **NOT** | 节点质量问题 · Codex 断流（见 BUG-2026-08-31-001） |
+
+**修复（R1 @1.30.43）：**
+
+- `cursorAppBundlePathsCore.ts` — 三客户端默认 `🎯 Cursor 专用`
+- `defaultAutoSwitchProxy.ts` — Cursor 专用组追加 `自动选择` 选项，禁止反向嵌套
+- `cursorProxyGroup.ts` — `自动选择` 作为 `🚀 节点选择` 别名
+- `cursorRuleInjection.ts` — 默认 path-scoped 规则对齐
+
+**验证：** `cursorRuleInjection` + `defaultAutoSwitchProxy` + `cursorDedicatedDefault` + `appCursorDefaultsCore` **37/37 PASS**
 
 ---
 

@@ -203,10 +203,8 @@ function ensureRegionPriorityAutoSelect(
     }
   }
 
-  const hasCursorDedicatedGroup = groups.some((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
-  if (hasCursorDedicatedGroup && !fallbackRefs.includes(CURSOR_DEDICATED_GROUP_NAME)) {
-    fallbackRefs.push(CURSOR_DEDICATED_GROUP_NAME)
-  }
+  // Do not nest 🎯 Cursor 专用 inside 自动选择 — Cursor Dedicated already nests 自动选择
+  // (切啥就走啥). Nesting both ways creates a select-group cycle.
 
   if (fallbackRefs.length === 0) {
     return
@@ -301,7 +299,7 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
   appendRegionalAutoGroupsToCursorDedicated(profile, regionPriority)
 }
 
-/** Cursor 专用组仅保留自建 VPS leaf；不再注入 Sparkle-自动-* 区域组。 */
+/** Cursor 专用组：DIRECT + VPS leaf + 自动选择（切啥就走啥，可选手动切 commercial）。 */
 export function appendRegionalAutoGroupsToCursorDedicated(
   profile: MihomoConfig,
   _regionPriority: readonly string[]
@@ -312,9 +310,14 @@ export function appendRegionalAutoGroupsToCursorDedicated(
     return
   }
 
+  const hasAutoSelect = groups.some((group) => group.name === AUTO_SELECT_GROUP_NAME)
+
   // Provider-mode Cursor group: DIRECT + VPS leaves via use (+ optional -vps suffix).
   if (cursorGroup.use?.length) {
     cursorGroup.proxies = prependCursorDedicatedDirectOption(cursorGroup.proxies ?? [])
+    if (hasAutoSelect) {
+      cursorGroup.proxies = appendAutoSelectToCursorDedicated(cursorGroup.proxies)
+    }
     return
   }
 
@@ -324,6 +327,14 @@ export function appendRegionalAutoGroupsToCursorDedicated(
     existing.filter((ref) => /vps/i.test(ref)),
   )
   cursorGroup.proxies = prependCursorDedicatedDirectOption(vpsLeaves)
+  if (hasAutoSelect) {
+    cursorGroup.proxies = appendAutoSelectToCursorDedicated(cursorGroup.proxies)
+  }
+}
+
+function appendAutoSelectToCursorDedicated(members: readonly string[]): string[] {
+  const withoutAuto = members.filter((name) => name !== AUTO_SELECT_GROUP_NAME)
+  return [...withoutAuto, AUTO_SELECT_GROUP_NAME]
 }
 
 export function resolvePreferredAutoSwitchProxy(
