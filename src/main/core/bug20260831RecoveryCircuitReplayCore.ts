@@ -146,6 +146,55 @@ export function replayBug20260831CursorTransportHealthRespectsCircuit(): Bug2026
   }
 }
 
+/** Circuit open must keep retrying restartCore after cursor_conn defer (no one-shot lock). */
+export function replayBug20260831CircuitRestartRetriesAfterDefer(): Bug20260831ReplayVerdict {
+  const source = readFileSync(join(ROOT, 'recoveryCircuitBreaker.ts'), 'utf8')
+  const ok =
+    source.includes('coreRestartPending') &&
+    source.includes('circuit_open_escalate_restartCore_retry') &&
+    !source.includes('coreRestartEscalationOpenUntilMs')
+  return {
+    fixtureId: '0831_circuit_restart_retries_after_defer',
+    ok,
+    detail: ok
+      ? 'deferred restartCore retries on subsequent gate checks'
+      : 'circuit restart still one-shot locked after defer',
+  }
+}
+
+/** AI groups must exclude Marathon Cursor HY2 leaves. */
+export function replayBug20260831AiExcludesMarathonHy2(): Bug20260831ReplayVerdict {
+  const core = readFileSync(join(ROOT, 'aiTrafficIsolationCore.ts'), 'utf8')
+  const factory = readFileSync(join(ROOT, 'factory.ts'), 'utf8')
+  const ok =
+    core.includes('excludeMarathonHy2FromAiProxyGroups') &&
+    factory.includes('excludeMarathonHy2FromAiProxyGroups')
+  return {
+    fixtureId: '0831_ai_excludes_marathon_hy2',
+    ok,
+    detail: ok
+      ? 'factory wires AI traffic isolation from Marathon HY2'
+      : 'AI traffic isolation missing from factory',
+  }
+}
+
+/** Codex/OpenAI must be forced DIRECT (not 🤖 AI / HY2). */
+export function replayBug20260831CodexForcedDirect(): Bug20260831ReplayVerdict {
+  const core = readFileSync(join(ROOT, 'codexDirectRules.ts'), 'utf8')
+  const factory = readFileSync(join(ROOT, 'factory.ts'), 'utf8')
+  const ok =
+    core.includes('ensureCodexDirectRules') &&
+    core.includes('DOMAIN-SUFFIX,chatgpt.com,DIRECT') &&
+    factory.includes('ensureCodexDirectRules')
+  return {
+    fixtureId: '0831_codex_forced_direct',
+    ok,
+    detail: ok
+      ? 'factory wires Codex/OpenAI DIRECT rules'
+      : 'Codex DIRECT injection missing from factory',
+  }
+}
+
 export function runBug20260831RecoveryCircuitReplayGate(): Bug20260831RecoveryCircuitReplayResult {
   const verdicts = [
     replayBug20260831SidecarFailLoopOpensCircuit(),
@@ -155,6 +204,9 @@ export function runBug20260831RecoveryCircuitReplayGate(): Bug20260831RecoveryCi
     replayBug20260831CircuitOpenNotification(),
     replayBug20260831FrozenPruneRespectsCircuit(),
     replayBug20260831CursorTransportHealthRespectsCircuit(),
+    replayBug20260831CircuitRestartRetriesAfterDefer(),
+    replayBug20260831AiExcludesMarathonHy2(),
+    replayBug20260831CodexForcedDirect(),
   ]
   return {
     ok: verdicts.every((verdict) => verdict.ok),
