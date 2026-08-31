@@ -36,6 +36,10 @@ import {
   excludeMarathonHy2FromAiProxyGroups,
   formatAiTrafficIsolationLogLine,
 } from './aiTrafficIsolationCore'
+import {
+  formatAutoSelectAnyTlsExclusionLogLine,
+  type ProxyCatalogEntry,
+} from './autoSelectAnyTlsExclusionCore'
 import { injectHongKongTrafficRules } from './hongKongTrafficRuleInjection'
 import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
 import { resolveEffectiveRegionPriority } from './regionPriority'
@@ -194,6 +198,17 @@ async function generateProfileImpl(): Promise<void> {
   const leafProxyNames = (extractProxies(currentProfile) as { name?: string }[])
     .map((proxy) => proxy.name)
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
+  const leafProxyCatalog = (extractProxies(currentProfile) as { name?: string; type?: string }[])
+    .map((proxy): ProxyCatalogEntry | null => {
+      if (typeof proxy.name !== 'string' || proxy.name.trim().length === 0) {
+        return null
+      }
+      return {
+        name: proxy.name.trim(),
+        type: typeof proxy.type === 'string' ? proxy.type.trim() : undefined,
+      }
+    })
+    .filter((entry): entry is ProxyCatalogEntry => entry !== null)
   const providerProfileId = current && current !== 'default' ? current : undefined
   const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
   const aiGroups = (profile['proxy-groups'] as { name: string; proxies?: string[] }[] | undefined) ?? []
@@ -217,10 +232,14 @@ async function generateProfileImpl(): Promise<void> {
   rewriteMissingRuleProxyGroupTargets(profile)
   removeNonSubscriptionProxyGroups(profile, subscriptionGroupNames)
   const { proxySwitchPriority = [] } = await getAppConfig()
-  ensureSelectGroupsDefaultToAutoSwitch(profile, providerProfileId, {
+  const anyTlsExclusion = ensureSelectGroupsDefaultToAutoSwitch(profile, providerProfileId, {
     leafProxyNames,
+    leafProxyCatalog,
     regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority)
   })
+  if (anyTlsExclusion.groupsMutated > 0) {
+    await appendAppLog(formatAutoSelectAnyTlsExclusionLogLine(anyTlsExclusion))
+  }
   await logGenerateProfileStep('auto_switch_groups', stepStartedAtMs)
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)

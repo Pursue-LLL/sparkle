@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-31 19:05 最新**：**BUG-2026-08-31-004 HOTFIX @1.30.45** · `/(?i)-VPS-HY2$/` 非法 JS 正则导致 Sparkle 闪退 · 重装正确 bundle
+> **2026-08-31 19:30 最新**：**BUG-2026-08-31-005 CODE-DONE @1.30.47 git** · url-test 自动选择排除 AnyTLS（保留手动切换）· Codex SSE 不再被 01 节点 url-test 误选
+> **2026-08-31 19:05 上一版**：**BUG-2026-08-31-004 HOTFIX @1.30.45** · `/(?i)-VPS-HY2$/` 非法 JS 正则导致 Sparkle 闪退 · 重装正确 bundle
 > **2026-08-31 18:45 上一版**：**BUG-2026-08-31-003 R1 CODE-DONE @1.30.44 git** · 漏配 Cursor-3.app → api2.cursor.sh 落入 GFW Match · 补 path-scoped 规则
 > **2026-08-31 18:25 上一版**：**BUG-2026-08-31-002 R1 CODE-DONE @1.30.43 git** · 三 Cursor 客户端默认走 🎯 Cursor 专用 · 组内可选 自动选择（切啥就走啥）
 > **2026-08-31 17:30 上一版**：**BUG-2026-08-31-001 P1 CODE-DONE @1.30.41 git** · Recovery Circuit Breaker — CarrierQuiesce/sidecar 自激坏环熔断 · Codex SSE `decoding response body` 止损
