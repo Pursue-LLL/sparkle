@@ -18,6 +18,13 @@ import {
 import { executeByteDeathParentMutation } from './hy2ParentByteDeathRecoveryExecutor'
 import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
 import { countActiveInnerCriticalFlows } from './hy2ParentRotationCore'
+import {
+  assertRecoveryCircuitAllowsMutation,
+  notifyRecoveryCircuitFailure,
+  notifyRecoveryCircuitSuccess,
+  resetRecoveryCircuitBreakerForTests,
+} from './recoveryCircuitBreaker'
+import { formatRecoveryCircuitBreakerLogLine } from './recoveryCircuitBreakerCore'
 import type { MarathonSSETruthResult } from './marathonSSETruthCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 
@@ -35,6 +42,11 @@ export interface Hy2ParentSidecarExecutionResult {
 export function resetHy2ParentSidecarStateForTests(): void {
   lastHy2ParentSidecarActionAtMs = 0
   sidecarObserveInFlight = false
+  resetRecoveryCircuitBreakerForTests()
+}
+
+function mutationClosedParentUdp(plan: { action: string }): boolean {
+  return plan.action === 'close_udp_outbound' || plan.action === 'close_leaf_connections'
 }
 
 export function getLastHy2ParentSidecarDetectLogAtMsForTests(): number {
@@ -164,6 +176,21 @@ export async function runHy2ParentSidecarIfDue(input: {
   }
   sidecarObserveInFlight = true
   try {
+    const circuitGate = await assertRecoveryCircuitAllowsMutation({ nowMs })
+    if (!circuitGate.allowed) {
+      await appendSidecarLog(
+        formatRecoveryCircuitBreakerLogLine({
+          outcome: 'blocked',
+          reason: circuitGate.reason,
+        }),
+      )
+      return {
+        outcome: 'skipped',
+        action: 'none',
+        reason: circuitGate.reason,
+      }
+    }
+
     const marathonActive = input.marathonTruth.marathonTruthActive
     const marathonGlobalByteDeath = isMarathonGlobalByteDeath({
       marathonActive,
@@ -297,6 +324,10 @@ export async function runHy2ParentSidecarIfDue(input: {
         }),
       )
       if (!closed.ok) {
+        await notifyRecoveryCircuitFailure({
+          nowMs,
+          reason: closed.err ?? rotatePlan.reason,
+        })
         return {
           outcome: 'failed',
           action: 'close_udp_outbound',
@@ -304,6 +335,7 @@ export async function runHy2ParentSidecarIfDue(input: {
         }
       }
       if (dialPlan.action !== 'sidecar_dial') {
+        await notifyRecoveryCircuitSuccess()
         return {
           outcome: 'executed',
           action: 'close_udp_outbound',
@@ -335,7 +367,9 @@ export async function runHy2ParentSidecarIfDue(input: {
           cursorConnectionCount: input.cursorConnectionCount,
         })
         if (mutation.mutated) {
-          parentUdpClosedThisInvocation = true
+          if (mutationClosedParentUdp(mutation.plan)) {
+            parentUdpClosedThisInvocation = true
+          }
           if (mutation.plan.action !== 'reset_parent_chain_birth') {
             await maybeResetHy2ParentChainBirth({
               activeLeaf,
@@ -359,6 +393,10 @@ export async function runHy2ParentSidecarIfDue(input: {
               err: blockReason,
             }),
           )
+          await notifyRecoveryCircuitFailure({
+            nowMs,
+            reason: blockReason,
+          })
           return {
             outcome: 'failed',
             action: 'sidecar_dial',
@@ -409,6 +447,14 @@ export async function runHy2ParentSidecarIfDue(input: {
           err: vitality.err,
         }),
       )
+      if (resolvedOutcome === 'executed' && parentUdpClosedThisInvocation) {
+        await notifyRecoveryCircuitSuccess()
+      } else if (resolvedOutcome === 'failed') {
+        await notifyRecoveryCircuitFailure({
+          nowMs,
+          reason: vitality.err ?? resolvedReason,
+        })
+      }
       return {
         outcome: resolvedOutcome,
         action: 'sidecar_dial',

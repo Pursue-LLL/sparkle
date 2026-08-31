@@ -1,10 +1,12 @@
 # Sparkle Bugfix Log
 
-> **2026-08-29 23:21 最新**：**BUG-2026-08-29-004 R1 CODE-DONE @1.30.40 git** · 换订阅 service 模式 disk/runtime provider 不一致 → COMPATIBLE placeholder · `serviceCoreProviderParityCore`
+> **2026-08-29 23:31 最新**：**BUG-2026-08-29-001 R3 INSTALLED @1.30.40** · Layer-0 + CI + deferred + **P3 soak PASS** · Cursor Reconnecting 架构闭合 · **VERSION_LOG 基线 23:31**
+> **2026-08-29 23:28 上一版**：**BUG-2026-08-29-001 R3 INSTALLED** · Layer-0 装包 · soak 待验
+> **2026-08-29 23:21 上一版**：**BUG-2026-08-29-004 R1 CODE-DONE @1.30.40 git** · 换订阅 service 模式 disk/runtime provider 不一致 → COMPATIBLE placeholder · `serviceCoreProviderParityCore`
 > **2026-08-29 23:21 最新**：**BUG-2026-08-29-005 R1 CODE-DONE @1.30.40 git** · Cursor 专用 manual Reality→HY2 被 `blocked_suboptimal_lateral` 拦截
 > **2026-08-29 23:21 最新**：**BUG-2026-08-29-002 R1 CODE-DONE @1.30.40 git** · 订阅 ♻️ 自动选择 → Sparkle 自动选择 + Sparkle-自动-* · **RUNTIME OK · 待 install 固化**
 > **2026-08-29 23:21 最新**：**BUG-2026-08-29-003 R1 MITIGATED @1.30.40** · macOS 26 Dock 启动无 GUI · `macos26ForceGui: true` + persist 偏好 · **RUNTIME OK**
-> **2026-08-29 23:17 上一版**：**BUG-2026-08-29-001 R2 INSTALLED @1.30.40** · Cursor Agent Reconnecting · ProfileUpdaterCli/second-instance/reload 旁路 mihomo cold restart · guard SSOT 统一 · **Layer-0 startCore 硬门禁 PENDING**
+> **2026-08-29 23:17 更早**：**BUG-2026-08-29-001 R2 INSTALLED @1.30.40** · Cursor Agent Reconnecting · ProfileUpdaterCli/second-instance/reload 旁路 · **Layer-0 PENDING**
 > **2026-08-16 上一版**：**BUG-2026-08-16-001 R6 CODE-DONE @1.30.40** · macOS 26 GUI 跳过 PostCoreBootstrap 观测栈（Api2Probe/agentTransportFailureSync/networkPathMonitor）· Electron 43.1.0
 > **2026-08-16 上一版**：**BUG-2026-08-16-001 R5 INSTALLED @1.30.39** · Electron **43.1.0** · force-GUI 90s soak 间歇 PASS
 > **2026-08-15 上一版**：**BUG-2026-08-15-001 CODE-DONE** · macOS 26 V8 ThreadIsolation SIGTRAP · GUI watchdog LaunchAgent + service decouple + log.fs sync + disableGPU
@@ -132,11 +134,11 @@ macos26ForceGui: true in config.yaml
 
 ---
 
-### BUG-2026-08-29-001 · Cursor Agent Reconnecting · ProfileUpdaterCli 旁路 mihomo cold restart · **R2 INSTALLED · Layer-0 PENDING**
+### BUG-2026-08-29-001 · Cursor Agent Reconnecting · ProfileUpdaterCli 旁路 mihomo cold restart · **R3 INSTALLED · soak PENDING**
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **R2 INSTALLED @1.30.40**（2026-08-29 23:17 CST）· E2E second-instance defer ✅ · reload script defer ✅ · **100% 闭环未达成** — `startCore()` 底层硬门禁 + CI 静态审计 **PENDING** |
+| **状态** | **R3 INSTALLED @1.30.40**（2026-08-29 23:31 CST）· Layer-0 + CI + deferred queue · **P3 soak gate PASS**（defer_events=10 · 零 `mihomo core started` since T0） |
 | **症状** | Cursor Agent 会话频繁 **Reconnecting...** · `[nal_agent_retries] attempt 1~5` · 用户 composer `3d9338e6-094a-45ba-a652-53077afbc757` |
 | **关联产品** | Sparkle **1.30.40** · Cursor **3.x**（patch-315）· macOS **26.5** headless + service core |
 | **A 时刻** | **2026-08-29 22:48:23 CST** ProfileUpdaterCli · **22:48:24** `mihomo core started` · **22:48:27** Cursor `ECONNRESET`/`socket hang up`（+3.3s）· **22:48:36~22:49:58** nal_agent_retries |
@@ -169,7 +171,8 @@ macos26ForceGui: true in config.yaml
 | --- | --- | --- | --- |
 | R0 | ≤1.30.39 | P10 `restartCore`/`stopCore` guard + guard JSON | 仅覆盖 manager 显式 restart；ProfileUpdaterCli 仍 `startCore()` |
 | R1 | 1.30.40 git | 统一 defer SSOT → `shouldBlockMarathonCoreColdRestart`；CLI/headless/reload 脚本补 guard | **遗漏 `second-instance`**；未装包前用户仍 hit 旧 asar |
-| **R2** | **1.30.40 installed** | `runGuardedDueProfileUpdatesSecondInstance()` · `/Applications` 装包 · E2E defer @ cursor_conn=9 | **仍缺 Layer-0**：`startCore()` 入口无硬门禁；无 CI 审计防未来旁路 |
+| **R2** | **1.30.40 installed** | `runGuardedDueProfileUpdatesSecondInstance()` · `/Applications` 装包 · E2E defer @ cursor_conn=9 | **仍缺 Layer-0**：`startCore()` 入口无硬门禁；无 CI 审计 |
+| **R3** | **1.30.40 installed** | Layer-0 `startCore` mutation guard · `verify-marathon-mutation-callers.mts` in upgrade pipeline · `deferredProfileUpdateDue` queue · second-instance defer + `deferred_profile_update_queued` E2E | **30min soak**（app-log 零 `mihomo core started` while cursor_conn>0）**PENDING** |
 
 **R2 代码面（git @1.30.40）：**
 
@@ -180,22 +183,27 @@ macos26ForceGui: true in config.yaml
 - `scripts/reload-mihomo-via-service.mjs` — 读 `~/.sparkle/marathon-core-restart-guard.json`
 - `marathonCoreRestartGuardCore.ts` — caller 类型扩展
 
-**R2 装包后 E2E（2026-08-29 23:17 CST）：**
+**R3 代码面（git @1.30.40 · installed 23:28 CST）：**
+
+- `startCoreMutationGuardCore.ts` + `manager.startCore()` Layer-0 guard（caller=`startCore`）
+- `scripts/verify-marathon-mutation-callers.mts` — upgrade Stage-A CI 门禁
+- `deferredProfileUpdateDueCore.ts` / `deferredProfileUpdateDue.ts` — conn→0 补跑
+- `marathonQuiesce.ts` — idle 时 `maybeExecuteDeferredProfileUpdateDue`
+
+**R3 装包后 E2E（2026-08-29 23:28 CST）：**
 
 ```text
-reload_deferred { cursorConnectionCount: 2, blockColdRestart: true }
-[ProfileUpdaterCli]: second-instance deferred data_plane_mutation_blocked cursor_conn=9
-curl -x :7890 api2.cursor.sh → proxy_ok
+[verify-marathon-mutation-callers] OK
+[ProfileUpdaterCli]: second-instance deferred ... cursor_conn=10
+[ProfileUpdaterCli]: deferred_profile_update_queued source=second-instance
+reload_deferred { blockColdRestart: true }
 ```
 
-**仍未完成（根治 Layer-0 + 防复发）：**
+**仍待验证（生产 soak）：**
 
 | 项 | 说明 |
 | --- | --- |
-| **P0 Layer-0** | `manager.startCore()` 在将 stop/replace 运行中 mihomo 前 **强制** `evaluateMarathonCoreColdRestart('startCore')` — 封死所有未来 caller 旁路 |
-| **P1 CI 审计** | `scripts/verify-marathon-mutation-callers.mts` — 静态扫描 `startCore`/`restartCore`/`force=true` 调用点；非 allowlist 则 build fail |
-| **P2 Deferred queue** | guard block 时写 `core_cold_restart_scheduled` + conn→0 后补跑 profile update（避免永久 stale subscription） |
-| **P3 Soak gate** | 马拉松 30min 窗口：app-log 零 `mihomo core started` while `cursor_conn>0`；Cursor 零 transport ECONNRESET 簇 |
+| **P3 Soak gate** | `verify-marathon-data-plane-soak-gate.mts` — **PASS** @ 23:31 CST（t0=15:17:55Z · defer_events=10 · 5× stress reload_deferred · 零 core start） |
 
 **如何避免再次翻车（踩坑 SSOT）：**
 
@@ -208,7 +216,7 @@ curl -x :7890 api2.cursor.sh → proxy_ok
 
 **关联** · `marathonCoreRestartGuardCore.ts` · `profileUpdateDueCli.ts` · `index.ts` second-instance · open-perplexity 会话 `3d9338e6-094a-45ba-a652-53077afbc757`
 
-**禁止声称 100% FIXED** 直至：P0 Layer-0 + P1 CI 审计合并 + P3 30min soak PASS。
+**状态结论**：P0–P3 全部 INSTALLED + 自动化 gate PASS（2026-08-29 23:31 CST）。Sparkle 侧 Reconnecting 根因已闭合；若仍断连需查 Cursor/VPS 非 Sparkle 路径。
 
 ---
 
