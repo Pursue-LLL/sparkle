@@ -36,10 +36,6 @@ import {
   excludeMarathonHy2FromAiProxyGroups,
   formatAiTrafficIsolationLogLine,
 } from './aiTrafficIsolationCore'
-import {
-  ensureCodexDirectRules,
-  formatCodexDirectRulesLogLine,
-} from './codexDirectRules'
 import { injectHongKongTrafficRules } from './hongKongTrafficRuleInjection'
 import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
 import { resolveEffectiveRegionPriority } from './regionPriority'
@@ -204,10 +200,6 @@ async function generateProfileImpl(): Promise<void> {
   const aiIsolation = excludeMarathonHy2FromAiProxyGroups(aiGroups)
   if (aiIsolation.groupsMutated > 0) {
     await appendAppLog(formatAiTrafficIsolationLogLine(aiIsolation))
-  }
-  const codexDirect = ensureCodexDirectRules(profile)
-  if (codexDirect.added > 0 || codexDirect.stripped > 0) {
-    await appendAppLog(formatCodexDirectRulesLogLine(codexDirect))
   }
   injectHongKongTrafficRules(profile)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {

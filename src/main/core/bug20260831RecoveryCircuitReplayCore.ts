@@ -178,23 +178,6 @@ export function replayBug20260831AiExcludesMarathonHy2(): Bug20260831ReplayVerdi
   }
 }
 
-/** Codex/OpenAI must be forced DIRECT (not 🤖 AI / HY2). */
-export function replayBug20260831CodexForcedDirect(): Bug20260831ReplayVerdict {
-  const core = readFileSync(join(ROOT, 'codexDirectRules.ts'), 'utf8')
-  const factory = readFileSync(join(ROOT, 'factory.ts'), 'utf8')
-  const ok =
-    core.includes('ensureCodexDirectRules') &&
-    core.includes('DOMAIN-SUFFIX,chatgpt.com,DIRECT') &&
-    factory.includes('ensureCodexDirectRules')
-  return {
-    fixtureId: '0831_codex_forced_direct',
-    ok,
-    detail: ok
-      ? 'factory wires Codex/OpenAI DIRECT rules'
-      : 'Codex DIRECT injection missing from factory',
-  }
-}
-
 export function runBug20260831RecoveryCircuitReplayGate(): Bug20260831RecoveryCircuitReplayResult {
   const verdicts = [
     replayBug20260831SidecarFailLoopOpensCircuit(),
@@ -206,7 +189,6 @@ export function runBug20260831RecoveryCircuitReplayGate(): Bug20260831RecoveryCi
     replayBug20260831CursorTransportHealthRespectsCircuit(),
     replayBug20260831CircuitRestartRetriesAfterDefer(),
     replayBug20260831AiExcludesMarathonHy2(),
-    replayBug20260831CodexForcedDirect(),
   ]
   return {
     ok: verdicts.every((verdict) => verdict.ok),
