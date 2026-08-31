@@ -63,20 +63,26 @@ export async function refreshMarathonCoreRestartGuardStateFile(
 
 const BOOTSTRAP_CORE_PROBE_MS = 800
 
+export async function probeMihomoCoreLive(
+  maxWaitMs: number = BOOTSTRAP_CORE_PROBE_MS
+): Promise<boolean> {
+  const { waitForMihomoControllerReady } = await import('./postCoreBootstrap')
+  return waitForMihomoControllerReady(maxWaitMs)
+}
+
 export type BootstrapCoreStartCaller = Extract<
   CoreLifecycleCaller,
-  'profile-update-cli' | 'macos26-headless-bootstrap'
+  'profile-update-cli' | 'macos26-headless-bootstrap' | 'stopCore'
 >
 
-/** When mihomo is down, cursor_conn=-1 would block bootstrap forever — skip guard until core is live. */
-export async function evaluateBootstrapCoreStartGuard(
+/** When mihomo is down, cursor_conn=-1 would block cold lifecycle forever — skip guard until core is live. */
+export async function evaluateGuardSkipWhenNoLiveCore(
   caller: BootstrapCoreStartCaller
 ): Promise<{ blocked: boolean; snapshot: MarathonCoreRestartGuardSnapshot }> {
-  const { waitForMihomoControllerReady } = await import('./postCoreBootstrap')
-  const coreLive = await waitForMihomoControllerReady(BOOTSTRAP_CORE_PROBE_MS)
+  const coreLive = await probeMihomoCoreLive()
   if (!coreLive) {
     await appendAppLog(
-      `[CoreLifecycle]: bootstrap_guard_skip caller=${caller} reason=no_live_core cursor_conn_observation_skipped=1\n`
+      `[CoreLifecycle]: lifecycle_guard_skip caller=${caller} reason=no_live_core cursor_conn_observation_skipped=1\n`
     )
     const snapshot: MarathonCoreRestartGuardSnapshot = {
       quiesceActive: false,
@@ -87,6 +93,13 @@ export async function evaluateBootstrapCoreStartGuard(
     return { blocked: false, snapshot }
   }
   return evaluateMarathonCoreColdRestart(caller, false)
+}
+
+/** @deprecated use evaluateGuardSkipWhenNoLiveCore */
+export async function evaluateBootstrapCoreStartGuard(
+  caller: Extract<BootstrapCoreStartCaller, 'profile-update-cli' | 'macos26-headless-bootstrap'>
+): Promise<{ blocked: boolean; snapshot: MarathonCoreRestartGuardSnapshot }> {
+  return evaluateGuardSkipWhenNoLiveCore(caller)
 }
 
 export async function evaluateMarathonCoreColdRestart(

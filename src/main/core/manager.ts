@@ -820,8 +820,11 @@ async function stopCoreUnchecked(force = false): Promise<void> {
 }
 
 async function stopCoreWithOutcome(force = false): Promise<boolean> {
-  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
-  const guard = await evaluateMarathonCoreColdRestart('stopCore', force)
+  const { evaluateGuardSkipWhenNoLiveCore, evaluateMarathonCoreColdRestart, probeMihomoCoreLive } =
+    await import('./marathonCoreRestartGuard')
+  const guard = (await probeMihomoCoreLive())
+    ? await evaluateMarathonCoreColdRestart('stopCore', force)
+    : await evaluateGuardSkipWhenNoLiveCore('stopCore')
   if (guard.blocked) {
     return false
   }
