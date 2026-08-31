@@ -61,6 +61,34 @@ export async function refreshMarathonCoreRestartGuardStateFile(
   await writeFile(statePath, `${JSON.stringify(payload)}\n`, 'utf-8')
 }
 
+const BOOTSTRAP_CORE_PROBE_MS = 800
+
+export type BootstrapCoreStartCaller = Extract<
+  CoreLifecycleCaller,
+  'profile-update-cli' | 'macos26-headless-bootstrap'
+>
+
+/** When mihomo is down, cursor_conn=-1 would block bootstrap forever — skip guard until core is live. */
+export async function evaluateBootstrapCoreStartGuard(
+  caller: BootstrapCoreStartCaller
+): Promise<{ blocked: boolean; snapshot: MarathonCoreRestartGuardSnapshot }> {
+  const { waitForMihomoControllerReady } = await import('./postCoreBootstrap')
+  const coreLive = await waitForMihomoControllerReady(BOOTSTRAP_CORE_PROBE_MS)
+  if (!coreLive) {
+    await appendAppLog(
+      `[CoreLifecycle]: bootstrap_guard_skip caller=${caller} reason=no_live_core cursor_conn_observation_skipped=1\n`
+    )
+    const snapshot: MarathonCoreRestartGuardSnapshot = {
+      quiesceActive: false,
+      cursorConnectionCount: 0,
+      recentActiveLifecycleStreamCount: 0,
+      updatedAtMs: Date.now()
+    }
+    return { blocked: false, snapshot }
+  }
+  return evaluateMarathonCoreColdRestart(caller, false)
+}
+
 export async function evaluateMarathonCoreColdRestart(
   caller: CoreLifecycleCaller,
   forceRequested = false

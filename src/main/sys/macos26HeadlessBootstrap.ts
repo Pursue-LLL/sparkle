@@ -17,8 +17,8 @@ function delay(ms: number): Promise<void> {
 export async function runMacOs26HeadlessBootstrap(): Promise<void> {
   await appendAppLog('[MacOs26Headless]: bootstrap start (no BrowserWindow)\n')
 
-  const { evaluateMarathonCoreColdRestart } = await import('../core/marathonCoreRestartGuard')
-  const guard = await evaluateMarathonCoreColdRestart('macos26-headless-bootstrap', false)
+  const { evaluateBootstrapCoreStartGuard } = await import('../core/marathonCoreRestartGuard')
+  const guard = await evaluateBootstrapCoreStartGuard('macos26-headless-bootstrap')
   if (guard.blocked) {
     await appendAppLog(
       `[MacOs26Headless]: deferred data_plane_mutation_blocked cursor_conn=${guard.snapshot.cursorConnectionCount} ` +
