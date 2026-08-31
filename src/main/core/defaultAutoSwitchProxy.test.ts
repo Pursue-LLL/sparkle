@@ -167,11 +167,11 @@ describe('defaultAutoSwitchProxy', () => {
     const cursorGroup = (profile['proxy-groups'] as { name: string; proxies?: string[]; use?: string[] }[]).find(
       (group) => group.name === CURSOR_DEDICATED_GROUP_NAME,
     )
-    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY])
+    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY, '自动选择'])
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
   })
 
-  it('appends 🎯 Cursor 专用 to 自动选择 when Cursor dedicated group exists', () => {
+  it('appends 自动选择 to 🎯 Cursor 专用 without nesting Cursor dedicated inside 自动选择', () => {
     const profile = {
       'proxy-groups': [
         {
@@ -191,7 +191,9 @@ describe('defaultAutoSwitchProxy', () => {
 
     const groups = profile['proxy-groups'] as { name: string; proxies?: string[] }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    assert.equal(autoSelect?.proxies?.at(-1), CURSOR_DEDICATED_GROUP_NAME)
+    const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
+    assert.equal(autoSelect?.proxies?.includes(CURSOR_DEDICATED_GROUP_NAME), false)
+    assert.equal(cursorGroup?.proxies?.at(-1), '自动选择')
     assert.equal(
       groups.some((group) => group.name === 'Sparkle-自动-Cursor'),
       false,
@@ -216,7 +218,7 @@ describe('defaultAutoSwitchProxy', () => {
     const groups = profile['proxy-groups'] as { name: string; proxies?: string[] }[]
     const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
     assert.equal(cursorGroup?.proxies?.includes('Sparkle-自动-新加坡'), false)
-    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY, 'KR-VPS-HY2'])
+    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY, 'KR-VPS-HY2', '自动选择'])
     assert.deepEqual(groups.find((group) => group.name === '🚀 节点选择')?.proxies, [
       'SG-01',
       'TW-01',

@@ -32,6 +32,14 @@ export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 
 export const GENERAL_PROXY_GROUP_NAME = '🚀 节点选择' as const
 
+/** Current Sparkle name after BUG-2026-08-29-002 rewrite of subscription ♻️ / 节点选择. */
+export const GENERAL_PROXY_GROUP_ALIAS_AUTO_SELECT = '自动选择' as const
+
+export const GENERAL_PROXY_GROUP_NAMES = [
+  GENERAL_PROXY_GROUP_NAME,
+  GENERAL_PROXY_GROUP_ALIAS_AUTO_SELECT,
+] as const
+
 /** Built-in Mihomo leaf — lets operators bypass VPS for Cursor traffic (L1 baseline / company network). */
 export const CURSOR_DEDICATED_DIRECT_PROXY = 'DIRECT' as const
 
@@ -127,10 +135,15 @@ export function resolveCursorStableSelectorGroup(
 export function resolveGeneralProxySelectGroup(
   groups: ControllerMixedGroup[]
 ): ControllerMixedGroup | undefined {
-  return groups.find(
-    (group) =>
-      group.name === GENERAL_PROXY_GROUP_NAME && isCursorSelectorGroupType(group.type)
-  )
+  for (const name of GENERAL_PROXY_GROUP_NAMES) {
+    const match = groups.find(
+      (group) => group.name === name && isCursorSelectorGroupType(group.type),
+    )
+    if (match) {
+      return match
+    }
+  }
+  return undefined
 }
 
 export function resolveGroupByName(

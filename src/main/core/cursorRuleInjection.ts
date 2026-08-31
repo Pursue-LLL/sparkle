@@ -12,13 +12,13 @@ import {
   resolveGeneralProxySelectGroup
 } from './cursorProxyGroup'
 
-/** Default dedicated bundles — empty; opt-in via app config (see CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES). */
+/** Default dedicated bundles — all local Cursor installs → 🎯 Cursor 专用. */
 export const DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES = CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES
 
-/** Cursor.app + Cursor-2 route through 🚀 节点选择. */
+/** Optional path-scoped 🚀 节点选择 rules — empty when all installs use Cursor 专用. */
 export const DEFAULT_CURSOR_NODE_SELECT_APP_PATH_PREFIXES = CURSOR_NODE_SELECT_APP_PATH_PREFIXES
 
-/** Non-dedicated Cursor bundles get path-scoped DIRECT before subscription cursor rules. */
+/** Optional path-scoped DIRECT fallback — empty when Marathon Cursor also uses Cursor 专用. */
 export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES =
   CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES
 
@@ -241,9 +241,8 @@ function injectPathScopedRules(
 
 /**
  * Prepend path-scoped Cursor domain rules:
- * - dedicated bundles (config opt-in) → 🎯 Cursor 专用
- * - Cursor.app + Cursor-2 → 🚀 节点选择
- * - Cursor-3.1.15 → DIRECT
+ * - dedicated bundles (default: all local Cursor installs) → 🎯 Cursor 专用
+ * - optional node-select / DIRECT fallback prefixes when configured
  */
 export function injectCursorDomainRules(
   profile: MihomoConfig,

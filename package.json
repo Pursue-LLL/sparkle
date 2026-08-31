@@ -1,6 +1,6 @@
 {
   "name": "sparkle",
-  "version": "1.30.42",
+  "version": "1.30.43",
   "description": "Sparkle",
   "main": "./out/main/index.js",
   "author": {
