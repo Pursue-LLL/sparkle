@@ -431,6 +431,31 @@ async function executeStallEscalationLadderIfDue(
   }
 
   if (plan.action === 'parent_udp_refresh') {
+    const circuitGate = await (
+      await import('./recoveryCircuitBreaker')
+    ).assertRecoveryCircuitAllowsMutation({ nowMs })
+    if (!circuitGate.allowed) {
+      const { formatRecoveryCircuitBreakerLogLine } = await import('./recoveryCircuitBreakerCore')
+      await logRecovery(
+        formatRecoveryCircuitBreakerLogLine({
+          outcome: 'blocked',
+          reason: circuitGate.reason,
+        }),
+      )
+      await logRecovery(
+        formatStallEscalationLadderLogLine({
+          outcome: 'skipped',
+          action: plan.action,
+          reason: `${plan.reason}:${circuitGate.reason}`,
+          connectionId,
+          host: observation.host,
+          stallMs: observation.stallMs,
+          upload: bytes.upload,
+          download: bytes.download,
+        }),
+      )
+      return plan.action
+    }
     const rotation = await maybeRunHy2ParentRotationAfterPrune(nowMs, true)
     if (rotation.outcome === 'executed') {
       markStallEscalationExecuted({ connectionId, action: plan.action, nowMs })

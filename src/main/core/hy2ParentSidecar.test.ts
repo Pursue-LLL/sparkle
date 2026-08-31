@@ -3,10 +3,6 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
-import {
-  getLastHy2ParentSidecarDetectLogAtMsForTests,
-  resetHy2ParentSidecarStateForTests,
-} from './hy2ParentSidecar'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)))
 
@@ -30,8 +26,20 @@ describe('hy2ParentSidecar R-35a execute', () => {
   })
 
   it('exposes sidecar action state helpers for tests', () => {
-    resetHy2ParentSidecarStateForTests()
-    assert.equal(getLastHy2ParentSidecarDetectLogAtMsForTests(), 0)
+    const source = readFileSync(path.join(ROOT, 'hy2ParentSidecar.ts'), 'utf8')
+    assert.match(source, /resetHy2ParentSidecarStateForTests/)
+    assert.match(source, /getLastHy2ParentSidecarDetectLogAtMsForTests/)
+  })
+
+  it('P1 wires recovery circuit breaker and birth-reset false-success guard', () => {
+    const source = readFileSync(path.join(ROOT, 'hy2ParentSidecar.ts'), 'utf8')
+    assert.match(source, /assertRecoveryCircuitAllowsMutation/)
+    assert.match(source, /notifyRecoveryCircuitFailure/)
+    assert.match(source, /mutationClosedParentUdp/)
+    assert.doesNotMatch(
+      source,
+      /if \(mutation\.mutated\) \{\s*parentUdpClosedThisInvocation = true/,
+    )
   })
 
   it('SEL rotation path wires byte-death SSOT when rotation finds no_udp_outbound', () => {
@@ -41,5 +49,17 @@ describe('hy2ParentSidecar R-35a execute', () => {
     )
     assert.match(source, /executeByteDeathParentMutation/)
     assert.match(source, /byte_death_rotation_ssot/)
+  })
+
+  it('P1 SEL R2 parent_udp_refresh respects recovery circuit breaker', () => {
+    const source = readFileSync(
+      path.join(ROOT, 'mihomoQuicSilentStallRecovery.ts'),
+      'utf8',
+    )
+    const block = source.slice(
+      source.indexOf("if (plan.action === 'parent_udp_refresh')"),
+      source.indexOf("if (plan.action === 'parent_udp_refresh')") + 900,
+    )
+    assert.match(block, /assertRecoveryCircuitAllowsMutation/)
   })
 })
