@@ -2,7 +2,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcMainHandlers } from './utils/ipc'
 import { app, shell, BrowserWindow, Menu } from 'electron'
 import { getAppConfig } from './config'
-import { quitWithoutCore, startCore, stopCore } from './core/manager'
+import { quitWithoutCore, stopCore } from './core/manager'
 import { disableSysProxySync, triggerSysProxy } from './sys/sysproxy'
 import icon from '../../resources/icon.png?asset'
 import { createTray } from './resolve/tray'
@@ -10,7 +10,6 @@ import { createApplicationMenu } from './resolve/menu'
 import { init } from './utils/init'
 import { join } from 'path'
 import { initShortcut } from './resolve/shortcut'
-import { bootstrapCursorNetworkDefaults } from './core/cursorNetworkOptimize'
 import { runPostCoreBootstrap } from './core/postCoreBootstrap'
 import { startMonitor } from './resolve/trafficMonitor'
 import { showFloatingWindow } from './resolve/floatingWindow'
@@ -245,8 +244,8 @@ if (!gotTheLock) {
         if (is.dev) {
           await initialWindowDisplayPromise
         }
-        await bootstrapCursorNetworkDefaults()
-        const [startPromise] = await startCore()
+        const { runCoreReadinessPipeline } = await import('./core/coreReadinessGate')
+        const { startPromise } = await runCoreReadinessPipeline('gui')
         void runPostCoreBootstrap(startPromise).catch(async (error) => {
           await appendAppLog(
             `[PostCoreBootstrap]: failed: ${error instanceof Error ? error.message : String(error)}\n`

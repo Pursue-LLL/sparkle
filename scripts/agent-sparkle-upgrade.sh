@@ -38,6 +38,10 @@ run_post_install_gates() {
   local installed_ver gate_result preflight_ok=true
   installed_ver="$(defaults read /Applications/Sparkle.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo unknown)"
   [[ "$installed_ver" == "$EXPECTED_VER" ]] || fail "installed version=$installed_ver expected=$EXPECTED_VER"
+
+  log "Post-install data-plane readiness gate (Core Readiness Contract Phase D)..."
+  "$TSX" "$ROOT/scripts/sparkle-data-plane-readiness.mts" || fail "data-plane readiness gate failed — mihomo or :7890 not live"
+
   local macos_major
   macos_major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
   if [[ "${macos_major:-0}" -ge 26 ]]; then
