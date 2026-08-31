@@ -12,9 +12,11 @@ import {
 } from './recoveryCircuitBreakerCore'
 
 let state: RecoveryCircuitBreakerState = createInitialRecoveryCircuitBreakerState()
+let coreRestartEscalationOpenUntilMs = 0
 
 export function resetRecoveryCircuitBreakerForTests(): void {
   state = createInitialRecoveryCircuitBreakerState()
+  coreRestartEscalationOpenUntilMs = 0
 }
 
 export function getRecoveryCircuitBreakerStateForTests(): RecoveryCircuitBreakerState {
@@ -27,10 +29,48 @@ export async function assertRecoveryCircuitAllowsMutation(input: {
   if (!isRecoveryCircuitOpen({ nowMs: input.nowMs, state })) {
     return { allowed: true }
   }
+  void maybeEscalateCircuitOpenCoreRestart(input.nowMs)
   return {
     allowed: false,
     reason: `recovery_circuit_breaker_open until_ms=${state.openUntilMs} last=${state.lastFailureReason}`,
   }
+}
+
+async function maybeEscalateCircuitOpenCoreRestart(nowMs: number): Promise<void> {
+  if (coreRestartEscalationOpenUntilMs === state.openUntilMs) {
+    return
+  }
+  coreRestartEscalationOpenUntilMs = state.openUntilMs
+  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+  const guard = await evaluateMarathonCoreColdRestart('restartCore', true)
+  if (guard.blocked) {
+    const { appendAppLog } = await import('../utils/log')
+    await appendAppLog(
+      formatRecoveryCircuitBreakerLogLine({
+        outcome: 'blocked',
+        reason: `core_restart_deferred cursor_conn=${guard.snapshot.cursorConnectionCount} ${guard.snapshot.quiesceActive ? 'quiesce=1' : 'quiesce=0'}`,
+      }),
+    )
+    return
+  }
+  const { appendAppLog } = await import('../utils/log')
+  await appendAppLog(
+    formatRecoveryCircuitBreakerLogLine({
+      outcome: 'open',
+      reason: 'circuit_open_escalate_restartCore',
+    }),
+  )
+  const { restartCore } = await import('./manager')
+  await restartCore(true)
+  state = recordRecoverySuccess(state)
+  coreRestartEscalationOpenUntilMs = 0
+  await appendAppLog(
+    formatRecoveryCircuitBreakerLogLine({
+      outcome: 'reset',
+      reason: 'core_restart_after_circuit_open',
+      consecutiveFailures: 0,
+    }),
+  )
 }
 
 export async function notifyRecoveryCircuitSuccess(): Promise<void> {

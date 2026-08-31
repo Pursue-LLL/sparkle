@@ -189,8 +189,15 @@ async function runStallVitalityDial(
 }
 
 async function closeStalledConnection(
-  connectionId: string
-): Promise<{ ok: boolean; err?: string }> {
+  connectionId: string,
+  nowMs: number = Date.now(),
+): Promise<{ ok: boolean; err?: string; skipped?: boolean }> {
+  const circuitGate = await (
+    await import('./recoveryCircuitBreaker')
+  ).assertRecoveryCircuitAllowsMutation({ nowMs })
+  if (!circuitGate.allowed) {
+    return { ok: false, err: circuitGate.reason, skipped: true }
+  }
   try {
     await mihomoCloseConnection(connectionId)
     return { ok: true }
@@ -540,7 +547,7 @@ async function maybeRunHy2ParentRotationAfterPrune(
     }
     return { outcome: 'skipped', reason: plan.reason }
   }
-  const closed = await closeStalledConnection(plan.udpConnectionId)
+  const closed = await closeStalledConnection(plan.udpConnectionId, nowMs)
   lastHy2ParentRotationAtMs = nowMs
   if (closed.ok) {
     const activeLeaf = latestLongevitySnapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
@@ -781,7 +788,7 @@ export async function executeMihomoQuicStallRecoveryIfDue(
     return 'vitality_dial'
   }
 
-  const closed = await closeStalledConnection(closeConnectionId)
+  const closed = await closeStalledConnection(closeConnectionId, nowMs)
   markRecovery(closeConnectionId, nowMs)
   if (observation.connectionId && observation.connectionId !== closeConnectionId) {
     markRecovery(observation.connectionId, nowMs)

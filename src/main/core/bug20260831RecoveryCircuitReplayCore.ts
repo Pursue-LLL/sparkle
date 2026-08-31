@@ -115,6 +115,37 @@ export function replayBug20260831CircuitOpenNotification(): Bug20260831ReplayVer
   }
 }
 
+/** frozen prune / close_frozen must respect circuit breaker (no bypass). */
+export function replayBug20260831FrozenPruneRespectsCircuit(): Bug20260831ReplayVerdict {
+  const source = readFileSync(join(ROOT, 'mihomoQuicSilentStallRecovery.ts'), 'utf8')
+  const blockIndex = source.indexOf('async function closeStalledConnection')
+  const section = blockIndex >= 0 ? source.slice(blockIndex, blockIndex + 500) : ''
+  const ok = blockIndex >= 0 && section.includes('assertRecoveryCircuitAllowsMutation')
+  return {
+    fixtureId: '0831_frozen_prune_respects_circuit',
+    ok,
+    detail: ok
+      ? 'closeStalledConnection checks circuit before mihomoCloseConnection'
+      : 'frozen prune bypasses recovery circuit breaker',
+  }
+}
+
+/** cursorTransportHealth L1/L2 must respect circuit breaker. */
+export function replayBug20260831CursorTransportHealthRespectsCircuit(): Bug20260831ReplayVerdict {
+  const source = readFileSync(join(ROOT, 'cursorTransportHealth.ts'), 'utf8')
+  const ok =
+    source.includes('executeRecoveryL1') &&
+    source.includes('executeRecoveryL2') &&
+    source.includes('assertRecoveryCircuitAllowsMutation')
+  return {
+    fixtureId: '0831_cursor_transport_health_respects_circuit',
+    ok,
+    detail: ok
+      ? 'L1/L2 check circuit before mihomo close'
+      : 'cursorTransportHealth bypasses recovery circuit breaker',
+  }
+}
+
 export function runBug20260831RecoveryCircuitReplayGate(): Bug20260831RecoveryCircuitReplayResult {
   const verdicts = [
     replayBug20260831SidecarFailLoopOpensCircuit(),
@@ -122,6 +153,8 @@ export function runBug20260831RecoveryCircuitReplayGate(): Bug20260831RecoveryCi
     replayBug20260831SelR2RespectsCircuit(),
     replayBug20260831ProbeOnlyNoFalseReset(),
     replayBug20260831CircuitOpenNotification(),
+    replayBug20260831FrozenPruneRespectsCircuit(),
+    replayBug20260831CursorTransportHealthRespectsCircuit(),
   ]
   return {
     ok: verdicts.every((verdict) => verdict.ok),

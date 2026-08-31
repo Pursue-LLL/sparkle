@@ -327,6 +327,16 @@ export function resolveTransportProbeAttribution(
 }
 
 async function executeRecoveryL1(rows: Awaited<ReturnType<typeof listCursorConnectionRows>>): Promise<number> {
+  const nowMs = Date.now()
+  const circuitGate = await (
+    await import('./recoveryCircuitBreaker')
+  ).assertRecoveryCircuitAllowsMutation({ nowMs })
+  if (!circuitGate.allowed) {
+    await appendAppLog(
+      `[CursorTransportHealth]: L1 blocked — ${circuitGate.reason}\n`,
+    )
+    return 0
+  }
   const ids = selectCriticalHostConnectionsToClose(rows)
   let closed = 0
   for (const id of ids) {
@@ -347,6 +357,16 @@ async function executeRecoveryL1(rows: Awaited<ReturnType<typeof listCursorConne
 }
 
 async function executeRecoveryL2(): Promise<void> {
+  const nowMs = Date.now()
+  const circuitGate = await (
+    await import('./recoveryCircuitBreaker')
+  ).assertRecoveryCircuitAllowsMutation({ nowMs })
+  if (!circuitGate.allowed) {
+    await appendAppLog(
+      `[CursorTransportHealth]: L2 blocked — ${circuitGate.reason}\n`,
+    )
+    return
+  }
   await mihomoCloseConnections()
   try {
     await mihomoFlushFakeIpCache()
