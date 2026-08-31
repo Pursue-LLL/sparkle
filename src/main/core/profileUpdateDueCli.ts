@@ -15,6 +15,14 @@ function delay(ms: number): Promise<void> {
   })
 }
 
+async function evaluateProfileUpdateBootstrapGuard(): Promise<{
+  blocked: boolean
+  snapshot: MarathonCoreRestartGuardSnapshot
+}> {
+  const { evaluateBootstrapCoreStartGuard } = await import('./marathonCoreRestartGuard')
+  return evaluateBootstrapCoreStartGuard('profile-update-cli')
+}
+
 async function evaluateProfileUpdateDueGuard(): Promise<{
   blocked: boolean
   snapshot: MarathonCoreRestartGuardSnapshot
@@ -49,7 +57,7 @@ export async function runGuardedDueProfileUpdatesSecondInstance(): Promise<numbe
 export async function runProfileUpdateDueCli(): Promise<number> {
   await appendAppLog('[ProfileUpdaterCli]: bootstrap start\n')
 
-  const guard = await evaluateProfileUpdateDueGuard()
+  const guard = await evaluateProfileUpdateBootstrapGuard()
   if (guard.blocked) {
     await appendAppLog(formatProfileUpdateDeferLog('deferred', guard))
     const { markDeferredProfileUpdateDue } = await import('./deferredProfileUpdateDue')
