@@ -82,6 +82,9 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `marathonObservabilityDialBudgetCore.ts` / `marathonObservabilityDialBudgetQueueCore.ts` / `marathonObservabilityDialBudget.ts` | **P12** conn≥12/quiesce observability dial 单槽串行（QueueCore 无 Electron 依赖） |
 | `providerDelayHistoryFromLedgerCore.ts`                                 | **P11** mihomo history 空时从 api2-probe-ledger 回填 tooltip 柱图（transport_pair/session_nudge）                                                                  |
 | `managedVpsDelayTest.ts` / `vpsDelayTestPolicyCore.ts`                    | VPS UI 测速 defer 策略；**P11** `explicitUserRequest` bypass conn defer + 15s cooldown                                                                              |
+| `recoveryCircuitBreakerCore.ts` / `recoveryCircuitBreaker.ts` | **P1/P1.5** parent UDP recovery circuit breaker（3 败熔断 · 旁路封死 · deferred restartCore 重试） |
+| `aiTrafficIsolationCore.ts` | **W2** AI/Codex 组剔除 Marathon Cursor HY2 leaf（防共死） |
+| `codexDirectRules.ts` | **W2** Codex/OpenAI/ChatGPT → DIRECT（PROCESS-NAME + DOMAIN；剥 🤖 AI 冲突规则） |
 | `cursorRuleInjection.ts`                                                | 全量 Cursor PROCESS-NAME + DOMAIN → 🎯 Cursor 专用；可选 path-scoped AND 规则                                                                                         |
 | `cursorNetworkOptimize.ts`                                              | Cursor DNS/TUN/keepalive 优化                                                                                                                                         |
 | `fakeIpRoutingIntegrity.ts`                                             | fake-ip 路由一致性：剥离 198.18 CIDR 陷阱、Tier0/Tier1 filter、sniffer 完整性                                                                                         |

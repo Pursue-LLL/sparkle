@@ -32,6 +32,14 @@ import {
   rewriteMissingRuleProxyGroupTargets
 } from './profileGroupNormalize'
 import { ensureCustomProxyGroups } from './customProxyGroups'
+import {
+  excludeMarathonHy2FromAiProxyGroups,
+  formatAiTrafficIsolationLogLine,
+} from './aiTrafficIsolationCore'
+import {
+  ensureCodexDirectRules,
+  formatCodexDirectRulesLogLine,
+} from './codexDirectRules'
 import { injectHongKongTrafficRules } from './hongKongTrafficRuleInjection'
 import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
 import { resolveEffectiveRegionPriority } from './regionPriority'
@@ -192,6 +200,15 @@ async function generateProfileImpl(): Promise<void> {
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
   const providerProfileId = current && current !== 'default' ? current : undefined
   const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
+  const aiGroups = (profile['proxy-groups'] as { name: string; proxies?: string[] }[] | undefined) ?? []
+  const aiIsolation = excludeMarathonHy2FromAiProxyGroups(aiGroups)
+  if (aiIsolation.groupsMutated > 0) {
+    await appendAppLog(formatAiTrafficIsolationLogLine(aiIsolation))
+  }
+  const codexDirect = ensureCodexDirectRules(profile)
+  if (codexDirect.added > 0 || codexDirect.stripped > 0) {
+    await appendAppLog(formatCodexDirectRulesLogLine(codexDirect))
+  }
   injectHongKongTrafficRules(profile)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
     cursorDedicatedGroupRenameNotified = true
