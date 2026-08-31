@@ -121,7 +121,6 @@ for (const line of lines) {
     if (
       line.includes('outcome=executed') &&
       (line.includes('action=close_udp_outbound') ||
-        line.includes('action=reset_parent_chain_birth') ||
         (line.includes('action=close_leaf_connections') &&
           /closed_count=([1-9]\d*)/.test(line)))
     ) {
@@ -186,11 +185,55 @@ for (const line of lines) {
       failures.push(`${ts}: byte_death_probe_only_without_udp_close succeeded without prior mutation`)
     }
   }
+
+  if (
+    line.includes('[Hy2ParentByteDeathRecovery]:') &&
+    line.includes('action=reset_parent_chain_birth') &&
+    line.includes('outcome=executed')
+  ) {
+    failures.push(
+      `${ts}: birth-reset alone is not R2 recovery — requires close_udp_outbound or leaf close with closed_count>0`,
+    )
+  }
+
+  if (
+    line.includes('[Hy2ParentSidecar]') &&
+    line.includes('action=sidecar_dial') &&
+    line.includes('outcome=executed') &&
+    line.includes('byte_death_probe_only_without_udp_close')
+  ) {
+    failures.push(`${ts}: sidecar_dial executed after probe-only birth reset (P1 false-success regression)`)
+  }
+}
+
+const sidecarFailInWindow = lines.filter((line) => {
+  const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/)
+  if (!tsMatch) return false
+  return (
+    Date.parse(tsMatch[1]) >= cutoffMs &&
+    line.includes('[Hy2ParentSidecar]') &&
+    line.includes('action=sidecar_dial') &&
+    line.includes('outcome=failed')
+  )
+}).length
+const circuitOpenInWindow = lines.filter((line) => {
+  const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/)
+  if (!tsMatch) return false
+  return (
+    Date.parse(tsMatch[1]) >= cutoffMs &&
+    line.includes('[RecoveryCircuitBreaker]:') &&
+    line.includes('outcome=open')
+  )
+}).length
+if (sidecarFailInWindow >= 3 && circuitOpenInWindow === 0) {
+  failures.push(
+    `repeated sidecar_dial failures (${sidecarFailInWindow}) without RecoveryCircuitBreaker open in last ${watchMinutes}m`,
+  )
 }
 
 closeByteDeathRecoveryWindow('window_end')
 
-if (maxCursorConnSeen >= 150 && maxStallSeen >= 90_000 && !sawR2Executed) {
+if (maxCursorConnSeen >= 20 && maxStallSeen >= 90_000 && !sawR2Executed) {
   failures.push(
     `high-conn byte-death (cursor_conn=${maxCursorConnSeen} max_stall=${maxStallSeen}) without UDP close recovery`,
   )

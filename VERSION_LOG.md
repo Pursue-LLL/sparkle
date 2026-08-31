@@ -5,7 +5,73 @@
 
 ---
 
-## 2026-08-29 23:21 CST · **基线 @1.30.40 + git 未装包补丁** · 订阅自动选择 + macOS 26 GUI · **RUNTIME OK · 待 install 固化**
+## 2026-08-29 23:31 CST · **生产基线 @1.30.40 INSTALLED** · Marathon Data-Plane Guard R3 · Cursor Reconnecting 闭合 · **P0–P3 PASS**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.40** · CDHash 装包于 **23:28 CST** · git 含 R3 Layer-0（与 asar 同步） |
+| **平台** | macOS **26.5.2** · service core · headless + `macos26ForceGui: true` |
+| **订阅** | `77caf1sub001` · providers `77caf1sub001` + `77caf1sub001-vps` |
+| **会话** | composer `3d9338e6-094a-45ba-a652-53077afbc757` |
+| **状态** | **当前最佳可用基线** — Agent 迭代以此为准；禁止回退到无 Layer-0 的 asar |
+
+### 核心能力（2026-08-29 23:31 验证）
+
+| 能力 | 状态 | 证据 |
+| --- | --- | --- |
+| **Marathon 数据面零突变** | ✅ P0–P3 | `verify-marathon-data-plane-soak-gate` PASS · defer_events=10 · 零 `mihomo core started` since T0 |
+| ProfileUpdaterCli / second-instance | ✅ defer | `deferred data_plane_mutation_blocked cursor_conn=9–24` |
+| reload-mihomo-via-service.mjs | ✅ defer | `reload_deferred { blockColdRestart: true }` |
+| startCore Layer-0 | ✅ | `core_cold_restart_blocked caller=profile-update-cli/startCore` |
+| CI 防回归 | ✅ | `verify-marathon-mutation-callers` in upgrade Stage-A |
+| Deferred profile queue | ✅ | `deferred_profile_update_queued` → conn→0 补跑 |
+| 代理 :7890 | ✅ | api2.cursor.sh / generate_204 |
+| 单测 | ✅ 25+ | guard + Layer-0 + deferred + soak script |
+
+### R3 架构改动（**已装 /Applications**）
+
+| 层 | 模块 | 作用 |
+| --- | --- | --- |
+| **Layer-0** | `startCoreMutationGuardCore.ts` · `manager.startCore()` | 任何 caller 无法旁路 cold restart |
+| **Caller SSOT** | `profileUpdateDueCli.ts` · `index.ts` second-instance | 共用 `runGuardedDueProfileUpdates*` |
+| **Defer 统一** | `appConfigMihomoReloadGuardCore.ts` | conn>0 即 block（禁止 conn≥12 分裂） |
+| **P2 Queue** | `deferredProfileUpdateDue.ts` | marathon 期 defer · idle 补跑 |
+| **P1 CI** | `verify-marathon-mutation-callers.mts` | startCore/restartCore allowlist |
+| **P3 Soak** | `verify-marathon-data-plane-soak-gate.mts` | post-install + agent upgrade gate |
+| **脚本** | `reload-mihomo-via-service.mjs` | 读 `~/.sparkle/marathon-core-restart-guard.json` |
+
+### 同会话其他 git 改动（**部分未装 asar · 待下次 upgrade**）
+
+| BUG | 状态 | 说明 |
+| --- | --- | --- |
+| BUG-2026-08-29-002 | CODE-DONE git | ♻️→Sparkle 自动选择 — **需 regen 后 patch 或 reinstall** |
+| BUG-2026-08-29-003 | MITIGATED | macos26ForceGui 偏好 |
+| BUG-2026-08-29-004 | CODE-DONE git | service provider parity COMPATIBLE placeholder |
+| BUG-2026-08-29-005 | CODE-DONE git | Cursor HY2 manual optimal 切换 |
+
+### 已知遗漏（非 Reconnecting 阻塞）
+
+| 优先级 | 项 |
+| --- | --- |
+| P1 | 002/004/005 git 补丁需 `agent:upgrade:mac` 与 R3 同包装入 asar |
+| P2 | byte-death G3 attemptRate soak（独立 BUG-2026-08-06 族） |
+
+### 踩坑 SSOT（Agent 必读）
+
+1. **禁止 caller 层单独 guard** — mutation 必须经 `startCore/restartCore/stopCore` 或 mihomoApi provider guard。
+2. **LaunchAgent 5min → second-instance** — 必须走 guarded path（22:48 事故主因）。
+3. **装包** `pnpm run agent:upgrade:mac`；禁止 ditto；marathon 时 `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1`。
+4. **验证三连**：`verify-marathon-mutation-callers` + soak gate + app-log 无 `mihomo core started` @ cursor_conn>0。
+5. **Reconnecting 归因**：Sparkle 数据面突变 → ECONNRESET → `[nal_agent_retries]` UI；**非 Cursor 补丁 bug**。
+
+### 变更计数
+
+- **BUG-2026-08-29-001**：R0→R3（4 轮）· 同族 data-plane mutation 第 4+ 次 · **R3 架构闭合**
+- **升级入口**：`scripts/agent-sparkle-upgrade.sh`（含 P3 soak gate）
+
+---
+
+## 2026-08-29 23:21 CST · **基线 @1.30.40 + git 未装包补丁** · 订阅自动选择 + macOS 26 GUI · **已被 23:31 基线取代**
 
 | 字段 | 内容 |
 | --- | --- |
@@ -42,8 +108,7 @@
 
 | 优先级 | 项 | 说明 |
 | --- | --- | --- |
-| **P0** | **`pnpm run agent:upgrade:mac`** | 将上述 git 改动打入 `/Applications`；marathon 忙时可 `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` |
-| **P0** | **Layer-0 startCore 硬门禁** | BUG-2026-08-29-001 仍未闭合；见 BUGFIX_LOG |
+| **P0** | **`pnpm run agent:upgrade:mac`** | ~~Layer-0~~ **R3 已装**；002/004/005 git 补丁仍待同包装入 |
 | **P1** | **regen 不带 ♻️** | 装包前每次 headless/GUI bootstrap 可能还原 ♻️ → 需 `patch-work-config.ts` 或等 install |
 | **P2** | **Marathon upgrade 等待** | `agent:upgrade:mac` 构建后可能等 safe window ~10min — Agent **禁止同步死等** |
 
@@ -58,8 +123,8 @@
 ### 变更历史计数（自 2026-08 马拉松期）
 
 - **semver 线**：1.30.40（当前安装）· git 同版本未 bump
-- **本夜缺陷条目**：BUG-2026-08-29-002 ~ 005 + BUG-001 Layer-0 pending · 见 BUGFIX_LOG
-- **同族复发**：data-plane mutation @ active Cursor（BUG-001 第 4+ 次）— 根治仍待 Layer-0
+- **本夜缺陷条目**：BUG-2026-08-29-001 R3 闭合 + 002~005 · 见 BUGFIX_LOG
+- **同族复发**：data-plane mutation @ active Cursor（BUG-001 第 4+ 次）— **R3 Layer-0 已闭合**（见 23:31 基线）
 
 ---
 

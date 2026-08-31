@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-29 23:31 最新**：**BUG-2026-08-29-001 R3 INSTALLED @1.30.40** · Layer-0 + CI + deferred + **P3 soak PASS** · Cursor Reconnecting 架构闭合 · **VERSION_LOG 基线 23:31**
+> **2026-08-31 17:30 最新**：**BUG-2026-08-31-001 P1 CODE-DONE @1.30.41 git** · Recovery Circuit Breaker — CarrierQuiesce/sidecar 自激坏环熔断 · Codex SSE `decoding response body` 止损
+> **2026-08-29 23:31 上一版**：**BUG-2026-08-29-001 R3 INSTALLED @1.30.40** · Layer-0 + CI + deferred + **P3 soak PASS** · Cursor Reconnecting 架构闭合 · **VERSION_LOG 基线 23:31**
 > **2026-08-29 23:28 上一版**：**BUG-2026-08-29-001 R3 INSTALLED** · Layer-0 装包 · soak 待验
 > **2026-08-29 23:21 上一版**：**BUG-2026-08-29-004 R1 CODE-DONE @1.30.40 git** · 换订阅 service 模式 disk/runtime provider 不一致 → COMPATIBLE placeholder · `serviceCoreProviderParityCore`
 > **2026-08-29 23:21 最新**：**BUG-2026-08-29-005 R1 CODE-DONE @1.30.40 git** · Cursor 专用 manual Reality→HY2 被 `blocked_suboptimal_lateral` 拦截
@@ -20,6 +21,27 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-31-001 · CarrierQuiesce/sidecar 自激坏环 · Codex SSE 断流 · **P1 CODE-DONE @1.30.41**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **P1 CODE-DONE @1.30.41 git**（2026-08-31）· 10/10 单测 PASS · **待 `agent:upgrade:mac` install** |
+| **症状** | Codex `stream disconnected … error decoding response body` · 16:30 `CarrierQuiesce` 每 5s 杀 parent UDP + `sidecar_dial` 失败循环 · 16:38 全站 timeout |
+| **PRIMARY** | 无 Recovery Circuit Breaker — 恢复失败无限重试自伤 · SEL R2 `parent_udp_refresh` 旁路熔断器 |
+| **NOT** | 新加坡节点 dial 失败（16:44 后 chatgpt dial 0 error）· Codex 软件 bug |
+
+**修复（P1 @1.30.41）：**
+
+- `recoveryCircuitBreakerCore.ts` — 3 次连续失败 → open 10min
+- `recoveryCircuitBreaker.ts` — runtime gate + 用户 danger 通知
+- `hy2ParentSidecar.ts` — 入口 gate + failure/success 记账 + probe-only 假成功防护
+- `mihomoQuicSilentStallRecovery.ts` — SEL R2 尊重熔断器
+- `bug20260831RecoveryCircuitReplayCore.ts` — 8/31 16:30 replay gate
+
+**验证：** `recoveryCircuitBreakerCore` + `bug20260831` + `hy2ParentSidecar` **10/10 PASS**
 
 ---
 

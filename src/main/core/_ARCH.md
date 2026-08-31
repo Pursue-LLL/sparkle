@@ -46,7 +46,9 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | VPS leaf **bootstrap dial-timeout=45s**（provider 生成 SSOT）· 空闲 backfill · 赛中零 data-plane mutation · P20b IDLE gate 保留供历史测试 |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
 | `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默：conn≥12 暂停 proxyHealthMonitor + observability dial；**R-24** quiesce ON/OFF 热 patch `health-check.enable` + mihomo reload |
-| `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：`cursor_conn>0` / quiesce / recent lifecycle 时 block `stopCore`/`restartCore`；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate；**CLI/headless/reload/second-instance 共用 SSOT**（BUG-2026-08-29-001 R2）· **Layer-0 `startCore` 硬门禁 PENDING** |
+| `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：`cursor_conn>0` / quiesce / recent lifecycle 时 block `stopCore`/`restartCore`/`startCore`（Layer-0 BUG-2026-08-29-001 R3）；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate；**CLI/headless/reload/second-instance 共用 SSOT** |
+| `startCoreMutationGuardCore.ts` | **Layer-0** startCore mutation intent SSOT（elevated child / protected footprint / service restart） |
+| `deferredProfileUpdateDueCore.ts` / `deferredProfileUpdateDue.ts` | conn→0 后补跑被 defer 的 profile subscription refresh |
 | `appConfigMihomoReloadGuardCore.ts` | **P10-2** hot reload defer **delegate** `shouldBlockMarathonCoreColdRestart`（conn>0 即 defer，不再单独 >=12 阈值） |
 | `cursorHy2MarathonKeepaliveCore.ts` / `cursorHy2MarathonKeepalive.ts`   | **MTCP/P13/P19** Rescue vs Warmth facade · delegates to `marathonRescueDialExecutor` / `marathonWarmthDialExecutor` · **无 mtdo re-entrancy guard** |
 | `marathonSessionDialExecutorCore.ts` / `marathonRescueDialExecutor.ts` / `marathonWarmthDialExecutor.ts` | **P19** shared HY2 session dial + in-flight guard · rescue bypass P12 budget · warmth uses P12 budget |

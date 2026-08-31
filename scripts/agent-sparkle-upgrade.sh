@@ -63,6 +63,15 @@ run_post_install_gates() {
   fi
   log "BYTE_DEATH_RECOVERY_GATE: $gate_result"
 
+  log "Post-install marathon data-plane soak gate (BUG-2026-08-29-001 P3)..."
+  "/Applications/Sparkle.app/Contents/MacOS/Sparkle" --sparkle-profile-update-due >/dev/null 2>&1 || true
+  sleep 1
+  local marathon_soak_result=FAIL
+  if "$TSX" "$ROOT/scripts/verify-marathon-data-plane-soak-gate.mts" --minutes=30; then
+    marathon_soak_result=PASS
+  fi
+  log "MARATHON_DATA_PLANE_SOAK_GATE: $marathon_soak_result"
+
   if [[ -f "$ROOT/scripts/preflight-sparkle-1280.sh" ]]; then
     log "Post-install preflight-sparkle-1280..."
     if ! bash "$ROOT/scripts/preflight-sparkle-1280.sh"; then
@@ -71,8 +80,8 @@ run_post_install_gates() {
     fi
   fi
 
-  log "AGENT_UPGRADE_RESULT: version=$installed_ver byte_death_gate=$gate_result preflight=$preflight_ok"
-  [[ "$gate_result" == PASS ]]
+  log "AGENT_UPGRADE_RESULT: version=$installed_ver byte_death_gate=$gate_result marathon_data_plane_soak=$marathon_soak_result preflight=$preflight_ok"
+  [[ "$gate_result" == PASS && "$marathon_soak_result" == PASS ]]
 }
 
 install_profile_scheduler() {
