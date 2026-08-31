@@ -16,6 +16,7 @@ const START_CORE_ALLOWLIST = new Set([
 
 const RESTART_CORE_ALLOWLIST = new Set([
   'src/main/core/manager.ts',
+  'src/main/core/recoveryCircuitBreaker.ts',
   'src/main/config/profile.ts',
   'src/main/core/cursorTransportHealth.ts',
   'src/main/core/mihomoApiSocketWatchdog.ts',
