@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-31 18:45 最新**：**BUG-2026-08-31-003 R1 CODE-DONE @1.30.44 git** · 漏配 Cursor-3.app → api2.cursor.sh 落入 GFW Match · 补 path-scoped 规则
+> **2026-08-31 19:05 最新**：**BUG-2026-08-31-004 HOTFIX @1.30.45** · `/(?i)-VPS-HY2$/` 非法 JS 正则导致 Sparkle 闪退 · 重装正确 bundle
+> **2026-08-31 18:45 上一版**：**BUG-2026-08-31-003 R1 CODE-DONE @1.30.44 git** · 漏配 Cursor-3.app → api2.cursor.sh 落入 GFW Match · 补 path-scoped 规则
 > **2026-08-31 18:25 上一版**：**BUG-2026-08-31-002 R1 CODE-DONE @1.30.43 git** · 三 Cursor 客户端默认走 🎯 Cursor 专用 · 组内可选 自动选择（切啥就走啥）
 > **2026-08-31 17:30 上一版**：**BUG-2026-08-31-001 P1 CODE-DONE @1.30.41 git** · Recovery Circuit Breaker — CarrierQuiesce/sidecar 自激坏环熔断 · Codex SSE `decoding response body` 止损
 > **2026-08-29 23:31 上一版**：**BUG-2026-08-29-001 R3 INSTALLED @1.30.40** · Layer-0 + CI + deferred + **P3 soak PASS** · Cursor Reconnecting 架构闭合 · **VERSION_LOG 基线 23:31**
@@ -23,6 +24,17 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-31-004 · Sparkle 启动 SyntaxError · `/(?i)-VPS-HY2$/` · **HOTFIX @1.30.45**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **HOTFIX @1.30.45** · 源码 `a1de0ef+` 已用 `/-VPS-HY2$/i` · 坏包来自 63950fc 脏构建 |
+| **症状** | `Uncaught Exception: SyntaxError: Invalid regular expression: /(?i)-VPS-HY2$/: Invalid group` · Sparkle 打不开 |
+| **PRIMARY** | mihomo `(?i)` 语法误写入 JS RegExp literal |
+| **修复** | `aiTrafficIsolationCore.ts` 使用 `/-VPS-HY2$/i` · 从 HEAD 重装 |
 
 ---
 
