@@ -9,6 +9,7 @@ const SCAN_ROOTS = ['src/main', 'scripts'] as const
 
 const START_CORE_ALLOWLIST = new Set([
   'src/main/core/manager.ts',
+  'src/main/core/coreReadinessGate.ts',
   'src/main/core/profileUpdateDueCli.ts',
   'src/main/index.ts',
   'src/main/sys/macos26HeadlessBootstrap.ts',
