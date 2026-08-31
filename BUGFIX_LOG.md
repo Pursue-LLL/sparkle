@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-31 19:30 最新**：**BUG-2026-08-31-005 CODE-DONE @1.30.47 git** · url-test 自动选择排除 AnyTLS（保留手动切换）· Codex SSE 不再被 01 节点 url-test 误选
+> **2026-08-31 19:35 最新**：**BUG-2026-08-31-006 INSTALLED @1.30.46** · W3 bootstrap 死锁 — core 未启动时 `cursor_conn=-1` 不再永久拦截 profile-update-cli / macOS26 headless
+> **2026-08-31 19:30 上一版**：**BUG-2026-08-31-005 CODE-DONE @1.30.47 git** · url-test 自动选择排除 AnyTLS（保留手动切换）· Codex SSE 不再被 01 节点 url-test 误选
 > **2026-08-31 19:05 上一版**：**BUG-2026-08-31-004 HOTFIX @1.30.45** · `/(?i)-VPS-HY2$/` 非法 JS 正则导致 Sparkle 闪退 · 重装正确 bundle
 > **2026-08-31 18:45 上一版**：**BUG-2026-08-31-003 R1 CODE-DONE @1.30.44 git** · 漏配 Cursor-3.app → api2.cursor.sh 落入 GFW Match · 补 path-scoped 规则
 > **2026-08-31 18:25 上一版**：**BUG-2026-08-31-002 R1 CODE-DONE @1.30.43 git** · 三 Cursor 客户端默认走 🎯 Cursor 专用 · 组内可选 自动选择（切啥就走啥）
@@ -25,6 +26,18 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-31-006 · bootstrap 死锁 core 起不来 · cursor_conn=-1 · **INSTALLED @1.30.46**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **INSTALLED @1.30.46** · commit `dd40c79` · `/Applications/Sparkle.app` CDHash `a4efd564…` |
+| **症状** | 装包后 mihomo 未 bootstrap · app 日志 `core_cold_restart_blocked reason=cursor_conn_observation_unavailable cursor_conn=-1` |
+| **PRIMARY** | profile-update-cli / macOS26 headless 在 startCore 前跑 marathon guard；core 未运行时 observation=-1 → 永久 defer（鸡生蛋） |
+| **修复** | `evaluateBootstrapCoreStartGuard()` — 800ms probe，core 不在线则 skip guard 直接 startCore |
+| **验收** | mihomo 0s 检测到 · `api2.cursor.sh` 经 `:7890` **HTTP 200** · asar gate stage=B OK · 单测 19/19 PASS |
 
 ---
 
