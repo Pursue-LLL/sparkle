@@ -80,4 +80,39 @@ describe('autoSelectAnyTlsExclusionCore', () => {
     assert.equal(result.groupsMutated, 0)
     assert.deepEqual(groups[0]?.proxies, ['🇸🇬 新加坡 01', '🇸🇬 新加坡 02'])
   })
+
+  it('removes url-test group when every member is anytls and prunes select refs', () => {
+    const groups = [
+      {
+        name: 'Sparkle-自动-测试区',
+        type: 'url-test',
+        proxies: ['测试 01'],
+      },
+      {
+        name: '🤖 AI',
+        type: 'select',
+        proxies: ['Sparkle-自动-测试区', '测试 02'],
+      },
+    ]
+    const result = excludeAnyTlsFromAutoSelectUrlTestGroups(groups, [
+      { name: '测试 01', type: 'anytls' },
+      { name: '测试 02', type: 'hysteria2' },
+    ])
+    assert.equal(result.groupsRemoved.length, 1)
+    assert.equal(groups.some((group) => group.name === 'Sparkle-自动-测试区'), false)
+    assert.deepEqual(groups.find((group) => group.name === '🤖 AI')?.proxies, ['测试 02'])
+  })
+
+  it('strips anytls from fallback auto-hop groups', () => {
+    const groups = [
+      {
+        name: '故障转移',
+        type: 'fallback',
+        proxies: ['🇸🇬 新加坡 01', '🇸🇬 新加坡 02'],
+      },
+    ]
+    const result = excludeAnyTlsFromAutoSelectUrlTestGroups(groups, [...CATALOG])
+    assert.equal(result.groupsMutated, 1)
+    assert.deepEqual(groups[0]?.proxies, ['🇸🇬 新加坡 02'])
+  })
 })
