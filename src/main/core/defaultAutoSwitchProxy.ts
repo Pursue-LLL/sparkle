@@ -289,7 +289,7 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
 ): AutoSelectAnyTlsExclusionResult {
   const groups = (profile['proxy-groups'] as ProxyGroupConfig[] | undefined) ?? []
   if (groups.length === 0) {
-    return { groupsMutated: 0, proxiesRemoved: 0, removedLeaves: [] }
+    return { groupsMutated: 0, proxiesRemoved: 0, removedLeaves: [], groupsRemoved: [] }
   }
 
   const regionPriority = resolveEffectiveRegionPriority(
