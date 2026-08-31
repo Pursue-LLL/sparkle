@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { AUTO_SELECT_DELAY_TEST_URL, CURSOR_DEDICATED_DIRECT_PROXY, CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { appendExcludeProxyNamesToProviderFilter } from './autoSelectAnyTlsExclusionCore'
 import {
   appendRegionalAutoGroupsToCursorDedicated,
   applyDefaultAutoSwitchSelections,
@@ -163,8 +164,15 @@ describe('defaultAutoSwitchProxy', () => {
       use?: string[]
     }[]
     const sgAuto = groups.find((group) => group.name === 'Sparkle-自动-新加坡')
-    assert.deepEqual(sgAuto?.proxies, ['🇸🇬 新加坡 02'])
-    assert.equal(sgAuto?.use, undefined)
+    assert.deepEqual(sgAuto?.use, ['test-profile'])
+    assert.equal(
+      sgAuto?.filter,
+      appendExcludeProxyNamesToProviderFilter(
+        '新加坡|(?i)\\bSG\\b|singapore',
+        ['🇸🇬 新加坡 01'],
+      ),
+    )
+    assert.equal(sgAuto?.proxies, undefined)
     const aiGroup = groups.find((group) => group.name === '🤖 AI')
     assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 01'), true)
     assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 02'), true)

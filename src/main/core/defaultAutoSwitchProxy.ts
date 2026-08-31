@@ -152,18 +152,7 @@ function buildRegionalUrlTestGroup(
   leafProxyCatalog: ProxyCatalogEntry[] | undefined,
   defaults: ReturnType<typeof buildRegionalAutoSelectUrlTestDefaults>
 ): ProxyGroupConfig | null {
-  if (leafProxyCatalog?.length && proxyCatalogHasTypes(leafProxyCatalog)) {
-    const nonAnyTlsMembers = buildNonAnyTlsRegionalMembers(region, leafProxyCatalog)
-    if (nonAnyTlsMembers.length === 0) {
-      return null
-    }
-    return {
-      name: buildRegionalAutoSelectGroupName(region),
-      ...defaults,
-      proxies: nonAnyTlsMembers,
-    }
-  }
-
+  // Provider mode first: explicit proxy names break mihomo -t on provider-only configs.
   if (profileId) {
     const filter = buildRegionProviderFilter(region)
     if (filter) {
@@ -173,6 +162,18 @@ function buildRegionalUrlTestGroup(
         use: [profileId],
         filter
       }
+    }
+  }
+
+  if (leafProxyCatalog?.length && proxyCatalogHasTypes(leafProxyCatalog)) {
+    const nonAnyTlsMembers = buildNonAnyTlsRegionalMembers(region, leafProxyCatalog)
+    if (nonAnyTlsMembers.length === 0) {
+      return null
+    }
+    return {
+      name: buildRegionalAutoSelectGroupName(region),
+      ...defaults,
+      proxies: nonAnyTlsMembers,
     }
   }
 

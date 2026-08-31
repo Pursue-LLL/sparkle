@@ -115,6 +115,26 @@ function resolveRegionFromSparkleAutoGroupName(groupName: string): string | unde
   return region.length > 0 ? region : undefined
 }
 
+/** Augment a provider filter regex so named AnyTLS leaves are excluded (keeps `use` mode valid for `-t`). */
+export function appendExcludeProxyNamesToProviderFilter(
+  baseFilter: string,
+  excludeNames: readonly string[],
+): string {
+  const escaped = excludeNames
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0)
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  if (escaped.length === 0) {
+    return baseFilter.trim()
+  }
+  const excludePattern = escaped.join('|')
+  const trimmedBase = baseFilter.trim()
+  if (!trimmedBase) {
+    return `(?!^(${excludePattern})$).+`
+  }
+  return `(?!^(${excludePattern})$)(?:${trimmedBase})`
+}
+
 function filterProxyNamesExcludingAnyTls(
   proxyNames: string[],
   anyTlsNames: Set<string>,
@@ -182,15 +202,6 @@ export function excludeAnyTlsFromAutoSelectUrlTestGroups(
     }
 
     const region = resolveRegionFromSparkleAutoGroupName(group.name)
-    const materialized =
-      region !== undefined
-        ? buildNonAnyTlsRegionalMembers(region, catalog)
-        : catalog.filter((entry) => !isAnyTlsProxyEntry(entry)).map((entry) => entry.name.trim())
-
-    if (materialized.length === 0) {
-      continue
-    }
-
     const dropped = catalog
       .filter((entry) => {
         const name = entry.name.trim()
@@ -204,14 +215,16 @@ export function excludeAnyTlsFromAutoSelectUrlTestGroups(
       })
       .map((entry) => entry.name.trim())
 
+    if (dropped.length === 0) {
+      continue
+    }
+
     for (const leaf of dropped) {
       removedLeaves.add(leaf)
     }
     proxiesRemoved += dropped.length
 
-    group.proxies = materialized
-    delete group.use
-    delete group.filter
+    group.filter = appendExcludeProxyNamesToProviderFilter(group.filter ?? '.*', dropped)
     groupsMutated += 1
   }
 

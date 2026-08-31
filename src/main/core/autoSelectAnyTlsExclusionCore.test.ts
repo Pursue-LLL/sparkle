@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  appendExcludeProxyNamesToProviderFilter,
   buildNonAnyTlsRegionalMembers,
   excludeAnyTlsFromAutoSelectUrlTestGroups,
   isAnyTlsProxyType,
@@ -60,9 +61,15 @@ describe('autoSelectAnyTlsExclusionCore', () => {
     ]
     const result = excludeAnyTlsFromAutoSelectUrlTestGroups(groups, [...CATALOG])
     assert.equal(result.groupsMutated, 1)
-    assert.deepEqual(groups[0]?.proxies, ['🇸🇬 新加坡 02'])
-    assert.equal(groups[0]?.use, undefined)
-    assert.equal(groups[0]?.filter, undefined)
+    assert.deepEqual(groups[0]?.use, ['77caf1sub001'])
+    assert.equal(
+      groups[0]?.filter,
+      appendExcludeProxyNamesToProviderFilter(
+        '新加坡|(?i)\\bSG\\b|singapore',
+        ['🇸🇬 新加坡 01'],
+      ),
+    )
+    assert.equal(groups[0]?.proxies, undefined)
   })
 
   it('noops when catalog lacks proxy types', () => {
