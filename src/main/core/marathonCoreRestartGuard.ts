@@ -72,7 +72,7 @@ export async function probeMihomoCoreLive(
 
 export type BootstrapCoreStartCaller = Extract<
   CoreLifecycleCaller,
-  'profile-update-cli' | 'macos26-headless-bootstrap' | 'stopCore'
+  'profile-update-cli' | 'macos26-headless-bootstrap' | 'stopCore' | 'startCore'
 >
 
 /** When mihomo is down, cursor_conn=-1 would block cold lifecycle forever — skip guard until core is live. */
