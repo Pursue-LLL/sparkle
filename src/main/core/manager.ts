@@ -379,7 +379,8 @@ async function getServiceStatusAfterConnectionError(): Promise<
 type ServiceCoreLaunchAction = 'start' | 'restart' | 'keep'
 
 async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Promise<ServiceCoreLaunchAction> {
-  if (!serviceCoreRunning) {
+  const { probeMihomoCoreLive } = await import('./marathonCoreRestartGuard')
+  if (!serviceCoreRunning || !(await probeMihomoCoreLive())) {
     return 'start'
   }
 
@@ -414,7 +415,7 @@ async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Prom
     await appendAppLog(
       `[Manager]: service core provider parity check skipped: ${error instanceof Error ? error.message : String(error)}\n`
     )
-    return 'keep'
+    return (await probeMihomoCoreLive()) ? 'keep' : 'start'
   }
 }
 
@@ -499,7 +500,8 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   if (corePermissionMode === 'service' && !detached) {
     try {
       await getCoreStatus()
-      serviceCoreRunning = true
+      const { probeMihomoCoreLive } = await import('./marathonCoreRestartGuard')
+      serviceCoreRunning = await probeMihomoCoreLive()
     } catch (error) {
       if (isServiceUnavailableError(error)) {
         const probe = await waitForServiceCoreConnection(error)
@@ -513,8 +515,8 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
 
   const mutationIntent = await resolveStartCoreMutationIntent(useServiceCore, serviceCoreRunning)
   if (mutationIntent.wouldMutate) {
-    const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
-    const guard = await evaluateMarathonCoreColdRestart('startCore', false)
+    const { evaluateGuardSkipWhenNoLiveCore } = await import('./marathonCoreRestartGuard')
+    const guard = await evaluateGuardSkipWhenNoLiveCore('startCore')
     if (guard.blocked) {
       await deferCoreRestartForActiveCursorStreams()
       await appendAppLog(
