@@ -11,6 +11,8 @@ Shell/TS 脚本：本地升级、安装门禁、断连 triage、post-upgrade 验
 | `install-sparkle-local.sh` | 仅安装 `dist/mac-arm64/Sparkle.app` → `/Applications`（Marathon PRE-gate） |
 | `verify-byte-death-recovery-gate.mts` | post-upgrade：max_byte_stall + R2 executed 硬判据 |
 | `verify-sparkle-main-asar.mts` | Stage-B：app.asar 内 main bundle marker 门禁 |
+| `verify-marathon-mutation-callers.mts` | Stage-A：startCore/restartCore allowlist + reload script guard marker 门禁（BUG-2026-08-29-001 R3） |
+| `verify-marathon-data-plane-soak-gate.mts` | Post-install P3：guard defer 后零 mihomo cold start（BUG-2026-08-29-001 R3） |
 | `verify-sparkle-bundle.mts` | Stage-A：vite 后 out/main bundle marker 门禁 |
 | `lib/marathon-core-restart-guard.sh` | 马拉松期 install/upgrade PRE-gate；override `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` |
 | `triage-cursor-disconnect.sh` | Cursor 断连一键采集 |
