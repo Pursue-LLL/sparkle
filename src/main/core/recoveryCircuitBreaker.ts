@@ -15,11 +15,22 @@ let state: RecoveryCircuitBreakerState = createInitialRecoveryCircuitBreakerStat
 /** True while circuit is open and restartCore was deferred (cursor_conn>0). Retries on next gate. */
 let coreRestartPending = false
 let coreRestartInFlight = false
+let lastCoreRestartDeferLogAtMs = 0
+
+const ESCALATE_GUARD_TIMEOUT_MS = 12_000
+const CORE_RESTART_DEFER_LOG_COOLDOWN_MS = 60_000
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
 
 export function resetRecoveryCircuitBreakerForTests(): void {
   state = createInitialRecoveryCircuitBreakerState()
   coreRestartPending = false
   coreRestartInFlight = false
+  lastCoreRestartDeferLogAtMs = 0
 }
 
 export function getRecoveryCircuitBreakerStateForTests(): RecoveryCircuitBreakerState {
@@ -43,23 +54,65 @@ export async function assertRecoveryCircuitAllowsMutation(input: {
   }
 }
 
+async function evaluateEscalateRestartGuard(): Promise<{
+  blocked: boolean
+  snapshot: import('./marathonCoreRestartGuardCore').MarathonCoreRestartGuardSnapshot
+  timedOut: boolean
+}> {
+  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+  let timedOut = false
+  const guard = await Promise.race([
+    evaluateMarathonCoreColdRestart('restartCore', true),
+    delay(ESCALATE_GUARD_TIMEOUT_MS).then(async () => {
+      timedOut = true
+      return {
+        blocked: true,
+        snapshot: {
+          quiesceActive: false,
+          cursorConnectionCount: -1,
+          recentActiveLifecycleStreamCount: -1,
+          updatedAtMs: Date.now(),
+        },
+      }
+    }),
+  ])
+  return { ...guard, timedOut }
+}
+
+async function logCoreRestartDeferred(
+  reason: string,
+  nowMs: number,
+  force = false,
+): Promise<void> {
+  if (
+    !force &&
+    nowMs - lastCoreRestartDeferLogAtMs < CORE_RESTART_DEFER_LOG_COOLDOWN_MS
+  ) {
+    return
+  }
+  lastCoreRestartDeferLogAtMs = nowMs
+  const { appendAppLog } = await import('../utils/log')
+  await appendAppLog(
+    formatRecoveryCircuitBreakerLogLine({
+      outcome: 'blocked',
+      reason,
+    }),
+  )
+}
+
 async function maybeEscalateCircuitOpenCoreRestart(nowMs: number): Promise<void> {
   if (coreRestartInFlight) {
     return
   }
   coreRestartInFlight = true
   try {
-    const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
-    const guard = await evaluateMarathonCoreColdRestart('restartCore', true)
+    const guard = await evaluateEscalateRestartGuard()
     if (guard.blocked) {
       coreRestartPending = true
-      const { appendAppLog } = await import('../utils/log')
-      await appendAppLog(
-        formatRecoveryCircuitBreakerLogLine({
-          outcome: 'blocked',
-          reason: `core_restart_deferred cursor_conn=${guard.snapshot.cursorConnectionCount} ${guard.snapshot.quiesceActive ? 'quiesce=1' : 'quiesce=0'}`,
-        }),
-      )
+      const deferReason = guard.timedOut
+        ? 'core_restart_deferred guard_eval_timeout_ms=' + String(ESCALATE_GUARD_TIMEOUT_MS)
+        : `core_restart_deferred cursor_conn=${guard.snapshot.cursorConnectionCount} ${guard.snapshot.quiesceActive ? 'quiesce=1' : 'quiesce=0'}`
+      await logCoreRestartDeferred(deferReason, nowMs, !lastCoreRestartDeferLogAtMs)
       return
     }
     const { appendAppLog } = await import('../utils/log')
@@ -82,6 +135,10 @@ async function maybeEscalateCircuitOpenCoreRestart(nowMs: number): Promise<void>
         consecutiveFailures: 0,
       }),
     )
+  } catch (error) {
+    coreRestartPending = true
+    const message = error instanceof Error ? error.message : String(error)
+    await logCoreRestartDeferred(`core_restart_escalate_error ${message}`, nowMs, true)
   } finally {
     coreRestartInFlight = false
   }
