@@ -1,11 +1,8 @@
-import { bootstrapCursorNetworkDefaults } from '../core/cursorNetworkOptimize'
-import { quitWithoutCore, startCore } from '../core/manager'
-import { waitForMihomoControllerReady } from '../core/postCoreBootstrap'
+import { quitWithoutCore } from '../core/manager'
 import { appendAppLog } from '../utils/log'
 import { markGracefulGuiQuit } from './guiGracefulQuitMarker'
 
 const CORE_INIT_RACE_MS = 8_000
-const MIHOMO_READY_MAX_MS = 20_000
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -30,10 +27,10 @@ export async function runMacOs26HeadlessBootstrap(): Promise<void> {
 
   let apiReady = false
   try {
-    await bootstrapCursorNetworkDefaults()
-    const [startPromise] = await startCore()
+    const { runCoreReadinessPipeline } = await import('../core/coreReadinessGate')
+    const { startPromise } = await runCoreReadinessPipeline('macos26-headless-bootstrap')
     await Promise.race([startPromise, delay(CORE_INIT_RACE_MS)])
-    apiReady = await waitForMihomoControllerReady(MIHOMO_READY_MAX_MS)
+    apiReady = true
     await appendAppLog(`[MacOs26Headless]: bootstrap complete api_ready=${apiReady ? 1 : 0}\n`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

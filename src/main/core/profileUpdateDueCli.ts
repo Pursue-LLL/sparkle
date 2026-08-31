@@ -1,13 +1,10 @@
-import { bootstrapCursorNetworkDefaults } from './cursorNetworkOptimize'
-import { quitWithoutCore, startCore } from './manager'
+import { quitWithoutCore } from './manager'
 import { runDueProfileUpdates } from './profileUpdater'
-import { waitForMihomoControllerReady } from './postCoreBootstrap'
 import { appendAppLog } from '../utils/log'
 import { markGracefulGuiQuit } from '../sys/guiGracefulQuitMarker'
 import type { MarathonCoreRestartGuardSnapshot } from './marathonCoreRestartGuardCore'
 
 const CORE_INIT_RACE_MS = 8_000
-const MIHOMO_READY_MAX_MS = 30_000
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -67,14 +64,9 @@ export async function runProfileUpdateDueCli(): Promise<number> {
 
   let updatedCount = 0
   try {
-    await bootstrapCursorNetworkDefaults()
-    const [startPromise] = await startCore()
+    const { runCoreReadinessPipeline } = await import('./coreReadinessGate')
+    const { startPromise } = await runCoreReadinessPipeline('profile-update-cli')
     await Promise.race([startPromise, delay(CORE_INIT_RACE_MS)])
-
-    const apiReady = await waitForMihomoControllerReady(MIHOMO_READY_MAX_MS)
-    if (!apiReady) {
-      throw new Error('mihomo API not reachable')
-    }
 
     updatedCount = await runDueProfileUpdates('cli')
     await appendAppLog(`[ProfileUpdaterCli]: complete updated_count=${updatedCount}\n`)

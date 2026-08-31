@@ -62,7 +62,7 @@ import {
   startNetworkDetection as startNetworkDetectionWithCore,
   stopNetworkDetection as stopNetworkDetectionController
 } from './network'
-import { checkProfile } from './profile-check'
+import { checkProfileWithRetry } from './profileCheckRetry'
 import * as coreReadyTimestamp from './coreReadyTimestamp'
 import {
   createCoreEnvironment,
@@ -527,7 +527,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   }
 
   await generateProfile()
-  await checkProfile()
+  await checkProfileWithRetry()
   if (!serviceCoreRunning) {
     const stopped = await stopCoreWithOutcome()
     if (!stopped) {

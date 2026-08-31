@@ -1,5 +1,15 @@
 /** SSOT: post-build asar main bundle checks (upgrade-sparkle-local.sh + unit tests). */
 
+function findInvalidJsRegexPcrePatterns(source: string): string[] {
+  const hits: string[] = []
+  const pattern = /\/\(\?[a-z]*\)/gi
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(source)) !== null) {
+    hits.push(match[0])
+  }
+  return hits
+}
+
 export type SparkleMainAsarGateResult =
   | { ok: true }
   | {
@@ -15,6 +25,8 @@ export type SparkleMainAsarGateResult =
         | 'missing_r35_carrier_prune'
         | 'missing_r35_parent_sidecar'
         | 'missing_bug20260805_control_plane'
+        | 'invalid_js_regex_pcre'
+        | 'missing_core_readiness_gate'
     }
 
 /** Vite minifies to `.markCoreReadyAtMs(` on chunk export — bare `markCoreReadyAtMs(` is BUG-2026-07-23-004. */
@@ -90,6 +102,17 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     return { ok: false, reason: 'missing_bug20260805_control_plane' }
   }
 
+  if (findInvalidJsRegexPcrePatterns(mainSource).length > 0) {
+    return { ok: false, reason: 'invalid_js_regex_pcre' }
+  }
+
+  if (
+    !mainSource.includes('[CoreReadiness]:') &&
+    !mainSource.includes('runCoreReadinessPipeline')
+  ) {
+    return { ok: false, reason: 'missing_core_readiness_gate' }
+  }
+
   return { ok: true }
 }
 
@@ -107,6 +130,8 @@ export function assertSparkleMainAsarBundle(mainSource: string): void {
       missing_r35_carrier_prune: 'asar missing R-35 marathon_sse_carrier_frozen_prune',
       missing_r35_parent_sidecar: 'asar missing R-40/R-41 Hy2ParentSidecar execute + deny_unbound + StallEscalationLadder',
       missing_bug20260805_control_plane: 'asar missing BUG-2026-08-05-001 control-plane fixes @1.30.3 (emergency bypass + carrier honesty + observability_probe)',
+      invalid_js_regex_pcre: 'asar contains invalid JS regex PCRE inline flags e.g. /(?i)/ — SyntaxError at launch',
+      missing_core_readiness_gate: 'asar missing Core Readiness Contract — cold start may silent-hang',
     }
     throw new Error(messages[result.reason])
   }
