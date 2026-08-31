@@ -58,13 +58,14 @@ describe('resolveGeneralProxySelectGroup', () => {
 })
 
 describe('injectCursorDomainRules', () => {
-  it('defaults all three Cursor installs to 🎯 Cursor 专用', () => {
+  it('defaults all local Cursor installs (incl. Cursor-3.app) to 🎯 Cursor 专用', () => {
     const profile = profileWithCursorGroups()
     injectCursorDomainRules(profile)
 
     const rules = ruleLines(profile)
     const cursor2Regex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/'
     const cursorMainRegex = 'PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/'
+    const cursor3Regex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.app/'
     const cursor315Regex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/'
 
     assert.ok(
@@ -76,6 +77,12 @@ describe('injectCursorDomainRules', () => {
     )
     assert.ok(
       rules.some((rule) => rule === `${cursorMainRegex},${CURSOR_DEDICATED_GROUP_NAME}`)
+    )
+    assert.ok(
+      rules.some(
+        (rule) =>
+          rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursor3Regex})),${CURSOR_DEDICATED_GROUP_NAME}`
+      )
     )
     assert.ok(
       rules.some(
@@ -105,6 +112,13 @@ describe('injectCursorDomainRules', () => {
       rules.some((rule) =>
         rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/') &&
         rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
+      )
+    )
+    assert.ok(
+      rules.some(
+        (rule) =>
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.app/') &&
+          rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
       )
     )
     assert.ok(
@@ -148,6 +162,7 @@ describe('injectCursorDomainRules', () => {
     assert.ok(
       !rules.some(
         (rule) =>
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.app/') ||
           rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/') ||
           rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/') ||
           rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/')
@@ -196,7 +211,7 @@ describe('injectCursorDomainRules', () => {
     assert.ok(rules.includes('GEOIP,us,🚀 节点选择'))
   })
 
-  it('routes stock Cursor.app, Cursor-2, and Cursor-3.1.15 to Cursor 专用', () => {
+  it('routes stock Cursor.app, Cursor-2, Cursor-3, and Cursor-3.1.15 to Cursor 专用', () => {
     const profile = profileWithCursorGroups(['JP-VPS-HY2'])
     profile.rules = ['DOMAIN-SUFFIX,cursor.sh,🌍 国外媒体', 'GEOIP,us,DIRECT']
 
@@ -204,11 +219,18 @@ describe('injectCursorDomainRules', () => {
 
     const rules = ruleLines(profile)
     const cursorAppPath = 'PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/'
+    const cursor3Path = 'PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.app/'
     const cursor315Path = 'PROCESS-PATH-REGEX,^/Applications/Cursor-3\\.1\\.15\\.app/'
     assert.ok(
       rules.some(
         (rule) =>
           rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursorAppPath})),${CURSOR_DEDICATED_GROUP_NAME}`
+      )
+    )
+    assert.ok(
+      rules.some(
+        (rule) =>
+          rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursor3Path})),${CURSOR_DEDICATED_GROUP_NAME}`
       )
     )
     assert.ok(

@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-08-31 18:25 最新**：**BUG-2026-08-31-002 R1 CODE-DONE @1.30.43 git** · 三 Cursor 客户端默认走 🎯 Cursor 专用 · 组内可选 自动选择（切啥就走啥）
+> **2026-08-31 18:45 最新**：**BUG-2026-08-31-003 R1 CODE-DONE @1.30.44 git** · 漏配 Cursor-3.app → api2.cursor.sh 落入 GFW Match · 补 path-scoped 规则
+> **2026-08-31 18:25 上一版**：**BUG-2026-08-31-002 R1 CODE-DONE @1.30.43 git** · 三 Cursor 客户端默认走 🎯 Cursor 专用 · 组内可选 自动选择（切啥就走啥）
 > **2026-08-31 17:30 上一版**：**BUG-2026-08-31-001 P1 CODE-DONE @1.30.41 git** · Recovery Circuit Breaker — CarrierQuiesce/sidecar 自激坏环熔断 · Codex SSE `decoding response body` 止损
 > **2026-08-29 23:31 上一版**：**BUG-2026-08-29-001 R3 INSTALLED @1.30.40** · Layer-0 + CI + deferred + **P3 soak PASS** · Cursor Reconnecting 架构闭合 · **VERSION_LOG 基线 23:31**
 > **2026-08-29 23:28 上一版**：**BUG-2026-08-29-001 R3 INSTALLED** · Layer-0 装包 · soak 待验
@@ -22,6 +23,19 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-08-31-003 · Cursor-3.app 未命中 Cursor 专用 · api2 走 GFW Match · **R1 CODE-DONE @1.30.44**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 CODE-DONE @1.30.44 git** · **待 install + profile reload** |
+| **症状** | `api2.cursor.sh` chains=`新加坡02→Sparkle-自动-新加坡→自动选择→🔰手动选择→🧱GFW列表` · `rule=Match` · `processPath=/Applications/Cursor-3.app/...` |
+| **PRIMARY** | `@1.30.43` 只覆盖 `Cursor.app` / `Cursor-2.app` / `Cursor-3.1.15.app` · 本机 Marathon 实际为 `Cursor-3.app`（3.15.6） |
+| **NOT** | 节点质量问题 · Cursor 专用组 UI 选项缺失 |
+
+**修复（R1 @1.30.44）：** `CURSOR_3_APP_PATH_PREFIX` + dedicated/marathon/markers 同步
 
 ---
 
