@@ -150,8 +150,9 @@ function isFakeIpDirectCidrRule(rule: string): boolean {
     return false
   }
 
-  const target = parts[2]?.trim() ?? ''
-  return target === 'DIRECT' || /直连/.test(target)
+  // Under fake-ip, 198.18/198.19 CIDR rules always create dial loops — remove regardless of outbound name
+  // (subscription rules often use emoji group names like "🎯 Direct", not literal DIRECT).
+  return true
 }
 
 function isFakeIpRoutingActive(profile: MihomoConfig): boolean {
