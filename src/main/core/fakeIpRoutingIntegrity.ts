@@ -16,6 +16,18 @@ export const TIER0_FAKE_IP_FILTER = [
 /** Legacy alias — use TIER0_FAKE_IP_FILTER. */
 export const CURSOR_FAKE_IP_FILTER = TIER0_FAKE_IP_FILTER
 
+/** Tier 0 Direct — GeoSite/cn and Direct-intent hosts must receive real IPs (not 198.18.x). */
+export const TIER0_DIRECT_CN_SUFFIXES = [
+  '+.cn',
+  '+.com.cn',
+  '+.qq.com',
+  '+.y.qq.com',
+  '+.apple.com',
+  '+.itunes.apple.com',
+  '+.weixin.qq.com',
+  '+.wx.qq.com',
+] as const
+
 const FAKE_IP_DIRECT_CIDR_TARGETS = ['198.18.0.0/16', '198.19.0.0/16'] as const
 
 /** Mihomo fake-ip-filter cannot safely represent single-label public suffixes. */
@@ -152,6 +164,26 @@ function isFakeIpRoutingActive(profile: MihomoConfig): boolean {
   return profile.profile?.['store-fake-ip'] !== false
 }
 
+/** Tier 0 Direct — suffixes from Direct-intent rules + cn high-frequency suffixes. */
+export function collectTier0DirectFakeIpFilterEntries(rules: string[] | undefined): string[] {
+  const entries = new Set<string>(TIER0_DIRECT_CN_SUFFIXES)
+  if (!rules?.length) {
+    return [...entries].sort()
+  }
+
+  for (const rule of rules) {
+    const target = resolveRuleTarget(rule)
+    if (!target || !isDirectIntentTarget(target)) {
+      continue
+    }
+    for (const entry of collectDomainEntries(rule)) {
+      entries.add(entry)
+    }
+  }
+
+  return [...entries].sort()
+}
+
 /** Tier 1 — selective suffixes from proxy-intent rules (Type B fallback, not bulk dump). */
 export function collectTier1FakeIpFilterEntries(rules: string[] | undefined): string[] {
   if (!rules?.length) {
@@ -179,9 +211,16 @@ export function buildTieredFakeIpFilter(options: {
   rules?: string[]
   includeTier1?: boolean
 }): string[] {
-  const tier0 = [...TIER0_FAKE_IP_FILTER]
+  const tier0Cursor = [...TIER0_FAKE_IP_FILTER]
+  const tier0Direct = collectTier0DirectFakeIpFilterEntries(options.rules)
   const tier1 = options.includeTier1 === false ? [] : collectTier1FakeIpFilterEntries(options.rules)
-  return mergeFakeIpFilterEntries(mergeFakeIpFilterEntries(options.existing, tier0), tier1)
+  return mergeFakeIpFilterEntries(
+    mergeFakeIpFilterEntries(
+      mergeFakeIpFilterEntries(options.existing, tier0Cursor),
+      tier0Direct,
+    ),
+    tier1,
+  )
 }
 
 /** Layer 1 — remove legacy fake-ip CIDR → DIRECT trap from subscription rules. */
@@ -229,7 +268,8 @@ export function ensureFakeIpRoutingIntegrity(profile: MihomoConfig): {
   const dns = profile.dns as MihomoDNSConfig
   dns['fake-ip-filter'] = buildTieredFakeIpFilter({
     existing: dns['fake-ip-filter'],
-    includeTier1: false
+    rules: profile.rules as string[] | undefined,
+    includeTier1: false,
   })
 
   if (profile.sniffer?.enable !== false) {
