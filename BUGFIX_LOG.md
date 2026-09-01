@@ -1,6 +1,9 @@
 # Sparkle Bugfix Log
 
-> **2026-08-31 19:35 最新**：**BUG-2026-08-31-006 INSTALLED @1.30.46** · W3 bootstrap 死锁 — core 未启动时 `cursor_conn=-1` 不再永久拦截 profile-update-cli / macOS26 headless
+> **2026-09-01 17:00 最新**：**BUG-2026-09-01-002 CODE-DONE @1.30.53 git** · Phase-1 emergency core recovery 马拉松期自激重启 → Cursor/Codex SSE 断流 · in-flight dedupe + 120s cooldown + failover-before-restart
+> **2026-09-01 16:30 上一版**：**BUG-2026-09-01-001 CODE-DONE @1.30.52 git** · Recovery Architecture Convergence Phase-1 — coordinator + emergency core recovery + byte-death verifier · live smoke PASS · **回归：马拉松期 emergency 循环**
+> **2026-08-31 20:50 上一版**：**BUG-2026-08-31-007 INSTALLED @1.30.52** · Cursor 主走自动选择 · 仅 Cursor-2/3 走 🎯 Cursor 专用 · 移除已卸载的 Cursor-3.1.15.app
+> **2026-08-31 19:35 上一版**：**BUG-2026-08-31-006 INSTALLED @1.30.46** · W3 bootstrap 死锁 — core 未启动时 `cursor_conn=-1` 不再永久拦截 profile-update-cli / macOS26 headless
 > **2026-08-31 19:30 上一版**：**BUG-2026-08-31-005 CODE-DONE @1.30.47 git** · url-test 自动选择排除 AnyTLS（保留手动切换）· Codex SSE 不再被 01 节点 url-test 误选
 > **2026-08-31 19:05 上一版**：**BUG-2026-08-31-004 HOTFIX @1.30.45** · `/(?i)-VPS-HY2$/` 非法 JS 正则导致 Sparkle 闪退 · 重装正确 bundle
 > **2026-08-31 18:45 上一版**：**BUG-2026-08-31-003 R1 CODE-DONE @1.30.44 git** · 漏配 Cursor-3.app → api2.cursor.sh 落入 GFW Match · 补 path-scoped 规则
@@ -28,6 +31,38 @@
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
 
 ---
+
+### BUG-2026-09-01-002 · Phase-1 emergency 马拉松自激重启 · Cursor/Codex SSE 断流 · **CODE-DONE @1.30.53 git**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **CODE-DONE** · 待 install + soak |
+| **装包版本** | git `@1.30.53` · prod 仍为 **1.30.52** |
+| **症状** | Cursor-3 `Connection failed repeatedly` / Codex `stream disconnected … error decoding response body` · 08:41–08:55 UTC 马拉松期反复断流 |
+| **根因** | Phase-1 emergency core recovery **能执行了**（修复旧 deadlock），但 UDP absent 时 **跳过 failover 直接 core restart**；Coordinator + CircuitBreaker **并发双触发**；无 cooldown → 每 2–3min 重启 mihomo core（cursor_conn=37–52）→ 掐断全部 SSE |
+| **证据** | `app-2026-9-1.log`：`EmergencyCoreRecovery outcome=executed` ×15+ · 08:54:54 双 admission（cursor_conn=39/37 差 4ms）· `核心控制器未初始化` ×2 |
+| **修复** | ① `emergencyRecoveryInFlight` 全局 mutex ② `EMERGENCY_CORE_RECOVERY_COOLDOWN_MS=120s` ③ marathon 期 UDP absent → **failover_leaf 优先**，failover 后再 emergency |
+| **NOT** | Cursor 服务端故障 · api2 路由失败（重启间隙 api2=200） |
+| **待验** | install → 马拉松 soak → Network Diagnostic 10/10 · JP-VPS-HY2 UDP parent 根因仍待 Phase-2 |
+
+### BUG-2026-09-01-001 · Recovery Architecture Convergence Phase-1 · **CODE-DONE @1.30.52 · 部分 INSTALLED**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **CODE-DONE + smoke PASS** · **回归见 BUG-2026-09-01-002** |
+| **装包** | `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` · build `2026.0901.1605` · CDHash `11918045…` |
+| **交付** | `recoveryCoordinator` · `emergencyCoreRecovery` · byte-death verifier · fault injection gate · `--sparkle-emergency-recovery-smoke` |
+| **闭合** | 旧链 `evaluateMarathonCoreColdRestart is not a function` + UDP absent birth-reset bypass + circuit OPEN 无 escalation |
+| **回归** | emergency 在马拉松期 **过于激进** — 见 002 |
+
+### BUG-2026-08-31-007 · Cursor 主改走自动选择 · 仅 2/3 专用 · **INSTALLED @1.30.52**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **INSTALLED @1.30.52** · commit `9c16108` · force rebuild+install (`SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` + `SPARKLE_UPGRADE_BREAK_GLASS=1`) · GUI force-open |
+| **需求** | Cursor 主不走 🎯 Cursor 专用；仅 Cursor-2 / Cursor-3 走专用；`Cursor-3.1.15.app` 已卸载需移除 |
+| **修复** | `CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES` = Cursor-2 + Cursor-3；`CURSOR_NODE_SELECT_APP_PATH_PREFIXES` = Cursor.app；删除 `MARATHON_CURSOR_APP_PATH_PREFIX` / markers 中的 3.1.15 |
+| **验收** | 单测 15/15 · DistFreshness fresh · `work/config.yaml`：`Cursor.app` → `自动选择` · 无 `Cursor-3.1.15` · proxy `:7890` OK · Sparkle GUI running |
 
 ### BUG-2026-08-31-006 · bootstrap 死锁 core 起不来 · cursor_conn=-1 · **INSTALLED @1.30.46**
 

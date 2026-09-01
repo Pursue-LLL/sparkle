@@ -70,10 +70,30 @@ export interface EmergencyCoreRecoveryInput {
   nowMs?: number
 }
 
+let emergencyRecoveryInFlight = false
+let lastEmergencyCompletedAtMs = 0
+
+export function resetEmergencyCoreRecoveryForTests(nowMs = Date.now()): void {
+  emergencyRecoveryInFlight = false
+  lastEmergencyCompletedAtMs = nowMs - 999_999_999
+}
+
 export async function requestEmergencyCoreRecovery(
   input: EmergencyCoreRecoveryInput,
 ): Promise<{ executed: boolean; reason: string }> {
   const nowMs = input.nowMs ?? Date.now()
+  if (emergencyRecoveryInFlight) {
+    await appendAppLog(
+      formatEmergencyCoreRecoveryLogLine({
+        outcome: 'blocked',
+        reason: 'emergency_recovery_in_flight',
+        leafId: input.leafId,
+        cursorConn: input.cursorConnectionCount,
+      }),
+    )
+    return { executed: false, reason: 'emergency_recovery_in_flight' }
+  }
+  emergencyRecoveryInFlight = true
   const request = {
     reason: input.reason,
     leafId: input.leafId,
@@ -82,7 +102,11 @@ export async function requestEmergencyCoreRecovery(
     requestedAtMs: nowMs,
     deadlineMs: buildEmergencyCoreRecoveryDeadline(nowMs),
   }
-  const admission = evaluateEmergencyCoreRecoveryAdmission({ request, nowMs })
+  const admission = evaluateEmergencyCoreRecoveryAdmission({
+    request,
+    nowMs,
+    lastCompletedAtMs: lastEmergencyCompletedAtMs,
+  })
   await appendAppLog(
     formatEmergencyCoreRecoveryLogLine({
       outcome: admission.admitted ? 'admitted' : 'blocked',
@@ -93,6 +117,7 @@ export async function requestEmergencyCoreRecovery(
     }),
   )
   if (!admission.admitted) {
+    emergencyRecoveryInFlight = false
     return { executed: false, reason: admission.reason }
   }
   if (admission.drainMs > 0) {
@@ -138,6 +163,7 @@ export async function requestEmergencyCoreRecovery(
     await appendAppLog(
       `[EmergencyCoreRecovery]: readiness controller=${readiness.controllerReady ? 1 : 0} api2=${readiness.api2Ok ? 1 : 0}\n`,
     )
+    lastEmergencyCompletedAtMs = Date.now()
     return { executed: true, reason: 'emergency_core_recovery_completed' }
   } catch (error) {
     const err = error instanceof Error ? error.message : String(error)
@@ -150,5 +176,7 @@ export async function requestEmergencyCoreRecovery(
       }),
     )
     return { executed: false, reason: err }
+  } finally {
+    emergencyRecoveryInFlight = false
   }
 }

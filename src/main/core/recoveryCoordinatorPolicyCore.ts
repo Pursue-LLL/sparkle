@@ -68,6 +68,7 @@ export interface RecoveryCoordinatorPolicyState {
   activeGeneration: number
   stateEnteredAtMs: number
   stateDeadlineMs: number
+  failoverAttempted: boolean
 }
 
 export const LEAF_STATE_DEADLINE_MS: Record<Exclude<LeafRecoveryState, 'HEALTHY'>, number> = {
@@ -88,6 +89,7 @@ export function createInitialRecoveryCoordinatorPolicyState(
     activeGeneration: 0,
     stateEnteredAtMs: nowMs,
     stateDeadlineMs: nowMs + LEAF_STATE_DEADLINE_MS.SUSPECTED,
+    failoverAttempted: false,
   }
 }
 
@@ -127,9 +129,22 @@ export function decideRecoveryCoordinatorAction(input: {
     event.type === 'CORE_RESTART_REQUIRED'
   ) {
     state.leafState = 'CONFIRMED_STALL'
-    state.coreState = 'RESTART_PENDING'
     state.stateEnteredAtMs = nowMs
     state.stateDeadlineMs = nowMs + LEAF_STATE_DEADLINE_MS.CONFIRMED_STALL
+    if (fact.cursorConnectionCount > 0 && !state.failoverAttempted) {
+      state.failoverAttempted = true
+      state.leafState = 'FAILOVER'
+      state.coreState = 'READY'
+      return {
+        state,
+        action: {
+          kind: 'failover_leaf',
+          leafId: fact.leafId,
+          reason: 'udp_absent_failover_before_core_restart',
+        },
+      }
+    }
+    state.coreState = 'RESTART_PENDING'
     return {
       state,
       action: {
@@ -143,6 +158,20 @@ export function decideRecoveryCoordinatorAction(input: {
 
   if (event.type === 'PROBE_ONLY_RESULT') {
     state.leafState = 'CONFIRMED_STALL'
+    if (fact.cursorConnectionCount > 0 && !state.failoverAttempted) {
+      state.failoverAttempted = true
+      state.leafState = 'FAILOVER'
+      state.coreState = 'READY'
+      return {
+        state,
+        action: {
+          kind: 'failover_leaf',
+          leafId: fact.leafId,
+          reason: 'probe_only_failover_before_core_restart',
+        },
+      }
+    }
+    state.coreState = 'RESTART_PENDING'
     return {
       state,
       action: {

@@ -6,6 +6,8 @@ import {
 import {
   buildEmergencyCoreRecoveryDeadline,
   evaluateEmergencyCoreRecoveryAdmission,
+  evaluateEmergencyCoreRecoveryCooldown,
+  EMERGENCY_CORE_RECOVERY_COOLDOWN_MS,
 } from './emergencyCoreRecoveryCore'
 
 describe('emergencyCoreRecoveryCore @phase1', () => {
@@ -59,5 +61,51 @@ describe('emergencyCoreRecoveryCore @phase1', () => {
     })
     assert.equal(admission.admitted, false)
     assert.equal(admission.reason, 'emergency_deadline_expired')
+  })
+
+  it('rejects in-flight duplicate admission', () => {
+    const requestedAtMs = 1_000_000
+    const admission = evaluateEmergencyCoreRecoveryAdmission({
+      nowMs: requestedAtMs + 1_000,
+      inFlight: true,
+      request: {
+        reason: 'confirmed_udp_parent_absent',
+        leafId: 'JP-VPS-HY2',
+        evidenceReason: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
+        cursorConnectionCount: 42,
+        requestedAtMs,
+        deadlineMs: buildEmergencyCoreRecoveryDeadline(requestedAtMs),
+      },
+    })
+    assert.equal(admission.admitted, false)
+    assert.equal(admission.reason, 'emergency_recovery_in_flight')
+  })
+
+  it('rejects admission during cooldown window', () => {
+    const requestedAtMs = 1_000_000
+    const lastCompletedAtMs = requestedAtMs
+    const admission = evaluateEmergencyCoreRecoveryAdmission({
+      nowMs: requestedAtMs + EMERGENCY_CORE_RECOVERY_COOLDOWN_MS - 1,
+      lastCompletedAtMs,
+      request: {
+        reason: 'confirmed_udp_parent_absent',
+        leafId: 'JP-VPS-HY2',
+        evidenceReason: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
+        cursorConnectionCount: 42,
+        requestedAtMs,
+        deadlineMs: buildEmergencyCoreRecoveryDeadline(requestedAtMs),
+      },
+    })
+    assert.equal(admission.admitted, false)
+    assert.equal(admission.reason, 'emergency_cooldown_active')
+  })
+
+  it('cooldown clears after window', () => {
+    const nowMs = 2_000_000
+    const cooldown = evaluateEmergencyCoreRecoveryCooldown({
+      nowMs,
+      lastCompletedAtMs: nowMs - EMERGENCY_CORE_RECOVERY_COOLDOWN_MS,
+    })
+    assert.equal(cooldown.blocked, false)
   })
 })

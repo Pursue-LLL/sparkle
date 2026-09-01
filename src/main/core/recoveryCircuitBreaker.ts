@@ -1,6 +1,7 @@
 // [INPUT] recoveryCircuitBreakerCore
 // [OUTPUT] runtime circuit breaker state for hy2ParentSidecar
-// [POS] P1/P1.5 — stop CarrierQuiesce / sidecar self-destruct; escalate restartCore when open.
+// [POS] P1/P1.5 — stop CarrierQuiesce / sidecar self-destruct; open/block only.
+// Escalation executes exclusively via RecoveryCoordinator (single owner).
 
 import {
   createInitialRecoveryCircuitBreakerState,
@@ -10,36 +11,15 @@ import {
   recordRecoverySuccess,
   type RecoveryCircuitBreakerState,
 } from './recoveryCircuitBreakerCore'
-import { evaluateMarathonCoreColdRestart } from './marathonCoreRestartGuard'
 
 let state: RecoveryCircuitBreakerState = createInitialRecoveryCircuitBreakerState()
-/** True while circuit is open and restartCore was deferred (cursor_conn>0). Retries on next gate. */
-let coreRestartPending = false
-let coreRestartInFlight = false
-let lastCoreRestartDeferLogAtMs = 0
-
-const ESCALATE_GUARD_TIMEOUT_MS = 12_000
-const CORE_RESTART_DEFER_LOG_COOLDOWN_MS = 60_000
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
 
 export function resetRecoveryCircuitBreakerForTests(): void {
   state = createInitialRecoveryCircuitBreakerState()
-  coreRestartPending = false
-  coreRestartInFlight = false
-  lastCoreRestartDeferLogAtMs = 0
 }
 
 export function getRecoveryCircuitBreakerStateForTests(): RecoveryCircuitBreakerState {
   return { ...state }
-}
-
-export function isRecoveryCircuitRestartPendingForTests(): boolean {
-  return coreRestartPending
 }
 
 export async function assertRecoveryCircuitAllowsMutation(input: {
@@ -48,107 +28,9 @@ export async function assertRecoveryCircuitAllowsMutation(input: {
   if (!isRecoveryCircuitOpen({ nowMs: input.nowMs, state })) {
     return { allowed: true }
   }
-  void maybeEscalateCircuitOpenCoreRestart(input.nowMs)
   return {
     allowed: false,
     reason: `recovery_circuit_breaker_open until_ms=${state.openUntilMs} last=${state.lastFailureReason}`,
-  }
-}
-
-async function evaluateEscalateRestartGuard(): Promise<{
-  blocked: boolean
-  snapshot: import('./marathonCoreRestartGuardCore').MarathonCoreRestartGuardSnapshot
-  timedOut: boolean
-}> {
-  let timedOut = false
-  const guard = await Promise.race([
-    evaluateMarathonCoreColdRestart('restartCore', true),
-    delay(ESCALATE_GUARD_TIMEOUT_MS).then(async () => {
-      timedOut = true
-      return {
-        blocked: true,
-        snapshot: {
-          quiesceActive: false,
-          cursorConnectionCount: -1,
-          recentActiveLifecycleStreamCount: -1,
-          updatedAtMs: Date.now(),
-        },
-      }
-    }),
-  ])
-  return { ...guard, timedOut }
-}
-
-async function logCoreRestartDeferred(
-  reason: string,
-  nowMs: number,
-  force = false,
-): Promise<void> {
-  if (
-    !force &&
-    nowMs - lastCoreRestartDeferLogAtMs < CORE_RESTART_DEFER_LOG_COOLDOWN_MS
-  ) {
-    return
-  }
-  lastCoreRestartDeferLogAtMs = nowMs
-  const { appendAppLog } = await import('../utils/log')
-  await appendAppLog(
-    formatRecoveryCircuitBreakerLogLine({
-      outcome: 'blocked',
-      reason,
-    }),
-  )
-}
-
-async function maybeEscalateCircuitOpenCoreRestart(nowMs: number): Promise<void> {
-  if (coreRestartInFlight) {
-    return
-  }
-  coreRestartInFlight = true
-  try {
-    const { appendAppLog } = await import('../utils/log')
-    await appendAppLog(
-      formatRecoveryCircuitBreakerLogLine({
-        outcome: 'open',
-        reason: coreRestartPending
-          ? 'circuit_open_escalate_emergency_recovery_retry'
-          : 'circuit_open_escalate_emergency_recovery',
-      }),
-    )
-    const { requestEmergencyCoreRecovery } = await import('./emergencyCoreRecovery')
-    const { countCursorConnections } = await import('./cursorConnectionHygiene')
-    const cursorConnectionCount = await countCursorConnections().catch(() => -1)
-    const emergency = await requestEmergencyCoreRecovery({
-      reason: 'byte_death_circuit_open',
-      leafId: 'JP-VPS-HY2',
-      evidenceReason: state.lastFailureReason || 'recovery_circuit_breaker_open',
-      cursorConnectionCount: Math.max(0, cursorConnectionCount),
-      nowMs,
-    })
-    if (!emergency.executed) {
-      coreRestartPending = true
-      await logCoreRestartDeferred(
-        `core_restart_escalate_error ${emergency.reason}`,
-        nowMs,
-        true,
-      )
-      return
-    }
-    state = recordRecoverySuccess(state)
-    coreRestartPending = false
-    await appendAppLog(
-      formatRecoveryCircuitBreakerLogLine({
-        outcome: 'reset',
-        reason: 'core_restart_after_circuit_open',
-        consecutiveFailures: 0,
-      }),
-    )
-  } catch (error) {
-    coreRestartPending = true
-    const message = error instanceof Error ? error.message : String(error)
-    await logCoreRestartDeferred(`core_restart_escalate_error ${message}`, nowMs, true)
-  } finally {
-    coreRestartInFlight = false
   }
 }
 
@@ -158,7 +40,6 @@ export async function notifyRecoveryCircuitSuccess(): Promise<void> {
     return
   }
   state = next
-  coreRestartPending = false
   const { appendAppLog } = await import('../utils/log')
   await appendAppLog(
     formatRecoveryCircuitBreakerLogLine({
@@ -181,7 +62,6 @@ export async function notifyRecoveryCircuitFailure(input: {
   state = result.state
   const { appendAppLog } = await import('../utils/log')
   if (result.opened) {
-    coreRestartPending = true
     await appendAppLog(
       formatRecoveryCircuitBreakerLogLine({
         outcome: 'open',
@@ -196,12 +76,11 @@ export async function notifyRecoveryCircuitFailure(input: {
       id: 'recovery-circuit-breaker-open',
       title: '代理恢复已熔断 / Proxy Recovery Circuit Open',
       body:
-        '连续 3 次 parent UDP 恢复失败，已自动尝试重启核心。若仍异常请 Cmd+Q 退出 Sparkle 和 Cursor 后重开。\n' +
-        '3 consecutive parent recovery failures; core restart attempted. If still stuck, Cmd+Q Sparkle + Cursor and reopen.',
+        '连续 3 次 parent UDP 恢复失败，RecoveryCoordinator 将执行 leaf failover 或 emergency。若仍异常请 Cmd+Q 退出 Sparkle 和 Cursor 后重开。\n' +
+        '3 consecutive parent recovery failures; RecoveryCoordinator will failover or emergency-restart. If still stuck, Cmd+Q Sparkle + Cursor and reopen.',
       variant: 'danger',
       persistent: true,
     })
-    void maybeEscalateCircuitOpenCoreRestart(input.nowMs)
     return
   }
   await appendAppLog(

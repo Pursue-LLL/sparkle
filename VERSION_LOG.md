@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-09-01 17:00 CST · **Phase-1 Recovery Convergence + Hotfix @1.30.53 CODE-DONE** · emergency 马拉松自激回归 · **待 install**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | git **1.30.53**（待装）· prod `/Applications/Sparkle.app` → **1.30.52** · build `2026.0901.1605` |
+| **平台** | macOS **26.5.2** · service core · marathon active |
+| **状态** | Phase-1 **smoke PASS** · 马拉松 soak **FAIL（回归）** · hotfix **CODE-DONE 待装** |
+
+### Phase-1 交付（1.30.52）
+
+| 能力 | 状态 | 证据 |
+| --- | --- | --- |
+| Recovery Coordinator | ✅ | `recoveryCoordinator.ts` single entry |
+| Emergency core recovery | ✅ smoke | `EmergencyRecoverySmoke outcome=PASS` @08:17 UTC |
+| Byte-death verifier | ✅ | `recoveryByteDeathVerifierCore` |
+| UDP absent bypass 移除 | ✅ | no birth-reset on absent |
+| Circuit OPEN → emergency | ✅ | 能执行（旧 deadlock 闭合） |
+
+### 回归 + Hotfix（1.30.53）
+
+| 问题 | 修复 |
+| --- | --- |
+| 马拉松期每 2–3min core restart | `emergencyRecoveryInFlight` + 120s cooldown |
+| UDP absent 跳过 failover | policy: cursor_conn>0 → `failover_leaf` 优先 |
+| Coordinator + breaker 双触发 | admission 层 in-flight gate |
+
+### 待验门禁
+
+- [ ] `pnpm run agent:upgrade:mac` 装 1.30.53
+- [ ] 马拉松 30min 零 `emergency_core_recovery_completed` 循环
+- [ ] Cursor Network Diagnostic 10/10
+- [ ] 手动：🎯 Cursor 专用切 **JP-VPS-TLS** 作即时止血
+
+---
+
 ## 2026-08-29 23:31 CST · **生产基线 @1.30.40 INSTALLED** · Marathon Data-Plane Guard R3 · Cursor Reconnecting 闭合 · **P0–P3 PASS**
 
 | 字段 | 内容 |
