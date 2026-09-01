@@ -176,6 +176,12 @@ export async function runHy2ParentSidecarIfDue(input: {
   }
   sidecarObserveInFlight = true
   try {
+    const { evaluatePendingByteDeathRecoveryIfDue } = await import('./recoveryByteDeathVerifier')
+    await evaluatePendingByteDeathRecoveryIfDue({
+      nowMs,
+      currentMaxByteStallMs: input.snapshot.maxByteStallMs,
+    })
+
     const circuitGate = await assertRecoveryCircuitAllowsMutation({ nowMs })
     if (!circuitGate.allowed) {
       await appendSidecarLog(
@@ -335,7 +341,27 @@ export async function runHy2ParentSidecarIfDue(input: {
         }
       }
       if (dialPlan.action !== 'sidecar_dial') {
-        await notifyRecoveryCircuitSuccess()
+        if (marathonGlobalByteDeath) {
+          const { scheduleByteDeathRecoveryVerification } = await import(
+            './recoveryByteDeathVerifier'
+          )
+          const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+          const udpConn = input.connections.find(
+            (conn) => conn.id === rotatePlan.udpConnectionId,
+          )
+          await scheduleByteDeathRecoveryVerification({
+            leafId: activeLeaf,
+            nowMs,
+            udpParentClosed: parentUdpClosedThisInvocation,
+            maxByteStallMs: input.snapshot.maxByteStallMs,
+            baselineCarrier: udpConn
+              ? { upload: udpConn.upload ?? 0, download: udpConn.download ?? 0 }
+              : undefined,
+            connectionId: rotatePlan.udpConnectionId,
+          })
+        } else {
+          await notifyRecoveryCircuitSuccess()
+        }
         return {
           outcome: 'executed',
           action: 'close_udp_outbound',
@@ -461,7 +487,33 @@ export async function runHy2ParentSidecarIfDue(input: {
         }),
       )
       if (resolvedOutcome === 'executed' && parentUdpClosedThisInvocation) {
-        await notifyRecoveryCircuitSuccess()
+        if (marathonGlobalByteDeath) {
+          const { scheduleByteDeathRecoveryVerification } = await import(
+            './recoveryByteDeathVerifier'
+          )
+          const udpResolution = resolveHy2ParentUdpOutboundConnectionId({
+            connections: input.connections,
+            activeLeaf,
+            trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
+            nowMs,
+            byteDeathFullScan: true,
+          })
+          const udpConn = input.connections.find(
+            (conn) => conn.id === udpResolution.connectionId,
+          )
+          await scheduleByteDeathRecoveryVerification({
+            leafId: activeLeaf,
+            nowMs,
+            udpParentClosed: true,
+            maxByteStallMs: input.snapshot.maxByteStallMs,
+            baselineCarrier: udpConn
+              ? { upload: udpConn.upload ?? 0, download: udpConn.download ?? 0 }
+              : undefined,
+            connectionId: udpResolution.connectionId,
+          })
+        } else {
+          await notifyRecoveryCircuitSuccess()
+        }
       } else if (resolvedOutcome === 'failed') {
         await notifyRecoveryCircuitFailure({
           nowMs,

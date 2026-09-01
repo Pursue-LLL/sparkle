@@ -92,6 +92,10 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('byte_death_udp_parent_unknown') ||
     !mainSource.includes('[RecoveryCoordinator]:') ||
     !mainSource.includes('[EmergencyCoreRecovery]:') ||
+    !mainSource.includes('[ByteDeathRecoveryHonesty]:') ||
+    !mainSource.includes('scheduleByteDeathRecoveryVerification') ||
+    !mainSource.includes('invokeEmergencyCoreRestart') ||
+    !mainSource.includes('registerEmergencyCoreRestartHandler') ||
     !mainSource.includes('requestEmergencyCoreRecovery') ||
     !mainSource.includes('restartCoreEmergency') ||
     !mainSource.includes('reset_parent_chain_birth') ||
