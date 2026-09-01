@@ -23,4 +23,23 @@ describe('recoveryCircuitBreaker P1 wiring', () => {
     assert.match(source, /RECOVERY_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3/)
     assert.match(source, /RECOVERY_CIRCUIT_BREAKER_COOLDOWN_MS = 10 \* 60_000/)
   })
+
+  it('recovery circuit breaker uses static marathon guard import', () => {
+    const source = readFileSync(path.join(ROOT, 'recoveryCircuitBreaker.ts'), 'utf8')
+    assert.match(source, /import \{ evaluateMarathonCoreColdRestart \} from '\.\/marathonCoreRestartGuard'/)
+    assert.doesNotMatch(
+      source,
+      /evaluateEscalateRestartGuard[\s\S]*await import\('\.\/marathonCoreRestartGuard'\)/,
+    )
+  })
+
+  it('emergency core recovery uses bridge invoke (no manager dynamic import)', () => {
+    const source = readFileSync(path.join(ROOT, 'emergencyCoreRecovery.ts'), 'utf8')
+    assert.match(source, /invokeEmergencyCoreRestart/)
+    assert.doesNotMatch(source, /import \{ restartCoreEmergency \} from '\.\/manager'/)
+    assert.doesNotMatch(source, /await import\('\.\/manager'\)/)
+    const bridge = readFileSync(path.join(ROOT, 'emergencyCoreRestartBridge.ts'), 'utf8')
+    assert.match(bridge, /registerEmergencyCoreRestartHandler/)
+    assert.match(readFileSync(path.join(ROOT, 'manager.ts'), 'utf8'), /registerEmergencyCoreRestartHandler\(restartCoreEmergency\)/)
+  })
 })

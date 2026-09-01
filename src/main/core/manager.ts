@@ -54,7 +54,7 @@ import {
   type AppNotificationPayload,
   type AppNotificationVariant
 } from '../utils/notification'
-import { createCoreHookWaiter, createCoreStartupHook } from './startupHook'
+import { registerEmergencyCoreRestartHandler } from './emergencyCoreRestartBridge'
 import { stopChildProcess } from './process-control'
 import {
   recoverDNS,
@@ -1243,10 +1243,9 @@ export async function restartCoreEmergency(input: {
     deadlineMs: input.deadlineMs,
   })
   if (guard.blocked) {
-    await appendAppLog(
-      `[Manager]: emergency core restart blocked reason=${guard.snapshot.cursorConnectionCount} cursor_conn\n`,
-    )
-    return
+    const reason = `emergency_core_restart_blocked cursor_conn=${guard.snapshot.cursorConnectionCount}`
+    await appendAppLog(`[Manager]: ${reason}\n`)
+    throw new Error(reason)
   }
   try {
     clearTailscaleAuthNotifications()
@@ -1255,8 +1254,11 @@ export async function restartCoreEmergency(input: {
     await Promise.all(promises)
   } catch (e) {
     void showNotification({ title: '内核启动出错', body: `${e}`, variant: 'danger' })
+    throw e instanceof Error ? e : new Error(String(e))
   }
 }
+
+registerEmergencyCoreRestartHandler(restartCoreEmergency)
 
 export async function keepCoreAlive(): Promise<void> {
   try {

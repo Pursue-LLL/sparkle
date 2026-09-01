@@ -1,4 +1,4 @@
-// [INPUT] emergencyCoreRecoveryCore · manager · marathonCoreRestartGuard
+// [INPUT] emergencyCoreRecoveryCore · emergencyCoreRestartBridge · coreReadinessGate
 // [OUTPUT] requestEmergencyCoreRecovery
 // [POS] C-8.14 runtime — evidence-gated emergency core rebuild.
 
@@ -9,6 +9,7 @@ import {
   formatEmergencyCoreRecoveryLogLine,
   type EmergencyCoreRecoveryReason,
 } from './emergencyCoreRecoveryCore'
+import { invokeEmergencyCoreRestart } from './emergencyCoreRestartBridge'
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -62,13 +63,44 @@ export async function requestEmergencyCoreRecovery(
     await delay(admission.drainMs)
   }
   try {
-    const { restartCoreEmergency } = await import('./manager')
-    await restartCoreEmergency({
+    await invokeEmergencyCoreRestart({
       leafId: input.leafId,
       evidenceReason: input.evidenceReason,
       requestedAtMs: nowMs,
       deadlineMs: request.deadlineMs,
     })
+    const { verifyDataPlaneLive } = await import('./coreReadinessGate')
+    const dataPlaneReady = await verifyDataPlaneLive(30_000)
+    let api2Ok = false
+    if (dataPlaneReady) {
+      const { execFile } = await import('node:child_process')
+      const { promisify } = await import('node:util')
+      const execFileAsync = promisify(execFile)
+      try {
+        await execFileAsync('curl', [
+          '-sf',
+          '--max-time',
+          '10',
+          '-x',
+          'http://127.0.0.1:7890',
+          'https://api2.cursor.sh/',
+        ])
+        api2Ok = true
+      } catch {
+        api2Ok = false
+      }
+    }
+    if (!dataPlaneReady || !api2Ok) {
+      await appendAppLog(
+        formatEmergencyCoreRecoveryLogLine({
+          outcome: 'failed',
+          reason: 'emergency_readiness_verification_failed',
+          leafId: input.leafId,
+          err: `data_plane=${dataPlaneReady ? 1 : 0} api2=${api2Ok ? 1 : 0}`,
+        }),
+      )
+      return { executed: false, reason: 'emergency_readiness_verification_failed' }
+    }
     await appendAppLog(
       formatEmergencyCoreRecoveryLogLine({
         outcome: 'executed',
