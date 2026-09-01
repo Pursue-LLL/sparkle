@@ -11,6 +11,25 @@ import {
 } from './fakeIpRoutingIntegrity'
 
 describe('fakeIpRoutingIntegrity', () => {
+  it('removes fake-ip CIDR trap rules with emoji Direct group target', () => {
+    const profile = {
+      dns: { enable: true, 'enhanced-mode': 'fake-ip' },
+      profile: { 'store-fake-ip': true },
+      rules: [
+        'DOMAIN-SUFFIX,cloudflare.com,🚀 节点选择',
+        'IP-CIDR,198.18.0.0/16,🎯 Direct,no-resolve',
+        'GEOIP,CN,🎯 全球直连',
+        'MATCH,🐟 漏网之鱼',
+      ],
+    } as unknown as MihomoConfig
+
+    const removed = sanitizeFakeIpDirectCidrRules(profile)
+    const rules = profile.rules as string[]
+
+    assert.equal(removed, 1)
+    assert.equal(rules.some((rule) => rule.includes('198.18.0.0/16')), false)
+  })
+
   it('removes fake-ip CIDR direct trap rules', () => {
     const profile = {
       dns: { enable: true, 'enhanced-mode': 'fake-ip' },
