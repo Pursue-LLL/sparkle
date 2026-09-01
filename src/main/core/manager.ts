@@ -64,6 +64,7 @@ import {
 } from './network'
 import { checkProfileWithRetry } from './profileCheckRetry'
 import * as coreReadyTimestamp from './coreReadyTimestamp'
+import { runPostCoreReadyLifecycle, setPendingCoreReadyReason } from './coreLifecycle'
 import {
   createCoreEnvironment,
   createCoreSpawnArgs,
@@ -293,6 +294,7 @@ async function completeCoreInitialization(logLevel?: LogLevel): Promise<void> {
   await Promise.all(tasks)
   setMihomoLogSource('ws')
   coreReadyTimestamp.markCoreReadyAtMs()
+  void runPostCoreReadyLifecycle()
   void delay(5_000).then(() => verifyTunAfterCoreReady())
 }
 
@@ -1222,6 +1224,7 @@ export async function restartCore(force = false): Promise<void> {
   try {
     clearTailscaleAuthNotifications()
     await stopCoreUnchecked(force)
+    setPendingCoreReadyReason('manual')
     const promises = await startCore()
     await Promise.all(promises)
   } catch (e) {
@@ -1250,6 +1253,7 @@ export async function restartCoreEmergency(input: {
   try {
     clearTailscaleAuthNotifications()
     await stopCoreUnchecked(true)
+    setPendingCoreReadyReason('emergency')
     const promises = await startCore()
     await Promise.all(promises)
   } catch (e) {

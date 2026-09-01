@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   buildTieredFakeIpFilter,
+  collectTier0DirectFakeIpFilterEntries,
   collectTier1FakeIpFilterEntries,
   ensureFakeIpRoutingIntegrity,
   sanitizeFakeIpDirectCidrRules,
-  TIER0_FAKE_IP_FILTER
+  TIER0_DIRECT_CN_SUFFIXES,
+  TIER0_FAKE_IP_FILTER,
 } from './fakeIpRoutingIntegrity'
 
 describe('fakeIpRoutingIntegrity', () => {
@@ -44,17 +46,32 @@ describe('fakeIpRoutingIntegrity', () => {
     assert.equal(entries.some((entry) => entry.includes('staff.xdf.cn')), false)
   })
 
-  it('builds tiered filter with tier0 always present', () => {
+  it('collects tier0 direct suffixes from Direct-intent rules and cn defaults', () => {
+    const entries = collectTier0DirectFakeIpFilterEntries([
+      'DOMAIN-SUFFIX,staff.xdf.cn,DIRECT',
+      'DOMAIN-SUFFIX,cloudflare.com,🚀 节点选择',
+    ])
+    assert.ok(entries.includes('+.cn'))
+    assert.ok(entries.includes('+.qq.com'))
+    assert.ok(entries.includes('+.staff.xdf.cn'))
+    assert.equal(entries.some((entry) => entry.includes('cloudflare.com')), false)
+    for (const suffix of TIER0_DIRECT_CN_SUFFIXES) {
+      assert.ok(entries.includes(suffix))
+    }
+  })
+
+  it('builds tiered filter with tier0 direct and tier0 cursor always present', () => {
     const filter = buildTieredFakeIpFilter({
       existing: ['+.lan'],
-      rules: ['DOMAIN-SUFFIX,cloudflare.com,🚀 节点选择'],
-      includeTier1: true
+      rules: ['DOMAIN-SUFFIX,staff.xdf.cn,DIRECT', 'DOMAIN-SUFFIX,cloudflare.com,🚀 节点选择'],
+      includeTier1: true,
     })
 
     assert.ok(filter.includes('+.lan'))
     for (const entry of TIER0_FAKE_IP_FILTER) {
       assert.ok(filter.includes(entry))
     }
+    assert.ok(filter.includes('+.staff.xdf.cn'))
     assert.ok(filter.includes('+.cloudflare.com'))
   })
 
@@ -94,6 +111,7 @@ describe('fakeIpRoutingIntegrity', () => {
     const filter = (profile.dns as MihomoDNSConfig)['fake-ip-filter'] ?? []
     assert.ok(filter.includes('+.lan'))
     assert.ok(filter.includes('+.cursor.sh'))
+    assert.ok(filter.includes('+.cn'))
     assert.equal(filter.includes('+.neibu.koolearn.com'), false)
     assert.equal(filter.includes('+.koolearn.com'), false)
     assert.equal(filter.includes('+.cloudflare.com'), false)

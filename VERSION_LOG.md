@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-09-01 17:30 CST · **Recovery + CoreLifecycle 双 SSOT @1.30.52 CODE-DONE** · fake-ip Direct + emergency 循环 · **待 soak PASS**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | git **d33cbf1+** · prod 装包 CDHash 待更新 |
+| **目标** | 马拉松期 Cursor/Codex 稳定 + 国内 Direct 不 timeout + core restart 不雪崩 |
+| **状态** | 代码+单测 **23/23 PASS** · 装包+soak 进行中 |
+
+### 交付清单
+
+| 模块 | 能力 | 状态 |
+| --- | --- | --- |
+| RecoveryCoordinator | failover-first · emergency in-flight + 120s cooldown | ✅ d33cbf1 |
+| CircuitBreaker | open/block only（无 duplicate emergency） | ✅ d33cbf1 |
+| Tier0-Direct | cn suffix + Direct 规则 → fake-ip-filter | ✅ 本次 |
+| CoreLifecycle | post-ready fake-ip flush | ✅ 本次 |
+
+### 验收门禁
+
+- [ ] install 后 `[CoreLifecycle]: fake_ip_flush outcome=executed`
+- [ ] 30min 无 emergency 循环
+- [ ] core log Direct fake-ip timeout 不增长
+- [ ] Cursor Network Diagnostic（用户可选）
+
+---
+
 ## 2026-09-01 17:00 CST · **Phase-1 Recovery Convergence + Hotfix @1.30.53 CODE-DONE** · emergency 马拉松自激回归 · **待 install**
 
 | 字段 | 内容 |

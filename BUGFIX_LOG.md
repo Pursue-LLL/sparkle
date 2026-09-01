@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-09-01 17:00 最新**：**BUG-2026-09-01-002 CODE-DONE @1.30.53 git** · Phase-1 emergency core recovery 马拉松期自激重启 → Cursor/Codex SSE 断流 · in-flight dedupe + 120s cooldown + failover-before-restart
+> **2026-09-01 17:30 最新**：**BUG-2026-09-01-001 CODE-DONE @1.30.52 git** · fake-ip Direct 冷启动 + CoreLifecycle SSOT + Tier0-Direct
+> **2026-09-01 17:00 上一版**：**BUG-2026-09-01-002 CODE-DONE @1.30.52 git** · emergency 马拉松自激 restart → failover-first + in-flight + cooldown + breaker 仅 open/block
 > **2026-09-01 16:30 上一版**：**BUG-2026-09-01-001 CODE-DONE @1.30.52 git** · Recovery Architecture Convergence Phase-1 — coordinator + emergency core recovery + byte-death verifier · live smoke PASS · **回归：马拉松期 emergency 循环**
 > **2026-08-31 20:50 上一版**：**BUG-2026-08-31-007 INSTALLED @1.30.52** · Cursor 主走自动选择 · 仅 Cursor-2/3 走 🎯 Cursor 专用 · 移除已卸载的 Cursor-3.1.15.app
 > **2026-08-31 19:35 上一版**：**BUG-2026-08-31-006 INSTALLED @1.30.46** · W3 bootstrap 死锁 — core 未启动时 `cursor_conn=-1` 不再永久拦截 profile-update-cli / macOS26 headless
