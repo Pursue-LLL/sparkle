@@ -24,6 +24,7 @@ import { shouldForceDisableGpu, shouldUseMacOs26HeadlessBootstrap, wantsMacOs26F
 import { persistMacOs26ForceGuiIfRequested } from './sys/macos26ForceGuiPreferenceCore'
 import { runMacOs26HeadlessBootstrap } from './sys/macos26HeadlessBootstrap'
 import { PROFILE_UPDATE_DUE_ARG } from './core/profileUpdaterCore'
+import { EMERGENCY_RECOVERY_SMOKE_ARG } from './core/emergencyRecoverySmokeCli'
 import { runGuardedDueProfileUpdatesSecondInstance, runProfileUpdateDueCli } from './core/profileUpdateDueCli'
 import os from 'os'
 import { handleDeepLink } from './resolve/deepLink'
@@ -141,6 +142,18 @@ if (!gotTheLock) {
       }
       return
     }
+    if (commandline.includes(EMERGENCY_RECOVERY_SMOKE_ARG)) {
+      try {
+        const { runEmergencyRecoverySmokeCli } = await import('./core/emergencyRecoverySmokeCli')
+        await runEmergencyRecoverySmokeCli()
+        await appendAppLog('[EmergencyRecoverySmoke]: second-instance completed\n')
+      } catch (error) {
+        await appendAppLog(
+          `[EmergencyRecoverySmoke]: second-instance failed: ${error instanceof Error ? error.message : String(error)}\n`
+        )
+      }
+      return
+    }
     showMainWindow()
     const url = commandline.pop()
     if (url) {
@@ -220,6 +233,21 @@ if (!gotTheLock) {
       } catch (error) {
         await appendAppLog(
           `[ProfileUpdaterCli]: exit error: ${error instanceof Error ? error.message : String(error)}\n`
+        )
+        app.exit(1)
+        return
+      }
+      app.exit(0)
+      return
+    }
+
+    if (process.argv.includes(EMERGENCY_RECOVERY_SMOKE_ARG)) {
+      try {
+        const { runEmergencyRecoverySmokeCli } = await import('./core/emergencyRecoverySmokeCli')
+        await runEmergencyRecoverySmokeCli()
+      } catch (error) {
+        await appendAppLog(
+          `[EmergencyRecoverySmoke]: exit error: ${error instanceof Error ? error.message : String(error)}\n`
         )
         app.exit(1)
         return
