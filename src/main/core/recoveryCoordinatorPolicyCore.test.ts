@@ -6,6 +6,7 @@ import {
 import {
   createInitialRecoveryCoordinatorPolicyState,
   decideRecoveryCoordinatorAction,
+  MAX_FAILOVER_DISPATCHES,
   type RecoveryFact,
 } from './recoveryCoordinatorPolicyCore'
 
@@ -44,7 +45,29 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
     assert.equal(result.action.kind, 'failover_leaf')
     assert.equal(result.action.reason, 'udp_absent_failover_before_core_restart')
     assert.equal(result.state.coreState, 'READY')
-    assert.equal(result.state.failoverAttempted, true)
+    assert.equal(result.state.failoverAttempted, false)
+    assert.equal(result.state.failoverDispatchCount, 1)
+  })
+
+  it('UDP absent with cursor_conn>0 and dispatch count exhausted → emergency', () => {
+    const state = {
+      ...createInitialRecoveryCoordinatorPolicyState(nowMs),
+      failoverDispatchCount: MAX_FAILOVER_DISPATCHES,
+    }
+    const result = decideRecoveryCoordinatorAction({
+      state,
+      fact: baseFact(),
+      event: {
+        type: 'UDP_PARENT_ABSENT',
+        leafId: 'JP-VPS-HY2',
+        generation: 1,
+        observedAt: nowMs,
+        detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
+      },
+      nowMs,
+    })
+    assert.equal(result.action.kind, 'request_emergency_core_recovery')
+    assert.equal(result.state.coreState, 'RESTART_PENDING')
   })
 
   it('UDP absent with cursor_conn=0 → emergency core recovery', () => {

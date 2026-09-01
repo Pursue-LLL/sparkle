@@ -68,8 +68,13 @@ export interface RecoveryCoordinatorPolicyState {
   activeGeneration: number
   stateEnteredAtMs: number
   stateDeadlineMs: number
+  /** Set true only after a successful leaf failover (not on dispatch). */
   failoverAttempted: boolean
+  /** Dispatched failover attempts; emergency after MAX_FAILOVER_DISPATCHES. */
+  failoverDispatchCount: number
 }
+
+export const MAX_FAILOVER_DISPATCHES = 2
 
 export const LEAF_STATE_DEADLINE_MS: Record<Exclude<LeafRecoveryState, 'HEALTHY'>, number> = {
   SUSPECTED: 30_000,
@@ -90,6 +95,7 @@ export function createInitialRecoveryCoordinatorPolicyState(
     stateEnteredAtMs: nowMs,
     stateDeadlineMs: nowMs + LEAF_STATE_DEADLINE_MS.SUSPECTED,
     failoverAttempted: false,
+    failoverDispatchCount: 0,
   }
 }
 
@@ -131,8 +137,12 @@ export function decideRecoveryCoordinatorAction(input: {
     state.leafState = 'CONFIRMED_STALL'
     state.stateEnteredAtMs = nowMs
     state.stateDeadlineMs = nowMs + LEAF_STATE_DEADLINE_MS.CONFIRMED_STALL
-    if (fact.cursorConnectionCount > 0 && !state.failoverAttempted) {
-      state.failoverAttempted = true
+    if (
+      fact.cursorConnectionCount > 0 &&
+      !state.failoverAttempted &&
+      state.failoverDispatchCount < MAX_FAILOVER_DISPATCHES
+    ) {
+      state.failoverDispatchCount += 1
       state.leafState = 'FAILOVER'
       state.coreState = 'READY'
       return {
@@ -158,8 +168,12 @@ export function decideRecoveryCoordinatorAction(input: {
 
   if (event.type === 'PROBE_ONLY_RESULT') {
     state.leafState = 'CONFIRMED_STALL'
-    if (fact.cursorConnectionCount > 0 && !state.failoverAttempted) {
-      state.failoverAttempted = true
+    if (
+      fact.cursorConnectionCount > 0 &&
+      !state.failoverAttempted &&
+      state.failoverDispatchCount < MAX_FAILOVER_DISPATCHES
+    ) {
+      state.failoverDispatchCount += 1
       state.leafState = 'FAILOVER'
       state.coreState = 'READY'
       return {
