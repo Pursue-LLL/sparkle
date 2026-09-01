@@ -39,10 +39,45 @@ export function isMarathonCoreRestartForceOverride(
   return envValue === '1'
 }
 
+export interface EmergencyCoreRecoveryGuardContext {
+  leafId: string
+  evidenceReason: string
+  requestedAtMs: number
+  deadlineMs: number
+}
+
+export function evaluateEmergencyGuardBypass(input: {
+  emergency?: EmergencyCoreRecoveryGuardContext
+  nowMs: number
+}): { bypass: boolean; reason: string } {
+  const emergency = input.emergency
+  if (!emergency) {
+    return { bypass: false, reason: 'no_emergency_context' }
+  }
+  if (!emergency.leafId.trim()) {
+    return { bypass: false, reason: 'emergency_leaf_missing' }
+  }
+  if (input.nowMs > emergency.deadlineMs) {
+    return { bypass: false, reason: 'emergency_deadline_expired' }
+  }
+  return { bypass: true, reason: 'emergency_core_recovery' }
+}
+
 export function shouldBlockMarathonCoreColdRestart(
   snapshot: MarathonCoreRestartGuardSnapshot,
-  forceOverride: boolean
+  forceOverride: boolean,
+  emergency?: EmergencyCoreRecoveryGuardContext,
+  nowMs: number = Date.now(),
 ): MarathonCoreRestartGuardDecision {
+  const emergencyBypass = evaluateEmergencyGuardBypass({ emergency, nowMs })
+  if (emergencyBypass.bypass) {
+    return {
+      blocked: false,
+      forceOverride: true,
+      reason: emergencyBypass.reason,
+    }
+  }
+
   if (snapshot.cursorConnectionCount < 0) {
     return {
       blocked: true,

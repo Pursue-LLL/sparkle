@@ -88,8 +88,12 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('byte_death_no_udp_outbound_sidecar_emergency') ||
     !mainSource.includes('byte_death_probe_only_without_udp_close') ||
     !mainSource.includes('byte_death_close_frozen_leaf_batch') ||
-    !mainSource.includes('byte_death_udp_absent_parent_birth_reset') ||
-    !mainSource.includes('byte_death_collateral_gate_udp_absent') ||
+    !mainSource.includes('byte_death_udp_absent_requires_core_restart') ||
+    !mainSource.includes('byte_death_udp_parent_unknown') ||
+    !mainSource.includes('[RecoveryCoordinator]:') ||
+    !mainSource.includes('[EmergencyCoreRecovery]:') ||
+    !mainSource.includes('requestEmergencyCoreRecovery') ||
+    !mainSource.includes('restartCoreEmergency') ||
     !mainSource.includes('reset_parent_chain_birth') ||
     !mainSource.includes('byteDeathFullScan') ||
     !mainSource.includes('[Hy2ParentByteDeathRecovery]:') ||

@@ -397,6 +397,19 @@ export async function runHy2ParentSidecarIfDue(input: {
             nowMs,
             reason: blockReason,
           })
+          if (
+            blockReason.includes('byte_death_udp_absent') ||
+            blockReason.includes('probe_only')
+          ) {
+            const { submitByteDeathRecoveryEvent } = await import('./recoveryCoordinator')
+            await submitByteDeathRecoveryEvent({
+              leafId: activeLeaf,
+              connections: input.connections,
+              cursorConnectionCount: input.cursorConnectionCount,
+              detail: blockReason,
+              nowMs,
+            })
+          }
           return {
             outcome: 'failed',
             action: 'sidecar_dial',

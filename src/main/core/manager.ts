@@ -1229,6 +1229,35 @@ export async function restartCore(force = false): Promise<void> {
   }
 }
 
+export async function restartCoreEmergency(input: {
+  leafId: string
+  evidenceReason: string
+  requestedAtMs: number
+  deadlineMs: number
+}): Promise<void> {
+  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
+  const guard = await evaluateMarathonCoreColdRestart('restartCore', true, {
+    leafId: input.leafId,
+    evidenceReason: input.evidenceReason,
+    requestedAtMs: input.requestedAtMs,
+    deadlineMs: input.deadlineMs,
+  })
+  if (guard.blocked) {
+    await appendAppLog(
+      `[Manager]: emergency core restart blocked reason=${guard.snapshot.cursorConnectionCount} cursor_conn\n`,
+    )
+    return
+  }
+  try {
+    clearTailscaleAuthNotifications()
+    await stopCoreUnchecked(true)
+    const promises = await startCore()
+    await Promise.all(promises)
+  } catch (e) {
+    void showNotification({ title: '内核启动出错', body: `${e}`, variant: 'danger' })
+  }
+}
+
 export async function keepCoreAlive(): Promise<void> {
   try {
     const { corePermissionMode = 'elevated' } = await getAppConfig()

@@ -27,7 +27,7 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     assert.match(batch.err ?? '', /close rejected/)
   })
 
-  it('C-8.12: udp absent marathon → birth reset, zero leaf close', async () => {
+  it('C-8.13: udp absent marathon → escalate core restart, zero leaf close', async () => {
     const logLines: string[] = []
     const connections = Array.from({ length: 12 }, (_, index) => ({
       id: `tcp-${index}`,
@@ -62,16 +62,17 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
         },
       },
     )
-    assert.equal(result.mutated, true)
-    assert.equal(result.plan.action, 'reset_parent_chain_birth')
+    assert.equal(result.mutated, false)
+    assert.equal(result.plan.action, 'none')
+    assert.equal(result.plan.reason, 'byte_death_udp_absent_requires_core_restart')
     assert.equal(closedIds.length, 0)
-    assert.equal(birthReset, true)
+    assert.equal(birthReset, false)
     assert.ok(
       logLines.some(
         (line) =>
-          line.includes('action=reset_parent_chain_birth') &&
-          line.includes('outcome=executed') &&
-          line.includes('byte_death_udp_absent_parent_birth_reset'),
+          line.includes('action=none') &&
+          line.includes('outcome=failed') &&
+          line.includes('byte_death_udp_absent_requires_core_restart'),
       ),
     )
   })
@@ -154,7 +155,7 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     assert.deepEqual(closedIds, ['udp-parent'])
   })
 
-  it('no targets and no UDP → parent birth reset', async () => {
+  it('no targets and no UDP → escalate core restart', async () => {
     const logLines: string[] = []
     let birthReset = false
     const result = await executeByteDeathParentMutationWithDeps(
@@ -178,9 +179,10 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
         },
       },
     )
-    assert.equal(result.mutated, true)
-    assert.equal(result.plan.action, 'reset_parent_chain_birth')
-    assert.equal(birthReset, true)
+    assert.equal(result.mutated, false)
+    assert.equal(result.plan.action, 'none')
+    assert.equal(result.plan.reason, 'byte_death_udp_absent_requires_core_restart')
+    assert.equal(birthReset, false)
   })
 
   it('1.30.31 regression: refresh fail must not proceed to close (abort only)', async () => {

@@ -10,6 +10,14 @@ import {
 export const BYTE_DEATH_LEAF_CLOSE_MIN_STALL_MS = 90_000
 /** Cap batch size — avoids mass ECONNRESET while still nudging HY2 parent session. */
 export const BYTE_DEATH_LEAF_CLOSE_MAX_BATCH = 8
+/** mihomo omits HY2 UDP parent rows — birth reset alone is ineffective; escalate core restart. */
+export const BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART =
+  'byte_death_udp_absent_requires_core_restart'
+
+/** Scan incomplete or API untrusted — diagnostic only, no mutation. */
+export const BYTE_DEATH_UDP_PARENT_UNKNOWN = 'byte_death_udp_parent_unknown'
+
+export type UdpParentObservation = 'present' | 'absent' | 'unknown'
 
 export type ByteDeathParentMutationAction =
   | 'none'
@@ -107,15 +115,27 @@ export function selectByteDeathLeafCloseTargets(input: {
   return []
 }
 
+export function classifyUdpParentObservation(
+  resolution: Hy2ParentUdpResolution,
+): UdpParentObservation {
+  if (resolution.connectionId) {
+    return 'present'
+  }
+  const diag = resolution.diagnostics
+  if (!diag) {
+    return 'unknown'
+  }
+  if (diag.udpOnLeafStrict <= 0 && diag.udpFullScanCandidates <= 0) {
+    return 'absent'
+  }
+  return 'unknown'
+}
+
 /** Leaf TCP close is collateral during marathon when mihomo omits HY2 UDP parent rows. */
 export function isByteDeathUdpParentAbsent(
   resolution: Hy2ParentUdpResolution,
 ): boolean {
-  const diag = resolution.diagnostics
-  if (!diag) {
-    return true
-  }
-  return diag.udpOnLeafStrict <= 0 && diag.udpFullScanCandidates <= 0
+  return classifyUdpParentObservation(resolution) === 'absent'
 }
 
 export function planByteDeathParentMutation(input: {
@@ -140,10 +160,17 @@ export function planByteDeathParentMutation(input: {
       udpResolutionSource: resolution.source,
     }
   }
-  if (isByteDeathUdpParentAbsent(resolution)) {
+  const udpObservation = classifyUdpParentObservation(resolution)
+  if (udpObservation === 'absent') {
     return {
-      action: 'reset_parent_chain_birth',
-      reason: 'byte_death_udp_absent_parent_birth_reset',
+      action: 'none',
+      reason: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
+    }
+  }
+  if (udpObservation === 'unknown') {
+    return {
+      action: 'none',
+      reason: BYTE_DEATH_UDP_PARENT_UNKNOWN,
     }
   }
   const leafTargets = selectByteDeathLeafCloseTargets({

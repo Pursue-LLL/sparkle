@@ -10,6 +10,7 @@ import {
   recordRecoverySuccess,
   type RecoveryCircuitBreakerState,
 } from './recoveryCircuitBreakerCore'
+import { evaluateMarathonCoreColdRestart } from './marathonCoreRestartGuard'
 
 let state: RecoveryCircuitBreakerState = createInitialRecoveryCircuitBreakerState()
 /** True while circuit is open and restartCore was deferred (cursor_conn>0). Retries on next gate. */
@@ -59,7 +60,6 @@ async function evaluateEscalateRestartGuard(): Promise<{
   snapshot: import('./marathonCoreRestartGuardCore').MarathonCoreRestartGuardSnapshot
   timedOut: boolean
 }> {
-  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
   let timedOut = false
   const guard = await Promise.race([
     evaluateMarathonCoreColdRestart('restartCore', true),
@@ -106,26 +106,34 @@ async function maybeEscalateCircuitOpenCoreRestart(nowMs: number): Promise<void>
   }
   coreRestartInFlight = true
   try {
-    const guard = await evaluateEscalateRestartGuard()
-    if (guard.blocked) {
-      coreRestartPending = true
-      const deferReason = guard.timedOut
-        ? 'core_restart_deferred guard_eval_timeout_ms=' + String(ESCALATE_GUARD_TIMEOUT_MS)
-        : `core_restart_deferred cursor_conn=${guard.snapshot.cursorConnectionCount} ${guard.snapshot.quiesceActive ? 'quiesce=1' : 'quiesce=0'}`
-      await logCoreRestartDeferred(deferReason, nowMs, !lastCoreRestartDeferLogAtMs)
-      return
-    }
     const { appendAppLog } = await import('../utils/log')
     await appendAppLog(
       formatRecoveryCircuitBreakerLogLine({
         outcome: 'open',
         reason: coreRestartPending
-          ? 'circuit_open_escalate_restartCore_retry'
-          : 'circuit_open_escalate_restartCore',
+          ? 'circuit_open_escalate_emergency_recovery_retry'
+          : 'circuit_open_escalate_emergency_recovery',
       }),
     )
-    const { restartCore } = await import('./manager')
-    await restartCore(true)
+    const { requestEmergencyCoreRecovery } = await import('./emergencyCoreRecovery')
+    const { countCursorConnections } = await import('./cursorConnectionHygiene')
+    const cursorConnectionCount = await countCursorConnections().catch(() => -1)
+    const emergency = await requestEmergencyCoreRecovery({
+      reason: 'byte_death_circuit_open',
+      leafId: 'JP-VPS-HY2',
+      evidenceReason: state.lastFailureReason || 'recovery_circuit_breaker_open',
+      cursorConnectionCount: Math.max(0, cursorConnectionCount),
+      nowMs,
+    })
+    if (!emergency.executed) {
+      coreRestartPending = true
+      await logCoreRestartDeferred(
+        `core_restart_escalate_error ${emergency.reason}`,
+        nowMs,
+        true,
+      )
+      return
+    }
     state = recordRecoverySuccess(state)
     coreRestartPending = false
     await appendAppLog(

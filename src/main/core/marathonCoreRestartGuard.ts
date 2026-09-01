@@ -104,11 +104,12 @@ export async function evaluateBootstrapCoreStartGuard(
 
 export async function evaluateMarathonCoreColdRestart(
   caller: CoreLifecycleCaller,
-  forceRequested = false
+  forceRequested = false,
+  emergency?: import('./marathonCoreRestartGuardCore').EmergencyCoreRecoveryGuardContext,
 ): Promise<{ blocked: boolean; snapshot: MarathonCoreRestartGuardSnapshot }> {
   const snapshot = await readMarathonCoreRestartGuardSnapshot()
   const forceOverride = forceRequested || isMarathonCoreRestartForceOverride()
-  const decision = shouldBlockMarathonCoreColdRestart(snapshot, forceOverride)
+  const decision = shouldBlockMarathonCoreColdRestart(snapshot, forceOverride, emergency)
   await refreshMarathonCoreRestartGuardStateFile(snapshot)
 
   if (decision.blocked) {
