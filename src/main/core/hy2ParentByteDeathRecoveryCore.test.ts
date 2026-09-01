@@ -30,7 +30,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     assert.equal(chainsReferenceActiveLeaf(['DIRECT'], 'JP-VPS-HY2'), false)
   })
 
-  it('C-8.12: udp absent + 94 frozen conns → parent birth reset not leaf close', () => {
+  it('C-8.13: udp absent + frozen conns → escalate core restart, not birth reset', () => {
     const connections = prodLikeConnections(94)
     const trackedLastByteChangeAtMsById = new Map(
       connections.map((conn) => [conn.id, nowMs - 120_000]),
@@ -49,8 +49,8 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
       trackedLastByteChangeAtMsById,
       nowMs,
     })
-    assert.equal(plan.action, 'reset_parent_chain_birth')
-    assert.equal(plan.reason, 'byte_death_udp_absent_parent_birth_reset')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'byte_death_udp_absent_requires_core_restart')
   })
 
   it('skips healthy leaf conns with stall below 90s threshold', () => {
@@ -170,7 +170,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     assert.equal(targets.length, 0)
   })
 
-  it('no HY2 leaf targets → parent birth reset not none', () => {
+  it('no HY2 leaf targets + no UDP → escalate core restart', () => {
     const plan = planByteDeathParentMutation({
       connections: [
         {
@@ -184,7 +184,8 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
       trackedLastByteChangeAtMsById: new Map(),
       nowMs,
     })
-    assert.equal(plan.action, 'reset_parent_chain_birth')
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'byte_death_udp_absent_requires_core_restart')
     assert.equal(filterHy2LeafConnections([], 'JP-VPS-HY2').length, 0)
   })
 })

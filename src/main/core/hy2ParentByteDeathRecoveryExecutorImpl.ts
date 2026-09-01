@@ -186,46 +186,21 @@ export async function executeByteDeathParentMutationWithDeps(
 
   if (plan.action === 'close_leaf_connections') {
     if (isByteDeathUdpParentAbsent(diagnostics)) {
-      try {
-        await resetParentBirth(input.activeLeaf, input.nowMs)
-        await log(
-          formatByteDeathRecoveryLogLine({
-            outcome: 'executed',
-            action: 'reset_parent_chain_birth',
-            reason: 'byte_death_collateral_gate_udp_absent phase=execute',
-            maxByteStallMs: input.maxByteStallMs,
-            cursorConn: input.cursorConnectionCount,
-            udpLeafStrict: diagnostics.diagnostics?.udpOnLeafStrict,
-            udpFullScan: diagnostics.diagnostics?.udpFullScanCandidates,
-          }),
-        )
-        return {
-          plan: {
-            action: 'reset_parent_chain_birth',
-            reason: 'byte_death_collateral_gate_udp_absent',
-          },
-          mutated: true,
-        }
-      } catch (error) {
-        const err = formatUnknownErrorForLog(error)
-        await log(
-          formatByteDeathRecoveryLogLine({
-            outcome: 'failed',
-            action: 'reset_parent_chain_birth',
-            reason: 'byte_death_collateral_gate_udp_absent phase=execute',
-            maxByteStallMs: input.maxByteStallMs,
-            cursorConn: input.cursorConnectionCount,
-            err,
-          }),
-        )
-        return {
-          plan: {
-            action: 'reset_parent_chain_birth',
-            reason: 'byte_death_collateral_gate_udp_absent',
-          },
-          mutated: false,
-          err,
-        }
+      const escalateReason = 'byte_death_udp_absent_requires_core_restart'
+      await log(
+        formatByteDeathRecoveryLogLine({
+          outcome: 'failed',
+          action: 'none',
+          reason: `${escalateReason} collateral_gate_blocked`,
+          maxByteStallMs: input.maxByteStallMs,
+          cursorConn: input.cursorConnectionCount,
+          udpLeafStrict: diagnostics.diagnostics?.udpOnLeafStrict,
+          udpFullScan: diagnostics.diagnostics?.udpFullScanCandidates,
+        }),
+      )
+      return {
+        plan: { action: 'none', reason: escalateReason },
+        mutated: false,
       }
     }
     const targets = selectByteDeathLeafCloseTargets({
