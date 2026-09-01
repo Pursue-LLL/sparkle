@@ -31,7 +31,12 @@ import {
 } from './mihomoProxyDelayCore'
 import { formatMarathonProviderMutationBlockedLogLine } from './marathonDataPlaneMutationGuardCore'
 
-export type MihomoChangeProxySource = 'auto' | 'manual' | 'bootstrap' | 'protocol_contract'
+export type MihomoChangeProxySource =
+  | 'auto'
+  | 'manual'
+  | 'bootstrap'
+  | 'protocol_contract'
+  | 'recovery_coordinator'
 
 export interface MihomoChangeProxyOptions {
   /** Manual/bootstrap switches bypass Cursor api2 failover defer. Default: auto. */
@@ -351,7 +356,7 @@ export const mihomoChangeProxy = async (
   const instance = await getAxios()
   await instance.put(`/proxies/${encodeURIComponent(group)}`, { name: proxy })
 
-  if ((source === 'manual' || source === 'protocol_contract') && isCursorGroup) {
+  if ((source === 'manual' || source === 'protocol_contract' || source === 'recovery_coordinator') && isCursorGroup) {
     const { writeCursorDedicatedManualSelection } = await import('./cursorDedicatedSelectionCore')
     await writeCursorDedicatedManualSelection(proxy)
   }

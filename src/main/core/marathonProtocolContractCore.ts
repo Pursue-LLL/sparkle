@@ -151,7 +151,7 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
   marathonTruthActive: boolean
   fromNode: string
   toNode: string
-  source: 'auto' | 'manual' | 'bootstrap' | 'protocol_contract'
+  source: 'auto' | 'manual' | 'bootstrap' | 'protocol_contract' | 'recovery_coordinator'
   mutationSnapshot?: TransportMutationSnapshot
 }): MarathonProtocolSwitchDecision {
   const fromNode = input.fromNode.trim()
@@ -170,6 +170,18 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
   }
   if (fromNode === toNode) {
     return { allowed: false, reason: 'noop' }
+  }
+
+  if (input.source === 'recovery_coordinator') {
+    if (isCursorProtocolUpgrade(fromNode, toNode)) {
+      return { allowed: true, reason: 'recovery_failover_protocol_upgrade' }
+    }
+    if (isCursorSuboptimalNode(fromNode) && fromNode !== toNode) {
+      return { allowed: true, reason: 'recovery_failover_lateral_escape' }
+    }
+    if (!isCursorSuboptimalNode(toNode)) {
+      return { allowed: true, reason: 'recovery_failover_trusted_target' }
+    }
   }
 
   if (input.source === 'protocol_contract') {

@@ -163,7 +163,7 @@ export async function submitRecoveryCoordinatorEvent(input: {
         return { handled: false, reason: 'failover_target_unavailable' }
       }
       const changed = await mihomoChangeProxy(CURSOR_DEDICATED_GROUP_NAME, target, {
-        source: 'manual',
+        source: 'recovery_coordinator',
       })
       if (changed) {
         await writeCursorDedicatedManualSelection(target)
