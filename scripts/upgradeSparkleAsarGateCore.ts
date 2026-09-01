@@ -96,6 +96,8 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('scheduleByteDeathRecoveryVerification') ||
     !mainSource.includes('invokeEmergencyCoreRestart') ||
     !mainSource.includes('registerEmergencyCoreRestartHandler') ||
+    !mainSource.includes('--sparkle-emergency-recovery-smoke') ||
+    !mainSource.includes('[EmergencyRecoverySmoke]:') ||
     !mainSource.includes('requestEmergencyCoreRecovery') ||
     !mainSource.includes('restartCoreEmergency') ||
     !mainSource.includes('reset_parent_chain_birth') ||
