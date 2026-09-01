@@ -132,6 +132,18 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(decision.reason, 'blocked_suboptimal_lateral')
   })
 
+  it('recovery_coordinator bypasses suboptimal lateral block for failover escape', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 20,
+      marathonTruthActive: true,
+      fromNode: 'JP-VPS-HY2',
+      toNode: 'JP-VPS-Reality',
+      source: 'recovery_coordinator',
+    })
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.reason, 'recovery_failover_lateral_escape')
+  })
+
   it('allows manual switch to marathon-optimal HY2 from other suboptimal VPS leaves', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 7,
