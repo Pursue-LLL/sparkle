@@ -166,11 +166,12 @@ export async function submitRecoveryCoordinatorEvent(input: {
         source: 'recovery_coordinator',
       })
       if (changed) {
+        policyState = { ...policyState, failoverAttempted: true }
         await writeCursorDedicatedManualSelection(target)
         await notifyRecoveryCircuitSuccess()
       }
       await appendAppLog(
-        `[RecoveryCoordinator]: outcome=${changed ? 'executed' : 'failed'} action=failover_leaf leaf=${decision.action.leafId} target=${target} reason=${decision.action.reason}\n`,
+        `[RecoveryCoordinator]: outcome=${changed ? 'executed' : 'failed'} action=failover_leaf leaf=${decision.action.leafId} target=${target} reason=${decision.action.reason} failover_dispatch_count=${policyState.failoverDispatchCount}\n`,
       )
       return {
         handled: changed,
