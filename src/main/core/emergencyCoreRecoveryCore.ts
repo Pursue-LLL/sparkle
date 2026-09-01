@@ -6,6 +6,7 @@ import { BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART } from './hy2ParentByteDeat
 
 export const EMERGENCY_CORE_RECOVERY_DRAIN_MS = 15_000
 export const EMERGENCY_CORE_RECOVERY_MAX_WAIT_MS = 45_000
+export const EMERGENCY_CORE_RECOVERY_COOLDOWN_MS = 120_000
 
 export type EmergencyCoreRecoveryReason =
   | 'confirmed_udp_parent_absent'
@@ -38,11 +39,37 @@ export function buildEmergencyCoreRecoveryDeadline(
   return requestedAtMs + EMERGENCY_CORE_RECOVERY_MAX_WAIT_MS
 }
 
+export function evaluateEmergencyCoreRecoveryCooldown(input: {
+  nowMs: number
+  lastCompletedAtMs: number
+}): { blocked: boolean; reason: string } {
+  if (input.lastCompletedAtMs <= 0) {
+    return { blocked: false, reason: 'emergency_cooldown_clear' }
+  }
+  const elapsedMs = input.nowMs - input.lastCompletedAtMs
+  if (elapsedMs < EMERGENCY_CORE_RECOVERY_COOLDOWN_MS) {
+    return { blocked: true, reason: 'emergency_cooldown_active' }
+  }
+  return { blocked: false, reason: 'emergency_cooldown_clear' }
+}
+
 export function evaluateEmergencyCoreRecoveryAdmission(input: {
   request: EmergencyCoreRecoveryRequest
   nowMs: number
+  inFlight?: boolean
+  lastCompletedAtMs?: number
 }): EmergencyCoreRecoveryAdmission {
   const { request, nowMs } = input
+  if (input.inFlight) {
+    return { admitted: false, reason: 'emergency_recovery_in_flight', drainMs: 0 }
+  }
+  const cooldown = evaluateEmergencyCoreRecoveryCooldown({
+    nowMs,
+    lastCompletedAtMs: input.lastCompletedAtMs ?? 0,
+  })
+  if (cooldown.blocked) {
+    return { admitted: false, reason: cooldown.reason, drainMs: 0 }
+  }
   if (!request.leafId.trim()) {
     return { admitted: false, reason: 'emergency_leaf_missing', drainMs: 0 }
   }

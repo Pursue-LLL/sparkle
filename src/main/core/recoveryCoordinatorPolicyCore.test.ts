@@ -27,8 +27,49 @@ function baseFact(overrides: Partial<RecoveryFact> = {}): RecoveryFact {
 }
 
 describe('recoveryCoordinatorPolicyCore @phase1', () => {
-  it('UDP absent → emergency core recovery action', () => {
+  it('UDP absent with active cursor_conn → failover before core restart', () => {
     const state = createInitialRecoveryCoordinatorPolicyState(nowMs)
+    const result = decideRecoveryCoordinatorAction({
+      state,
+      fact: baseFact(),
+      event: {
+        type: 'UDP_PARENT_ABSENT',
+        leafId: 'JP-VPS-HY2',
+        generation: 1,
+        observedAt: nowMs,
+        detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
+      },
+      nowMs,
+    })
+    assert.equal(result.action.kind, 'failover_leaf')
+    assert.equal(result.action.reason, 'udp_absent_failover_before_core_restart')
+    assert.equal(result.state.coreState, 'READY')
+    assert.equal(result.state.failoverAttempted, true)
+  })
+
+  it('UDP absent with cursor_conn=0 → emergency core recovery', () => {
+    const state = createInitialRecoveryCoordinatorPolicyState(nowMs)
+    const result = decideRecoveryCoordinatorAction({
+      state,
+      fact: baseFact({ cursorConnectionCount: 0 }),
+      event: {
+        type: 'UDP_PARENT_ABSENT',
+        leafId: 'JP-VPS-HY2',
+        generation: 1,
+        observedAt: nowMs,
+        detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
+      },
+      nowMs,
+    })
+    assert.equal(result.action.kind, 'request_emergency_core_recovery')
+    assert.equal(result.state.coreState, 'RESTART_PENDING')
+  })
+
+  it('UDP absent after failover attempted → emergency core recovery', () => {
+    const state = {
+      ...createInitialRecoveryCoordinatorPolicyState(nowMs),
+      failoverAttempted: true,
+    }
     const result = decideRecoveryCoordinatorAction({
       state,
       fact: baseFact(),

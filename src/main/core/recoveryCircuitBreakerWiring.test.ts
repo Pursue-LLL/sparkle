@@ -24,13 +24,12 @@ describe('recoveryCircuitBreaker P1 wiring', () => {
     assert.match(source, /RECOVERY_CIRCUIT_BREAKER_COOLDOWN_MS = 10 \* 60_000/)
   })
 
-  it('recovery circuit breaker uses static marathon guard import', () => {
+  it('recovery circuit breaker delegates escalation to coordinator (open/block only)', () => {
     const source = readFileSync(path.join(ROOT, 'recoveryCircuitBreaker.ts'), 'utf8')
-    assert.match(source, /import \{ evaluateMarathonCoreColdRestart \} from '\.\/marathonCoreRestartGuard'/)
-    assert.doesNotMatch(
-      source,
-      /evaluateEscalateRestartGuard[\s\S]*await import\('\.\/marathonCoreRestartGuard'\)/,
-    )
+    assert.doesNotMatch(source, /requestEmergencyCoreRecovery/)
+    assert.doesNotMatch(source, /maybeEscalateCircuitOpenCoreRestart/)
+    const coordinator = readFileSync(path.join(ROOT, 'recoveryCoordinator.ts'), 'utf8')
+    assert.match(coordinator, /notifyRecoveryCircuitSuccess/)
   })
 
   it('emergency core recovery uses bridge invoke (no manager dynamic import)', () => {
