@@ -1,8 +1,11 @@
 # Sparkle Bugfix Log
 
-> **2026-09-01 17:30 最新**：**BUG-2026-09-01-001 CODE-DONE @1.30.52 git** · fake-ip Direct 冷启动 + CoreLifecycle SSOT + Tier0-Direct
-> **2026-09-01 17:00 上一版**：**BUG-2026-09-01-002 CODE-DONE @1.30.52 git** · emergency 马拉松自激 restart → failover-first + in-flight + cooldown + breaker 仅 open/block
-> **2026-09-01 16:30 上一版**：**BUG-2026-09-01-001 CODE-DONE @1.30.52 git** · Recovery Architecture Convergence Phase-1 — coordinator + emergency core recovery + byte-death verifier · live smoke PASS · **回归：马拉松期 emergency 循环**
+> **2026-09-01 18:30 最新**：**BUG-2026-09-01-001 R2 INSTALLED @1.30.52 cb85a3b** · 198.18 CIDR sanitize 不匹配 `🎯 Direct` → trap 每次 regen 写回
+> **2026-09-01 18:30 最新**：**BUG-2026-09-01-003 INSTALLED @1.30.52 cb85a3b** · failover R-31 拦截 + failoverAttempted 永久锁 → emergency 循环
+> **2026-09-01 18:30 最新**：**BUG-2026-09-01-002 R1 INSTALLED @1.30.52 cb85a3b** · emergency 马拉松自激 → 三环闭合 · **待 30min soak**
+> **2026-09-01 17:30 上一版**：**BUG-2026-09-01-001 R1 CODE-DONE @1.30.52 git** · fake-ip Direct 冷启动 + CoreLifecycle SSOT + Tier0-Direct · **半生效 · 见 R2**
+> **2026-09-01 17:00 上一版**：**BUG-2026-09-01-002 R0 CODE-DONE @1.30.52 git** · emergency 马拉松自激 restart → failover-first + in-flight + cooldown · **见 R1**
+> **2026-09-01 16:30 上一版**：**BUG-2026-09-01-000 CODE-DONE @1.30.52 git** · Recovery Architecture Convergence Phase-1 — coordinator + emergency core recovery + byte-death verifier · live smoke PASS · **回归：马拉松期 emergency 循环**
 > **2026-08-31 20:50 上一版**：**BUG-2026-08-31-007 INSTALLED @1.30.52** · Cursor 主走自动选择 · 仅 Cursor-2/3 走 🎯 Cursor 专用 · 移除已卸载的 Cursor-3.1.15.app
 > **2026-08-31 19:35 上一版**：**BUG-2026-08-31-006 INSTALLED @1.30.46** · W3 bootstrap 死锁 — core 未启动时 `cursor_conn=-1` 不再永久拦截 profile-update-cli / macOS26 headless
 > **2026-08-31 19:30 上一版**：**BUG-2026-08-31-005 CODE-DONE @1.30.47 git** · url-test 自动选择排除 AnyTLS（保留手动切换）· Codex SSE 不再被 01 节点 url-test 误选
@@ -33,28 +36,65 @@
 
 ---
 
-### BUG-2026-09-01-002 · Phase-1 emergency 马拉松自激重启 · Cursor/Codex SSE 断流 · **CODE-DONE @1.30.53 git**
+### BUG-2026-09-01-001 · fake-ip Direct 冷启动 + 198.18 CIDR 陷阱 · **INSTALLED @1.30.52 cb85a3b · 待 soak**
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **CODE-DONE** · 待 install + soak |
-| **装包版本** | git `@1.30.53` · prod 仍为 **1.30.52** |
-| **症状** | Cursor-3 `Connection failed repeatedly` / Codex `stream disconnected … error decoding response body` · 08:41–08:55 UTC 马拉松期反复断流 |
-| **根因** | Phase-1 emergency core recovery **能执行了**（修复旧 deadlock），但 UDP absent 时 **跳过 failover 直接 core restart**；Coordinator + CircuitBreaker **并发双触发**；无 cooldown → 每 2–3min 重启 mihomo core（cursor_conn=37–52）→ 掐断全部 SSE |
-| **证据** | `app-2026-9-1.log`：`EmergencyCoreRecovery outcome=executed` ×15+ · 08:54:54 双 admission（cursor_conn=39/37 差 4ms）· `核心控制器未初始化` ×2 |
-| **修复** | ① `emergencyRecoveryInFlight` 全局 mutex ② `EMERGENCY_CORE_RECOVERY_COOLDOWN_MS=120s` ③ marathon 期 UDP absent → **failover_leaf 优先**，failover 后再 emergency |
-| **NOT** | Cursor 服务端故障 · api2 路由失败（重启间隙 api2=200） |
-| **待验** | install → 马拉松 soak → Network Diagnostic 10/10 · JP-VPS-HY2 UDP parent 根因仍待 Phase-2 |
+| **状态** | **R2 INSTALLED** · T0=10:29:11 · **待 30min soak PASS** |
+| **同族反复** | **第 3 轮**（R0 Tier0 缺失 · R1 Tier0+flush 半生效 · **R2 emoji Direct CIDR**） |
+| **严重度** | P1 — 国内 App `dial tcp 198.18.0.x i/o timeout` + 与 BUG-002 emergency 级联 |
+| **症状** | QQMusic/Codex `198.18.0.x i/o timeout` · 9/1 累计 **737+** 次 core log |
+| **根因 R0** | 无 Tier0-Direct · core restart 不 flush store-fake-ip（BUG-013 仅 TUN lost） |
+| **根因 R1 遗漏** | `sanitizeFakeIpDirectCidrRules` 只匹配 `target === 'DIRECT' \|\| /直连/` · 订阅规则为 **`IP-CIDR,198.18.0.0/16,🎯 Direct`** → Layer1 **从未移除** · 每次 `generateProfile` 写回陷阱 |
+| **证据 R2** | `work/config.yaml:3417` trap 在 6e92e53 装包后仍存在 · 手动删后 10:25 cold_start regen **又写回** · `fakeIpRoutingIntegrity.ts:153-154` 旧逻辑 |
+| **修复 R0** | Tier0-Direct · CoreLifecycle post-ready flush · `6e92e53` |
+| **修复 R2** | **`cb85a3b`**：198.18/198.19 IP-CIDR 在 fake-ip 模式下 **无条件移除**（不依赖 outbound 名） |
+| **装包** | CDHash `17c22f704c7cc88b5ee56188c4581c8e26f36072` · post-regen **TRAP_ABSENT** |
+| **验收** | [x] `integrity_patches` @ generateProfile [x] TRAP_ABSENT [ ] T0+30min timeout 零增长 |
+| **踩坑** | **filter 有 +.cn ≠ 陷阱已除** — 必须 rg `198.18.0.0/16` on runtime config · 单测须覆盖 emoji Direct target |
 
-### BUG-2026-09-01-001 · Recovery Architecture Convergence Phase-1 · **CODE-DONE @1.30.52 · 部分 INSTALLED**
+### BUG-2026-09-01-002 · Phase-1 emergency 马拉松自激重启 · Cursor/Codex SSE 断流 · **INSTALLED @1.30.52 cb85a3b · 待 soak**
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **CODE-DONE + smoke PASS** · **回归见 BUG-2026-09-01-002** |
+| **状态** | **R1 INSTALLED** · cooldown 生效 · failover 路径就绪 · **待 HY2 stall 实战 + 30min soak** |
+| **同族反复** | **第 2 轮**（R0 d33cbf1 仍循环 · R1 +003 failover 链） |
+| **装包版本** | **1.30.52** · CDHash `17c22f70…` · git `d33cbf1`→`cb85a3b` |
+| **症状** | `Connection failed repeatedly` / `stream disconnected … error decoding response body` · 装包前 **48× `emergency_admitted`**（09:44–10:23） |
+| **根因 R0** | UDP absent → 跳过 failover · CB+Coordinator 双触发 · 无 cooldown → 每 2–3min core restart（cursor_conn=18–25） |
+| **根因 R1 遗漏** | 见 **BUG-2026-09-01-003** — failover 从未成功 → 永久 emergency |
+| **证据** | `app-2026-9-1.log:52028` 10:00 `request_emergency_core_recovery` cursor_conn=21 · `52297` cooldown block · T0 10:29+ **零 emergency** |
+| **修复 R0** | `d33cbf1`：in-flight mutex · 120s cooldown · failover-first policy · CB open only |
+| **修复 R1** | `08b4153`+`252de75`+`cb85a3b`（见 003） |
+| **NOT** | Cursor 服务端 · api2 路由（restart 间隙 api2=200） |
+| **待验** | T0+30min 零 emergency · HY2 stall → failover executed · Network Diagnostic 10/10 |
+
+### BUG-2026-09-01-003 · failover R-31 拦截 + failoverAttempted 永久锁 · **INSTALLED @1.30.52 cb85a3b**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **INSTALLED** · 单测 PASS · **待 HY2 byte-death 实战验证** |
+| **严重度** | P0 — 导致 BUG-002 emergency 循环 **无法被 failover 打断** |
+| **症状** | 09:06 failover 一次失败后 · 10:00+ **永远** `request_emergency_core_recovery`（cursor_conn>0） |
+| **根因 A** | `recoveryCoordinator.ts`（6e92e53）`mihomoChangeProxy` **`source: 'manual'`** → R-31 `blocked_suboptimal_lateral` HY2→Reality |
+| **根因 B** | `recoveryCoordinatorPolicyCore` 在 **dispatch failover 时** `failoverAttempted=true` → 一次失败 **永久锁 emergency 路径** |
+| **证据** | `app-2026-9-1.log:50173-50175` failover → `switch_blocked source=manual` · `:52028` 10:00 直 emergency（failoverAttempted 已 true） |
+| **修复 A** | `08b4153`：`source=recovery_coordinator` + `marathonProtocolContractCore` escape path |
+| **修复 B** | `252de75`：`MAX_FAILOVER_DISPATCHES=2` · 成功才设 `failoverAttempted=true` |
+| **装包** | asar `recovery_coordinator` 3 hits · CDHash `17c22f70…` |
+| **验收** | [ ] 下次 stall：`recovery_failover_lateral_escape` or `recovery_failover_protocol_upgrade` · 非 `switch_blocked source=manual` |
+| **踩坑** | **policy 说 failover-first 不够** — switch source + attempt 语义必须一起修 · 否则「修了 failover 仍 emergency」 |
+| **反思** | 同 bug **翻来覆去**：Phase-1 闭合 emergency deadlock 后 **过度 correction** → 未测 failover 实战路径 · 验收用窄窗假象 |
+
+### BUG-2026-09-01-000 · Recovery Architecture Convergence Phase-1 · **CODE-DONE @1.30.52 · 部分 INSTALLED**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **CODE-DONE + smoke PASS** · **回归见 002/003** |
 | **装包** | `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` · build `2026.0901.1605` · CDHash `11918045…` |
 | **交付** | `recoveryCoordinator` · `emergencyCoreRecovery` · byte-death verifier · fault injection gate · `--sparkle-emergency-recovery-smoke` |
 | **闭合** | 旧链 `evaluateMarathonCoreColdRestart is not a function` + UDP absent birth-reset bypass + circuit OPEN 无 escalation |
-| **回归** | emergency 在马拉松期 **过于激进** — 见 002 |
+| **回归** | emergency 在马拉松期 **过于激进** — 见 002 · failover 未通 — 见 003 |
 
 ### BUG-2026-08-31-007 · Cursor 主改走自动选择 · 仅 2/3 专用 · **INSTALLED @1.30.52**
 
