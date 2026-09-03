@@ -108,4 +108,15 @@ describe('emergencyCoreRecoveryCore @phase1', () => {
     })
     assert.equal(cooldown.blocked, false)
   })
+
+  it('BUG-013: bypass cooldown when prior readiness api2 was not verified', () => {
+    const nowMs = 2_000_000
+    const cooldown = evaluateEmergencyCoreRecoveryCooldown({
+      nowMs: nowMs + 30_000,
+      lastCompletedAtMs: nowMs,
+      lastReadinessApi2Verified: false,
+    })
+    assert.equal(cooldown.blocked, false)
+    assert.equal(cooldown.reason, 'emergency_cooldown_bypass_unverified_readiness')
+  })
 })

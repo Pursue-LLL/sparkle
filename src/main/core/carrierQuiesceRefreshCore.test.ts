@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   CARRIER_QUIESCE_BYTE_FROZEN_MS,
+  isMarathonGlobalByteDeath,
   PARENT_EMERGENCY_REFRESH_AGE_MS,
   resolveCarrierQuiesceRefreshDecision,
 } from './carrierQuiesceRefreshCore'
@@ -71,7 +72,7 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
     assert.equal(decision.reason, 'marathon_global_byte_death_bypass_active_inner')
   })
 
-  it('1.30.13: marathon byte-death requires absolute stall threshold', () => {
+  it('BUG-013: frozen quic + recovery ineffective bypasses even below absolute stall threshold', () => {
     const decision = resolveCarrierQuiesceRefreshDecision({
       snapshot: snapshot({
         httpParentChainAgeMs: 2_610_790,
@@ -83,8 +84,8 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
       recoveryIneffective: true,
       marathonActive: true,
     })
-    assert.equal(decision.bypassActiveInner, false)
-    assert.equal(decision.reason, 'parent_not_refresh_due')
+    assert.equal(decision.bypassActiveInner, true)
+    assert.equal(decision.reason, 'marathon_global_byte_death_bypass_active_inner')
   })
 
   it('blocks bypass when carrier is not byte-frozen', () => {
@@ -103,7 +104,7 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
       nowMs,
     })
     assert.equal(decision.bypassActiveInner, false)
-    assert.equal(decision.reason, 'carrier_not_byte_frozen')
+    assert.equal(decision.reason, 'parent_not_refresh_due')
   })
 
   it('bypasses active_inner when parent is emergency stale (8h+)', () => {
@@ -138,5 +139,16 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
     })
     assert.equal(decision.bypassActiveInner, true)
     assert.equal(decision.reason, 'parent_emergency_refresh_bypass_active_inner')
+  })
+
+  it('BUG-013: frozen quic + recovery ineffective counts as marathon byte-death even when max_byte_stall_ms=0', () => {
+    assert.equal(
+      isMarathonGlobalByteDeath({
+        marathonActive: true,
+        snapshot: snapshot({ maxByteStallMs: 0, frozenQuicCursorCount: 2 }),
+        recoveryIneffective: true,
+      }),
+      true,
+    )
   })
 })

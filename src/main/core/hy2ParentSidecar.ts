@@ -127,6 +127,7 @@ export function resolveProactiveUdpClosePlan(input: {
   if (
     !marathonGlobalByteDeath &&
     !input.proactiveHardRotate &&
+    !input.emergencyStallEscalation &&
     input.nowMs - input.lastRotateActionAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS
   ) {
     return { action: 'none', reason: 'proactive_rotate_cooldown' }

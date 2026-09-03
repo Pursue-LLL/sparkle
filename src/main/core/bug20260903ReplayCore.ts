@@ -4,7 +4,7 @@
 
 import { CARRIER_QUIESCE_BYTE_FROZEN_MS } from './carrierQuiesceRefreshCore'
 import { resolveFrozenSurgicalPrunePlan } from './frozenSurgicalPruneCore'
-import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
+import { HY2_PARENT_SIDECAR_DIAL_AGE_MS, resolveHy2ParentSidecarDialPlan } from './hy2ParentSidecarCore'
 import {
   resolveExpectedProxyProviderIds,
   shouldRestartServiceCoreForProviderParity,
@@ -303,6 +303,36 @@ export function replayBug20260903Api2AnchorRejectsFalseSuccess(): Bug20260903Rep
   }
 }
 
+/** Sep 3 17:07: emergency stall + truth max_byte_stall=0 must still bypass sidecar cooldown. */
+export function replayBug20260903EmergencyStallBypassesSidecarCooldown(): Bug20260903ReplayVerdict {
+  const nowMs = 2_000_000
+  const plan = resolveHy2ParentSidecarDialPlan({
+    snapshot: {
+      schemaVersion: 2,
+      updatedAtMs: nowMs,
+      cursorConnectionCount: 20,
+      httpParentChainAgeMs: 0,
+      outboundHy2SessionAgeMs: 0,
+      maxByteStallMs: 0,
+      frozenQuicCursorCount: 2,
+      activeHy2Leaf: 'JP-VPS-HY2',
+      hy2ParentChainBirthMs: nowMs - HY2_PARENT_SIDECAR_DIAL_AGE_MS - 60_000,
+    },
+    marathonTruthActive: true,
+    lastSidecarDialAtMs: nowMs - 60_000,
+    nowMs,
+    emergencyStallEscalation: true,
+  })
+  const ok = plan.action === 'sidecar_dial' && plan.reason === 'emergency_stall_escalation_r1'
+  return {
+    fixtureId: '0903_emergency_stall_bypasses_sidecar_cooldown',
+    ok,
+    detail: ok
+      ? 'frozen_quic stall escalation bypasses sidecar cooldown'
+      : `plan=${plan.action}/${plan.reason}`,
+  }
+}
+
 export async function runBug20260903ReplayGate(): Promise<Bug20260903ReplayResult> {
   const verdicts: Bug20260903ReplayVerdict[] = [
     replayBug20260903Sep2FrozenQuicTier0Sel(),
@@ -313,6 +343,7 @@ export async function runBug20260903ReplayGate(): Promise<Bug20260903ReplayResul
     replayBug20260903DialClusterNoUdpFallback(),
     replayBug20260903StaleSessionOverridesVitality(),
     replayBug20260903Api2AnchorRejectsFalseSuccess(),
+    replayBug20260903EmergencyStallBypassesSidecarCooldown(),
   ]
   return {
     ok: verdicts.every((verdict) => verdict.ok),

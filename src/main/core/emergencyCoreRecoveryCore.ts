@@ -45,9 +45,14 @@ export function buildEmergencyCoreRecoveryDeadline(
 export function evaluateEmergencyCoreRecoveryCooldown(input: {
   nowMs: number
   lastCompletedAtMs: number
+  /** BUG-013: prior emergency reported completed but api2 anchor was not verified — do not block retry. */
+  lastReadinessApi2Verified?: boolean
 }): { blocked: boolean; reason: string } {
   if (input.lastCompletedAtMs <= 0) {
     return { blocked: false, reason: 'emergency_cooldown_clear' }
+  }
+  if (input.lastReadinessApi2Verified === false) {
+    return { blocked: false, reason: 'emergency_cooldown_bypass_unverified_readiness' }
   }
   const elapsedMs = input.nowMs - input.lastCompletedAtMs
   if (elapsedMs < EMERGENCY_CORE_RECOVERY_COOLDOWN_MS) {
@@ -61,6 +66,7 @@ export function evaluateEmergencyCoreRecoveryAdmission(input: {
   nowMs: number
   inFlight?: boolean
   lastCompletedAtMs?: number
+  lastReadinessApi2Verified?: boolean
 }): EmergencyCoreRecoveryAdmission {
   const { request, nowMs } = input
   if (input.inFlight) {
@@ -69,6 +75,7 @@ export function evaluateEmergencyCoreRecoveryAdmission(input: {
   const cooldown = evaluateEmergencyCoreRecoveryCooldown({
     nowMs,
     lastCompletedAtMs: input.lastCompletedAtMs ?? 0,
+    lastReadinessApi2Verified: input.lastReadinessApi2Verified,
   })
   if (cooldown.blocked) {
     return { admitted: false, reason: cooldown.reason, drainMs: 0 }

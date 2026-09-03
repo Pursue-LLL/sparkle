@@ -82,6 +82,7 @@ export function resolveHy2ParentSidecarDialPlan(input: {
   if (
     !input.marathonGlobalByteDeath &&
     !input.dialFailureClusterEscalation &&
+    !input.emergencyStallEscalation &&
     input.nowMs - input.lastSidecarDialAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS
   ) {
     return { action: 'none', reason: 'sidecar_cooldown' }

@@ -118,4 +118,16 @@ describe('hy2ParentSidecarCore R-35a', () => {
     })
     assert.equal(plan.action, 'sidecar_dial')
   })
+
+  it('BUG-013: emergency stall escalation bypasses sidecar cooldown', () => {
+    const plan = resolveHy2ParentSidecarDialPlan({
+      snapshot: baseSnapshot,
+      marathonTruthActive: true,
+      lastSidecarDialAtMs: 1_000_000 - 60_000,
+      nowMs: 1_000_000,
+      emergencyStallEscalation: true,
+    })
+    assert.equal(plan.action, 'sidecar_dial')
+    assert.equal(plan.reason, 'emergency_stall_escalation_r1')
+  })
 })
