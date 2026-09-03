@@ -128,7 +128,10 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('fallback_ladder') ||
     !mainSource.includes('cursor_dedicated_dial_failure_cluster_udp_absent') ||
     !mainSource.includes('stale_session_overrides_vitality_counterproof') ||
-    !mainSource.includes('coreLogDialFailureTailWatcher')
+    !mainSource.includes('coreLogDialFailureTailWatcher') ||
+    !mainSource.includes('api2_anchor_rejected') ||
+    !mainSource.includes('proactive_hard_rotate') ||
+    !mainSource.includes('dismissCollectiveDeathAlert')
   ) {
     return { ok: false, reason: 'missing_bug20260903_recovery_truth' }
   }

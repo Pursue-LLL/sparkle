@@ -28,6 +28,10 @@ import {
 import { formatRecoveryCircuitBreakerLogLine } from './recoveryCircuitBreakerCore'
 import type { MarathonSSETruthResult } from './marathonSSETruthCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
+import {
+  evaluateSidecarExternalVerification,
+  requiresRecoveryApi2Anchor,
+} from './recoveryApi2AnchorCore'
 
 const SIDECAR_ACTION_COOLDOWN_MS = 300_000
 
@@ -100,6 +104,7 @@ export function resolveProactiveUdpClosePlan(input: {
   emergencyStallEscalation?: boolean
   recoveryIneffective?: boolean
   marathonActive?: boolean
+  proactiveHardRotate?: boolean
 }): Hy2ParentSidecarPlan {
   const marathonGlobalByteDeath = isMarathonGlobalByteDeath({
     marathonActive: input.marathonActive === true,
@@ -112,6 +117,7 @@ export function resolveProactiveUdpClosePlan(input: {
   )
   if (
     !input.emergencyStallEscalation &&
+    !input.proactiveHardRotate &&
     !marathonGlobalByteDeath &&
     effectiveAges.outboundHy2SessionAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS &&
     effectiveAges.httpParentChainAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS
@@ -120,6 +126,7 @@ export function resolveProactiveUdpClosePlan(input: {
   }
   if (
     !marathonGlobalByteDeath &&
+    !input.proactiveHardRotate &&
     input.nowMs - input.lastRotateActionAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS
   ) {
     return { action: 'none', reason: 'proactive_rotate_cooldown' }
@@ -176,6 +183,8 @@ export async function runHy2ParentSidecarIfDue(input: {
   recoveryIneffective?: boolean
   /** BUG-2026-09-03-005: bypass age/cooldown/circuit on Cursor dial failure cluster. */
   dialFailureClusterEscalation?: boolean
+  /** BUG-2026-09-03-011: bootstrap 4h hard rotate with api2 anchor. */
+  proactiveHardRotate?: boolean
 }): Promise<Hy2ParentSidecarExecutionResult> {
   const nowMs = input.nowMs ?? Date.now()
   if (sidecarObserveInFlight) {
@@ -189,9 +198,10 @@ export async function runHy2ParentSidecarIfDue(input: {
       currentMaxByteStallMs: input.snapshot.maxByteStallMs,
     })
 
-    const circuitGate = input.dialFailureClusterEscalation
-      ? { allowed: true, reason: 'dial_failure_cluster_bypass' }
-      : await assertRecoveryCircuitAllowsMutation({ nowMs })
+    const circuitGate =
+      input.dialFailureClusterEscalation || input.proactiveHardRotate
+        ? { allowed: true, reason: 'escalation_bypass' }
+        : await assertRecoveryCircuitAllowsMutation({ nowMs })
     if (!circuitGate.allowed) {
       await appendSidecarLog(
         formatRecoveryCircuitBreakerLogLine({
@@ -229,9 +239,11 @@ export async function runHy2ParentSidecarIfDue(input: {
       trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
       nowMs,
       lastRotateActionAtMs: lastHy2ParentSidecarActionAtMs,
-      emergencyStallEscalation: input.emergencyStallEscalation === true,
+      emergencyStallEscalation:
+        input.emergencyStallEscalation === true || input.proactiveHardRotate === true,
       recoveryIneffective: input.recoveryIneffective === true,
       marathonActive,
+      proactiveHardRotate: input.proactiveHardRotate === true,
     })
 
     const carrierQuiesce = resolveCarrierQuiesceRefreshDecision({
@@ -288,6 +300,7 @@ export async function runHy2ParentSidecarIfDue(input: {
     if (
       !marathonGlobalByteDeath &&
       !input.dialFailureClusterEscalation &&
+      !input.proactiveHardRotate &&
       nowMs - lastHy2ParentSidecarActionAtMs < SIDECAR_ACTION_COOLDOWN_MS
     ) {
       return { outcome: 'skipped', action: 'none', reason: 'sidecar_action_cooldown' }
@@ -518,18 +531,39 @@ export async function runHy2ParentSidecarIfDue(input: {
         marathonGlobalByteDeath &&
         !parentUdpClosedThisInvocation &&
         vitality.outcome === 'executed'
+      const requireApi2Anchor = requiresRecoveryApi2Anchor({
+        dialFailureClusterEscalation: input.dialFailureClusterEscalation,
+        emergencyStallEscalation: input.emergencyStallEscalation,
+        marathonGlobalByteDeath,
+        proactiveHardRotate: input.proactiveHardRotate,
+      })
+      let api2AnchorOk = false
+      if (vitality.outcome === 'executed' && requireApi2Anchor) {
+        const { probeRecoveryApi2Anchor } = await import('./recoveryApi2Anchor')
+        api2AnchorOk = await probeRecoveryApi2Anchor()
+      }
+      const externalVerification = evaluateSidecarExternalVerification({
+        sidecarOutcome:
+          vitality.outcome === 'executed' && !probeOnlyFalseSuccess ? 'executed' : 'failed',
+        connectPathDelayMs: vitality.connectPathDelayMs,
+        api2Ok: api2AnchorOk,
+        requireApi2Anchor,
+      })
       const sidecarReason =
         marathonGlobalByteDeath && rotatePlan.reason === 'no_udp_outbound'
           ? 'byte_death_no_udp_outbound_sidecar_emergency'
           : dialPlan.reason
       const resolvedReason = probeOnlyFalseSuccess
         ? 'byte_death_probe_only_without_udp_close'
-        : sidecarReason
-      const resolvedOutcome = probeOnlyFalseSuccess
-        ? 'failed'
-        : vitality.outcome === 'executed'
-          ? 'executed'
-          : 'failed'
+        : !externalVerification.verified && vitality.outcome === 'executed'
+          ? `api2_anchor_rejected_${externalVerification.reason}`
+          : sidecarReason
+      const resolvedOutcome =
+        probeOnlyFalseSuccess || !externalVerification.verified
+          ? 'failed'
+          : vitality.outcome === 'executed'
+            ? 'executed'
+            : 'failed'
       await appendSidecarLog(
         formatHy2ParentSidecarLogLine({
           outcome: resolvedOutcome,

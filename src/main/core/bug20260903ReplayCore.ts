@@ -24,8 +24,8 @@ import {
   DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
   shouldForceParentUdpRefreshOnDialCluster,
 } from './cursorDedicatedDialFailureClusterCore'
-import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import { evaluateEmergencyCoreRecoveryAdmission } from './emergencyCoreRecoveryCore'
+import { evaluateSidecarExternalVerification } from './recoveryApi2AnchorCore'
 
 export interface Bug20260903ReplayVerdict {
   fixtureId: string
@@ -285,6 +285,24 @@ export function replayBug20260903StaleSessionOverridesVitality(): Bug20260903Rep
   }
 }
 
+/** Sep 3 16:44: sidecar executed + connect_path_delay_ms=0 must fail api2 anchor gate. */
+export function replayBug20260903Api2AnchorRejectsFalseSuccess(): Bug20260903ReplayVerdict {
+  const verdict = evaluateSidecarExternalVerification({
+    sidecarOutcome: 'executed',
+    connectPathDelayMs: 0,
+    api2Ok: false,
+    requireApi2Anchor: true,
+  })
+  const ok = verdict.verified === false && verdict.reason === 'api2_anchor_fail'
+  return {
+    fixtureId: '0903_api2_anchor_rejects_false_success',
+    ok,
+    detail: ok
+      ? 'sidecar executed + delay=0 + api2 fail → rejected'
+      : `verified=${verdict.verified} reason=${verdict.reason}`,
+  }
+}
+
 export async function runBug20260903ReplayGate(): Promise<Bug20260903ReplayResult> {
   const verdicts: Bug20260903ReplayVerdict[] = [
     replayBug20260903Sep2FrozenQuicTier0Sel(),
@@ -294,6 +312,7 @@ export async function runBug20260903ReplayGate(): Promise<Bug20260903ReplayResul
     replayBug20260903FalseUdpAbsentWithVitality(),
     replayBug20260903DialClusterNoUdpFallback(),
     replayBug20260903StaleSessionOverridesVitality(),
+    replayBug20260903Api2AnchorRejectsFalseSuccess(),
   ]
   return {
     ok: verdicts.every((verdict) => verdict.ok),
