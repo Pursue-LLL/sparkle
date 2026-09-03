@@ -6,6 +6,7 @@ import {
   HY2_PARENT_ROTATE_AGE_MS,
   type TransportLongevityTruthSnapshot,
 } from './transportLongevityTruthCore'
+import { resolveEffectiveTransportLongevityAges } from './hy2ParentSidecarCore'
 import {
   isCriticalCursorHost,
 } from './cursorCriticalTransportCore'
@@ -90,11 +91,15 @@ export function resolveHy2ParentRotationAfterPrunePlan(input: {
   const byteDeathBypass =
     input.carrierQuiesceBypass === true || input.marathonGlobalByteDeath === true
   const minSessionAgeMs = byteDeathBypass ? 0 : HY2_PARENT_ROTATE_AGE_MS
+  const effectiveAges = resolveEffectiveTransportLongevityAges(
+    input.snapshot,
+    input.nowMs,
+  )
   if (
     !input.emergencyStallEscalation &&
     !input.marathonGlobalByteDeath &&
-    input.snapshot.outboundHy2SessionAgeMs < minSessionAgeMs &&
-    input.snapshot.httpParentChainAgeMs < minSessionAgeMs
+    effectiveAges.httpParentChainAgeMs < minSessionAgeMs &&
+    effectiveAges.outboundHy2SessionAgeMs < minSessionAgeMs
   ) {
     return { action: 'none', reason: 'session_age_below_threshold' }
   }

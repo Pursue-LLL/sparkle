@@ -12,6 +12,7 @@ import {
   formatHy2ParentSidecarLogLine,
   HY2_PARENT_PROACTIVE_ROTATE_AGE_MS,
   HY2_PARENT_SIDECAR_COOLDOWN_MS,
+  resolveEffectiveTransportLongevityAges,
   resolveHy2ParentSidecarDialPlan,
   type Hy2ParentSidecarPlan,
 } from './hy2ParentSidecarCore'
@@ -105,11 +106,15 @@ export function resolveProactiveUdpClosePlan(input: {
     snapshot: input.snapshot,
     recoveryIneffective: input.recoveryIneffective === true || input.emergencyStallEscalation === true,
   })
+  const effectiveAges = resolveEffectiveTransportLongevityAges(
+    input.snapshot,
+    input.nowMs,
+  )
   if (
     !input.emergencyStallEscalation &&
     !marathonGlobalByteDeath &&
-    input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS &&
-    input.snapshot.httpParentChainAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS
+    effectiveAges.outboundHy2SessionAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS &&
+    effectiveAges.httpParentChainAgeMs < HY2_PARENT_PROACTIVE_ROTATE_AGE_MS
   ) {
     return { action: 'none', reason: 'session_and_http_chain_below_proactive_rotate' }
   }
@@ -238,6 +243,7 @@ export async function runHy2ParentSidecarIfDue(input: {
       recoveryIneffective:
         input.recoveryIneffective === true || input.emergencyStallEscalation === true,
       marathonActive,
+      nowMs,
     })
     if (
       carrierQuiesce.bypassActiveInner &&

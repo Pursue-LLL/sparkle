@@ -12,16 +12,20 @@ import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthC
 function snapshot(
   overrides: Partial<TransportLongevityTruthSnapshot> = {},
 ): TransportLongevityTruthSnapshot {
+  const nowMs = Date.now()
+  const httpAge = overrides.httpParentChainAgeMs ?? HY2_PARENT_SIDECAR_DIAL_AGE_MS + 1
+  const outboundAge = overrides.outboundHy2SessionAgeMs ?? HY2_PARENT_SIDECAR_DIAL_AGE_MS + 1
+  const maxAge = Math.max(httpAge, outboundAge)
   return {
     schemaVersion: 2,
-    updatedAtMs: Date.now(),
+    updatedAtMs: nowMs,
     cursorConnectionCount: 20,
-    httpParentChainAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 1,
-    outboundHy2SessionAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 1,
+    httpParentChainAgeMs: httpAge,
+    outboundHy2SessionAgeMs: outboundAge,
     maxByteStallMs: CARRIER_QUIESCE_BYTE_FROZEN_MS + 1,
     frozenQuicCursorCount: 2,
     activeHy2Leaf: 'JP-VPS-HY2',
-    hy2ParentChainBirthMs: 1,
+    hy2ParentChainBirthMs: overrides.hy2ParentChainBirthMs ?? nowMs - maxAge,
     ...overrides,
   }
 }
@@ -84,13 +88,19 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
   })
 
   it('blocks bypass when carrier is not byte-frozen', () => {
+    const nowMs = Date.now()
+    const youngAge = 60_000
     const decision = resolveCarrierQuiesceRefreshDecision({
       snapshot: snapshot({
+        httpParentChainAgeMs: youngAge,
+        outboundHy2SessionAgeMs: youngAge,
+        hy2ParentChainBirthMs: nowMs - youngAge,
         maxByteStallMs: 0,
         frozenQuicCursorCount: 0,
       }),
       activeInnerCriticalCount: 12,
       recoveryIneffective: true,
+      nowMs,
     })
     assert.equal(decision.bypassActiveInner, false)
     assert.equal(decision.reason, 'carrier_not_byte_frozen')
@@ -106,6 +116,25 @@ describe('carrierQuiesceRefreshCore Phase B', () => {
       }),
       activeInnerCriticalCount: 20,
       recoveryIneffective: false,
+    })
+    assert.equal(decision.bypassActiveInner, true)
+    assert.equal(decision.reason, 'parent_emergency_refresh_bypass_active_inner')
+  })
+
+  it('1.30.55: emergency refresh uses birth when snapshot ages are zero', () => {
+    const nowMs = 2_000_000_000
+    const birthMs = nowMs - PARENT_EMERGENCY_REFRESH_AGE_MS - 60_000
+    const decision = resolveCarrierQuiesceRefreshDecision({
+      snapshot: snapshot({
+        httpParentChainAgeMs: 0,
+        outboundHy2SessionAgeMs: 0,
+        hy2ParentChainBirthMs: birthMs,
+        maxByteStallMs: 0,
+        frozenQuicCursorCount: 0,
+      }),
+      activeInnerCriticalCount: 20,
+      recoveryIneffective: false,
+      nowMs,
     })
     assert.equal(decision.bypassActiveInner, true)
     assert.equal(decision.reason, 'parent_emergency_refresh_bypass_active_inner')

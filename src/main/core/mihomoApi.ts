@@ -37,6 +37,7 @@ export type MihomoChangeProxySource =
   | 'bootstrap'
   | 'protocol_contract'
   | 'recovery_coordinator'
+  | 'hy2_vitality_failback'
 
 export interface MihomoChangeProxyOptions {
   /** Manual/bootstrap switches bypass Cursor api2 failover defer. Default: auto. */
