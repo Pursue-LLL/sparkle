@@ -254,6 +254,10 @@ async function startMihomoApiStreams(): Promise<void> {
   await startMihomoConnections()
   await startMihomoLogs()
   await startMihomoMemory()
+  const { startCoreLogDialFailureTailWatcher } = await import(
+    './coreLogDialFailureTailWatcher'
+  )
+  startCoreLogDialFailureTailWatcher()
   retry = 10
 }
 
