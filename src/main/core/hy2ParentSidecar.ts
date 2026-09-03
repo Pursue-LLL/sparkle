@@ -456,7 +456,7 @@ export async function runHy2ParentSidecarIfDue(input: {
             )
             await forceClearRecoveryCircuitForClusterRecovery(nowMs, 0)
             const { requestEmergencyCoreRecovery } = await import('./emergencyCoreRecovery')
-            const { BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART } = await import(
+            const { BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART, STALE_SESSION_OVERRIDES_VITALITY_COUNTERPROOF } = await import(
               './hy2ParentByteDeathRecoveryCore'
             )
             const emergency = await requestEmergencyCoreRecovery({
@@ -469,7 +469,7 @@ export async function runHy2ParentSidecarIfDue(input: {
             await appendSidecarLog(
               `[Hy2ParentSidecar]: outcome=${emergency.executed ? 'executed' : 'failed'} ` +
                 `action=emergency_core_recovery reason=${emergency.reason} ` +
-                `trigger=stale_session_overrides_vitality_counterproof\n`,
+                `trigger=${STALE_SESSION_OVERRIDES_VITALITY_COUNTERPROOF}\n`,
             )
             return {
               outcome: emergency.executed ? 'executed' : 'failed',
