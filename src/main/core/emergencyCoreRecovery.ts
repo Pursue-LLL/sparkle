@@ -63,10 +63,12 @@ export interface EmergencyCoreRecoveryInput {
 
 let emergencyRecoveryInFlight = false
 let lastEmergencyCompletedAtMs = 0
+let lastEmergencyReadinessApi2Verified = true
 
 export function resetEmergencyCoreRecoveryForTests(nowMs = Date.now()): void {
   emergencyRecoveryInFlight = false
   lastEmergencyCompletedAtMs = nowMs - 999_999_999
+  lastEmergencyReadinessApi2Verified = true
 }
 
 export async function requestEmergencyCoreRecovery(
@@ -97,6 +99,7 @@ export async function requestEmergencyCoreRecovery(
     request,
     nowMs,
     lastCompletedAtMs: lastEmergencyCompletedAtMs,
+    lastReadinessApi2Verified: lastEmergencyReadinessApi2Verified,
   })
   await appendAppLog(
     formatEmergencyCoreRecoveryLogLine({
@@ -151,6 +154,7 @@ export async function requestEmergencyCoreRecovery(
     })
     const readiness = await verifyEmergencyDataPlaneReady(90_000)
     if (!readiness.api2Ok) {
+      lastEmergencyReadinessApi2Verified = false
       await appendAppLog(
         formatEmergencyCoreRecoveryLogLine({
           outcome: 'failed',
@@ -181,6 +185,7 @@ export async function requestEmergencyCoreRecovery(
     } catch {
       // best-effort dismiss
     }
+    lastEmergencyReadinessApi2Verified = true
     lastEmergencyCompletedAtMs = Date.now()
     return { executed: true, reason: 'emergency_core_recovery_completed' }
   } catch (error) {

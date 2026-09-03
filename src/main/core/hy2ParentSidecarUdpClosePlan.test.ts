@@ -113,4 +113,26 @@ describe('resolveProactiveUdpClosePlan @1.30.16', () => {
     assert.match(plan.reason, /carrier_quiesce_parent_udp_refresh/)
     assert.equal(plan.udpConnectionId, 'udp-parent')
   })
+
+  it('BUG-013: emergency stall escalation bypasses proactive rotate cooldown', () => {
+    const nowMs = 2_000_000
+    const plan = resolveProactiveUdpClosePlan({
+      snapshot: snapshot({
+        maxByteStallMs: 0,
+        frozenQuicCursorCount: 2,
+      }),
+      connections: [tcpLive, udpParent],
+      trackedFirstSeenAtMsById: new Map([['udp-parent', nowMs - 120_000]]),
+      trackedLastByteChangeAtMsById: new Map([
+        ['tcp-live', nowMs - 88_500],
+        ['udp-parent', nowMs - 120_000],
+      ]),
+      nowMs,
+      lastRotateActionAtMs: nowMs - 30_000,
+      emergencyStallEscalation: true,
+      recoveryIneffective: true,
+      marathonActive: true,
+    })
+    assert.equal(plan.action, 'close_udp_outbound')
+  })
 })

@@ -69,10 +69,11 @@ export function isMarathonGlobalByteDeath(input: {
   if (input.snapshot.frozenQuicCursorCount <= 0) {
     return false
   }
-  if (input.snapshot.maxByteStallMs < MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS) {
-    return false
+  if (input.snapshot.maxByteStallMs >= MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS) {
+    return input.recoveryIneffective || isCarrierRecoveryIneffective(input.snapshot)
   }
-  return input.recoveryIneffective || isCarrierRecoveryIneffective(input.snapshot)
+  // BUG-013: truth snapshot may lag (max_byte_stall_ms=0) while frozen_quic + stall escalation is live.
+  return input.recoveryIneffective
 }
 
 export function resolveCarrierQuiesceRefreshDecision(
