@@ -147,6 +147,23 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     assert.equal(plan.reason, 'byte_death_udp_evidence_insufficient')
   })
 
+  it('010: stale session age overrides vitality counterproof → core restart', () => {
+    const connections = prodLikeConnections(39)
+    const staleAgeMs = 175_961_819
+    const plan = planByteDeathParentMutation({
+      connections,
+      activeLeaf: 'JP-VPS-HY2',
+      trackedFirstSeenAtMsById: new Map(),
+      trackedLastByteChangeAtMsById: new Map(),
+      nowMs,
+      lastVitalitySuccessAtMs: nowMs - 5_000,
+      outboundHy2SessionAgeMs: staleAgeMs,
+      httpParentChainAgeMs: staleAgeMs,
+    })
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'byte_death_udp_absent_requires_core_restart')
+  })
+
   it('isByteDeathUdpParentAbsent false when vitality recent', () => {
     assert.equal(
       isByteDeathUdpParentAbsent(

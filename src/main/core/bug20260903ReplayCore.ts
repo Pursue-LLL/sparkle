@@ -19,6 +19,13 @@ import {
   shouldFailbackCursorDedicatedToHy2,
 } from './recoveryFailoverGovernanceCore'
 import { planByteDeathParentMutation } from './hy2ParentByteDeathRecoveryCore'
+import {
+  CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT,
+  DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
+  shouldForceParentUdpRefreshOnDialCluster,
+} from './cursorDedicatedDialFailureClusterCore'
+import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
+import { evaluateEmergencyCoreRecoveryAdmission } from './emergencyCoreRecoveryCore'
 
 export interface Bug20260903ReplayVerdict {
   fixtureId: string
@@ -218,6 +225,66 @@ export function replayBug20260903FalseUdpAbsentWithVitality(): Bug20260903Replay
   }
 }
 
+/** Sep 3 16:20: dial cluster + no UDP parent must force fallback ladder (not skip). */
+export function replayBug20260903DialClusterNoUdpFallback(): Bug20260903ReplayVerdict {
+  const forcePlan = shouldForceParentUdpRefreshOnDialCluster({
+    clusterSize: CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT,
+    activeLeaf: 'JP-VPS-HY2',
+  })
+  const admission = evaluateEmergencyCoreRecoveryAdmission({
+    request: {
+      reason: 'confirmed_udp_parent_absent',
+      leafId: 'JP-VPS-HY2',
+      evidenceReason: DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
+      cursorConnectionCount: 12,
+      requestedAtMs: 2_000_000,
+      deadlineMs: 2_045_000,
+    },
+    nowMs: 2_000_000,
+  })
+  const ok =
+    forcePlan.force === true &&
+    forcePlan.reason === 'dial_failure_cluster_force_udp_refresh' &&
+    admission.admitted === true
+  return {
+    fixtureId: '0903_dial_cluster_no_udp_fallback_ladder',
+    ok,
+    detail: ok
+      ? 'cluster forces UDP refresh + emergency evidence admitted'
+      : `force=${forcePlan.force}/${forcePlan.reason} admitted=${admission.admitted}`,
+  }
+}
+
+/** Sep 3 16:32: stale HY2 session + recent vitality must escalate core restart (not insufficient). */
+export function replayBug20260903StaleSessionOverridesVitality(): Bug20260903ReplayVerdict {
+  const nowMs = 2_000_000
+  const staleAgeMs = HY2_PARENT_SIDECAR_DIAL_AGE_MS + 175_000_000
+  const plan = planByteDeathParentMutation({
+    connections: Array.from({ length: 39 }, (_, index) => ({
+      id: `tcp-${index}`,
+      chains: ['Cursor专用', 'JP-VPS-HY2'],
+      metadata: { network: 'tcp', host: 'api2.cursor.sh' },
+    })) as ControllerConnectionDetail[],
+    activeLeaf: 'JP-VPS-HY2',
+    trackedFirstSeenAtMsById: new Map(),
+    trackedLastByteChangeAtMsById: new Map(),
+    nowMs,
+    lastVitalitySuccessAtMs: nowMs - 5_000,
+    outboundHy2SessionAgeMs: staleAgeMs,
+    httpParentChainAgeMs: staleAgeMs,
+  })
+  const ok =
+    plan.action === 'none' &&
+    plan.reason === 'byte_death_udp_absent_requires_core_restart'
+  return {
+    fixtureId: '0903_stale_session_overrides_vitality_counterproof',
+    ok,
+    detail: ok
+      ? 'stale session age overrides vitality counterproof → core restart'
+      : `plan=${plan.action}/${plan.reason}`,
+  }
+}
+
 export async function runBug20260903ReplayGate(): Promise<Bug20260903ReplayResult> {
   const verdicts: Bug20260903ReplayVerdict[] = [
     replayBug20260903Sep2FrozenQuicTier0Sel(),
@@ -225,6 +292,8 @@ export async function runBug20260903ReplayGate(): Promise<Bug20260903ReplayResul
     await replayBug20260903Aug31DiskProviderParity(),
     replayBug20260903ParentStaleTier0Vitality(),
     replayBug20260903FalseUdpAbsentWithVitality(),
+    replayBug20260903DialClusterNoUdpFallback(),
+    replayBug20260903StaleSessionOverridesVitality(),
   ]
   return {
     ok: verdicts.every((verdict) => verdict.ok),

@@ -27,6 +27,7 @@ export type SparkleMainAsarGateResult =
         | 'missing_bug20260805_control_plane'
         | 'invalid_js_regex_pcre'
         | 'missing_core_readiness_gate'
+        | 'missing_bug20260903_recovery_truth'
     }
 
 /** Vite minifies to `.markCoreReadyAtMs(` on chunk export — bare `markCoreReadyAtMs(` is BUG-2026-07-23-004. */
@@ -123,6 +124,15 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     return { ok: false, reason: 'missing_core_readiness_gate' }
   }
 
+  if (
+    !mainSource.includes('fallback_ladder') ||
+    !mainSource.includes('cursor_dedicated_dial_failure_cluster_udp_absent') ||
+    !mainSource.includes('stale_session_overrides_vitality_counterproof') ||
+    !mainSource.includes('coreLogDialFailureTailWatcher')
+  ) {
+    return { ok: false, reason: 'missing_bug20260903_recovery_truth' }
+  }
+
   return { ok: true }
 }
 
@@ -142,6 +152,8 @@ export function assertSparkleMainAsarBundle(mainSource: string): void {
       missing_bug20260805_control_plane: 'asar missing BUG-2026-08-05-001 control-plane fixes @1.30.3 (emergency bypass + carrier honesty + observability_probe)',
       invalid_js_regex_pcre: 'asar contains invalid JS regex PCRE inline flags e.g. /(?i)/ — SyntaxError at launch',
       missing_core_readiness_gate: 'asar missing Core Readiness Contract — cold start may silent-hang',
+      missing_bug20260903_recovery_truth:
+        'asar missing BUG-2026-09-03-009/010 recovery truth markers (fallback_ladder / stale_session / tail watcher)',
     }
     throw new Error(messages[result.reason])
   }

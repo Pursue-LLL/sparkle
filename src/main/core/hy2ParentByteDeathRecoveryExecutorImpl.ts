@@ -30,6 +30,8 @@ export interface ByteDeathParentMutationInput {
   maxByteStallMs: number
   cursorConnectionCount: number
   lastVitalitySuccessAtMs?: number
+  outboundHy2SessionAgeMs?: number
+  httpParentChainAgeMs?: number
 }
 
 export type CloseConnectionFn = (connectionId: string) => Promise<void>
@@ -119,6 +121,8 @@ export async function executeByteDeathParentMutationWithDeps(
     trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
     nowMs: input.nowMs,
     lastVitalitySuccessAtMs: input.lastVitalitySuccessAtMs,
+    outboundHy2SessionAgeMs: input.outboundHy2SessionAgeMs,
+    httpParentChainAgeMs: input.httpParentChainAgeMs,
   })
 
   await log(
@@ -191,6 +195,8 @@ export async function executeByteDeathParentMutationWithDeps(
       isByteDeathUdpParentAbsent(diagnostics, {
         lastVitalitySuccessAtMs: input.lastVitalitySuccessAtMs,
         nowMs: input.nowMs,
+        outboundHy2SessionAgeMs: input.outboundHy2SessionAgeMs,
+        httpParentChainAgeMs: input.httpParentChainAgeMs,
       })
     ) {
       const escalateReason = 'byte_death_udp_absent_requires_core_restart'

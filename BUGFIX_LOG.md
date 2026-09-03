@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-09-03 16:30 最新**：**BUG-2026-09-03-009 INSTALLED @1.30.57** · dial 集群 `no_udp_parent_found` 死胡同 → sidecar/emergency 回退 ladder · 1.30.56 装包缺此路径
+> **2026-09-03 17:00 最新**：**BUG-2026-09-03-010 CODE-DONE @1.30.58** · stale session 覆盖 vitality 假阳性 → emergency · circuit 不再对 absent 开熔断 · replay gate 7/7 · asar truth markers
+> **2026-09-03 16:45 上一版**：**BUG-2026-09-03-009 BUNDLE_ONLY @1.30.57** · fallback_ladder 已装 asar · **LIVE 未验**（全日志 0 条 fallback_ladder）
 > **2026-09-03 16:20 上一版**：**BUG-2026-09-03-007/008 CODE-DONE @1.30.56** · core log tail 集群检测 + 强制 close UDP parent + circuit breaker bypass · 16:10 断连时 circuit open 阻断全部恢复
 > **2026-09-03 15:10 上一版**：**BUG-2026-09-03-004 CODE-DONE @git（未装包）** · 误报 UDP-absent → failover Reality 锁死 + 14:41 集体 dial timeout · failover 治理 + vitality failback
 > **2026-09-03 13:20 上一版**：**BUG-2026-09-03-003 INSTALLED @1.30.53 c0cba9f** · profile.yaml 0B 空白订阅恢复 + 侧边栏刷新 dnd + 磁盘缓存 reload + 更新时间显示
@@ -49,7 +50,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **R1 INSTALLED** · 2026-09-03 **16:38 CST** · CDHash `e31065431396634e90caa1dfceb8dcf9ec18439a` · stamp `2026.0903.1626` |
+| **状态** | **R1 BUNDLE_ONLY（Truth Label）** · 2026-09-03 **16:38 CST** · asar 含 fallback_ladder · **LIVE 未验**（`app-2026-9-3.log` 中 `fallback_ladder` 条数=0；装包前 skipped×5 为 1.30.56 实锤） |
 | **发生版本** | **1.30.56 INSTALLED** · 2026-09-03 **16:19–16:21 CST** 三端 Cursor Network Diagnostic 10/10 FAIL |
 | **严重度** | P0 — Cursor-2/3 专用 HY2 全路径 `context deadline exceeded` · TLS 握手失败 · circuit open 阻断 sidecar |
 | **症状** | Network Diagnostic：HTTP/2/SSL/API/Ping/Chat/Agent/Marketplace/Auth/Downloads/CDN 全 FAIL · `Client network socket disconnected before secure TLS connection was established` · DNS/Cursor Tab/Agent Endpoint DNS 成功 |
@@ -59,6 +60,20 @@
 | **为何 007/008 不够** | 008 假设存在 stale UDP parent 可 close；HY2 全死时 mihomo 无 UDP 行 → close 路径 noop · git 有 fallback 但未打入 1.30.56 asar |
 | **验收** | [x] 打开 Sparkle → proxy api2 **200** [ ] 装 1.30.57 后复现 dial 集群须见 `fallback_ladder` 或 `emergency_core_recovery` 非 `skipped` |
 | **代码位置** | `cursorDedicatedDialFailureClusterRuntime.ts` · `cursorDedicatedDialFailureClusterCore.ts` · `hy2ParentSidecar.ts` `dialFailureClusterEscalation` |
+
+### BUG-2026-09-03-010 · stale HY2 session + vitality 假阳性 → circuit 熔断 · **CODE-DONE @1.30.58**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 CODE-DONE** · 待 `agent:upgrade:mac` 装包 · replay gate **7/7 PASS** |
+| **发生版本** | **1.30.57 BUNDLE_ONLY** · 2026-09-03 **16:32 CST** 装包后 3min |
+| **严重度** | P0 — sidecar fail + circuit open 10min · 用户「重启后仍断」实锤 |
+| **物理证据** | app **08:32:40** `byte_death_udp_evidence_insufficient` + `outbound_hy2_session_age_ms=175961819` · **08:32:45** `RecoveryCircuitBreaker outcome=open cooldown_ms=600000` · 同秒 `Hy2TunnelVitality outcome=executed delay=1011ms`（测量衰减） |
+| **根因链** | **L1** `planByteDeathParentMutation`：UDP absent + 60s 内 vitality 成功 → `evidence_insufficient` · **L2** `hy2ParentSidecar` 对 absent/insufficient 仍 `notifyRecoveryCircuitFailure` · **L3** 48h stale session 未被 age 覆盖 vitality counterproof |
+| **修复** | `hy2ParentByteDeathRecoveryCore.ts`：`shouldOverrideVitalityCounterproofForStaleSession`（≥4h）→ `byte_death_udp_absent_requires_core_restart` · `hy2ParentSidecar.ts`：absent → 跳过 circuit + 直接 `requestEmergencyCoreRecovery` · replay + asar markers |
+| **Truth Label** | CODE-DONE → BUNDLE（装包后）→ LIVE（须日志见 `emergency_core_recovery executed` 或 `fallback_ladder` 且 api2 恢复） |
+| **验收** | [x] replay 7/7 [x] asar gate markers [ ] 装 1.30.58 [ ] live 断网复现 |
+| **代码位置** | `hy2ParentByteDeathRecoveryCore.ts` · `hy2ParentSidecar.ts` · `bug20260903ReplayCore.ts` · `upgradeSparkleAsarGateCore.ts` |
 
 ### BUG-2026-09-03-001 · Sep2 赛中 84s 断网 + Aug31 空白订阅 · **INSTALLED @1.30.53 c0cba9f**
 
