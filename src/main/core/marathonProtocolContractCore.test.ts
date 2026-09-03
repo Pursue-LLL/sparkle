@@ -108,6 +108,18 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(decision.reason, 'allowed_manual_operator')
   })
 
+  it('1.30.55: hy2_vitality_failback allows Reality to HY2 during marathon active', () => {
+    const decision = evaluateMarathonProtocolSwitchDecision({
+      cursorConnectionCount: 18,
+      marathonTruthActive: true,
+      fromNode: 'JP-VPS-Reality',
+      toNode: 'JP-VPS-HY2',
+      source: 'hy2_vitality_failback',
+    })
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.reason, 'hy2_vitality_confirmed_failback')
+  })
+
   it('1.30.1 blocks manual HY2 to TLS — marathon HY2-only SSOT', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 3,

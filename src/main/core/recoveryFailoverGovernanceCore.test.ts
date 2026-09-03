@@ -5,6 +5,7 @@ import {
   isFailoverSoakWindowActive,
   resolveUdpParentStateForRecovery,
   shouldFailbackCursorDedicatedToHy2,
+  shouldSuppressHy2UdpAbsentEscalation,
 } from './recoveryFailoverGovernanceCore'
 
 const nowMs = 2_000_000
@@ -68,5 +69,22 @@ describe('recoveryFailoverGovernanceCore @1.30.54', () => {
       nowMs,
     })
     assert.equal(decision.failback, false)
+  })
+
+  it('1.30.55: suppress HY2 udp absent escalation when cursor dedicated is on Reality', () => {
+    assert.equal(
+      shouldSuppressHy2UdpAbsentEscalation({
+        hy2LeafId: 'JP-VPS-HY2',
+        cursorDedicatedActiveLeaf: 'JP-VPS-Reality',
+      }),
+      true,
+    )
+    assert.equal(
+      shouldSuppressHy2UdpAbsentEscalation({
+        hy2LeafId: 'JP-VPS-HY2',
+        cursorDedicatedActiveLeaf: 'JP-VPS-HY2',
+      }),
+      false,
+    )
   })
 })

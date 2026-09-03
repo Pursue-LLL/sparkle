@@ -49,6 +49,18 @@ export function isFailoverSoakWindowActive(input: {
   )
 }
 
+export function shouldSuppressHy2UdpAbsentEscalation(input: {
+  hy2LeafId: string
+  cursorDedicatedActiveLeaf: string | undefined
+}): boolean {
+  const active = input.cursorDedicatedActiveLeaf?.trim() ?? ''
+  const hy2 = input.hy2LeafId.trim()
+  if (!active || !hy2 || active === hy2) {
+    return false
+  }
+  return MARATHON_FAILOVER_TCP_LEAVES.has(active)
+}
+
 export function shouldFailbackCursorDedicatedToHy2(input: {
   currentLeaf: string | undefined
   preferredHy2Leaf?: string

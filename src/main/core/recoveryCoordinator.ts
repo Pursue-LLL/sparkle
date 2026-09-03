@@ -15,7 +15,7 @@ import {
   type LeafRecoveryCircuitState,
 } from './perLeafRecoveryCircuitCore'
 import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
-import { resolveUdpParentStateForRecovery } from './recoveryFailoverGovernanceCore'
+import { resolveUdpParentStateForRecovery, shouldSuppressHy2UdpAbsentEscalation } from './recoveryFailoverGovernanceCore'
 import { getLastHy2TunnelVitalityAtMs } from './hy2TunnelVitality'
 import {
   createInitialRecoveryCoordinatorPolicyState,
@@ -52,6 +52,7 @@ function buildFact(input: {
   connections: readonly ControllerConnectionDetail[]
   cursorConnectionCount: number
   nowMs: number
+  cursorDedicatedActiveLeaf?: string
 }): RecoveryFact {
   const resolution = resolveHy2ParentUdpOutboundConnectionId({
     connections: input.connections,
@@ -60,11 +61,20 @@ function buildFact(input: {
     nowMs: input.nowMs,
     byteDeathFullScan: true,
   })
-  const udpParentState = resolveUdpParentStateForRecovery({
+  let udpParentState = resolveUdpParentStateForRecovery({
     resolution,
     lastVitalitySuccessAtMs: getLastHy2TunnelVitalityAtMs(),
     nowMs: input.nowMs,
   })
+  if (
+    udpParentState === 'absent' &&
+    shouldSuppressHy2UdpAbsentEscalation({
+      hy2LeafId: input.leafId,
+      cursorDedicatedActiveLeaf: input.cursorDedicatedActiveLeaf,
+    })
+  ) {
+    udpParentState = 'unknown'
+  }
   return {
     leafId: input.leafId,
     observedAt: input.nowMs,
@@ -100,11 +110,14 @@ export async function submitRecoveryCoordinatorEvent(input: {
     return { handled: false, reason: 'recovery_operation_in_flight' }
   }
   const nowMs = input.nowMs ?? Date.now()
+  const { resolveCursorDedicatedActiveNode } = await import('./cursorDedicatedNodeResolver')
+  const cursorDedicatedActiveLeaf = await resolveCursorDedicatedActiveNode()
   const fact = buildFact({
     leafId: input.event.leafId,
     connections: input.connections,
     cursorConnectionCount: input.cursorConnectionCount,
     nowMs,
+    cursorDedicatedActiveLeaf: cursorDedicatedActiveLeaf ?? undefined,
   })
   const failureClass = classifyLeafFailureReason(input.event.detail ?? input.event.type)
   const circuitKey = leafCircuitKey({ leafId: input.event.leafId, failureClass })
@@ -200,11 +213,14 @@ export async function submitByteDeathRecoveryEvent(input: {
   nowMs?: number
 }): Promise<{ handled: boolean; reason: string }> {
   const nowMs = input.nowMs ?? Date.now()
+  const { resolveCursorDedicatedActiveNode } = await import('./cursorDedicatedNodeResolver')
+  const cursorDedicatedActiveLeaf = await resolveCursorDedicatedActiveNode()
   const fact = buildFact({
     leafId: input.leafId,
     connections: input.connections,
     cursorConnectionCount: input.cursorConnectionCount,
     nowMs,
+    cursorDedicatedActiveLeaf: cursorDedicatedActiveLeaf ?? undefined,
   })
   const mapped = mapUdpStateToEventType(fact.udpParentState)
   const eventType: RecoveryCoordinatorEventType =

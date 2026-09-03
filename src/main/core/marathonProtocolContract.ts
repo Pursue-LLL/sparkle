@@ -34,7 +34,13 @@ export async function evaluateMarathonProtocolSwitchBlock(input: {
   group: string
   fromNode: string
   toNode: string
-  source: 'auto' | 'manual' | 'bootstrap' | 'protocol_contract' | 'recovery_coordinator'
+  source:
+    | 'auto'
+    | 'manual'
+    | 'bootstrap'
+    | 'protocol_contract'
+    | 'recovery_coordinator'
+    | 'hy2_vitality_failback'
 }): Promise<MarathonProtocolSwitchBlockResult> {
   const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
   const quiesceSnapshot = getMarathonQuiesceSnapshot()

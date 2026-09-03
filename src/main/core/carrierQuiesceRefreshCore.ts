@@ -2,7 +2,10 @@
 // [OUTPUT] CarrierQuiesceRefresh — R-41 narrow bypass for active_inner during parent refresh
 // [POS] Phase B SSOT — close UDP parent when carrier bytes frozen despite active inner TCP flows
 
-import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
+import {
+  HY2_PARENT_SIDECAR_DIAL_AGE_MS,
+  resolveEffectiveTransportLongevityAges,
+} from './hy2ParentSidecarCore'
 import { STALL_ESCALATION_VITALITY_INEFFECTIVE_MS } from './stallEscalationLadderCore'
 import { MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS } from './marathonSseCarrierPruneCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
@@ -19,6 +22,7 @@ export interface CarrierQuiesceRefreshInput {
   recoveryIneffective: boolean
   /** Marathon active — enables global byte-death bypass without 4h parent age. */
   marathonActive?: boolean
+  nowMs?: number
 }
 
 export interface CarrierQuiesceRefreshDecision {
@@ -26,11 +30,12 @@ export interface CarrierQuiesceRefreshDecision {
   reason: string
 }
 
-export function isParentRefreshDue(snapshot: TransportLongevityTruthSnapshot): boolean {
-  return (
-    snapshot.httpParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS ||
-    snapshot.outboundHy2SessionAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS
-  )
+export function isParentRefreshDue(
+  snapshot: TransportLongevityTruthSnapshot,
+  nowMs?: number,
+): boolean {
+  const ages = resolveEffectiveTransportLongevityAges(snapshot, nowMs ?? Date.now())
+  return ages.maxAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS
 }
 
 export function isCarrierByteFrozen(snapshot: TransportLongevityTruthSnapshot): boolean {
@@ -44,11 +49,12 @@ export function isCarrierRecoveryIneffective(snapshot: TransportLongevityTruthSn
   return snapshot.maxByteStallMs >= STALL_ESCALATION_VITALITY_INEFFECTIVE_MS
 }
 
-export function isParentEmergencyRefreshDue(snapshot: TransportLongevityTruthSnapshot): boolean {
-  return (
-    snapshot.httpParentChainAgeMs >= PARENT_EMERGENCY_REFRESH_AGE_MS ||
-    snapshot.outboundHy2SessionAgeMs >= PARENT_EMERGENCY_REFRESH_AGE_MS
-  )
+export function isParentEmergencyRefreshDue(
+  snapshot: TransportLongevityTruthSnapshot,
+  nowMs?: number,
+): boolean {
+  const ages = resolveEffectiveTransportLongevityAges(snapshot, nowMs ?? Date.now())
+  return ages.maxAgeMs >= PARENT_EMERGENCY_REFRESH_AGE_MS
 }
 
 /** Global inner-carrier byte-death during marathon — bypass 4h parent age for R2 UDP refresh. */
@@ -87,13 +93,14 @@ export function resolveCarrierQuiesceRefreshDecision(
       reason: 'marathon_global_byte_death_bypass_active_inner',
     }
   }
-  if (isParentEmergencyRefreshDue(input.snapshot)) {
+  const nowMs = input.nowMs ?? Date.now()
+  if (isParentEmergencyRefreshDue(input.snapshot, nowMs)) {
     return {
       bypassActiveInner: true,
       reason: 'parent_emergency_refresh_bypass_active_inner',
     }
   }
-  if (!isParentRefreshDue(input.snapshot)) {
+  if (!isParentRefreshDue(input.snapshot, nowMs)) {
     return { bypassActiveInner: false, reason: 'parent_not_refresh_due' }
   }
   if (!isCarrierByteFrozen(input.snapshot)) {

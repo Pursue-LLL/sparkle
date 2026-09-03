@@ -52,6 +52,7 @@ export type MarathonProtocolSwitchBlockReason =
   | 'blocked_mtic_stale_rids'
   | 'blocked_marathon_hy2_only_tls_denied'
   | 'protocol_downgrade_from_tls'
+  | 'hy2_vitality_confirmed_failback'
 
 export interface MarathonProtocolColdStartGateResult {
   required: boolean
@@ -151,7 +152,13 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
   marathonTruthActive: boolean
   fromNode: string
   toNode: string
-  source: 'auto' | 'manual' | 'bootstrap' | 'protocol_contract' | 'recovery_coordinator'
+  source:
+    | 'auto'
+    | 'manual'
+    | 'bootstrap'
+    | 'protocol_contract'
+    | 'recovery_coordinator'
+    | 'hy2_vitality_failback'
   mutationSnapshot?: TransportMutationSnapshot
 }): MarathonProtocolSwitchDecision {
   const fromNode = input.fromNode.trim()
@@ -181,6 +188,21 @@ export function evaluateMarathonProtocolSwitchDecision(input: {
     }
     if (!isCursorSuboptimalNode(toNode)) {
       return { allowed: true, reason: 'recovery_failover_trusted_target' }
+    }
+  }
+
+  if (input.source === 'hy2_vitality_failback') {
+    if (
+      shouldRecoverTlsLeafToHy2(fromNode) &&
+      toNode === MARATHON_CURSOR_OPTIMAL_VPS_NODE
+    ) {
+      return { allowed: true, reason: 'hy2_vitality_confirmed_failback' }
+    }
+    if (
+      isCursorSuboptimalNode(fromNode) &&
+      toNode === MARATHON_CURSOR_OPTIMAL_VPS_NODE
+    ) {
+      return { allowed: true, reason: 'hy2_vitality_confirmed_failback' }
     }
   }
 

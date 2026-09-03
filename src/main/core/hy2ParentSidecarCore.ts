@@ -35,6 +35,23 @@ export function resolveEffectiveHy2ParentChainAgeMs(
   return Math.max(fromSnapshot, fromBirth)
 }
 
+/** SSOT ages for rotate/quiesce gates — never trust snapshot zeros when birth is old. */
+export function resolveEffectiveTransportLongevityAges(
+  snapshot: TransportLongevityTruthSnapshot,
+  nowMs: number,
+): {
+  httpParentChainAgeMs: number
+  outboundHy2SessionAgeMs: number
+  maxAgeMs: number
+} {
+  const maxAgeMs = resolveEffectiveHy2ParentChainAgeMs(snapshot, nowMs)
+  return {
+    httpParentChainAgeMs: Math.max(snapshot.httpParentChainAgeMs, maxAgeMs),
+    outboundHy2SessionAgeMs: Math.max(snapshot.outboundHy2SessionAgeMs, maxAgeMs),
+    maxAgeMs,
+  }
+}
+
 export function resolveHy2ParentSidecarDialPlan(input: {
   snapshot: TransportLongevityTruthSnapshot
   marathonTruthActive: boolean
