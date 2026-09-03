@@ -324,21 +324,9 @@ function cacheAndBroadcastLog(log: ControllerLog): void {
   broadcastLog(pushCachedLog(log))
 }
 
-function ingestDialFailureClusterLine(line: string): void {
-  if (!line.includes('dial 🎯 Cursor 专用')) {
-    return
-  }
-  void import('../core/cursorDedicatedDialFailureClusterRuntime').then(
-    ({ ingestCoreLogLineForDialFailureCluster }) => {
-      ingestCoreLogLineForDialFailureCluster(line)
-    },
-  )
-}
-
 function publishTargetLogLines(content: string, type: LogLevel): void {
   normalizeLogContent(content).forEach((line) => {
     cacheAndBroadcastLog(createControllerLogFromOutLine(line, type))
-    ingestDialFailureClusterLine(line)
   })
 }
 
@@ -420,7 +408,6 @@ export async function appendAppLog(content: string): Promise<void> {
 export function publishMihomoLog(log: ControllerLog): void {
   if (mihomoLogSource !== 'ws') return
   cacheAndBroadcastLog(log)
-  ingestDialFailureClusterLine(log.payload)
 }
 
 export function getCachedMihomoLogs(): CachedControllerLog[] {

@@ -72,7 +72,7 @@ async function pollCoreLogTail(): Promise<void> {
   }
 }
 
-export function startCoreLogDialFailureTailWatcher(pollMs = 2_000): void {
+export function startCoreLogDialFailureTailWatcher(pollMs = 1_000): void {
   if (tailTimer) {
     return
   }

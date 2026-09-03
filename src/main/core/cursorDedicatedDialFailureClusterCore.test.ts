@@ -6,6 +6,7 @@ import {
   CURSOR_DIAL_FAILURE_CLUSTER_WINDOW_MS,
   isCursorDedicatedDialFailureCluster,
   pruneCursorDedicatedDialFailureEvents,
+  shouldForceParentUdpRefreshOnDialCluster,
 } from './cursorDedicatedDialFailureClusterCore'
 
 describe('cursorDedicatedDialFailureClusterCore @1.30.54', () => {
@@ -47,5 +48,14 @@ describe('cursorDedicatedDialFailureClusterCore @1.30.54', () => {
     const pruned = pruneCursorDedicatedDialFailureEvents(events, nowMs)
     assert.equal(pruned.length, 1)
     assert.equal(pruned[0]?.line, 'fresh')
+  })
+
+  it('008: dial cluster forces UDP refresh without vitality probe', () => {
+    const plan = shouldForceParentUdpRefreshOnDialCluster({
+      clusterSize: CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT,
+      activeLeaf: 'JP-VPS-HY2',
+    })
+    assert.equal(plan.force, true)
+    assert.equal(plan.reason, 'dial_failure_cluster_force_udp_refresh')
   })
 })

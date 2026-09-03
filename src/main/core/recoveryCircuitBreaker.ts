@@ -34,6 +34,25 @@ export async function assertRecoveryCircuitAllowsMutation(input: {
   }
 }
 
+/** BUG-008: dial failure cluster bypasses open circuit — cluster is stronger evidence than prior failures. */
+export async function forceClearRecoveryCircuitForClusterRecovery(
+  nowMs: number,
+  clusterSize: number,
+): Promise<void> {
+  if (!isRecoveryCircuitOpen({ nowMs, state })) {
+    return
+  }
+  state = recordRecoverySuccess(state)
+  const { appendAppLog } = await import('../utils/log')
+  await appendAppLog(
+    formatRecoveryCircuitBreakerLogLine({
+      outcome: 'reset',
+      reason: `dial_failure_cluster_bypass cluster_size=${clusterSize}`,
+      consecutiveFailures: 0,
+    }),
+  )
+}
+
 export async function notifyRecoveryCircuitSuccess(): Promise<void> {
   const next = recordRecoverySuccess(state)
   if (next.consecutiveFailures === state.consecutiveFailures && next.openUntilMs === state.openUntilMs) {

@@ -62,3 +62,32 @@ export function isCursorDedicatedDialFailureCluster(input: {
   const min = input.minCount ?? CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT
   return input.events.length >= min
 }
+
+/**
+ * BUG-2026-09-03-008: dial cluster proves Cursor dedicated path is dead.
+ * Force parent UDP refresh — do NOT trust connect_path vitality (false positive on stale HY2).
+ */
+export function shouldForceParentUdpRefreshOnDialCluster(input: {
+  clusterSize: number
+  activeLeaf: string
+}): { force: boolean; reason: string } {
+  if (!input.activeLeaf.trim()) {
+    return { force: false, reason: 'missing_active_leaf' }
+  }
+  if (input.clusterSize < CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT) {
+    return { force: false, reason: 'cluster_below_threshold' }
+  }
+  return { force: true, reason: 'dial_failure_cluster_force_udp_refresh' }
+}
+
+/** @deprecated Use shouldForceParentUdpRefreshOnDialCluster — kept for test compat alias */
+export function shouldForceParentUdpRefreshOnVitalityFailure(input: {
+  vitalityFailed: boolean
+  clusterSize: number
+  activeLeaf: string
+}): { force: boolean; reason: string } {
+  if (!input.vitalityFailed) {
+    return { force: false, reason: 'vitality_not_failed' }
+  }
+  return shouldForceParentUdpRefreshOnDialCluster(input)
+}
