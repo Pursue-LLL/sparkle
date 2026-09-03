@@ -6,6 +6,7 @@ import {
   resolveHy2ParentUdpOutboundConnectionId,
   type Hy2ParentUdpResolution,
 } from './hy2ParentCarrierIdentityCore'
+import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 
 export const BYTE_DEATH_LEAF_CLOSE_MIN_STALL_MS = 90_000
 /** Cap batch size — avoids mass ECONNRESET while still nudging HY2 parent session. */
@@ -134,10 +135,24 @@ export function classifyUdpParentObservation(
 /** Leaf TCP close is collateral during marathon when mihomo omits HY2 UDP parent rows. */
 export function isByteDeathUdpParentAbsent(
   resolution: Hy2ParentUdpResolution,
-  counterEvidence?: { lastVitalitySuccessAtMs?: number; nowMs: number },
+  counterEvidence?: {
+    lastVitalitySuccessAtMs?: number
+    nowMs: number
+    outboundHy2SessionAgeMs?: number
+    httpParentChainAgeMs?: number
+  },
 ): boolean {
   if (classifyUdpParentObservation(resolution) !== 'absent') {
     return false
+  }
+  if (
+    counterEvidence &&
+    shouldOverrideVitalityCounterproofForStaleSession({
+      outboundHy2SessionAgeMs: counterEvidence.outboundHy2SessionAgeMs,
+      httpParentChainAgeMs: counterEvidence.httpParentChainAgeMs,
+    })
+  ) {
+    return true
   }
   if (
     counterEvidence &&
@@ -168,6 +183,23 @@ export function isRecentVitalityDialSuccess(input: {
 /** Vitality dial success freshness window — recent success contradicts 'udp absent' triage. */
 export const VITALITY_DIAL_SUCCESS_FRESHNESS_MS = 60_000
 
+/** Stale HY2 session age overrides vitality counterproof — external dial failures prove parent dead. */
+export const STALE_SESSION_OVERRIDES_VITALITY_COUNTERPROOF =
+  'stale_session_overrides_vitality_counterproof'
+
+export function shouldOverrideVitalityCounterproofForStaleSession(input: {
+  outboundHy2SessionAgeMs?: number
+  httpParentChainAgeMs?: number
+  proactiveRotateAgeMs?: number
+}): boolean {
+  const threshold = input.proactiveRotateAgeMs ?? HY2_PARENT_SIDECAR_DIAL_AGE_MS
+  const ageMs = Math.max(
+    input.outboundHy2SessionAgeMs ?? 0,
+    input.httpParentChainAgeMs ?? 0,
+  )
+  return ageMs >= threshold
+}
+
 /** Scan incomplete or recent vitality dial success — diagnostic only, no mutation/escalation. */
 export const BYTE_DEATH_UDP_EVIDENCE_INSUFFICIENT = 'byte_death_udp_evidence_insufficient'
 
@@ -179,6 +211,8 @@ export function planByteDeathParentMutation(input: {
   nowMs: number
   /** Recent successful vitality dial contradicts 'udp absent' — downgrade to diagnostic-only. */
   lastVitalitySuccessAtMs?: number
+  outboundHy2SessionAgeMs?: number
+  httpParentChainAgeMs?: number
 }): ByteDeathParentMutationPlan {
   const resolution = resolveHy2ParentUdpOutboundConnectionId({
     connections: input.connections,
@@ -197,11 +231,18 @@ export function planByteDeathParentMutation(input: {
   }
   const udpObservation = classifyUdpParentObservation(resolution)
   if (udpObservation === 'absent') {
+    const staleSessionOverridesVitality = shouldOverrideVitalityCounterproofForStaleSession(
+      {
+        outboundHy2SessionAgeMs: input.outboundHy2SessionAgeMs,
+        httpParentChainAgeMs: input.httpParentChainAgeMs,
+      },
+    )
     if (
       isRecentVitalityDialSuccess({
         lastVitalitySuccessAtMs: input.lastVitalitySuccessAtMs,
         nowMs: input.nowMs,
-      })
+      }) &&
+      !staleSessionOverridesVitality
     ) {
       return {
         action: 'none',

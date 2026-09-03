@@ -403,6 +403,8 @@ export async function runHy2ParentSidecarIfDue(input: {
           nowMs,
           maxByteStallMs: input.snapshot.maxByteStallMs,
           cursorConnectionCount: input.cursorConnectionCount,
+          outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
+          httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
         })
         if (mutation.mutated) {
           if (mutationClosedParentUdp(mutation.plan)) {
@@ -436,14 +438,49 @@ export async function runHy2ParentSidecarIfDue(input: {
               err: blockReason,
             }),
           )
-          await notifyRecoveryCircuitFailure({
-            nowMs,
-            reason: blockReason,
-          })
+          const escalateCoreRestart = blockReason.includes(
+            'byte_death_udp_absent_requires_core_restart',
+          )
+          const diagnosticOnly = blockReason.includes(
+            'byte_death_udp_evidence_insufficient',
+          )
+          if (!escalateCoreRestart && !diagnosticOnly) {
+            await notifyRecoveryCircuitFailure({
+              nowMs,
+              reason: blockReason,
+            })
+          }
+          if (escalateCoreRestart) {
+            const { forceClearRecoveryCircuitForClusterRecovery } = await import(
+              './recoveryCircuitBreaker'
+            )
+            await forceClearRecoveryCircuitForClusterRecovery(nowMs, 0)
+            const { requestEmergencyCoreRecovery } = await import('./emergencyCoreRecovery')
+            const { BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART } = await import(
+              './hy2ParentByteDeathRecoveryCore'
+            )
+            const emergency = await requestEmergencyCoreRecovery({
+              reason: 'confirmed_udp_parent_absent',
+              leafId: activeLeaf,
+              evidenceReason: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
+              cursorConnectionCount: input.cursorConnectionCount,
+              nowMs,
+            })
+            await appendSidecarLog(
+              `[Hy2ParentSidecar]: outcome=${emergency.executed ? 'executed' : 'failed'} ` +
+                `action=emergency_core_recovery reason=${emergency.reason} ` +
+                `trigger=stale_session_overrides_vitality_counterproof\n`,
+            )
+            return {
+              outcome: emergency.executed ? 'executed' : 'failed',
+              action: 'emergency_core_recovery',
+              reason: emergency.reason,
+            }
+          }
           if (
             (blockReason.includes('byte_death_udp_absent') ||
               blockReason.includes('probe_only')) &&
-            !blockReason.includes('byte_death_udp_evidence_insufficient')
+            !diagnosticOnly
           ) {
             const { submitByteDeathRecoveryEvent } = await import('./recoveryCoordinator')
             await submitByteDeathRecoveryEvent({
