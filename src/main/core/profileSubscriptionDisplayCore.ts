@@ -51,3 +51,67 @@ export function subscriptionUpdateDisplayLabel(
   }
   return locale === 'zh' ? `更新 ${relativeLabel}` : `Updated ${relativeLabel}`
 }
+
+export function subscriptionScheduleHint(
+  updateTime: string | undefined,
+  interval: number | undefined,
+  locale: 'zh' | 'en' = 'zh',
+): string | null {
+  if (updateTime) {
+    return locale === 'zh' ? `每日 ${updateTime}` : `Daily ${updateTime}`
+  }
+  if (interval && interval > 0) {
+    const hours = Math.max(1, Math.round(interval / 60))
+    return locale === 'zh' ? `每 ${hours} 小时` : `Every ${hours}h`
+  }
+  return null
+}
+
+export function subscriptionUpdateCardLabel(
+  updatedMs: number | undefined,
+  relativeLabel: string,
+  updateTime: string | undefined,
+  interval: number | undefined,
+  locale: 'zh' | 'en' = 'zh',
+): string {
+  const schedule = subscriptionScheduleHint(updateTime, interval, locale)
+  const updatePart = subscriptionUpdateDisplayLabel(updatedMs, relativeLabel, locale)
+  if (schedule) {
+    return `${schedule} · ${updatePart}`
+  }
+  return updatePart
+}
+
+export function subscriptionUpdateTooltipLabel(
+  updatedMs: number | undefined,
+  updateTime: string | undefined,
+  interval: number | undefined,
+  locale: 'zh' | 'en' = 'zh',
+): string {
+  const lastUpdate =
+    updatedMs && Number.isFinite(updatedMs)
+      ? locale === 'zh'
+        ? `上次更新：${formatSubscriptionLocalDateTime(updatedMs, locale)}`
+        : `Last update: ${formatSubscriptionLocalDateTime(updatedMs, locale)}`
+      : locale === 'zh'
+        ? '上次更新：—'
+        : 'Last update: —'
+  const schedule = subscriptionScheduleHint(updateTime, interval, locale)
+  if (!schedule) {
+    return lastUpdate
+  }
+  return locale === 'zh'
+    ? `${lastUpdate} · 定时 ${schedule.replace('每日 ', '')}`
+    : `${lastUpdate} · Scheduled ${schedule.replace('Daily ', '')}`
+}
+
+function formatSubscriptionLocalDateTime(updatedMs: number, locale: 'zh' | 'en'): string {
+  const date = new Date(updatedMs)
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const min = String(date.getMinutes()).padStart(2, '0')
+  const formatted = `${yyyy}-${mm}-${dd} ${hh}:${min}`
+  return formatted
+}

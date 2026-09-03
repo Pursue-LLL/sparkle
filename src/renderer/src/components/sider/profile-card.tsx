@@ -14,7 +14,10 @@ import React, { useState } from 'react'
 import ConfigViewer from './config-viewer'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { TiFolder } from 'react-icons/ti'
-import { subscriptionUpdateDisplayLabel } from '@sparkle-core/profileSubscriptionDisplayCore'
+import {
+  subscriptionUpdateCardLabel,
+  subscriptionUpdateTooltipLabel
+} from '@sparkle-core/profileSubscriptionDisplayCore'
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
@@ -151,10 +154,19 @@ const ProfileCard: React.FC<Props> = (props) => {
                 <Tooltip
                   delay={1000}
                   placement="left"
-                  content={`上次更新：${dayjs(info.updated).format('YYYY-MM-DD HH:mm')}`}
+                  content={subscriptionUpdateTooltipLabel(
+                    info.updated,
+                    info.updateTime,
+                    info.interval
+                  )}
                 >
                   <small className="cursor-default">
-                    {subscriptionUpdateDisplayLabel(info.updated, dayjs(info.updated).fromNow())}
+                    {subscriptionUpdateCardLabel(
+                      info.updated,
+                      dayjs(info.updated).fromNow(),
+                      info.updateTime,
+                      info.interval
+                    )}
                   </small>
                 </Tooltip>
               </div>
@@ -172,7 +184,14 @@ const ProfileCard: React.FC<Props> = (props) => {
                 >
                   远程
                 </Chip>
-                <small>{dayjs(info.updated).fromNow()}</small>
+                <small>
+                  {subscriptionUpdateCardLabel(
+                    info.updated,
+                    dayjs(info.updated).fromNow(),
+                    info.updateTime,
+                    info.interval
+                  )}
+                </small>
               </div>
             )}
             {info.type === 'local' && (
