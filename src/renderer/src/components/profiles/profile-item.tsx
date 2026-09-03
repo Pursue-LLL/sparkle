@@ -22,7 +22,10 @@ import { CSS } from '@dnd-kit/utilities'
 import { openFile } from '@renderer/utils/ipc'
 import ConfirmModal from '../base/base-confirm'
 import QRCodeModal from '../base/base-qrcode-modal'
-import { subscriptionUpdateDisplayLabel } from '@sparkle-core/profileSubscriptionDisplayCore'
+import {
+  subscriptionUpdateCardLabel,
+  subscriptionUpdateTooltipLabel
+} from '@sparkle-core/profileSubscriptionDisplayCore'
 
 interface Props {
   info: ProfileItem
@@ -292,10 +295,19 @@ const ProfileItem: React.FC<Props> = (props) => {
                 <small>{`${calcTraffic(usage)}/${calcTraffic(total)}`}</small>
                 <Tooltip
                   placement="left"
-                  content={`上次更新：${dayjs(info.updated).format('YYYY-MM-DD HH:mm')}`}
+                  content={subscriptionUpdateTooltipLabel(
+                    info.updated,
+                    info.updateTime,
+                    info.interval
+                  )}
                 >
                   <small className="cursor-default">
-                    {subscriptionUpdateDisplayLabel(info.updated, dayjs(info.updated).fromNow())}
+                    {subscriptionUpdateCardLabel(
+                      info.updated,
+                      dayjs(info.updated).fromNow(),
+                      info.updateTime,
+                      info.interval
+                    )}
                   </small>
                 </Tooltip>
               </div>
@@ -313,7 +325,14 @@ const ProfileItem: React.FC<Props> = (props) => {
                 >
                   远程
                 </Chip>
-                <small>{dayjs(info.updated).fromNow()}</small>
+                <small>
+                  {subscriptionUpdateCardLabel(
+                    info.updated,
+                    dayjs(info.updated).fromNow(),
+                    info.updateTime,
+                    info.interval
+                  )}
+                </small>
               </div>
             )}
             {info.type === 'local' && (

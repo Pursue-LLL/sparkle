@@ -21,6 +21,12 @@ import { getUserAgent } from '../utils/userAgent'
 import { execWithElevation } from '../utils/elevation'
 import { deleteProvider } from '../core/provider'
 import { normalizeSubscriptionExpireTimestamp } from '../core/profileSubscriptionDisplayCore'
+import {
+  isBlankProfileConfigRaw,
+  isEmptyPersistableProfileConfig,
+  recoverProfileConfigFromDisk
+} from '../core/profileConfigRecoveryCore'
+import { appendAppLog } from '../utils/log'
 
 let profileConfig: ProfileConfig // profile.yaml
 const FILE_PERMISSION_ELEVATION_REQUIRED = 'FILE_PERMISSION_ELEVATION_REQUIRED'
@@ -31,16 +37,41 @@ export function getCertFingerprint(cert: tls.PeerCertificate) {
 
 export async function getProfileConfig(force = false): Promise<ProfileConfig> {
   if (force || !profileConfig) {
-    const data = await readFile(profileConfigPath(), 'utf-8')
-    profileConfig = parseYaml(data) || { items: [] }
+    const data = await readFile(profileConfigPath(), 'utf-8').catch(() => '')
+    if (isBlankProfileConfigRaw(data)) {
+      const recovered = await recoverProfileConfigFromDisk()
+      if (recovered?.items?.length) {
+        profileConfig = recovered
+        await writeFile(profileConfigPath(), stringifyYaml(recovered), 'utf-8')
+        await appendAppLog(
+          `[ProfileConfig]: recovered profile.yaml from disk/backup items=${recovered.items.length} current=${recovered.current ?? 'unset'}\n`
+        )
+      } else {
+        profileConfig = parseYaml(data) || { items: [] }
+      }
+    } else {
+      profileConfig = parseYaml(data) || { items: [] }
+    }
   }
   if (typeof profileConfig !== 'object') profileConfig = { items: [] }
   return profileConfig
 }
 
 export async function setProfileConfig(config: ProfileConfig): Promise<void> {
+  const serialized = stringifyYaml(config)
+  if (!serialized.trim()) {
+    throw new Error('Refusing to write blank profile.yaml')
+  }
+  if (isEmptyPersistableProfileConfig(config)) {
+    const recoverable = await recoverProfileConfigFromDisk()
+    if (recoverable?.items?.length) {
+      throw new Error(
+        'Refusing to persist empty profile.yaml while subscription cache exists on disk'
+      )
+    }
+  }
   profileConfig = config
-  await writeFile(profileConfigPath(), stringifyYaml(config), 'utf-8')
+  await writeFile(profileConfigPath(), serialized, 'utf-8')
 }
 
 export async function getProfileItem(id: string | undefined): Promise<ProfileItem | undefined> {

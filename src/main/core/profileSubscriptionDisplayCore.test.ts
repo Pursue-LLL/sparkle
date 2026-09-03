@@ -4,6 +4,8 @@ import {
   formatSubscriptionExpireDate,
   normalizeSubscriptionExpireTimestamp,
   subscriptionExpireDisplayLabel,
+  subscriptionUpdateCardLabel,
+  subscriptionUpdateTooltipLabel,
 } from './profileSubscriptionDisplayCore'
 
 describe('profileSubscriptionDisplayCore', () => {
@@ -20,5 +22,13 @@ describe('profileSubscriptionDisplayCore', () => {
 
   it('labels expire display to avoid update-time confusion', () => {
     assert.match(subscriptionExpireDisplayLabel(1_807_190_400), /^到期 2027-/)
+  })
+
+  it('shows daily schedule alongside relative update label', () => {
+    assert.equal(
+      subscriptionUpdateCardLabel(1788313034000, '1 天前', '07:00', 240),
+      '每日 07:00 · 更新 1 天前',
+    )
+    assert.match(subscriptionUpdateTooltipLabel(1788313034000, '07:00', 240), /定时 07:00/)
   })
 })
