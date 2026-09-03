@@ -131,6 +131,8 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('coreLogDialFailureTailWatcher') ||
     !mainSource.includes('api2_anchor_rejected') ||
     !mainSource.includes('proactive_hard_rotate') ||
+    !mainSource.includes('cursor_dedicated_mihomo') ||
+    !mainSource.includes('probeRecoveryApi2AnchorDetailed') ||
     !mainSource.includes('dismissCollectiveDeathAlert')
   ) {
     return { ok: false, reason: 'missing_bug20260903_recovery_truth' }

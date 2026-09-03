@@ -3,7 +3,10 @@
 // [POS] BUG-2026-09-03-011 — 4h stale HY2 session hard rotate with api2 anchor.
 
 import { appendAppLog } from '../utils/log'
-import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
+import {
+  HY2_PARENT_SIDECAR_DIAL_AGE_MS,
+  resolveEffectiveHy2ParentChainAgeMs,
+} from './hy2ParentSidecarCore'
 
 let proactiveRotateInFlight = false
 let lastProactiveRotateAtMs = 0
@@ -27,10 +30,7 @@ export async function runProactiveHy2HardRotateIfDue(nowMs?: number): Promise<vo
   if (!snapshot) {
     return
   }
-  const chainAgeMs = Math.max(
-    snapshot.httpParentChainAgeMs,
-    snapshot.outboundHy2SessionAgeMs,
-  )
+  const chainAgeMs = resolveEffectiveHy2ParentChainAgeMs(snapshot, atMs)
   if (chainAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS) {
     return
   }
@@ -41,6 +41,7 @@ export async function runProactiveHy2HardRotateIfDue(nowMs?: number): Promise<vo
       `[ProactiveHy2HardRotate]: outcome=planned action=proactive_hard_rotate ` +
         `http_parent_chain_age_ms=${snapshot.httpParentChainAgeMs} ` +
         `outbound_hy2_session_age_ms=${snapshot.outboundHy2SessionAgeMs} ` +
+        `effective_chain_age_ms=${chainAgeMs} ` +
         `cursor_conn=${snapshot.cursorConnectionCount}\n`,
     )
     const { mihomoGetConnections } = await import('./mihomoApi')

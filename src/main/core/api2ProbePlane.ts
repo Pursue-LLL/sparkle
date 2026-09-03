@@ -48,6 +48,16 @@ async function runPlaneTick(): Promise<void> {
       await maybeRunVpsL4ProbeCycle()
     })
   }
+  await withApi2ProbePlaneLock('proactive_rotate', async () => {
+    try {
+      const { runProactiveHy2HardRotateIfDue } = await import('./proactiveHy2HardRotateRuntime')
+      await runProactiveHy2HardRotateIfDue()
+    } catch (error) {
+      await appendAppLog(
+        `[Api2ProbePlane]: proactive_hard_rotate tick failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      )
+    }
+  })
   schedulePlaneTick(nextDelayMs)
 }
 
