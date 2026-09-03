@@ -18,6 +18,7 @@ import {
   subscriptionUpdateCardLabel,
   subscriptionUpdateTooltipLabel
 } from '@sparkle-core/profileSubscriptionDisplayCore'
+import { notify } from '@renderer/utils/notification'
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
@@ -110,7 +111,7 @@ const ProfileCard: React.FC<Props> = (props) => {
               >
                 {info?.name}
               </h3>
-              <div className="flex">
+              <div className="flex shrink-0" data-no-dnd onClick={(e) => e.stopPropagation()}>
                 <Button
                   isIconOnly
                   size="sm"
@@ -135,6 +136,12 @@ const ProfileCard: React.FC<Props> = (props) => {
                       onPress={async () => {
                         setUpdating(true)
                         await addProfileItem(info)
+                        if (!info.url) {
+                          notify(
+                            '已从本地缓存重新加载。订阅 URL 缺失，无法远端更新，请在订阅设置中补填链接。',
+                            { variant: 'warning' }
+                          )
+                        }
                         setUpdating(false)
                       }}
                     >

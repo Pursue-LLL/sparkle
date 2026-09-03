@@ -1,11 +1,11 @@
 import { getControledMihomoConfig } from './controledMihomo'
 import { mihomoProfileWorkDir, mihomoWorkDir, profileConfigPath, profilePath } from '../utils/dirs'
 import { addProfileUpdater, delProfileUpdater } from '../core/profileUpdater'
+import { existsSync } from 'fs'
 import { readFile, writeFile, rm, mkdir } from 'fs/promises'
 import { fileToStr } from '@uruhalushia/sparkle-native'
 import { restartCore } from '../core/manager'
 import { getAppConfig } from './app'
-import { existsSync } from 'fs'
 import axios, { AxiosResponse } from 'axios'
 import https from 'https'
 import http from 'http'
@@ -26,6 +26,11 @@ import {
   isEmptyPersistableProfileConfig,
   recoverProfileConfigFromDisk
 } from '../core/profileConfigRecoveryCore'
+import {
+  formatMissingSubscriptionUrlError,
+  readProfileDiskUpdatedMs,
+  reloadCurrentProfileFromDiskCache
+} from '../core/profileCacheRefreshCore'
 import { appendAppLog } from '../utils/log'
 
 let profileConfig: ProfileConfig // profile.yaml
@@ -179,7 +184,20 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
   switch (newItem.type) {
     case 'remote': {
       const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
-      if (!item.url) throw new Error('Empty URL')
+      if (!item.url) {
+        if (existsSync(profilePath(id))) {
+          const { current } = await getProfileConfig()
+          if (current === id) {
+            await reloadCurrentProfileFromDiskCache(id)
+          }
+          const diskUpdatedMs = await readProfileDiskUpdatedMs(id)
+          if (diskUpdatedMs) {
+            newItem.updated = diskUpdatedMs
+          }
+          break
+        }
+        throw new Error(formatMissingSubscriptionUrlError())
+      }
       let res: AxiosResponse
       if (newItem.substore) {
         const urlObj = new URL(`http://127.0.0.1:${subStorePort}${item.url}`)
