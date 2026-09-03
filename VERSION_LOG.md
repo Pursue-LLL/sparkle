@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-09-03 15:25 CST · **生产基线 @1.30.54 INSTALLED 1a48fd50** · BUG-004 Failover 治理 + BUG-005 dial 集群恢复 · 单测 45/45
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.54** · CDHash **`1a48fd504ae71c14affe4257f2578648f6c2dc33`** |
+| **Git** | commit **`82193a9`** · break-glass install（`SPARKLE_UPGRADE_BREAK_GLASS=1` + `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1`） |
+| **T0** | 装包 2026-09-03 15:25 CST · mihomo 0s · proxy api2 **200** |
+| **状态** | **INSTALLED · 待 30min soak** — 覆盖 13:25 误 failover + 14:41 Reality 锁死 + **15:13 HY2 deadline 静默断** |
+
+### 核心能力（2026-09-03 004 + 005）
+
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| **vitality UDP-absent 反证** | ✅ INSTALLED | absent→unknown · 不误 failover/emergency |
+| **failover 60s soak** | ✅ INSTALLED | 13:25 式 5s 二次 emergency 已挡 |
+| **HY2 auto failback** | ✅ INSTALLED | 读 **mihomo live now** · 非 stale selection.json |
+| **dial 失败集群检测** | ✅ INSTALLED | ≥5/10s → sidecar bypass cooldown/circuit + toast |
+| **TransportLongevity birth age** | ✅ INSTALLED | 66h 会话不再报 age=0 |
+| **replay gate** | ✅ 5/5 | +`0903_false_udp_absent_vitality_counterproof` |
+
+### 已知遗漏（禁止声称 100% 全断连修复）
+
+1. VPS QUIC/443 物理层根因未穿透（需 VPS 日志）
+2. marathon 非活跃（cursor_conn<12）时集群 sidecar 路径未覆盖
+3. 30min 三端马拉松 soak 未完成（break-glass 跳过 idle wait）
+
+---
+
 ## 2026-09-03 15:10 CST · **开发基线 CODE-DONE（未装包）** · BUG-2026-09-03-004 Failover 治理 · replay 5/5 · 单测 26/26
 
 | 字段 | 内容 |

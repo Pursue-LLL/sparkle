@@ -96,13 +96,13 @@
 | **未解决** | profile.yaml **谁写入 0B** 未抓到栈（mtime 10:34 无对应 app log）— 防写空已加，写入者待 observability |
 | **验收** | 侧边栏显示「移动订阅」· 刷新转圈 · 远端更新 200 · 代理 302 OK · **待用户确认刷新 UI** |
 
-### BUG-2026-09-03-004 · 误报 UDP-absent → failover Reality 锁死 → 14:41 集体 dial timeout · **CODE-DONE @git · 未 INSTALLED**
+### BUG-2026-09-03-004 · 误报 UDP-absent → failover Reality 锁死 → 14:41 集体 dial timeout · **INSTALLED @1.30.54 82193a9**
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **R1 CODE-DONE** · 2026-09-03 ~15:10 CST · **未装包** · 待 `agent:upgrade:mac` + live soak |
+| **状态** | **R1 INSTALLED** · 2026-09-03 **15:25 CST** · CDHash `1a48fd504ae71c14affe4257f2578648f6c2dc33` · break-glass install |
 | **发生版本/时间** | **1.30.53 @c0cba9f INSTALLED** · 2026-09-03 **13:25 CST** emergency + **14:39–14:41 CST** 集体断 |
-| **修复版本/时间** | **1.30.54（待 bump）** · git 工作区 · replay gate **5/5** · 单测 **26/26 PASS** |
+| **修复版本/时间** | **1.30.54** · git **`82193a9`** · replay gate **5/5** · 单测 **45/45 PASS** |
 | **同族反复** | UDP-absent 误升级类 **第 3 次**（Aug/ Sep 001 emergency 循环 · Sep2 84s tier0 已修 · **本次是 failover→Reality 锁死新分支**） |
 | **严重度** | P0 — 三端 Cursor 集体断 · 误 emergency toast · 1.5h Reality TCP:443 路径 |
 
@@ -146,31 +146,77 @@
 
 | 范围 | 判定 | 依据 |
 | --- | --- | --- |
-| **Sep3 L0 误报链（13:25 场景）** | **git 已修 · 生产未修** | replay 5/5 · 26 单测 · 但 **未 INSTALLED** |
-| **004 failback 执行** | **git 有缺陷** | selection.json 11:43  stale HY2 · mihomo 13:25–14:41 走 Reality · failback 会 skip |
-| **14:41 dial-timeout 集群检测** | **未修** | grep 无 `dialTimeoutCluster` · 14:41 静默（stall=0）· 295 timeout |
+| **Sep3 L0 误报链（13:25 场景）** | **INSTALLED 已修** | replay 5/5 · 45 单测 · `/Applications/Sparkle.app` @1.30.54 |
+| **004 failback 执行** | **INSTALLED 已修** | `recoveryCursorDedicatedFailback.ts` 改读 `resolveCursorDedicatedActiveNode()`（mihomo live） |
+| **14:41 dial-timeout 集群检测** | **INSTALLED 已修（005）** | `cursorDedicatedDialFailureClusterCore.ts` ≥5/10s → sidecar bypass + toast |
 | **14:41 VPS:443 物理拒连根因** | **未定位** | 无 VPS ss/tcpdump · 客户端仅见 timeout |
-| **生产生效** | **否** | `/Applications/Sparkle.app` @1.30.53 c0cba9f |
-
-#### 遗漏 / 下一 commit
-
-1. **dial-timeout 集群检测**（≥5 条/10s `45.76.104.78:443 timeout` → 强制 failback + toast）— **代码不存在**（grep 零命中）
-2. **failback SSOT 缺陷（004 自身 bug）**：`recoveryCursorDedicatedFailback.ts` L28 读 `readCursorDedicatedManualSelection()`，但 14:41 物理对账：
-   - core log L14:41:21：`using 🎯 Cursor 专用[JP-VPS-Reality]` + 295× `dial tcp 45.76.104.78:443: i/o timeout`
-   - `~/.sparkle/cursor-dedicated-selection.json` mtime **11:43** · `node=JP-VPS-HY2`（13:25 failover 未落盘）
-   - → 004 failback 会判 `already_on_hy2_leaf` **不执行** · 须改读 `resolveCursorDedicatedActiveNode()`（`cursorDedicatedNodeResolver.ts` L17–24 · mihomo `groups().now`）
-3. **TransportLongevityTruth 代理指标欺骗**（排查手册反模式 #2）：`mihomoQuicSilentStallObserver.ts` L141–144 从 marathon QUIC 链推 `activeHy2Leaf`，14:41 期间 log 仍报 `leaf=JP-VPS-HY2` 而 core 走 Reality
-4. 装包 + T0 soak 30min 三端马拉松
+| **生产生效** | **是** | `/Applications/Sparkle.app` @1.30.54 · proxy api2 **200** @15:25 |
 
 #### 踩坑 / 防复发
 
-① **vitality 成功 + udp 快照为零 = 证据不足，不是 absent** ② **failover 到 Reality 后必须 failback HY2** ③ **failover 后 60s soak 禁止二次 emergency** ④ 排查手册反模式 #2：不能只看 stall=0 断言健康 — 14:41 有 291 timeout 但 stall=0
+① **vitality 成功 + udp 快照为零 = 证据不足，不是 absent** ② **failover 到 Reality 后必须 failback HY2** ③ **failover 后 60s soak 禁止二次 emergency** ④ 排查手册反模式 #2：不能只看 stall=0 断言健康 — 14:41 有 291 timeout 但 stall=0 ⑤ **failback 必须读 mihomo live now，不能读 stale selection.json**
 
 #### 验收
 
-- [x] `tsx --test` recoveryFailoverGovernance + byteDeath + coordinatorPolicy + bug20260903 replay
-- [ ] `pnpm run agent:upgrade:mac`
-- [ ] T0 清空 core log · 30min 三端马拉松 · 0 次误 emergency · 0 次 Reality 锁死 >60s
+- [x] `tsx --test` recoveryFailoverGovernance + byteDeath + coordinatorPolicy + bug20260903 replay + dialFailureCluster
+- [x] break-glass install @1.30.54 15:25 CST · mihomo 0s · proxy 200
+- [ ] T0 30min 三端马拉松 soak · 0 次误 emergency · 0 次 Reality 锁死 >60s
+
+### BUG-2026-09-03-005 · HY2 66h 会话退化 + sidecar cooldown 锁死 → 15:12–15:14 集体 deadline exceeded · **INSTALLED @1.30.54 82193a9**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 INSTALLED** · 2026-09-03 **15:25 CST** · 与 004 同包 **1.30.54** |
+| **发生版本/时间** | **1.30.53 @c0cba9f** · 2026-09-03 **15:12:03–15:14:30 CST** 集体断（**≠** 14:41 同物理根因） |
+| **修复版本/时间** | **1.30.54** · git **`82193a9`** · 单测 **45/45 PASS** |
+| **同族反复** | HY2 parent 老化 + 静默恢复盲区 **第 2 次当日**（14:41 Reality timeout · 15:13 HY2 deadline） |
+| **严重度** | P0 — 三端 Cursor 集体断 ~2.5min · stall=0 无 emergency toast |
+
+#### 现象 ↔ 证据（1对1）
+
+| 现象 | 物理证据 |
+| --- | --- |
+| 15:12 起集体断 | core log 首条失败 **15:12:03** `context deadline exceeded` · 15:12/15:13 各 **175/130** 条相关行 |
+| 末次成功 | **15:11:58** Cursor 专用 HY2 正常转发 |
+| 15:14 恢复 | sidecar + vitality **15:14:29** · `outbound_hy2_session_age_ms=239434374`（≈66h） |
+| 非 Reality 路径 | 错误在 **JP-VPS-HY2** · 非 14:41 的 `dial tcp 45.76.104.78:443: i/o timeout` |
+| 15:07 sidecar 失败 | `byte_death_udp_absent` → **300s cooldown** 至 15:12:54 · 失败早发 51s |
+| TransportLongevity 欺骗 | `age_ms=0` 而 `hy2_parent_chain_birth_ms` ≈66h → 4h sidecar gate 被挡 |
+
+#### 根因链
+
+| 层级 | 根因 | 模块 |
+| --- | --- | --- |
+| L3 | HY2 parent QUIC 会话 ~66h 退化 | VPS/QUIC 物理层 |
+| L2a | 15:07 误报 byte_death 重置 cooldown | `hy2ParentSidecar.ts`（005：insufficient 不 reset） |
+| L2b | TransportLongevityTruth 报 age=0 | `transportLongevityTruthCore.ts`（005：birth 强制 min age） |
+| L2c | 无 dial 失败集群检测 | 新增 `cursorDedicatedDialFailureClusterCore.ts` |
+| L1 | 仅 proactive sidecar @15:14:29 才恢复 | `cursorDedicatedDialFailureClusterRuntime.ts` bypass cooldown/circuit |
+
+#### 修复内容
+
+| 模块 | 改动 |
+| --- | --- |
+| `cursorDedicatedDialFailureClusterCore.ts` | ≥5 条/10s `deadline exceeded`/`i/o timeout` 集群分类 |
+| `cursorDedicatedDialFailureClusterRuntime.ts` | 集群触发 sidecar bypass cooldown + circuit + toast |
+| `hy2ParentSidecarCore.ts` | `resolveEffectiveHy2ParentChainAgeMs` · dial-failure cluster bypass |
+| `transportLongevityTruthCore.ts` | birth 旧时强制 min age |
+| `log.ts` | hook `publishTargetLogLines` → 集群 ingest |
+
+#### 100% 修复边界（诚实）
+
+| 范围 | 判定 |
+| --- | --- |
+| **15:13 静默 2.5min（L0 设计）** | **INSTALLED 已修** — 集群检测 + sidecar bypass |
+| **66h HY2 会话物理退化** | **缓解未根治** — sidecar 会重启链，但 VPS QUIC 根因未穿透 |
+| **marathon 非活跃时集群 sidecar** | **部分缺口** — 需 `cursor_conn≥12` 才走 marathon sidecar 路径 |
+| **15:19 余波** | 旧包 1.30.53 期间仍有 deadline · **15:25 装 1.30.54 后 15:25–15:29 零 deadline** |
+
+#### 验收
+
+- [x] `cursorDedicatedDialFailureClusterCore.test.ts` + governance 单测 45/45
+- [x] INSTALLED @1.30.54 · post-install proxy **200**
+- [ ] live 再现 dial 集群时自动 sidecar + toast（待 soak 观测）
 
 ### BUG-2026-09-02-001 · Marathon 稳定性观测缺失 / Cursor 桥接技术债 · **INSTALLED @1.30.53 199ff203 · 待 soak**
 
