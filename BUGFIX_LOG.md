@@ -1,6 +1,12 @@
 # Sparkle Bugfix Log
 
-> **2026-09-01 18:30 最新**：**BUG-2026-09-01-001 R2 INSTALLED @1.30.52 cb85a3b** · 198.18 CIDR sanitize 不匹配 `🎯 Direct` → trap 每次 regen 写回
+> **2026-09-03 13:20 最新**：**BUG-2026-09-03-003 INSTALLED @1.30.53 c0cba9f** · profile.yaml 0B 空白订阅恢复 + 侧边栏刷新 dnd + 磁盘缓存 reload + 更新时间显示
+> **2026-09-03 13:18 上一版**：**BUG-2026-09-03-001/002 INSTALLED @1.30.53 c0cba9f** · Sep2 tier0 SEL + 集体死亡 toast · profile recovery @856749f
+> **2026-09-03 12:30 上一版**：**BUG-2026-09-03-002 CODE-DONE @git** · 集体死亡 GUI toast + 「复制 Bug 信息」· emergency/circuit/SEL exhausted 触发
+> **2026-09-03 12:00 上一版**：**BUG-2026-09-03-001 CODE-DONE @git** · Sep2 84s marathon stall tier0 SEL + Aug31 blank subscription disk parity hot-reload · replay gate 4/4
+> **2026-09-02 14:20 上一版**：**BUG-2026-09-02-002 INSTALLED @1.30.53 199ff203** · Phase 1S data-plane busy + blocked 日志节流 · **待 30min soak**
+> **2026-09-02 14:20 最新**：**BUG-2026-09-02-001 INSTALLED @1.30.53 199ff203** · Marathon Stability Phase 0/0.5 Sparkle-only 观测
+> **2026-09-01 18:30 上一版**：**BUG-2026-09-01-001 R2 INSTALLED @1.30.52 cb85a3b** · 198.18 CIDR sanitize 不匹配 `🎯 Direct` → trap 每次 regen 写回
 > **2026-09-01 18:30 最新**：**BUG-2026-09-01-003 INSTALLED @1.30.52 cb85a3b** · failover R-31 拦截 + failoverAttempted 永久锁 → emergency 循环
 > **2026-09-01 18:30 最新**：**BUG-2026-09-01-002 R1 INSTALLED @1.30.52 cb85a3b** · emergency 马拉松自激 → 三环闭合 · **待 30min soak**
 > **2026-09-01 17:30 上一版**：**BUG-2026-09-01-001 R1 CODE-DONE @1.30.52 git** · fake-ip Direct 冷启动 + CoreLifecycle SSOT + Tier0-Direct · **半生效 · 见 R2**
@@ -33,6 +39,104 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-09-03-001 · Sep2 赛中 84s 断网 + Aug31 空白订阅 · **INSTALLED @1.30.53 c0cba9f**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 INSTALLED** · 2026-09-03 13:18 CST · CDHash `edf841749dbd08b8c7dd84ae5c293a79cffb3077` · stamp `2026.0903.1318` |
+| **发生版本** | **1.30.53 @856749f 前** · Sep2 84s stall · Aug31 provider parity |
+| **修复版本** | **1.30.53 @c0cba9f** · commits `856749f` + `73035b3` + `c0cba9f` |
+| **同族反复** | Aug31 空白订阅类 **第 2 次**（001 修 parity 未覆盖 profile.yaml wipe；见 **BUG-2026-09-03-003**） |
+| **症状 1** | 2026-09-02 06:20 upgrade 期间 `MihomoQuicSilentStall` stall_ms=84003 → `marathon_active_zero_data_plane_mutation` → 15s `EmergencyCoreRecovery` 断网 |
+| **根因 1** | P10「零 data-plane mutation」把 45–89s parent recovery proof 与 carrier 未达标一并 dead-end 为 `none`；critical host R-41 禁 close 但 SEL 需 vitality 先行；84s 时 vitality 未触发 |
+| **修复 1** | `frozenSurgicalPruneCore`：parent recovery proof → `vitality_dial` + `marathon_tier0_*_sel`；`stallEscalationLadderCore`：parent proof @≥60s bypass vitality ineffective → emergency sidecar；`dataPlaneMutationTierCore` SSOT |
+| **症状 2** | 2026-08-31 09:06 `defer service core provider reload expected=[] running=[77caf1sub001,...]` — UI 空白订阅，磁盘数据完好 |
+| **根因 2** | `resolveServiceCoreLaunchAction` 在 `generateProfile()` 前读 in-memory `runtimeConfig`（空）→ parity 误判；marathon guard block 后无 Tier-0 hot-reload |
+| **修复 2** | `resolveExpectedProxyProviderIds` disk fallback + marathon defer 时 `mihomoUpdateProxyProviders` Tier-0 hot-reload |
+| **回归** | `bug20260903ReplayCore.ts`（Sep2 frozen_quic 84s · SEL R1 · Aug31 disk parity · parent_stale tier0） |
+| **验收** | `node --test src/main/core/bug20260903ReplayCore.test.ts` + related unit tests · **禁止裸 build** · 装包 `pnpm run agent:upgrade:mac` |
+
+### BUG-2026-09-03-002 · 集体死亡 GUI 提示 + 复制 Bug 信息 · **INSTALLED @1.30.53 c0cba9f**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 INSTALLED** · 2026-09-03 13:18 CST · 同包 BUG-2026-09-03-001 |
+| **需求** | 集体死亡（emergency / circuit open / SEL exhausted）时 GUI 提示 + 一键复制 AI 可分析诊断 |
+| **实现** | `collectiveDeathBugReportCore` 组装 report · `collectiveDeathAlert` forceToast + `actionKind=copy-bug-report` · IPC `getCollectiveDeathBugReport` |
+| **触发** | `emergencyCoreRecovery` admitted · `recoveryCircuitBreaker` open · SEL `observe_exhausted` @ marathon |
+| **UI** | Toast「复制 Bug 信息」→ clipboard · 用户向文案无技术泄漏 |
+| **验收** | `collectiveDeathBugReportCore.test.ts` + 09-03-001 replay · live 触发 emergency 验证 copy |
+
+### BUG-2026-09-03-003 · profile.yaml 被 wipe → 空白订阅 + 刷新无效 + 更新时间误导 · **INSTALLED @1.30.53 c0cba9f**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 INSTALLED** · 2026-09-03 13:18 CST · CDHash `edf841749dbd08b8c7dd84ae5c293a79cffb3077` |
+| **发生版本/时间** | **1.30.53 @856749f 前** · 2026-09-03 10:34 CST `profile.yaml` → **0 字节** · 用户报「空白订阅」「刷新没反应」「更新 2 年前」 |
+| **修复版本/时间** | **1.30.53** · git `856749f`（recovery）+ `73035b3`（refresh/cache）+ `c0cba9f`（pure re-export）· stamp `2026.0903.1318` |
+| **同族反复** | 「空白订阅」类 **第 2 次独立根因**（001 修 Aug31 `expected=[]` parity；本次是 **索引文件 wipe**，非 provider mismatch） |
+| **严重度** | P1 — UI 显示空白订阅 · 刷新无反馈 · 误导性更新时间 |
+| **症状 1** | 侧边栏显示「空白订阅」；`profiles/77caf1sub001.yaml` 442KB 完好；`work/config.yaml` 无 proxy-providers |
+| **根因 1** | `~/Library/Application Support/sparkle/profile.yaml` **0B** → `getProfileConfig()` → `{ items: [] }` → `getCurrentProfileItem()` fallback `空白订阅` |
+| **症状 2** | 侧边栏刷新图标点击无反应（订阅页可能正常） |
+| **根因 2** | `profile-card.tsx` 刷新按钮在 dnd-kit `{...listeners}` 内，缺 `data-no-dnd` / `stopPropagation`（`profile-item.tsx` 有） |
+| **症状 3** | 恢复后显示「更新 2 年前」；用户期望「每日 07:00」 |
+| **根因 3** | 磁盘恢复时 `updated` 误写 `1725255434000`（2024-09-02）；UI 仅显示相对时间，未展示 `updateTime` 定时 |
+| **症状 4** | 无 URL 时刷新抛 `Empty URL`，Toast 不明显 |
+| **根因 4** | `createProfile` remote 分支硬要求 `item.url`；恢复条目缺 URL |
+| **修复** | `profileConfigRecoveryCore`：空 yaml → `.bak` + 磁盘 profiles 合并 + `syncProfileItemUpdatedFromDisk` · `setProfileConfig` 拒绝 persist 空配置 · `profile-card` dnd 修复 · `profileCacheRefreshCore` 无 URL 时磁盘 cache reload · `profileSubscriptionDisplayCore` 显示 `每日 07:00 · 更新 X 前` |
+| **用户数据修复** | 写入 `77caf1sub001.url` = `https://cn-sub-qplmqkqycr.cn-shenzhen.fcapp.run/sub/77caf1dec00a79a2/clash?carrier=china_mobile` |
+| **物理证据** | `profile.yaml` 0B mtime Sep 3 10:34 · `profile.yaml.bak-before-77caf1` 512B 完好 · 装包后 `generateProfile groups=32` · 订阅 URL fetch **200 / 442592B** |
+| **单测** | `profileConfigRecoveryCore.test.ts` 3/3 · `profileCacheRefreshCore.test.ts` 1/1 · `profileSubscriptionDisplayCore.test.ts` +1 |
+| **踩坑 / 防复发** | ① **空白订阅先查 profile.yaml 字节数**，不要只看 provider parity 日志 ② 恢复订阅必须保留 **url + updated=mtime** ③ 侧边栏 actionable 按钮必须 `data-no-dnd` ④ `stringifyYaml({items:[]})` ≠ 0B — wipe 来自空 write，recovery 必须处理 trim-empty |
+| **未解决** | profile.yaml **谁写入 0B** 未抓到栈（mtime 10:34 无对应 app log）— 防写空已加，写入者待 observability |
+| **验收** | 侧边栏显示「移动订阅」· 刷新转圈 · 远端更新 200 · 代理 302 OK · **待用户确认刷新 UI** |
+
+### BUG-2026-09-02-001 · Marathon 稳定性观测缺失 / Cursor 桥接技术债 · **INSTALLED @1.30.53 199ff203 · 待 soak**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R0 INSTALLED** · 2026-09-02 14:16 CST · CDHash `199ff203f33a7abec950a789439d133eea983b2c` |
+| **发生版本/时间** | 全历史至 **1.30.52** · 2026-09-02 用户报告「Sparkle 又断了吗」+ 2917ms 误判 |
+| **修复版本/时间** | **1.30.53** · git `ba18b505` · scripts 不进 asar · 2026-09-02 14:16 装包 |
+| **同族反复** | **第 1 轮正式交付**（此前仅有 `triage-cursor-disconnect.sh` 手工 RID 流程） |
+| **严重度** | P2 — 无法定量归因 · 误把 stall 当断连 · C3 HOME 假阴性 |
+| **症状** | ① 用户问断连只能靠猜 ② 2917ms 被当超时 ③ 476 stall vs 61 断连混统计 ④ C3 Agent shell 报告 0 事件 |
+| **根因** | 无自动化归因；守恒读 Cursor Structured Logs（运行时耦合）；CLI 只读 latest 单个 core 文件 |
+| **物理证据** | `core-2026-9-1.log:67320` 13:05 JP deadline · RID `23981e68` = L7 慢池 90s（12:33）· 9866 success / 25 JP error |
+| **修复内容** | Phase 0：`marathonStabilityAttributionCore` + CLI · Phase 0.5：`marathonStabilitySparkleConservationCore` · `resolveSparkleDataHome()` · 删 `marathonStabilityRidCrosswalkCore` |
+| **解决了什么** | Sparkle-only 批量报告；stall/断连拆分；C3 假阴性；无 Cursor 运行时耦合 |
+| **遗漏什么** | **不减少**真实断连；VPS 443 服务端 OPEN；L7 慢池非 Sparkle |
+| **可能导致什么** | 无 runtime 风险（scripts only）· 误删 scripts 文件 = 能力回退 |
+| **验收** | [x] 15 单测 pass [x] 604k 行扫描 [x] Sparkle-only 报告 [ ] 30min soak |
+| **踩坑** | 2917≠超时 · 13:05 deadline≠RID 根因 · blocked≠失败 · 装包后须验 CDHash |
+| **防复发** | VERSION_LOG 文件清单 · Agent 禁止删 scripts · 默认 `conservation-report` 不读 Cursor |
+| **反思** | 以前「修网络」无「尺子」→ 每次争论节点 vs Sparkle · 本次先观测再 Phase 1S |
+
+### BUG-2026-09-02-002 · 马拉松期 Sparkle 数据面自扰（probe/restart 日志洪水）· **INSTALLED @1.30.53 199ff203 · 待 soak**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R0 INSTALLED** · Phase 1S in asar · 2026-09-02 14:16 CST |
+| **发生版本/时间** | **1.30.52 及更早** · 2026-09-02 24h：L2 incident **71+** · `core_cold_restart_blocked` 每 ~5min |
+| **修复版本/时间** | **1.30.53** · git `ba18b505` |
+| **同族反复** | 与 **BUG-2026-08-29-001** Layer-0 同族 · 本次 = **第 2 轮补漏**（busy gate + 日志节流，非扩 cursor_conn quiesce） |
+| **严重度** | P1 — 高负载 probe 与转发争用 · 日志洪水误导排查 |
+| **症状** | ① `profile-update-cli` 每 5min 尝试→blocked→刷 warning ② probe max 2 不随负载降 ③ 476 stall 检测事件 |
+| **根因** | profile-update 未在 mihomo 高负载时提前 defer；blocked 无节流；probe 并发硬编码 2 |
+| **物理证据** | app.log 大量 `core_cold_restart_blocked caller=profile-update-cli cursor_conn=5–22` · conservation L2:71/24h |
+| **修复 R0（1.30.53）** | `mihomoDataPlaneLoadCore`（≥48 busy）· `profileUpdateDueCli` 提前 defer · `mihomoProbeCoordinator` max 1 · `coreLifecycleBlockedLogThrottleCore` 5min |
+| **解决了什么** | 高负载少探测争用 · 少进 guard 撞墙 · 日志可读（summary 替代 spam） |
+| **遗漏什么** | cursor_conn>0 仍 block restart（既有 guard）· L7/VPS 不管 · busy 阈值 48 待 soak 校准 |
+| **可能导致什么** | 高负载时 profile 更新延迟 · 自动测速 stale（手动仍可用） |
+| **历次修复为何未成功** | BUG-2026-08-29-001 R3 只 block cold restart，**未**减 probe 争用、**未**节流 blocked 日志 → 用户仍见「刷屏=不稳定」 |
+| **验收** | [x] install [x] 5 单测 [ ] T0+30min blocked ≤1/5min [ ] probe 信号增速↓ |
+| **踩坑** | blocked=guard 正常 · 勿当事故 · 看 `blocked_summary` · busy 阈值勿随意降（误 defer 更新） |
+| **防复发** | 改 probe/guard 必须跑 `marathonStabilityAttributionCore.test.ts` + conservation 报告对比 |
+| **反思** | Layer-0 guard 只「挡重启」不「减自扰」→ 用户感知仍差 · Phase 1S 补 busy+节流 |
 
 ---
 

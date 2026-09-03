@@ -1,6 +1,6 @@
 // [INPUT] subscription-userinfo expire field (seconds or milliseconds)
-// [OUTPUT] normalizeSubscriptionExpireTimestamp · formatSubscriptionExpireDate
-// [POS] Profile card must not show expire date without label (users misread as update time).
+// [OUTPUT] normalizeSubscriptionExpireTimestamp · subscriptionUpdateCardLabel · subscriptionScheduleHint
+// [POS] Profile card must not show expire date without label; show daily schedule + relative update (BUG-2026-09-03-003)
 
 const SUBSCRIPTION_EXPIRE_MS_THRESHOLD = 10_000_000_000
 

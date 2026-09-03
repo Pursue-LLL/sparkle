@@ -5,7 +5,121 @@
 
 ---
 
-## 2026-09-01 18:30 CST · **生产基线 @1.30.52 INSTALLED cb85a3b** · Recovery + fake-ip 三环闭合 · **待 30min soak PASS**
+## 2026-09-03 13:20 CST · **生产基线 @1.30.53 INSTALLED edf84174** · Sep2 tier0 SEL + 空白订阅恢复 + 集体死亡 toast · **待 soak**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.53** · CDHash **`edf841749dbd08b8c7dd84ae5c293a79cffb3077`** |
+| **Git** | commit **`c0cba9f`** · dist stamp `2026.0903.1318` |
+| **装包** | `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1 SPARKLE_UPGRADE_BREAK_GLASS=1 pnpm run agent:upgrade:mac` · 2026-09-03 ~13:18 CST |
+| **T0** | install 完成 · proxy :7890 **302 OK** · `generateProfile groups=32` · 订阅 `77caf1sub001` |
+| **状态** | **当前最佳可用基线** — 取代 1.30.53 `199ff203` 观测-only 包；含 BUG-2026-09-03-001/002/003 |
+
+### 核心能力（2026-09-03 新增）
+
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| **Tier-0 marathon SEL** | ✅ INSTALLED | Sep2 84s stall parent proof → vitality+SEL（非 dead-end none） |
+| **profile.yaml recovery** | ✅ INSTALLED | 空/wipe 自动从 `.bak` + 磁盘 profiles 恢复 |
+| **sidebar refresh dnd fix** | ✅ INSTALLED | `profile-card` 刷新按钮可点击 |
+| **disk cache refresh** | ✅ INSTALLED | 无 URL 时 reload 本地缓存；有 URL 远端更新 |
+| **集体死亡 toast** | ✅ INSTALLED | 「复制 Bug 信息」clipboard IPC |
+
+---
+
+## 2026-09-02 14:20 CST · **生产基线 @1.30.53 INSTALLED 199ff203** · Marathon Stability Phase 0/0.5 + Phase 1S · **待 30min soak**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.53** · CDHash **`199ff203f33a7abec950a789439d133eea983b2c`** |
+| **Git** | commit **`ba18b505`** · dist stamp `2026.0902.1416` |
+| **装包** | `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1 pnpm run agent:upgrade:mac` · 2026-09-02 ~14:16 CST |
+| **T0** | install 完成 · proxy :7890 **OK** · Sparkle GUI **running** |
+| **平台** | macOS 26 · headless bootstrap + `--sparkle-force-gui` |
+| **状态** | **当前最佳可用基线** — 取代 1.30.52 观测/1S 能力；**1.30.52 recovery/fake-ip 能力保留未回退** |
+
+### 版本谱系（防回退）
+
+| 从 | 到 | 关系 |
+| --- | --- | --- |
+| 1.30.52 `17c22f70…` | 1.30.53 `199ff203…` | **增量**：观测脚本 + Phase 1S · **无删除** recovery coordinator / fake-ip sanitize |
+| 1.30.52 | 1.30.53 | CDHash 变更 = 正常重装 · Gatekeeper 可能需 Control+Open 一次 |
+
+### 核心能力（2026-09-02 新增）
+
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| **Phase 0 归因脚本** | ✅ INSTALLED（scripts/） | `marathonStabilityAttributionCore` + CLI · 15 单测 · 多 core/app 扫描 · `resolveSparkleDataHome` |
+| **Phase 0.5 Sparkle-only 守恒** | ✅ INSTALLED（scripts/） | **零 Cursor 日志依赖** · `marathon-stability-conservation-report.mts` |
+| **Phase 1S data-plane busy gate** | ✅ INSTALLED（asar） | mihomo 活跃连接≥48 → profile-update defer + probe max 1 |
+| **blocked 日志 5min 节流** | ✅ INSTALLED（asar） | `coreLifecycleBlockedLogThrottleCore` · 5min 窗口 + `blocked_summary` |
+| **Cursor RID 桥接** | ❌ REMOVED | 删 `marathonStabilityRidCrosswalkCore` — 防技术债 · triage 脚本仍可用（手动） |
+| **30min soak PASS** | ⏳ PENDING | T0=14:16 CST · 14:46 后验 blocked 频率 |
+
+### 文件交付清单（Agent 勿删）
+
+**scripts/**（观测 · 不进 asar 但 SSOT）：
+- `marathonStabilityAttributionCore.ts` + `.test.ts`
+- `marathonStabilityLogPathsCore.ts`
+- `marathonStabilitySparkleConservationCore.ts` + `.test.ts`
+- `marathon-stability-attribution-report.mts`
+- `marathon-stability-conservation-report.mts`
+
+**src/main/core/**（Phase 1S · 进 asar）：
+- `mihomoDataPlaneLoadCore.ts` + `.test.ts`
+- `mihomoDataPlaneLoadState.ts`
+- `coreLifecycleBlockedLogThrottleCore.ts` + `.test.ts`
+- 改动：`profileUpdateDueCli.ts` · `mihomoProbeCoordinator.ts` · `marathonCoreRestartGuard.ts`
+
+### 变更摘要
+
+| 模块 | 改了什么 | 解决什么 | 未解决 / 遗漏 |
+| --- | --- | --- | --- |
+| `scripts/marathonStability*` | 观测 + 守恒 CLI | stall vs 断连可拆分；C3 HOME 假阴性 | **不减少**真实断连频率 |
+| `mihomoDataPlaneLoadCore` | busy 阈值 48 | 高负载少抢探测槽 | VPS 443 服务端仍 OPEN |
+| `profileUpdateDueCli` | busy 提前 defer | 少进 readiness pipeline 撞 guard | 订阅更新可延迟数分钟 |
+| `coreLifecycleBlockedLogThrottleCore` | 日志节流 | app.log 可读 | blocked 仍会发生，只是少刷 |
+| `mihomoProbeCoordinator` | 动态 max 1/2 | 数据面忙时降并发 | 手动测速仍可用 |
+
+### 物理证据（装包 @14:16）
+
+| 证据 | 值 |
+| --- | --- |
+| `defaults read … CFBundleShortVersionString` | **1.30.53** |
+| CDHash | `199ff203f33a7abec950a789439d133eea983b2c` |
+| dist stamp | `2026.0902.1416` · git `ba18b505` |
+| proxy :7890 → api2 | **200 OK** |
+| 装包前 24h 守恒 | 61 用户断连（历史 Structured，已 decouple）· 476 probe 信号 |
+| 装包前 2h Sparkle-only | 47 incident（L2:24 · L3:16） |
+
+### 踩坑 SSOT（9/2 · 防复发）
+
+1. **2917ms UI 延迟 ≠ 超时** — `delayTestTimeout=10000`；**0** 才是超时（`proxyDelayDisplayCore.ts`）
+2. **13:05 JP deadline ≠ 终端断连根因** — RID `23981e68` = L7 慢池 90s（时间差 32min）
+3. **只读 latest core** → 假阴性 · 必须扫全部 `core-*.log` / `app-*.log`
+4. **Cursor 桥接进 Sparkle 运行时** → 技术债 · 已删；观测只用 Sparkle/mihomo 日志
+5. **blocked 日志当事故** → 误报 · blocked=guard 正常工作 · 看 `blocked_summary`
+6. **装包 ≠ 验 runtime** — 须 `defaults read` + CDHash + proxy curl 三证
+
+### 反思（为何反复修不好）
+
+- **根因**：以前只有 triage 手工脚本，无批量归因 → 每次断连靠猜 → 修 A 怪 B
+- **本次策略**：先 **尺子**（Phase 0/0.5）再 **刹车**（Phase 1S）· 不耦合 Cursor 运行时
+- **仍 OPEN**：VPS SSH 不通 · L7 慢池非 Sparkle 能修 · **100% 零断连不可承诺**
+
+### 验收门禁
+
+- [x] install 版本 **1.30.53** CDHash `199ff203…`
+- [x] proxy :7890 → api2.cursor.sh **200**
+- [x] Sparkle GUI **running**（`open-sparkle-gui-macos26.sh`）
+- [x] VERSION_LOG + BUGFIX_LOG 已更新（BUG-2026-09-02-001/002）
+- [x] 单测 **15 pass**（scripts 10 + core 5）
+- [ ] T0+30min（~14:46 CST）：`core_cold_restart_blocked` 同类 ≤1/5min（+summary）
+- [ ] T0+24h：JP connect error 率 ≤0.25% 且不升
+
+---
+
+## 2026-09-01 18:30 CST · **生产基线 @1.30.52 INSTALLED cb85a3b** · Recovery + fake-ip 三环闭合 · **已被 1.30.53 观测/1S 基线取代（recovery 能力保留）**
 
 | 字段 | 内容 |
 | --- | --- |

@@ -41,6 +41,12 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `transportMutationGateCore.ts` / `transportMutationGateRuntime.ts` | MTIC-v2：赛中禁止 HY2→TLS 等 transport mutation |
 | `recoveryCircuitBreakerCore.ts` / `recoveryCircuitBreaker.ts` | **P1/P1.5** 连续 recovery 失败熔断 · 假成功守卫 · circuit open 时 restartCore 阶梯（defer 后重试） |
 | `aiTrafficIsolationCore.ts` | **W2** AI/Codex 组剔除 Marathon Cursor HY2 leaf（factory 注入） |
+| `collectiveDeathBugReportCore.ts` / `collectiveDeathBugReport.ts` / `collectiveDeathAlert.ts` | **BUG-2026-09-03-002** 集体死亡 GUI toast + 「复制 Bug 信息」IPC |
+| `profileConfigRecoveryCore.ts` / `profileConfigRecoveryPureCore.ts` | **BUG-2026-09-03-003** 空/损坏 `profile.yaml` 从 `.bak` + 磁盘 profiles 恢复 · 禁止 persist 空配置 |
+| `profileCacheRefreshCore.ts` / `profileCacheRefreshPureCore.ts` | **BUG-2026-09-03-003** 无 URL 时从磁盘 cache reload provider · 缺失 URL 双语错误 |
+| `profileSubscriptionDisplayCore.ts` | 订阅到期/更新时间展示 SSOT · **BUG-2026-09-03-003** `每日 HH:mm · 更新 X 前` |
+| `dataPlaneMutationTierCore.ts` | **BUG-2026-09-03-001** Tier-0/1/2 data-plane mutation SSOT（provider hot-reload · single conn close · sidecar · cold restart） |
+| `bug20260903ReplayCore.ts` | **BUG-2026-09-03-001** Sep2 84s stall + Aug31 blank subscription replay gate |
 | `bug20260831RecoveryCircuitReplayCore.ts` | **BUG-2026-08-31-001** 8/31 事故 replay gate（熔断 · 旁路 · AI 隔离） |
 | `marathonCarrierConnectionBindCore.ts` | marathon SSE carrier ↔ mihomo connection bind SSOT |
 | `recoveryHonestyCore.ts` | **R-34d** recovery success = max_gap 60s 内降 ≥50% |
@@ -48,7 +54,9 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | VPS leaf **bootstrap dial-timeout=45s**（provider 生成 SSOT）· 空闲 backfill · 赛中零 data-plane mutation · P20b IDLE gate 保留供历史测试 |
 | `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
 | `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默：conn≥12 暂停 proxyHealthMonitor + observability dial；**R-24** quiesce ON/OFF 热 patch `health-check.enable` + mihomo reload |
-| `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：`cursor_conn>0` / quiesce / recent lifecycle 时 block `stopCore`/`restartCore`/`startCore`（Layer-0 BUG-2026-08-29-001 R3）；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate；**CLI/headless/reload/second-instance 共用 SSOT** |
+| `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：`cursor_conn>0` / quiesce / recent lifecycle 时 block `stopCore`/`restartCore`/`startCore`（Layer-0 BUG-2026-08-29-001 R3）；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate；**CLI/headless/reload/second-instance 共用 SSOT**；blocked 日志 5min 节流 |
+| `coreLifecycleBlockedLogThrottleCore.ts` | Phase 1S：`core_cold_restart_blocked` 5min 汇总节流（blocked≠失败） |
+| `mihomoDataPlaneLoadCore.ts` / `mihomoDataPlaneLoadState.ts` | Phase 1S：mihomo 活跃连接≥48 视为 data-plane busy；probe 并发降为 1；profile-update-cli 提前 defer |
 | `startCoreMutationGuardCore.ts` | **Layer-0** startCore mutation intent SSOT（elevated child / protected footprint / service restart） |
 | `deferredProfileUpdateDueCore.ts` / `deferredProfileUpdateDue.ts` | conn→0 后补跑被 defer 的 profile subscription refresh |
 | `appConfigMihomoReloadGuardCore.ts` | **P10-2** hot reload defer **delegate** `shouldBlockMarathonCoreColdRestart`（conn>0 即 defer，不再单独 >=12 阈值） |
@@ -58,7 +66,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `cursorStreamTokenGapCore.ts` / `cursorStreamTokenGapReader.ts`        | Marathon token 静默检测（≥20s 无 meaningful SSE → hung_scan 触发 token_gap rescue）；**P14c** `generation-ended-without-turnEnded` sudden-death rescue（gap<30s · duration≥30min）；**P14d** txReqId+originalRequestId alias；**冷 resume 32s 零首 token** |
 | `cursorConnectStreamKeepaliveCore.ts` | **P8+P14a** Connect-path 三探针纯函数 SSOT · partition 检测 · 15s gap 阈值；**执行统一由 MTDO** `marathonTransportDialOrchestrator.ts` |
 | `coreReadyTimestamp.ts`                                                 | 叶子模块：`markCoreReadyAtMs` / `safeGetLastCoreReadyAtMs`（CTHC startup grace）；`manager.ts` 须 **namespace import** |
-| `serviceCoreProviderParityCore.ts` | **Service 模式** disk/runtime `proxy-providers` 与 live mihomo 不一致时触发 `/core/restart`（marathon guard 可 defer） |
+| `serviceCoreProviderParityCore.ts` | **Service 模式** disk/runtime `proxy-providers` 与 live mihomo 不一致时触发 `/core/restart`（marathon guard 可 defer → **Tier-0** `mihomoUpdateProxyProviders` hot-reload；**disk fallback** when in-memory runtime empty） |
 | `cursorCriticalTransportCore.ts`                                        | critical Cursor transport host SSOT（CTHC + Hygiene 共享）                                                                                                            |
 | `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描；**L0–L3 marathon hard-disable**（conn≥12/quiesce）；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan |
 | `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a/b** ~85min 段轮换 detect @ hung_scan · marathon-segments cache merge · QUIC stall early handoff · **Sparkle detect-only**；Guard patch-315 **observe-only**（无 execute） |
@@ -80,7 +88,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `connectPartitionRescueIneffectiveCore.ts` | **R-31** connect_partition rescue executed but mass PING persists + short path green → `[ConnectPartitionRescueIneffective]` |
 | `marathonProtocolContractCore.ts` / `marathonProtocolContract.ts` | **R-30/R-32** cold-start TLS gate · auto mid-marathon block · **manual operator exempt** · hand-picked suboptimal skips gate |
 | `latencyDeltaGateCore.ts`                                               | §22 Mac 全路径 vs VPS 本体 P50 delta 告警（defer warmth only） |
-| `mihomoProbeCoordinator.ts`                                             | 全局 mihomo delay 槽（max 2）与商业 batch 并发 cap                                                                                                                    |
+| `mihomoProbeCoordinator.ts`                                             | 全局 mihomo delay 槽（busy 时 max 1 / 否则 2）与商业 batch 并发 cap                                                                                                                    |
 | `marathonObservabilityDialBudgetCore.ts` / `marathonObservabilityDialBudgetQueueCore.ts` / `marathonObservabilityDialBudget.ts` | **P12** conn≥12/quiesce observability dial 单槽串行（QueueCore 无 Electron 依赖） |
 | `providerDelayHistoryFromLedgerCore.ts`                                 | **P11** mihomo history 空时从 api2-probe-ledger 回填 tooltip 柱图（transport_pair/session_nudge）                                                                  |
 | `managedVpsDelayTest.ts` / `vpsDelayTestPolicyCore.ts`                    | VPS UI 测速 defer 策略；**P11** `explicitUserRequest` bypass conn defer + 15s cooldown                                                                              |
