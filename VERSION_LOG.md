@@ -5,7 +5,58 @@
 
 ---
 
-## 2026-09-03 15:25 CST · **生产基线 @1.30.54 INSTALLED 1a48fd50** · BUG-004 Failover 治理 + BUG-005 dial 集群恢复 · 单测 45/45
+## 2026-09-03 15:38 CST · **生产基线 @1.30.55 INSTALLED 7464c014** · BUG-006 age SSOT + failback 门控 + Reality 恶性循环 · 单测 46/46 · **当前最佳 SSOT**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.55** · CDHash **`7464c014d110ebd9ec53b14c467376aec814d841`** |
+| **Git** | commit **`eb71107`** · dist stamp `2026.0903.1534` · break-glass install |
+| **T0** | 装包 2026-09-03 **15:38 CST** · mihomo 0s · proxy api2 **200** |
+| **状态** | **INSTALLED · 当前 Agent 迭代基线** — 004/005 在 1.30.54 **部分生效**，本版补全闭环 |
+
+### 本版相对 1.30.54 新增/补全（BUG-006）
+
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| **failback 马拉松门控打通** | ✅ INSTALLED | `hy2_vitality_failback` → 允许 Reality/TLS→HY2（修 15:28 blocked_marathon_active） |
+| **age SSOT 统一** | ✅ INSTALLED | `resolveEffectiveTransportLongevityAges` 进 quiesce/rotate/close 门控（修 8h emergency refresh 永不触发） |
+| **Reality 上 suppress HY2 absent** | ✅ INSTALLED | live leaf=Reality 时 HY2 udp absent→unknown（修 15:29 恶性循环） |
+| **004 vitality 反证** | ✅ 继承 | 1.30.54 |
+| **005 dial 集群检测** | ✅ 继承 | 1.30.54 |
+| **单测** | ✅ **46/46** | +failback gate · +birth emergency refresh · +Reality suppress |
+
+### 1.30.54 装包后 live 证伪（为何需要本版）
+
+| 时间 | 1.30.54 表现 | 根因 |
+| --- | --- | --- |
+| 15:28:18 | failback **failed** `blocked_marathon_active` | 004 failback 未接 marathon 门控豁免 |
+| 15:28:53 | TransportLongevityTruth **age=0** vs sidecar **172M ms** | age SSOT 分裂 · rotate/quiesce 读 snapshot 零 |
+| 15:29:53 | 已在 Reality 仍 emergency | HY2 absent 在 Reality 路径误升级 |
+
+### VPS 对账（15:13 定论 · 006 文档化）
+
+- 07:12–07:13 CST：VPS sing-box **HY2 入站 = 0** · 客户端 138+ deadline
+- 07:14:30 恢复：UDP 端口 50703→61604 · 与 sidecar 精确对齐
+- **L0 定论**：15:13 = **客户端 stale 66h QUIC**，非 VPS 宕机
+
+### 已知遗漏（禁止声称 100% 全断连修复）
+
+1. VPS QUIC 物理层根因（客户端已证伪「VPS 拒连」假设）
+2. marathon 非活跃（cursor_conn<12）时 dial 集群 sidecar 弱路径
+3. vitality 反证窗口仅 60s — 超时后仍可能误 absent（006 用 Reality suppress 缓解）
+4. **30min 三端马拉松 soak 未完成**
+
+### 同日版本迭代计数（防 regression 参考）
+
+| 版本 | 时间 | 结果 |
+| --- | --- | --- |
+| 1.30.53 | 13:18 | 空白订阅修 · 当日 13:25/14:41/15:13 仍断 |
+| 1.30.54 | 15:25 | 004/005 CODE · **15:28 又锁 Reality** |
+| **1.30.55** | **15:38** | **006 补全 · 当前基线** |
+
+---
+
+## 2026-09-03 15:25 CST · **生产基线 @1.30.54 INSTALLED 1a48fd50** · BUG-004 + BUG-005 · **已被 1.30.55 取代**
 
 | 字段 | 内容 |
 | --- | --- |

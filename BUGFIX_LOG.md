@@ -100,9 +100,9 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **R1 INSTALLED** · 2026-09-03 **15:25 CST** · CDHash `1a48fd504ae71c14affe4257f2578648f6c2dc33` · break-glass install |
+| **状态** | **R1 部分 INSTALLED → R2 由 006 @1.30.55 补全** · 1.30.54 @15:25 · CDHash `1a48fd504ae71c14affe4257f2578648f6c2dc33` |
 | **发生版本/时间** | **1.30.53 @c0cba9f INSTALLED** · 2026-09-03 **13:25 CST** emergency + **14:39–14:41 CST** 集体断 |
-| **修复版本/时间** | **1.30.54** · git **`82193a9`** · replay gate **5/5** · 单测 **45/45 PASS** |
+| **修复版本/时间** | **1.30.54** `82193a9`（部分）→ **1.30.55** `eb71107`（failback 门控补全）· replay **5/5** · 单测 **46/46** |
 | **同族反复** | UDP-absent 误升级类 **第 3 次**（Aug/ Sep 001 emergency 循环 · Sep2 84s tier0 已修 · **本次是 failover→Reality 锁死新分支**） |
 | **严重度** | P0 — 三端 Cursor 集体断 · 误 emergency toast · 1.5h Reality TCP:443 路径 |
 
@@ -147,28 +147,36 @@
 | 范围 | 判定 | 依据 |
 | --- | --- | --- |
 | **Sep3 L0 误报链（13:25 场景）** | **INSTALLED 已修** | replay 5/5 · 45 单测 · `/Applications/Sparkle.app` @1.30.54 |
-| **004 failback 执行** | **INSTALLED 已修** | `recoveryCursorDedicatedFailback.ts` 改读 `resolveCursorDedicatedActiveNode()`（mihomo live） |
+| **004 failback 执行** | **1.30.55 已修** | 1.30.54 有 failback 逻辑但 **15:28 live 被 marathon 门控挡** · 006 加 `hy2_vitality_failback` 豁免 |
 | **14:41 dial-timeout 集群检测** | **INSTALLED 已修（005）** | `cursorDedicatedDialFailureClusterCore.ts` ≥5/10s → sidecar bypass + toast |
 | **14:41 VPS:443 物理拒连根因** | **未定位** | 无 VPS ss/tcpdump · 客户端仅见 timeout |
-| **生产生效** | **是** | `/Applications/Sparkle.app` @1.30.54 · proxy api2 **200** @15:25 |
+| **生产生效** | **1.30.55** | 004 核心链 @1.30.54 · failback 门控 @1.30.55 |
+
+#### 反复修复史（同族 UDP-absent / failover · 第 3 次独立根因 · 2 次当日 partial fix）
+
+| 轮次 | 版本 | 修了啥 | 为何未 100% |
+| --- | --- | --- | --- |
+| R0 | Aug–Sep2 | tier0 SEL · 84s gate | 未覆盖 failover→Reality 新分支 |
+| R1 | **1.30.54** | vitality 反证 · failback 读 live · dial 集群 | **failback 未接 marathon 门控** · live 15:28 仍锁 Reality |
+| R2 | **1.30.55** | failback source 豁免 · Reality absent suppress | 待 soak |
 
 #### 踩坑 / 防复发
 
-① **vitality 成功 + udp 快照为零 = 证据不足，不是 absent** ② **failover 到 Reality 后必须 failback HY2** ③ **failover 后 60s soak 禁止二次 emergency** ④ 排查手册反模式 #2：不能只看 stall=0 断言健康 — 14:41 有 291 timeout 但 stall=0 ⑤ **failback 必须读 mihomo live now，不能读 stale selection.json**
+① **vitality 成功 + udp 快照为零 = 证据不足，不是 absent** ② **failover 到 Reality 后必须 failback HY2** ③ **failover 后 60s soak 禁止二次 emergency** ④ 排查手册反模式 #2：不能只看 stall=0 断言健康 ⑤ **failback 必须读 mihomo live now** ⑥ **新增 recovery 路径必须接 marathonProtocolContract 门控单测** — 004 教训：写了 failback 但没测 `blocked_marathon_active`
 
 #### 验收
 
-- [x] `tsx --test` recoveryFailoverGovernance + byteDeath + coordinatorPolicy + bug20260903 replay + dialFailureCluster
-- [x] break-glass install @1.30.54 15:25 CST · mihomo 0s · proxy 200
-- [ ] T0 30min 三端马拉松 soak · 0 次误 emergency · 0 次 Reality 锁死 >60s
+- [x] 单测 46/46 · replay 5/5
+- [x] INSTALLED @1.30.55 15:38 · proxy **200**
+- [ ] T0 30min 三端马拉松 soak · 0 次 Reality 锁死 >60s
 
 ### BUG-2026-09-03-005 · HY2 66h 会话退化 + sidecar cooldown 锁死 → 15:12–15:14 集体 deadline exceeded · **INSTALLED @1.30.54 82193a9**
 
 | 字段 | 内容 |
 | --- | --- |
-| **状态** | **R1 INSTALLED** · 2026-09-03 **15:25 CST** · 与 004 同包 **1.30.54** |
-| **发生版本/时间** | **1.30.53 @c0cba9f** · 2026-09-03 **15:12:03–15:14:30 CST** 集体断（**≠** 14:41 同物理根因） |
-| **修复版本/时间** | **1.30.54** · git **`82193a9`** · 单测 **45/45 PASS** |
+| **状态** | **R1 部分 → R2 @1.30.55 补全** · 1.30.54 @15:25 |
+| **发生版本/时间** | **1.30.53 @c0cba9f** · 2026-09-03 **15:12:03–15:14:30 CST** 集体断 |
+| **修复版本/时间** | **1.30.54** `82193a9`（集群检测）→ **1.30.55** `eb71107`（age SSOT 进 rotate/quiesce） |
 | **同族反复** | HY2 parent 老化 + 静默恢复盲区 **第 2 次当日**（14:41 Reality timeout · 15:13 HY2 deadline） |
 | **严重度** | P0 — 三端 Cursor 集体断 ~2.5min · stall=0 无 emergency toast |
 
@@ -212,11 +220,75 @@
 | **marathon 非活跃时集群 sidecar** | **部分缺口** — 需 `cursor_conn≥12` 才走 marathon sidecar 路径 |
 | **15:19 余波** | 旧包 1.30.53 期间仍有 deadline · **15:25 装 1.30.54 后 15:25–15:29 零 deadline** |
 
+| **15:13 静默 2.5min** | **1.30.54 集群检测 + 1.30.55 age SSOT** | 005 修检测 · 006 修 8h refresh 永不触发 |
+| **66h HY2 会话** | **1.30.55 缓解** | VPS 证伪：07:12–07:13 **零 HY2 入站** = 客户端 stale QUIC |
+| **1.30.54 live 证伪** | **15:28 age=0 仍出现** | birth fix 未进 quiesce/rotate 读数路径 → 006 统一 |
+
 #### 验收
 
-- [x] `cursorDedicatedDialFailureClusterCore.test.ts` + governance 单测 45/45
-- [x] INSTALLED @1.30.54 · post-install proxy **200**
-- [ ] live 再现 dial 集群时自动 sidecar + toast（待 soak 观测）
+- [x] 单测 46/46 · VPS SSH 对账
+- [x] INSTALLED @1.30.55 · proxy **200**
+- [ ] live dial 集群 + 8h refresh 触发（待 soak）
+
+### BUG-2026-09-03-006 · age SSOT 分裂 + failback 马拉松门控 + Reality absent 恶性循环 · **INSTALLED @1.30.55 eb71107**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 INSTALLED** · 2026-09-03 **15:38 CST** · CDHash `7464c014d110ebd9ec53b14c467376aec814d841` |
+| **发现版本/时间** | **1.30.54 @82193a9 装包后 3min** · 2026-09-03 **15:28–15:29 CST** live 证伪 004/005 未闭环 |
+| **修复版本/时间** | **1.30.55** · git **`eb71107`** · 单测 **46/46 PASS** |
+| **同族反复** | 004 failback **第 2 次修** · age=0 欺骗 **第 N 次**（Aug 4.1h parent · Sep3 66h） |
+| **严重度** | P0 — 装 1.30.54 后仍锁 Reality + 误 emergency |
+
+#### 现象 ↔ 证据
+
+| 现象 | 证据 |
+| --- | --- |
+| failback 失败 | app 15:28:18 `switch_blocked blocked_marathon_active source=hy2_vitality_failback` |
+| age SSOT 分裂 | 同秒：TransportLongevityTruth age=**0** · Hy2ParentSidecar age=**172134719** |
+| Reality 恶性循环 | app 15:29:53 `EmergencyCoreRecovery admitted` · core 走 `JP-VPS-Reality` |
+| VPS 15:13 定论 | sing-box 07:12–07:13 HY2=**0** · 07:14:30 恢复 UDP 50703→61604 |
+
+#### 根因（代码叶子）
+
+| 层级 | 根因 | 模块 |
+| --- | --- | --- |
+| L1 | `hy2_vitality_failback` 不在 marathon 豁免列表 | `marathonProtocolContractCore.ts` L237 |
+| L2 | quiesce/rotate 读 snapshot age 不读 birth | `carrierQuiesceRefreshCore.ts` · `hy2ParentSidecar.ts` · `hy2ParentRotationCore.ts` |
+| L3 | failover 到 Reality 后 HY2 udp 必然 absent → 又 emergency | `recoveryCoordinator.ts` buildFact 缺 live leaf 上下文 |
+
+#### 修复内容
+
+| 模块 | 改动 |
+| --- | --- |
+| `marathonProtocolContractCore.ts` | `hy2_vitality_failback` → 允许 Reality/TLS→HY2 |
+| `hy2ParentSidecarCore.ts` | `resolveEffectiveTransportLongevityAges` SSOT |
+| `carrierQuiesceRefreshCore.ts` | 8h emergency refresh 用 effective age |
+| `hy2ParentSidecar.ts` / `hy2ParentRotationCore.ts` | rotate 门控用 effective age |
+| `recoveryFailoverGovernanceCore.ts` | `shouldSuppressHy2UdpAbsentEscalation` |
+| `recoveryCoordinator.ts` | buildFact 读 mihomo live leaf |
+
+#### 为何 004/005 在 1.30.54 不够（反思）
+
+1. **修 A 未测 B 集成**：failback 单测通过但未测 marathon 门控 live 路径
+2. **两套 age SSOT**：sidecar dial 已用 effectiveAge（005）· quiesce/rotate 仍读 snapshot（006 才统一）
+3. **装包≠验收**：15:25 装 1.30.54 · 15:28 即复现 — **必须 live 对账 + VPS 交叉验证**
+
+#### 100% 边界
+
+| 已修 | 未修 |
+| --- | --- |
+| failback 马拉松锁 · age 分裂 · Reality 恶性循环 | VPS QUIC 物理层 · 60s vitality 窗口外误 absent · marathon 非活跃集群路径 |
+
+#### 踩坑 / 防复发
+
+① **任何 mihomoChangeProxy 新 source 必须加 marathonProtocolContract 单测** ② **rotate/quiesce/sidecar 必须共用 `resolveEffectiveTransportLongevityAges`** ③ **failover 到 TCP leaf 后禁止对 HY2 leaf 做 absent 升级** ④ **装包后 5min 内查 core log 当前 leaf + failback 日志**
+
+#### 验收
+
+- [x] 单测 46/46
+- [x] INSTALLED @1.30.55 15:38 · proxy **200**
+- [ ] 30min soak · 0 次 Reality 锁死 · 0 次误 emergency
 
 ### BUG-2026-09-02-001 · Marathon 稳定性观测缺失 / Cursor 桥接技术债 · **INSTALLED @1.30.53 199ff203 · 待 soak**
 
