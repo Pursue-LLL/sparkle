@@ -1,6 +1,9 @@
 // [INPUT] sidecar/vitality outcomes · api2 probe result
-// [OUTPUT] recovery external-anchor verification SSOT (BUG-2026-09-03-011)
-// [POS] Sidecar/vitality internal green is insufficient — api2 via :7890 is the anchor.
+// [OUTPUT] recovery external-anchor verification SSOT (BUG-2026-09-03-011/012)
+// [POS] Sidecar/vitality internal green is insufficient — api2 via Cursor dedicated leaf is the anchor.
+
+/** How recovery api2 anchor was probed — mixed-port fallback is legacy/untrusted. */
+export type RecoveryApi2AnchorProbeVia = 'cursor_dedicated_mihomo' | 'mixed_port_fallback'
 
 /** connect_path_delay_ms=0 is a known false-positive when HY2 parent is stale-dead. */
 export const MIN_CONNECT_PATH_DELAY_MS_FOR_VITALITY_TRUST = 50

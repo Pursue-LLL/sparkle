@@ -17,33 +17,18 @@ function delay(ms: number): Promise<void> {
   })
 }
 
-async function probeApi2ViaProxy(): Promise<boolean> {
-  const { execFile } = await import('node:child_process')
-  const { promisify } = await import('node:util')
-  const execFileAsync = promisify(execFile)
-  try {
-    await execFileAsync('curl', [
-      '-sf',
-      '--max-time',
-      '10',
-      '-x',
-      'http://127.0.0.1:7890',
-      'https://api2.cursor.sh/',
-    ])
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function verifyEmergencyDataPlaneReady(maxWaitMs: number): Promise<{
   controllerReady: boolean
   api2Ok: boolean
+  api2Leaf?: string
+  probeVia?: string
 }> {
   const startedAtMs = Date.now()
   const deadlineMs = startedAtMs + maxWaitMs
   let controllerReady = false
   let api2Ok = false
+  let api2Leaf: string | undefined
+  let probeVia: string | undefined
   while (Date.now() < deadlineMs) {
     if (!controllerReady) {
       const { waitForMihomoControllerReady } = await import('./postCoreBootstrap')
@@ -52,14 +37,20 @@ async function verifyEmergencyDataPlaneReady(maxWaitMs: number): Promise<{
       )
     }
     if (!api2Ok) {
-      api2Ok = await probeApi2ViaProxy()
+      const { probeRecoveryApi2AnchorDetailed } = await import('./recoveryApi2Anchor')
+      const probe = await probeRecoveryApi2AnchorDetailed(
+        Math.min(10_000, Math.max(3_000, deadlineMs - Date.now())),
+      )
+      api2Ok = probe.ok
+      api2Leaf = probe.leaf
+      probeVia = probe.probeVia
     }
     if (api2Ok) {
-      return { controllerReady, api2Ok: true }
+      return { controllerReady, api2Ok: true, api2Leaf, probeVia }
     }
     await delay(3_000)
   }
-  return { controllerReady, api2Ok: false }
+  return { controllerReady, api2Ok: false, api2Leaf, probeVia }
 }
 
 export interface EmergencyCoreRecoveryInput {
@@ -165,7 +156,9 @@ export async function requestEmergencyCoreRecovery(
           outcome: 'failed',
           reason: 'emergency_readiness_verification_failed',
           leafId: input.leafId,
-          err: `controller=${readiness.controllerReady ? 1 : 0} api2=${readiness.api2Ok ? 1 : 0}`,
+          err:
+            `controller=${readiness.controllerReady ? 1 : 0} api2=${readiness.api2Ok ? 1 : 0}` +
+            ` probe_via=${readiness.probeVia ?? 'unknown'} leaf=${readiness.api2Leaf ?? 'unknown'}`,
         }),
       )
       return { executed: false, reason: 'emergency_readiness_verification_failed' }
@@ -180,7 +173,7 @@ export async function requestEmergencyCoreRecovery(
       }),
     )
     await appendAppLog(
-      `[EmergencyCoreRecovery]: readiness controller=${readiness.controllerReady ? 1 : 0} api2=${readiness.api2Ok ? 1 : 0}\n`,
+      `[EmergencyCoreRecovery]: readiness controller=${readiness.controllerReady ? 1 : 0} api2=${readiness.api2Ok ? 1 : 0} probe_via=${readiness.probeVia ?? 'unknown'} leaf=${readiness.api2Leaf ?? 'unknown'}\n`,
     )
     try {
       const { dismissCollectiveDeathAlert } = await import('./collectiveDeathAlert')

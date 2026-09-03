@@ -538,9 +538,14 @@ export async function runHy2ParentSidecarIfDue(input: {
         proactiveHardRotate: input.proactiveHardRotate,
       })
       let api2AnchorOk = false
+      let api2AnchorLeaf: string | undefined
+      let api2AnchorProbeVia: string | undefined
       if (vitality.outcome === 'executed' && requireApi2Anchor) {
-        const { probeRecoveryApi2Anchor } = await import('./recoveryApi2Anchor')
-        api2AnchorOk = await probeRecoveryApi2Anchor()
+        const { probeRecoveryApi2AnchorDetailed } = await import('./recoveryApi2Anchor')
+        const anchorProbe = await probeRecoveryApi2AnchorDetailed()
+        api2AnchorOk = anchorProbe.ok
+        api2AnchorLeaf = anchorProbe.leaf
+        api2AnchorProbeVia = anchorProbe.probeVia
       }
       const externalVerification = evaluateSidecarExternalVerification({
         sidecarOutcome:
@@ -564,11 +569,15 @@ export async function runHy2ParentSidecarIfDue(input: {
           : vitality.outcome === 'executed'
             ? 'executed'
             : 'failed'
+      const anchorEvidence =
+        requireApi2Anchor && vitality.outcome === 'executed'
+          ? ` api2_anchor_ok=${api2AnchorOk ? 1 : 0} api2_anchor_leaf=${api2AnchorLeaf ?? 'unknown'} api2_anchor_probe_via=${api2AnchorProbeVia ?? 'unknown'}`
+          : ''
       await appendSidecarLog(
         formatHy2ParentSidecarLogLine({
           outcome: resolvedOutcome,
           action: 'sidecar_dial',
-          reason: `${resolvedReason} phase=execute`,
+          reason: `${resolvedReason} phase=execute${anchorEvidence}`,
           outboundHy2SessionAgeMs: input.snapshot.outboundHy2SessionAgeMs,
           httpParentChainAgeMs: input.snapshot.httpParentChainAgeMs,
           connectPathDelayMs: vitality.connectPathDelayMs,
