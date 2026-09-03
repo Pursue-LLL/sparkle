@@ -120,18 +120,22 @@ export async function requestEmergencyCoreRecovery(
     emergencyRecoveryInFlight = false
     return { executed: false, reason: admission.reason }
   }
+  const shouldShowCollectiveDeathToast =
+    input.cursorConnectionCount > 0 || admission.drainMs > 0
   try {
-    const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
-    void notifyCollectiveDeathAlert({
-      trigger: 'emergency_core_recovery',
-      title: '网络集体恢复中',
-      body: `代理核心正在紧急重建（约 ${Math.round(admission.drainMs / 1000)} 秒）。可点击「复制 Bug 信息」粘贴给 AI 分析。`,
-      cursorConnectionCount: input.cursorConnectionCount,
-      leafId: input.leafId,
-      evidenceReason: input.evidenceReason,
-      drainMs: admission.drainMs,
-      tsMs: nowMs,
-    })
+    if (shouldShowCollectiveDeathToast) {
+      const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
+      void notifyCollectiveDeathAlert({
+        trigger: 'emergency_core_recovery',
+        title: '网络集体恢复中',
+        body: `代理核心正在紧急重建（约 ${Math.round(admission.drainMs / 1000)} 秒）。可点击「复制 Bug 信息」粘贴给 AI 分析。`,
+        cursorConnectionCount: input.cursorConnectionCount,
+        leafId: input.leafId,
+        evidenceReason: input.evidenceReason,
+        drainMs: admission.drainMs,
+        tsMs: nowMs,
+      })
+    }
   } catch {
     // alert is best-effort; emergency recovery must proceed
   }
@@ -178,6 +182,12 @@ export async function requestEmergencyCoreRecovery(
     await appendAppLog(
       `[EmergencyCoreRecovery]: readiness controller=${readiness.controllerReady ? 1 : 0} api2=${readiness.api2Ok ? 1 : 0}\n`,
     )
+    try {
+      const { dismissCollectiveDeathAlert } = await import('./collectiveDeathAlert')
+      dismissCollectiveDeathAlert()
+    } catch {
+      // best-effort dismiss
+    }
     lastEmergencyCompletedAtMs = Date.now()
     return { executed: true, reason: 'emergency_core_recovery_completed' }
   } catch (error) {

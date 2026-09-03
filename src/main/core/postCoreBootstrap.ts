@@ -59,6 +59,20 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
             ` active_hy2_leaf=${longevity.activeHy2Leaf ?? 'unknown'}` +
             ` cursor_conn=${longevity.cursorConnectionCount}\n`,
         )
+        setTimeout(() => {
+          void (async () => {
+            try {
+              const { runProactiveHy2HardRotateIfDue } = await import(
+                './proactiveHy2HardRotateRuntime'
+              )
+              await runProactiveHy2HardRotateIfDue()
+            } catch (error) {
+              await appendAppLog(
+                `[PostCoreBootstrap]: proactive_hard_rotate failed: ${error instanceof Error ? error.message : String(error)}\n`,
+              )
+            }
+          })()
+        }, NETWORK_MONITOR_STARTUP_GRACE_MS)
       }
     }
   } catch (error) {
