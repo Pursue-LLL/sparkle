@@ -63,6 +63,10 @@ export function isCursorDedicatedDialFailureCluster(input: {
   return input.events.length >= min
 }
 
+/** Evidence for emergency core restart when dial cluster fires but mihomo omits HY2 UDP parent row. */
+export const DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART =
+  'cursor_dedicated_dial_failure_cluster_udp_absent'
+
 /**
  * BUG-2026-09-03-008: dial cluster proves Cursor dedicated path is dead.
  * Force parent UDP refresh — do NOT trust connect_path vitality (false positive on stale HY2).
