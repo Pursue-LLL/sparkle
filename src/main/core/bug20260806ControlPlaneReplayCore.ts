@@ -218,14 +218,14 @@ export function replayBug20260806Eadc68deLeafClosePlan(): Bug20260806ReplayVerdi
     nowMs,
   })
   const ok =
-    plan.action === 'reset_parent_chain_birth' &&
-    plan.reason === 'byte_death_udp_absent_parent_birth_reset' &&
+    plan.action === 'none' &&
+    plan.reason === 'byte_death_udp_absent_requires_core_restart' &&
     leafTargets.length === 8
   return {
     fixtureId: 'eadc68de_no_udp_parent_birth_reset_plan',
     ok,
     detail: ok
-      ? 'C-8.12 SSOT plans parent birth reset (zero leaf close) when mihomo omits UDP rows'
+      ? 'C-8.13 SSOT escalates core restart (zero leaf close) when mihomo omits UDP rows'
       : `plan action=${plan.action} reason=${plan.reason} frozenBatch=${leafTargets.length}`,
   }
 }

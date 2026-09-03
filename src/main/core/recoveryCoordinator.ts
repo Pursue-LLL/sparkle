@@ -14,10 +14,9 @@ import {
   recordLeafRecoverySuccess,
   type LeafRecoveryCircuitState,
 } from './perLeafRecoveryCircuitCore'
-import {
-  classifyUdpParentObservation,
-} from './hy2ParentByteDeathRecoveryCore'
 import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
+import { resolveUdpParentStateForRecovery } from './recoveryFailoverGovernanceCore'
+import { getLastHy2TunnelVitalityAtMs } from './hy2TunnelVitality'
 import {
   createInitialRecoveryCoordinatorPolicyState,
   decideRecoveryCoordinatorAction,
@@ -61,7 +60,11 @@ function buildFact(input: {
     nowMs: input.nowMs,
     byteDeathFullScan: true,
   })
-  const udpParentState = classifyUdpParentObservation(resolution)
+  const udpParentState = resolveUdpParentStateForRecovery({
+    resolution,
+    lastVitalitySuccessAtMs: getLastHy2TunnelVitalityAtMs(),
+    nowMs: input.nowMs,
+  })
   return {
     leafId: input.leafId,
     observedAt: input.nowMs,
@@ -166,7 +169,11 @@ export async function submitRecoveryCoordinatorEvent(input: {
         source: 'recovery_coordinator',
       })
       if (changed) {
-        policyState = { ...policyState, failoverAttempted: true }
+        policyState = {
+          ...policyState,
+          failoverAttempted: true,
+          lastFailoverCompletedAtMs: nowMs,
+        }
         await writeCursorDedicatedManualSelection(target)
         await notifyRecoveryCircuitSuccess()
       }
@@ -202,7 +209,9 @@ export async function submitByteDeathRecoveryEvent(input: {
   const mapped = mapUdpStateToEventType(fact.udpParentState)
   const eventType: RecoveryCoordinatorEventType =
     mapped ??
-    (input.detail?.includes('probe_only')
+    (input.detail?.includes('byte_death_udp_evidence_insufficient')
+      ? 'UDP_PARENT_UNKNOWN'
+      : input.detail?.includes('probe_only')
       ? 'PROBE_ONLY_RESULT'
       : 'STALL_DETECTED')
   return submitRecoveryCoordinatorEvent({

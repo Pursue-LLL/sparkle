@@ -16,6 +16,13 @@ Shell/TS 脚本：本地升级、安装门禁、断连 triage、post-upgrade 验
 | `verify-sparkle-bundle.mts` | Stage-A：vite 后 out/main bundle marker 门禁 |
 | `lib/marathon-core-restart-guard.sh` | 马拉松期 install/upgrade PRE-gate；override `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` |
 | `triage-cursor-disconnect.sh` | Cursor 断连一键采集 |
+| `marathonStabilityAttributionCore.ts` | Phase 0：从 core/app/stability 日志自动 L1/L2/L3/L7 归因（纯函数） |
+| `marathon-stability-attribution-report.mts` | Phase 0 CLI：`tsx scripts/marathon-stability-attribution-report.mts [--hours 24]` |
+| `marathonStabilityAttributionCore.test.ts` | Phase 0 归因单测 |
+| `marathonStabilityLogPathsCore.ts` | 多 core/app Sparkle 日志文件发现（无 Cursor） |
+| `marathonStabilitySparkleConservationCore.ts` | Sparkle-only 守恒报告 core |
+| `marathon-stability-conservation-report.mts` | 默认 SSOT：`tsx scripts/marathon-stability-conservation-report.mts [--hours 24] [--full]` |
+| `marathonStabilitySparkleConservationCore.test.ts` | Sparkle-only 守恒单测 |
 | `open-sparkle-gui-macos26.sh` | macOS 26 SSOT：带 GUI 启动（`--sparkle-force-gui`） |
 | `sparkle-profile-scheduler.sh` | LaunchAgent worker：远程订阅到期刷新 |
 | `install-sparkle-profile-scheduler.sh` | 安装 profile scheduler LaunchAgent |

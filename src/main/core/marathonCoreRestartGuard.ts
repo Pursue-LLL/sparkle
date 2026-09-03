@@ -113,7 +113,16 @@ export async function evaluateMarathonCoreColdRestart(
   await refreshMarathonCoreRestartGuardStateFile(snapshot)
 
   if (decision.blocked) {
-    await appendAppLog(formatCoreLifecycleBlockedLog(caller, decision, snapshot))
+    const { planCoreLifecycleBlockedLog } = await import('./coreLifecycleBlockedLogThrottleCore')
+    const planned = planCoreLifecycleBlockedLog({
+      caller,
+      reason: decision.reason,
+      nowMs: Date.now(),
+      formattedLine: formatCoreLifecycleBlockedLog(caller, decision, snapshot),
+    })
+    if (planned.emit) {
+      await appendAppLog(planned.line)
+    }
     return { blocked: true, snapshot }
   }
 

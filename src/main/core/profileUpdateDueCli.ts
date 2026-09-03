@@ -54,6 +54,25 @@ export async function runGuardedDueProfileUpdatesSecondInstance(): Promise<numbe
 export async function runProfileUpdateDueCli(): Promise<number> {
   await appendAppLog('[ProfileUpdaterCli]: bootstrap start\n')
 
+  try {
+    const { mihomoGetConnections } = await import('./mihomoApi')
+    const { isMihomoDataPlaneBusy } = await import('./mihomoDataPlaneLoadCore')
+    const { updateCachedMihomoActiveConnectionCount } = await import('./mihomoDataPlaneLoadState')
+    const connections = await mihomoGetConnections().catch(() => null)
+    const activeCount = connections?.connections?.length ?? 0
+    updateCachedMihomoActiveConnectionCount(activeCount)
+    if (isMihomoDataPlaneBusy(activeCount)) {
+      await appendAppLog(
+        `[ProfileUpdaterCli]: deferred data_plane_busy active_connections=${activeCount}\n`,
+      )
+      const { markDeferredProfileUpdateDue } = await import('./deferredProfileUpdateDue')
+      await markDeferredProfileUpdateDue('profile-update-cli')
+      return 0
+    }
+  } catch {
+    // fall through — guard layers below still protect data plane
+  }
+
   const guard = await evaluateProfileUpdateBootstrapGuard()
   if (guard.blocked) {
     await appendAppLog(formatProfileUpdateDeferLog('deferred', guard))

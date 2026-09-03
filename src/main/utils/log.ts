@@ -327,6 +327,13 @@ function cacheAndBroadcastLog(log: ControllerLog): void {
 function publishTargetLogLines(content: string, type: LogLevel): void {
   normalizeLogContent(content).forEach((line) => {
     cacheAndBroadcastLog(createControllerLogFromOutLine(line, type))
+    if (line.includes('dial 🎯 Cursor 专用')) {
+      void import('../core/cursorDedicatedDialFailureClusterRuntime').then(
+        ({ ingestCoreLogLineForDialFailureCluster }) => {
+          ingestCoreLogLineForDialFailureCluster(line)
+        },
+      )
+    }
   })
 }
 

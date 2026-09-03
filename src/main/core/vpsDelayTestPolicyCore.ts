@@ -91,6 +91,15 @@ export function evaluateUiVpsDelayWaitStep(
   return 'keep_waiting'
 }
 
+export function resolveExplicitCooldownRemainingMs(
+  lastCompletedAtMs: number,
+  nowMs: number = Date.now(),
+  cooldownMs: number = VPS_UI_EXPLICIT_DELAY_COOLDOWN_MS,
+): number {
+  const elapsed = nowMs - lastCompletedAtMs
+  return Math.max(0, cooldownMs - elapsed)
+}
+
 export class VpsDelayTestSlotBusyError extends Error {
   readonly code = 'VPS_DELAY_TEST_SLOT_BUSY' as const
 

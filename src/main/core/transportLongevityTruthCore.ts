@@ -83,16 +83,26 @@ export function resolvePersistedHy2ParentChainAgeMs(input: {
   }
 
   const persistedAgeMs = Math.max(0, input.nowMs - birthMs)
+  const minAgeFromBirth =
+    birthMs > 0 && input.nowMs - birthMs > 1_000 ? persistedAgeMs : 0
   if (explicitBirthReset) {
     return {
-      httpParentChainAgeMs: persistedAgeMs,
-      outboundHy2SessionAgeMs: persistedAgeMs,
+      httpParentChainAgeMs: Math.max(persistedAgeMs, minAgeFromBirth),
+      outboundHy2SessionAgeMs: Math.max(persistedAgeMs, minAgeFromBirth),
       hy2ParentChainBirthMs: birthMs,
     }
   }
   return {
-    httpParentChainAgeMs: Math.max(input.computedHttpParentChainAgeMs, persistedAgeMs),
-    outboundHy2SessionAgeMs: Math.max(input.computedOutboundHy2SessionAgeMs, persistedAgeMs),
+    httpParentChainAgeMs: Math.max(
+      input.computedHttpParentChainAgeMs,
+      persistedAgeMs,
+      minAgeFromBirth,
+    ),
+    outboundHy2SessionAgeMs: Math.max(
+      input.computedOutboundHy2SessionAgeMs,
+      persistedAgeMs,
+      minAgeFromBirth,
+    ),
     hy2ParentChainBirthMs: birthMs,
   }
 }

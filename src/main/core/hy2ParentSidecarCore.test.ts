@@ -82,4 +82,40 @@ describe('hy2ParentSidecarCore R-35a', () => {
     assert.equal(plan.action, 'sidecar_dial')
     assert.equal(plan.reason, 'emergency_stall_escalation_r1')
   })
+
+  it('1.30.54: dial failure cluster bypasses age gate and cooldown', () => {
+    const nowMs = 2_000_000_000
+    const birthMs = nowMs - HY2_PARENT_SIDECAR_DIAL_AGE_MS - 60_000
+    const plan = resolveHy2ParentSidecarDialPlan({
+      snapshot: {
+        ...baseSnapshot,
+        httpParentChainAgeMs: 0,
+        outboundHy2SessionAgeMs: 0,
+        hy2ParentChainBirthMs: birthMs,
+      },
+      marathonTruthActive: true,
+      lastSidecarDialAtMs: nowMs - 60_000,
+      nowMs,
+      dialFailureClusterEscalation: true,
+    })
+    assert.equal(plan.action, 'sidecar_dial')
+    assert.equal(plan.reason, 'cursor_dedicated_dial_failure_cluster')
+  })
+
+  it('1.30.54: effective age from birth triggers sidecar when snapshot ages are zero', () => {
+    const nowMs = 2_000_000_000
+    const birthMs = nowMs - HY2_PARENT_SIDECAR_DIAL_AGE_MS - 60_000
+    const plan = resolveHy2ParentSidecarDialPlan({
+      snapshot: {
+        ...baseSnapshot,
+        httpParentChainAgeMs: 0,
+        outboundHy2SessionAgeMs: 0,
+        hy2ParentChainBirthMs: birthMs,
+      },
+      marathonTruthActive: true,
+      lastSidecarDialAtMs: 0,
+      nowMs,
+    })
+    assert.equal(plan.action, 'sidecar_dial')
+  })
 })

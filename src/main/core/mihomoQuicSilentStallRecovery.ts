@@ -310,6 +310,16 @@ async function executeStallEscalationLadderIfDue(
   nowMs: number
 ): Promise<StallEscalationLadderAction> {
   const bytes = connectionBytesForObservation(observation)
+  const parentRecovery = resolveMarathonParentRecoveryStallProof({
+    marathonActive: latestMarathonRecoveryContext.marathonActive,
+    observation,
+    httpParentChainAgeMs:
+      latestLongevitySnapshot?.httpParentChainAgeMs ??
+      latestMarathonRecoveryContext.httpParentChainAgeMs,
+    outboundHy2SessionAgeMs:
+      latestLongevitySnapshot?.outboundHy2SessionAgeMs ??
+      latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
+  })
   const plan = resolveStallEscalationLadderPlan({
     observation,
     upload: bytes.upload,
@@ -318,6 +328,13 @@ async function executeStallEscalationLadderIfDue(
     requestBoundStallProof: hasRequestBoundCarrierProof(observation),
     marathonGlobalByteDeath: resolveLatestMarathonGlobalByteDeath(),
     globalMaxByteStallMs: latestLongevitySnapshot?.maxByteStallMs,
+    parentRecoveryProof: parentRecovery.proof,
+    httpParentChainAgeMs:
+      latestLongevitySnapshot?.httpParentChainAgeMs ??
+      latestMarathonRecoveryContext.httpParentChainAgeMs,
+    outboundHy2SessionAgeMs:
+      latestLongevitySnapshot?.outboundHy2SessionAgeMs ??
+      latestMarathonRecoveryContext.outboundHy2SessionAgeMs,
   })
   if (plan.action === 'none' || plan.action === 'observe_exhausted') {
     if (plan.action === 'observe_exhausted') {
@@ -350,6 +367,22 @@ async function executeStallEscalationLadderIfDue(
         })
       } catch {
         // app-log remains authoritative if jsonl write fails
+      }
+      if (latestMarathonRecoveryContext.marathonActive) {
+        try {
+          const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
+          void notifyCollectiveDeathAlert({
+            trigger: 'byte_death_exhausted',
+            title: 'Cursor 传输恢复已耗尽',
+            body: `字节冻结 ${Math.round(observation.stallMs / 1000)}s，逐级恢复未生效。可点击「复制 Bug 信息」粘贴给 AI 分析。`,
+            cursorConnectionCount: observation.cursorConnectionCount,
+            leafId: observation.leaf,
+            evidenceReason: plan.reason,
+            tsMs: nowMs,
+          })
+        } catch {
+          // best-effort user alert
+        }
       }
     }
     return plan.action

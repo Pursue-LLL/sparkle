@@ -109,6 +109,11 @@ if dist_version_matches && dist_signature_valid; then
   fi
 fi
 
+if [[ "${SPARKLE_AGENT_FORCE_FULL_BUILD:-}" == "1" ]]; then
+  log "SPARKLE_AGENT_FORCE_FULL_BUILD=1 — skipping dist-only install path"
+  DIST_FRESH=0
+fi
+
 if [[ "$DIST_FRESH" == "1" ]]; then
   log "dist already $EXPECTED_VER with valid signature + fresh source fingerprint — install only"
   bash "$ROOT/scripts/install-sparkle-local.sh"

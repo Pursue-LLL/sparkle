@@ -15,9 +15,9 @@ import {
   formatUiVpsDelayDeferReason,
   isVpsCursorLeafBatch,
   isVpsCursorLeafNode,
+  resolveExplicitCooldownRemainingMs,
   resolveVpsDelayTestTimeoutMs,
   VPS_UI_DELAY_POLL_MS,
-  VPS_UI_EXPLICIT_DELAY_COOLDOWN_MS,
   VpsDelayTestSlotBusyError,
   type UiVpsDelayDeferContext
 } from './vpsDelayTestPolicyCore'
@@ -31,17 +31,6 @@ export interface ManagedVpsDelayTestResult {
   proxyNames: string[]
   testUrl?: string
   delays: Record<string, ControllerProxiesDelay>
-}
-
-export class VpsDelayTestExplicitCooldownError extends Error {
-  readonly code = 'VPS_DELAY_TEST_EXPLICIT_COOLDOWN' as const
-
-  constructor(readonly remainingMs: number) {
-    super(
-      `VPS delay test cooldown: retry in ${Math.ceil(remainingMs / 1000)}s (explicit user request)`
-    )
-    this.name = 'VpsDelayTestExplicitCooldownError'
-  }
 }
 
 let lastExplicitTestCompletedAtMs = 0
@@ -90,9 +79,8 @@ async function waitForUiVpsDelaySlot(
   }
 }
 
-function resolveExplicitCooldownRemainingMs(nowMs: number = Date.now()): number {
-  const elapsed = nowMs - lastExplicitTestCompletedAtMs
-  return Math.max(0, VPS_UI_EXPLICIT_DELAY_COOLDOWN_MS - elapsed)
+function resolveLocalExplicitCooldownRemainingMs(nowMs: number = Date.now()): number {
+  return resolveExplicitCooldownRemainingMs(lastExplicitTestCompletedAtMs, nowMs)
 }
 
 async function withExplicitUserRequestGuard<T>(
@@ -103,14 +91,6 @@ async function withExplicitUserRequestGuard<T>(
     return fn()
   }
 
-  const remainingMs = resolveExplicitCooldownRemainingMs()
-  if (remainingMs > 0) {
-    await appendAppLog(
-      `[ManagedVpsDelayTest]: explicit cooldown remaining_ms=${remainingMs}\n`,
-    )
-    throw new VpsDelayTestExplicitCooldownError(remainingMs)
-  }
-
   let release!: () => void
   const previous = explicitTestChain
   explicitTestChain = new Promise<void>((resolve) => {
@@ -119,6 +99,13 @@ async function withExplicitUserRequestGuard<T>(
   await previous
 
   try {
+    const remainingMs = resolveLocalExplicitCooldownRemainingMs()
+    if (remainingMs > 0) {
+      await appendAppLog(
+        `[ManagedVpsDelayTest]: explicit cooldown wait_ms=${remainingMs}\n`,
+      )
+      await sleep(remainingMs)
+    }
     return await fn()
   } finally {
     lastExplicitTestCompletedAtMs = Date.now()

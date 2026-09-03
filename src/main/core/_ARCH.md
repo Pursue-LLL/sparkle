@@ -43,6 +43,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `aiTrafficIsolationCore.ts` | **W2** AI/Codex 组剔除 Marathon Cursor HY2 leaf（factory 注入） |
 | `collectiveDeathBugReportCore.ts` / `collectiveDeathBugReport.ts` / `collectiveDeathAlert.ts` | **BUG-2026-09-03-002** 集体死亡 GUI toast + 「复制 Bug 信息」IPC |
 | `profileConfigRecoveryCore.ts` / `profileConfigRecoveryPureCore.ts` | **BUG-2026-09-03-003** 空/损坏 `profile.yaml` 从 `.bak` + 磁盘 profiles 恢复 · 禁止 persist 空配置 |
+| `recoveryFailoverGovernanceCore.ts` | **BUG-2026-09-03-004** vitality 反证降级 UDP absent · 60s failover soak · failback 判定纯函数 |
+| `recoveryCursorDedicatedFailback.ts` | **BUG-2026-09-03-004** Reality→HY2 自动 failback 执行器 |
 | `profileCacheRefreshCore.ts` / `profileCacheRefreshPureCore.ts` | **BUG-2026-09-03-003** 无 URL 时从磁盘 cache reload provider · 缺失 URL 双语错误 |
 | `profileSubscriptionDisplayCore.ts` | 订阅到期/更新时间展示 SSOT · **BUG-2026-09-03-003** `每日 HH:mm · 更新 X 前` |
 | `dataPlaneMutationTierCore.ts` | **BUG-2026-09-03-001** Tier-0/1/2 data-plane mutation SSOT（provider hot-reload · single conn close · sidecar · cold restart） |

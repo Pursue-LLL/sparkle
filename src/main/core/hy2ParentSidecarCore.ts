@@ -21,6 +21,20 @@ export interface Hy2ParentSidecarPlan {
   healthyInnerCount?: number
 }
 
+export function resolveEffectiveHy2ParentChainAgeMs(
+  snapshot: TransportLongevityTruthSnapshot,
+  nowMs: number,
+): number {
+  const fromSnapshot = Math.max(
+    snapshot.httpParentChainAgeMs,
+    snapshot.outboundHy2SessionAgeMs,
+  )
+  const birthMs = snapshot.hy2ParentChainBirthMs ?? 0
+  const fromBirth =
+    birthMs > 0 && nowMs > birthMs ? nowMs - birthMs : 0
+  return Math.max(fromSnapshot, fromBirth)
+}
+
 export function resolveHy2ParentSidecarDialPlan(input: {
   snapshot: TransportLongevityTruthSnapshot
   marathonTruthActive: boolean
@@ -30,20 +44,27 @@ export function resolveHy2ParentSidecarDialPlan(input: {
   emergencyStallEscalation?: boolean
   /** Bypass age + cooldown during marathon global byte-death. */
   marathonGlobalByteDeath?: boolean
+  /** BUG-2026-09-03-005: Cursor dedicated dial failure cluster — bypass age + cooldown. */
+  dialFailureClusterEscalation?: boolean
 }): Hy2ParentSidecarPlan {
-  if (!input.marathonTruthActive && !input.emergencyStallEscalation) {
+  if (!input.marathonTruthActive && !input.emergencyStallEscalation && !input.dialFailureClusterEscalation) {
     return { action: 'none', reason: 'marathon_inactive' }
   }
+  const effectiveAgeMs = resolveEffectiveHy2ParentChainAgeMs(
+    input.snapshot,
+    input.nowMs,
+  )
   if (
     !input.emergencyStallEscalation &&
     !input.marathonGlobalByteDeath &&
-    input.snapshot.outboundHy2SessionAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS &&
-    input.snapshot.httpParentChainAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS
+    !input.dialFailureClusterEscalation &&
+    effectiveAgeMs < HY2_PARENT_SIDECAR_DIAL_AGE_MS
   ) {
     return { action: 'none', reason: 'session_and_http_chain_below_sidecar_threshold' }
   }
   if (
     !input.marathonGlobalByteDeath &&
+    !input.dialFailureClusterEscalation &&
     input.nowMs - input.lastSidecarDialAtMs < HY2_PARENT_SIDECAR_COOLDOWN_MS
   ) {
     return { action: 'none', reason: 'sidecar_cooldown' }
@@ -53,7 +74,9 @@ export function resolveHy2ParentSidecarDialPlan(input: {
     reason:
       input.emergencyStallEscalation || input.marathonGlobalByteDeath
         ? 'emergency_stall_escalation_r1'
-        : 'proactive_parent_sidecar_dial',
+        : input.dialFailureClusterEscalation
+          ? 'cursor_dedicated_dial_failure_cluster'
+          : 'proactive_parent_sidecar_dial',
   }
 }
 

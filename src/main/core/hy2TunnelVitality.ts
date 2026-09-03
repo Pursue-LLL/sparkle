@@ -168,6 +168,9 @@ export async function runHy2TunnelVitalityIfDue(
       }),
     )
     admissionOutcome = 'SUCCESS'
+    void import('./recoveryCursorDedicatedFailback').then(({ attemptCursorDedicatedHy2FailbackIfDue }) =>
+      attemptCursorDedicatedHy2FailbackIfDue(activeNode, nowMs),
+    )
     return { outcome: 'executed', connectPathDelayMs }
   } catch (error) {
     const err = formatUnknownErrorForLog(error)

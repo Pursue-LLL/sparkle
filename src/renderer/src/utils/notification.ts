@@ -10,7 +10,7 @@ export interface AppNotificationPayload {
   persistent?: boolean
   url?: string
   variant?: AppNotificationVariant
-  actionProps?: ButtonProps
+  actionKind?: 'copy-bug-report'
   timeout?: number
   onClose?: () => void
 }
@@ -38,14 +38,7 @@ export function showToastNotification(payload: AppNotificationPayload): void {
 
   let key = ''
   key = toast(title, {
-    actionProps:
-      payload.actionProps ??
-      (payload.url
-        ? {
-            children: '打开',
-            onPress: () => window.open(payload.url, '_blank', 'noopener,noreferrer')
-          }
-        : undefined),
+    actionProps: resolveToastActionProps(payload),
     description: body,
     onClose: () => {
       if (payload.id && toastKeys.get(payload.id) === key) {
@@ -99,6 +92,40 @@ async function showNotification(
       }
     : null
   notification.onclose = payload.onClose ?? null
+}
+
+function resolveToastActionProps(payload: AppNotificationPayload): ButtonProps | undefined {
+  if (payload.actionKind === 'copy-bug-report') {
+    return {
+      children: '复制 Bug 信息',
+      onPress: () => {
+        void copyCollectiveDeathBugReportToClipboard()
+      },
+    }
+  }
+  if (payload.url) {
+    return {
+      children: '打开',
+      onPress: () => window.open(payload.url, '_blank', 'noopener,noreferrer'),
+    }
+  }
+  return undefined
+}
+
+async function copyCollectiveDeathBugReportToClipboard(): Promise<void> {
+  try {
+    const text = (await window.electron.ipcRenderer.invoke('getCollectiveDeathBugReport')) as
+      | string
+      | null
+    if (!text || !text.trim()) {
+      notify('暂无可复制的诊断信息', { forceToast: true, variant: 'warning', timeout: 4000 })
+      return
+    }
+    await navigator.clipboard.writeText(text)
+    notify('Bug 信息已复制', { forceToast: true, variant: 'success', timeout: 3000 })
+  } catch (error) {
+    notify(formatNotificationText(error), { forceToast: true, variant: 'danger', timeout: 5000 })
+  }
 }
 
 function normalizeToastPayload(payload: AppNotificationPayload): { title: string; body?: string } {

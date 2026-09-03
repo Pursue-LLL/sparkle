@@ -169,6 +169,8 @@ export async function runHy2ParentSidecarIfDue(input: {
   /** R-41: emergency stall escalation bypasses marathon inactive / 4h gates. */
   emergencyStallEscalation?: boolean
   recoveryIneffective?: boolean
+  /** BUG-2026-09-03-005: bypass age/cooldown/circuit on Cursor dial failure cluster. */
+  dialFailureClusterEscalation?: boolean
 }): Promise<Hy2ParentSidecarExecutionResult> {
   const nowMs = input.nowMs ?? Date.now()
   if (sidecarObserveInFlight) {
@@ -182,7 +184,9 @@ export async function runHy2ParentSidecarIfDue(input: {
       currentMaxByteStallMs: input.snapshot.maxByteStallMs,
     })
 
-    const circuitGate = await assertRecoveryCircuitAllowsMutation({ nowMs })
+    const circuitGate = input.dialFailureClusterEscalation
+      ? { allowed: true, reason: 'dial_failure_cluster_bypass' }
+      : await assertRecoveryCircuitAllowsMutation({ nowMs })
     if (!circuitGate.allowed) {
       await appendSidecarLog(
         formatRecoveryCircuitBreakerLogLine({
@@ -211,6 +215,7 @@ export async function runHy2ParentSidecarIfDue(input: {
       nowMs,
       emergencyStallEscalation: input.emergencyStallEscalation === true,
       marathonGlobalByteDeath,
+      dialFailureClusterEscalation: input.dialFailureClusterEscalation === true,
     })
     const rotatePlan = resolveProactiveUdpClosePlan({
       snapshot: input.snapshot,
@@ -276,6 +281,7 @@ export async function runHy2ParentSidecarIfDue(input: {
     }
     if (
       !marathonGlobalByteDeath &&
+      !input.dialFailureClusterEscalation &&
       nowMs - lastHy2ParentSidecarActionAtMs < SIDECAR_ACTION_COOLDOWN_MS
     ) {
       return { outcome: 'skipped', action: 'none', reason: 'sidecar_action_cooldown' }
@@ -407,8 +413,13 @@ export async function runHy2ParentSidecarIfDue(input: {
             })
           }
         } else {
-          lastHy2ParentSidecarActionAtMs = nowMs
           const blockReason = mutation.err ?? mutation.plan.reason
+          const falsePositiveByteDeath =
+            blockReason.includes('byte_death_udp_evidence_insufficient') ||
+            blockReason.includes('byte_death_udp_absent_requires_core_restart')
+          if (!falsePositiveByteDeath) {
+            lastHy2ParentSidecarActionAtMs = nowMs
+          }
           await appendSidecarLog(
             formatHy2ParentSidecarLogLine({
               outcome: 'failed',
@@ -424,8 +435,9 @@ export async function runHy2ParentSidecarIfDue(input: {
             reason: blockReason,
           })
           if (
-            blockReason.includes('byte_death_udp_absent') ||
-            blockReason.includes('probe_only')
+            (blockReason.includes('byte_death_udp_absent') ||
+              blockReason.includes('probe_only')) &&
+            !blockReason.includes('byte_death_udp_evidence_insufficient')
           ) {
             const { submitByteDeathRecoveryEvent } = await import('./recoveryCoordinator')
             await submitByteDeathRecoveryEvent({

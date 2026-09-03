@@ -21,6 +21,28 @@ describe('frozenSurgicalPruneCore R-34c + R-41', () => {
     cursorConnectionCount: 33
   }
 
+  it('Sep2 replay: 84s frozen_quic marathon tier0 SEL vitality (not zero_data_plane dead-end)', () => {
+    const plan = resolveFrozenSurgicalPrunePlan({
+      observation: {
+        ...baseObservation,
+        stallMs: 84_003,
+        frozenQuicCursorCount: 1,
+      },
+      tokenGapMaxMs: 0,
+      staleRequestIdCount: 0,
+      staleRequestIds: [],
+      lastGlobalPruneAtMs: 0,
+      lastRecoveryAtMsByConnectionId: new Map(),
+      nowMs: 1_000_000,
+      marathonActive: true,
+      httpParentChainAgeMs: 81_656_460,
+      registry: { records: new Map() },
+    })
+    assert.equal(plan.action, 'vitality_dial')
+    assert.equal(plan.reason, 'marathon_tier0_frozen_quic_cluster_sel')
+    assert.equal(plan.staleProofKind, 'frozen_quic_cluster')
+  })
+
   it('R-41: never closes critical host on legacy frozen_surgical_prune path', () => {
     const plan = resolveFrozenSurgicalPrunePlan({
       observation: baseObservation,

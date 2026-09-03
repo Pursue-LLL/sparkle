@@ -3,6 +3,7 @@
 // [POS] Phase-1 SSOT — single recovery policy (pure functions, no I/O).
 
 import { BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART } from './hy2ParentByteDeathRecoveryCore'
+import { isFailoverSoakWindowActive } from './recoveryFailoverGovernanceCore'
 
 export type StallState = 'healthy' | 'suspected' | 'confirmed'
 export type UdpParentState = 'present' | 'absent' | 'unknown'
@@ -60,6 +61,7 @@ export type RecoveryCoordinatorAction =
   | { kind: 'close_udp_outbound'; leafId: string; reason: string }
   | { kind: 'request_emergency_core_recovery'; leafId: string; evidenceReason: string }
   | { kind: 'failover_leaf'; leafId: string; reason: string }
+  | { kind: 'failback_leaf'; leafId: string; targetLeaf: string; reason: string }
   | { kind: 'mark_degraded'; leafId: string; reason: string }
 
 export interface RecoveryCoordinatorPolicyState {
@@ -72,6 +74,8 @@ export interface RecoveryCoordinatorPolicyState {
   failoverAttempted: boolean
   /** Dispatched failover attempts; emergency after MAX_FAILOVER_DISPATCHES. */
   failoverDispatchCount: number
+  /** Last successful failover_leaf completion — soak window blocks repeat escalation. */
+  lastFailoverCompletedAtMs: number
 }
 
 export const MAX_FAILOVER_DISPATCHES = 2
@@ -96,6 +100,7 @@ export function createInitialRecoveryCoordinatorPolicyState(
     stateDeadlineMs: nowMs + LEAF_STATE_DEADLINE_MS.SUSPECTED,
     failoverAttempted: false,
     failoverDispatchCount: 0,
+    lastFailoverCompletedAtMs: 0,
   }
 }
 
@@ -134,6 +139,17 @@ export function decideRecoveryCoordinatorAction(input: {
     event.detail === BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART ||
     event.type === 'CORE_RESTART_REQUIRED'
   ) {
+    if (
+      isFailoverSoakWindowActive({
+        lastFailoverCompletedAtMs: state.lastFailoverCompletedAtMs,
+        nowMs,
+      })
+    ) {
+      return {
+        state,
+        action: { kind: 'none', reason: 'failover_soak_window_active' },
+      }
+    }
     state.leafState = 'CONFIRMED_STALL'
     state.stateEnteredAtMs = nowMs
     state.stateDeadlineMs = nowMs + LEAF_STATE_DEADLINE_MS.CONFIRMED_STALL

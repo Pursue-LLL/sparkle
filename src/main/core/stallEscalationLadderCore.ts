@@ -2,7 +2,9 @@
 // [OUTPUT] resolveStallEscalationLadderPlan · recordVitalityByteSnapshot · isVitalityIneffectiveForConnection
 // [POS] R-41 SSOT — vitality 无效后逐级 escalation；critical host 永不禁关 inner TCP。
 
+import { CARRIER_QUIESCE_BYTE_FROZEN_MS } from './carrierQuiesceRefreshCore'
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
+import { HY2_PARENT_SIDECAR_DIAL_AGE_MS } from './hy2ParentSidecarCore'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import { MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS } from './mihomoQuicSilentStallCore'
 
@@ -103,6 +105,10 @@ export function resolveStallEscalationLadderPlan(input: {
   marathonGlobalByteDeath?: boolean
   /** Global max byte stall — when byte-death, per-conn stallMs can lag behind. */
   globalMaxByteStallMs?: number
+  /** Parent recovery stall proof — bypass vitality wait when parent chain is stale. */
+  parentRecoveryProof?: boolean
+  httpParentChainAgeMs?: number
+  outboundHy2SessionAgeMs?: number
 }): StallEscalationLadderPlan {
   const { observation, nowMs } = input
   const effectiveStallMs =
@@ -134,7 +140,13 @@ export function resolveStallEscalationLadderPlan(input: {
     download: input.download,
     nowMs
   })
-  if (!vitalityIneffective && effectiveStallMs < STALL_ESCALATION_EMERGENCY_SIDECAR_MS) {
+  const parentAgeMs = Math.max(input.httpParentChainAgeMs ?? 0, input.outboundHy2SessionAgeMs ?? 0)
+  const parentStaleSidecarBypass =
+    input.parentRecoveryProof === true &&
+    effectiveStallMs >= STALL_ESCALATION_EMERGENCY_SIDECAR_MS &&
+    (parentAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS ||
+      effectiveStallMs >= CARRIER_QUIESCE_BYTE_FROZEN_MS)
+  if (!vitalityIneffective && effectiveStallMs < STALL_ESCALATION_EMERGENCY_SIDECAR_MS && !parentStaleSidecarBypass) {
     return { action: 'none', reason: 'awaiting_vitality_or_stall_threshold' }
   }
 
@@ -144,7 +156,7 @@ export function resolveStallEscalationLadderPlan(input: {
     nowMs - lastEmergencyAtMs >= STALL_ESCALATION_EMERGENCY_COOLDOWN_MS
   if (
     effectiveStallMs >= STALL_ESCALATION_EMERGENCY_SIDECAR_MS &&
-    vitalityIneffective &&
+    (vitalityIneffective || parentStaleSidecarBypass) &&
     emergencyCooldownOk
   ) {
     if (effectiveStallMs < STALL_ESCALATION_PARENT_UDP_REFRESH_MS) {

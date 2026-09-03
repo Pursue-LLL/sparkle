@@ -4,10 +4,12 @@ import {
   DEFAULT_DELAY_TEST_TIMEOUT_MS,
   evaluateUiVpsDelayWaitStep,
   isVpsCursorLeafBatch,
+  resolveExplicitCooldownRemainingMs,
   resolveVpsDelayTestTimeoutMs,
   shouldDeferUiVpsDelayTest,
   VPS_DELAY_TEST_TIMEOUT_MS,
-  VPS_UI_DELAY_DEFER_CONN_THRESHOLD
+  VPS_UI_DELAY_DEFER_CONN_THRESHOLD,
+  VPS_UI_EXPLICIT_DELAY_COOLDOWN_MS
 } from './vpsDelayTestPolicyCore'
 
 describe('vpsDelayTestPolicyCore', () => {
@@ -103,6 +105,21 @@ describe('vpsDelayTestPolicyCore', () => {
         shortProbeActive: false
       }),
       'ready'
+    )
+  })
+
+  it('computes explicit cooldown remaining for queued user delay tests', () => {
+    const lastCompletedAtMs = 1_000_000
+    assert.equal(
+      resolveExplicitCooldownRemainingMs(lastCompletedAtMs, lastCompletedAtMs + 7_000),
+      8_000,
+    )
+    assert.equal(
+      resolveExplicitCooldownRemainingMs(
+        lastCompletedAtMs,
+        lastCompletedAtMs + VPS_UI_EXPLICIT_DELAY_COOLDOWN_MS,
+      ),
+      0,
     )
   })
 })

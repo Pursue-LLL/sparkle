@@ -30,7 +30,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     assert.equal(chainsReferenceActiveLeaf(['DIRECT'], 'JP-VPS-HY2'), false)
   })
 
-  it('C-8.13: udp absent + frozen conns → escalate core restart, not birth reset', () => {
+  it('C-8.13: udp absent + frozen conns + no vitality → escalate core restart', () => {
     const connections = prodLikeConnections(94)
     const trackedLastByteChangeAtMsById = new Map(
       connections.map((conn) => [conn.id, nowMs - 120_000]),
@@ -48,6 +48,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
       trackedFirstSeenAtMsById: new Map(),
       trackedLastByteChangeAtMsById,
       nowMs,
+      lastVitalitySuccessAtMs: undefined,
     })
     assert.equal(plan.action, 'none')
     assert.equal(plan.reason, 'byte_death_udp_absent_requires_core_restart')
@@ -130,6 +131,30 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
       nowMs,
     })
     assert.equal(plan.action, 'close_udp_outbound')
+  })
+
+  it('vitality counterproof downgrades absent to evidence_insufficient', () => {
+    const connections = prodLikeConnections(94)
+    const plan = planByteDeathParentMutation({
+      connections,
+      activeLeaf: 'JP-VPS-HY2',
+      trackedFirstSeenAtMsById: new Map(),
+      trackedLastByteChangeAtMsById: new Map(),
+      nowMs,
+      lastVitalitySuccessAtMs: nowMs - 5_000,
+    })
+    assert.equal(plan.action, 'none')
+    assert.equal(plan.reason, 'byte_death_udp_evidence_insufficient')
+  })
+
+  it('isByteDeathUdpParentAbsent false when vitality recent', () => {
+    assert.equal(
+      isByteDeathUdpParentAbsent(
+        { source: 'none', diagnostics: { totalConnections: 94, udpOnLeafStrict: 0, udpFullScanCandidates: 0 } },
+        { lastVitalitySuccessAtMs: nowMs - 3_000, nowMs },
+      ),
+      false,
+    )
   })
 
   it('isByteDeathUdpParentAbsent true when diagnostics all zero', () => {
