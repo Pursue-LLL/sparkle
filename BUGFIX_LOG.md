@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-09-03 15:10 最新**：**BUG-2026-09-03-004 CODE-DONE @git（未装包）** · 误报 UDP-absent → failover Reality 锁死 + 14:41 集体 dial timeout · failover 治理 + vitality failback
+> **2026-09-03 16:20 最新**：**BUG-2026-09-03-007/008 CODE-DONE @1.30.56** · core log tail 集群检测 + 强制 close UDP parent + circuit breaker bypass · 16:10 断连时 circuit open 阻断全部恢复
+> **2026-09-03 15:10 上一版**：**BUG-2026-09-03-004 CODE-DONE @git（未装包）** · 误报 UDP-absent → failover Reality 锁死 + 14:41 集体 dial timeout · failover 治理 + vitality failback
 > **2026-09-03 13:20 上一版**：**BUG-2026-09-03-003 INSTALLED @1.30.53 c0cba9f** · profile.yaml 0B 空白订阅恢复 + 侧边栏刷新 dnd + 磁盘缓存 reload + 更新时间显示
 > **2026-09-03 13:18 上一版**：**BUG-2026-09-03-001/002 INSTALLED @1.30.53 c0cba9f** · Sep2 tier0 SEL + 集体死亡 toast · profile recovery @856749f
 > **2026-09-03 12:30 上一版**：**BUG-2026-09-03-002 CODE-DONE @git** · 集体死亡 GUI toast + 「复制 Bug 信息」· emergency/circuit/SEL exhausted 触发

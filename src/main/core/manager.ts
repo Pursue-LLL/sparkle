@@ -1111,6 +1111,10 @@ async function ensureServiceCoreStreamsStarted(): Promise<void> {
     await startMihomoLogs()
     await startMihomoMemory()
     setMihomoLogSource('ws')
+    const { startCoreLogDialFailureTailWatcher } = await import(
+      './coreLogDialFailureTailWatcher'
+    )
+    startCoreLogDialFailureTailWatcher()
     retry = 10
     serviceCoreStreamsActive = true
   })()
