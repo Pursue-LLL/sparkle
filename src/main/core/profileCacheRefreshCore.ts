@@ -1,3 +1,7 @@
+// [INPUT] profilesDir disk yaml · factory generateProfile · provider reloadMihomoProfileProviders
+// [OUTPUT] reloadCurrentProfileFromDiskCache · readProfileDiskUpdatedMs · formatMissingSubscriptionUrlError
+// [POS] 无订阅 URL 时从磁盘缓存热重载 provider（BUG-2026-09-03-003 侧边栏刷新）
+
 import { existsSync } from 'fs'
 import { stat } from 'fs/promises'
 import { profilePath } from '../utils/dirs'
