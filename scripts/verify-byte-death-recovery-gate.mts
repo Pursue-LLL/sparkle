@@ -145,7 +145,10 @@ for (const line of lines) {
     (line.includes('[Hy2ParentSidecar]') &&
       line.includes('action=close_udp_outbound') &&
       line.includes('outcome=executed') &&
-      line.includes('phase=execute'))
+      line.includes('phase=execute')) ||
+    (line.includes('[RecoveryCircuitBreaker]') &&
+      line.includes('outcome=reset') &&
+      line.includes('reason=core_restart_after_circuit_open'))
   ) {
     sawR2Executed = true
   }

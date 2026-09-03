@@ -5,13 +5,17 @@ interface AppVersion {
 
 type AppNotificationMode = 'system' | 'toast'
 type AppNotificationVariant = 'default' | 'accent' | 'success' | 'warning' | 'danger'
+type AppNotificationActionKind = 'copy-bug-report'
 
 interface AppNotificationPayload {
+  id?: string
   title: string
   body?: string
   persistent?: boolean
   url?: string
   variant?: AppNotificationVariant
+  forceToast?: boolean
+  actionKind?: AppNotificationActionKind
 }
 
 interface ISysProxyConfig {

@@ -2,6 +2,7 @@
 // [OUTPUT] resolveFrozenSurgicalPrunePlan
 // [POS] R-34c SSOT — five-gate AND for closing a single byte-frozen connection (replaces marathon_block_close).
 
+import { CARRIER_QUIESCE_BYTE_FROZEN_MS } from './carrierQuiesceRefreshCore'
 import { isCriticalCursorHost } from './cursorCriticalTransportCore'
 import { resolveCriticalHostCloseDenialPlan } from './stallEscalationLadderCore'
 import { CURSOR_HY2_TOKEN_GAP_FORCE_MS } from './cursorHy2MarathonKeepaliveCore'
@@ -188,8 +189,26 @@ export function resolveFrozenSurgicalPrunePlan(
     }
   }
 
-  // P10-2: block generic legacy prune during marathon; carrier path above is the allowed exception.
+  // P10-2 Tier-0: parent recovery stall proof → vitality + SEL escalation (R-41 preserves critical host).
+  // Sep 2 06:20 class: 45–89s frozen_quic + token_gap=0 must not dead-end at zero_data_plane_mutation.
   if (marathonActive) {
+    const parentRecovery = resolveMarathonParentRecoveryStallProof({
+      marathonActive,
+      observation,
+      httpParentChainAgeMs: input.httpParentChainAgeMs,
+      outboundHy2SessionAgeMs: input.outboundHy2SessionAgeMs,
+    })
+    if (
+      parentRecovery.proof &&
+      observation.stallMs >= CARRIER_QUIESCE_BYTE_FROZEN_MS &&
+      parentRecovery.kind != null
+    ) {
+      return {
+        action: 'vitality_dial',
+        reason: `marathon_tier0_${parentRecovery.kind}_sel`,
+        staleProofKind: parentRecovery.kind,
+      }
+    }
     return { action: 'none', reason: 'marathon_active_zero_data_plane_mutation' }
   }
 

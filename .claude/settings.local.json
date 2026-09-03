@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm build:mac *)",
+      "mcp__interactive_feedback__interactive_feedback",
+      "Bash(sudo installer *)",
+      "Bash(open *)",
+      "Bash(mdls -name kMDItemVersion /Applications/Sparkle.app)",
+      "Bash(defaults read *)",
+      "Bash(extra/sidecar/mihomo -v)",
+      "Bash(extra/sidecar/mihomo --version)",
+      "Bash(pkill -f \"Sparkle\")",
+      "Bash(killall Sparkle)",
+      "Bash(osascript *)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Read(//Users/yululiu/.config/**)",
+      "Read(//Users/yululiu/Library/**)",
+      "Read(//Users/yululiu/.local/**)",
+      "Bash(pnpm typecheck:web)",
+      "Bash(pnpm typecheck:node)",
+      "Bash(pnpm typecheck *)",
+      "Bash(dist/mac-arm64/Sparkle.app/Contents/MacOS/Sparkle)",
+      "Bash(kill %1)",
+      "Bash(log show *)",
+      "Bash(pkill -9 -f \"Sparkle\")",
+      "Bash(killall -9 \"Sparkle\")",
+      "Bash(killall -9 \"Sparkle Helper\")",
+      "Bash(sudo pkill *)",
+      "Bash(pnpm run *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(corepack enable *)",
+      "Bash(corepack prepare *)",
+      "Bash(nvm ls *)",
+      "Bash(nvm install *)",
+      "Bash(./node_modules/.bin/tsc --noEmit -p tsconfig.node.json --composite false)"
+    ]
+  }
+}

@@ -395,6 +395,13 @@ export function registerIpcMainHandlers(): void {
     buildStamp: SPARKLE_BUILD_STAMP,
     semver: SPARKLE_SEMVER || app.getVersion(),
   }))
+  ipcMain.handle(
+    'getCollectiveDeathBugReport',
+    ipcErrorWrapper(async () => {
+      const { getLatestCollectiveDeathBugReportText } = await import('../core/collectiveDeathBugReport')
+      return getLatestCollectiveDeathBugReportText()
+    }),
+  )
   ipcMain.handle('platform', () => process.platform)
   ipcMain.handle('openUWPTool', ipcErrorWrapper(openUWPTool))
   ipcMain.handle('setupFirewall', ipcErrorWrapper(setupFirewall))

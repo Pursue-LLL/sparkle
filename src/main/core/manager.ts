@@ -389,12 +389,17 @@ async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Prom
   try {
     const runtime = await getRuntimeConfig()
     const {
-      collectProxyProviderIds,
+      resolveExpectedProxyProviderIds,
       collectRunningProxyProviderIds,
       formatProviderParityMismatchLog,
+      formatProviderHotReloadLog,
       shouldRestartServiceCoreForProviderParity
     } = await import('./serviceCoreProviderParityCore')
-    const expectedIds = collectProxyProviderIds(runtime)
+    const { loadRuntimeConfigFromDisk } = await import('./factory')
+    const expectedIds = await resolveExpectedProxyProviderIds({
+      runtimeConfig: runtime,
+      loadDiskRuntimeConfig: loadRuntimeConfigFromDisk,
+    })
     const providerResponse = await mihomoProxyProviders()
     const runningIds = collectRunningProxyProviderIds(providerResponse.providers)
     if (!shouldRestartServiceCoreForProviderParity(expectedIds, providerResponse.providers)) {
@@ -405,8 +410,12 @@ async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Prom
     const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
     const guard = await evaluateMarathonCoreColdRestart('restartCore', false)
     if (guard.blocked) {
+      const { mihomoUpdateProxyProviders } = await import('./mihomoApi')
+      for (const providerId of expectedIds) {
+        await mihomoUpdateProxyProviders(providerId, { purpose: 'tier0_provider_parity_hot_reload' })
+      }
       await appendAppLog(
-        `[Manager]: defer service core provider reload reason=${guard.reason} ${mismatch}\n`
+        `[Manager]: defer service core provider reload reason=${guard.reason} ${mismatch} ${formatProviderHotReloadLog(expectedIds, guard.reason)}\n`
       )
       return 'keep'
     }

@@ -4,6 +4,7 @@ import {
   collectProxyProviderIds,
   collectRunningProxyProviderIds,
   formatProviderParityMismatchLog,
+  resolveExpectedProxyProviderIds,
   shouldRestartServiceCoreForProviderParity
 } from './serviceCoreProviderParityCore.ts'
 
@@ -54,5 +55,18 @@ describe('serviceCoreProviderParityCore', () => {
       formatProviderParityMismatchLog(['77caf1sub001'], ['678a1sub001']),
       'expected=[77caf1sub001] running=[678a1sub001]'
     )
+  })
+
+  it('resolveExpectedProxyProviderIds falls back to disk when memory empty', async () => {
+    const ids = await resolveExpectedProxyProviderIds({
+      runtimeConfig: { 'proxy-providers': {} },
+      loadDiskRuntimeConfig: async () => ({
+        'proxy-providers': {
+          '77caf1sub001-vps': {},
+          '77caf1sub001': {},
+        },
+      }),
+    })
+    assert.deepEqual(ids, ['77caf1sub001', '77caf1sub001-vps'])
   })
 })

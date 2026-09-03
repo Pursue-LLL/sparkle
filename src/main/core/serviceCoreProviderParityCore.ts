@@ -12,6 +12,19 @@ export function collectProxyProviderIds(
   return Object.keys(providers).sort()
 }
 
+/** Resolve expected provider ids from in-memory runtime, falling back to disk work/config.yaml. */
+export async function resolveExpectedProxyProviderIds(input: {
+  runtimeConfig: { 'proxy-providers'?: Record<string, unknown> } | null | undefined
+  loadDiskRuntimeConfig: () => Promise<{ 'proxy-providers'?: Record<string, unknown> } | null>
+}): Promise<string[]> {
+  const fromMemory = collectProxyProviderIds(input.runtimeConfig)
+  if (fromMemory.length > 0) {
+    return fromMemory
+  }
+  const disk = await input.loadDiskRuntimeConfig()
+  return collectProxyProviderIds(disk)
+}
+
 export function collectRunningProxyProviderIds(
   providers: Record<string, { vehicleType?: string }> | null | undefined
 ): string[] {
@@ -41,4 +54,8 @@ export function shouldRestartServiceCoreForProviderParity(
 
 export function formatProviderParityMismatchLog(expectedProviderIds: string[], runningProviderIds: string[]): string {
   return `expected=[${[...expectedProviderIds].sort().join(',')}] running=[${[...runningProviderIds].sort().join(',')}]`
+}
+
+export function formatProviderHotReloadLog(expectedProviderIds: readonly string[], reason: string): string {
+  return `tier0_hot_reload expected=[${[...expectedProviderIds].sort().join(',')}] reason=${reason}`
 }

@@ -71,15 +71,14 @@ export async function notifyRecoveryCircuitFailure(input: {
         cooldownMs: state.openUntilMs - input.nowMs,
       }),
     )
-    const { showNotification } = await import('../utils/notification')
-    void showNotification({
-      id: 'recovery-circuit-breaker-open',
-      title: '代理恢复已熔断 / Proxy Recovery Circuit Open',
+    const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
+    void notifyCollectiveDeathAlert({
+      trigger: 'recovery_circuit_open',
+      title: '代理恢复已熔断',
       body:
-        '连续 3 次 parent UDP 恢复失败，RecoveryCoordinator 将执行 leaf failover 或 emergency。若仍异常请 Cmd+Q 退出 Sparkle 和 Cursor 后重开。\n' +
-        '3 consecutive parent recovery failures; RecoveryCoordinator will failover or emergency-restart. If still stuck, Cmd+Q Sparkle + Cursor and reopen.',
-      variant: 'danger',
-      persistent: true,
+        '连续恢复失败，系统将尝试切换节点或紧急重建。可点击「复制 Bug 信息」粘贴给 AI 分析。',
+      tsMs: input.nowMs,
+      evidenceReason: input.reason,
     })
     return
   }

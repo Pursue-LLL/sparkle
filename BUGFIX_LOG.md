@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-09-03 13:20 最新**：**BUG-2026-09-03-003 INSTALLED @1.30.53 c0cba9f** · profile.yaml 0B 空白订阅恢复 + 侧边栏刷新 dnd + 磁盘缓存 reload + 更新时间显示
+> **2026-09-03 15:10 最新**：**BUG-2026-09-03-004 CODE-DONE @git（未装包）** · 误报 UDP-absent → failover Reality 锁死 + 14:41 集体 dial timeout · failover 治理 + vitality failback
+> **2026-09-03 13:20 上一版**：**BUG-2026-09-03-003 INSTALLED @1.30.53 c0cba9f** · profile.yaml 0B 空白订阅恢复 + 侧边栏刷新 dnd + 磁盘缓存 reload + 更新时间显示
 > **2026-09-03 13:18 上一版**：**BUG-2026-09-03-001/002 INSTALLED @1.30.53 c0cba9f** · Sep2 tier0 SEL + 集体死亡 toast · profile recovery @856749f
 > **2026-09-03 12:30 上一版**：**BUG-2026-09-03-002 CODE-DONE @git** · 集体死亡 GUI toast + 「复制 Bug 信息」· emergency/circuit/SEL exhausted 触发
 > **2026-09-03 12:00 上一版**：**BUG-2026-09-03-001 CODE-DONE @git** · Sep2 84s marathon stall tier0 SEL + Aug31 blank subscription disk parity hot-reload · replay gate 4/4
@@ -94,6 +95,82 @@
 | **踩坑 / 防复发** | ① **空白订阅先查 profile.yaml 字节数**，不要只看 provider parity 日志 ② 恢复订阅必须保留 **url + updated=mtime** ③ 侧边栏 actionable 按钮必须 `data-no-dnd` ④ `stringifyYaml({items:[]})` ≠ 0B — wipe 来自空 write，recovery 必须处理 trim-empty |
 | **未解决** | profile.yaml **谁写入 0B** 未抓到栈（mtime 10:34 无对应 app log）— 防写空已加，写入者待 observability |
 | **验收** | 侧边栏显示「移动订阅」· 刷新转圈 · 远端更新 200 · 代理 302 OK · **待用户确认刷新 UI** |
+
+### BUG-2026-09-03-004 · 误报 UDP-absent → failover Reality 锁死 → 14:41 集体 dial timeout · **CODE-DONE @git · 未 INSTALLED**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 CODE-DONE** · 2026-09-03 ~15:10 CST · **未装包** · 待 `agent:upgrade:mac` + live soak |
+| **发生版本/时间** | **1.30.53 @c0cba9f INSTALLED** · 2026-09-03 **13:25 CST** emergency + **14:39–14:41 CST** 集体断 |
+| **修复版本/时间** | **1.30.54（待 bump）** · git 工作区 · replay gate **5/5** · 单测 **26/26 PASS** |
+| **同族反复** | UDP-absent 误升级类 **第 3 次**（Aug/ Sep 001 emergency 循环 · Sep2 84s tier0 已修 · **本次是 failover→Reality 锁死新分支**） |
+| **严重度** | P0 — 三端 Cursor 集体断 · 误 emergency toast · 1.5h Reality TCP:443 路径 |
+
+#### 现象 ↔ 证据（1对1）
+
+| 现象 | 物理证据 |
+| --- | --- |
+| 13:25 toast + emergency | app L14920–14951 · `EmergencyCoreRecovery admitted` → `core stopping` 13:25:48 |
+| 13:25 failover Reality | app L14912 `failover_leaf target=JP-VPS-Reality` |
+| 13:24 vitality HY2 存活 | app L14892 `connect_path_delay_ms=277 outcome=executed` |
+| 13:25 误报 UDP absent | app L14907 `udp_leaf_strict=0 udp_full_scan=0` + `byte_death_udp_absent_requires_core_restart` |
+| 14:39–41 集体断 | core log：**291** 条 `dial tcp 45.76.104.78:443: i/o timeout` · **0** 条 `Cursor专用[JP-VPS-Reality]` 成功 |
+| 14:41 HY2 仍可用 | app L15909 `connect_path_delay_ms=532 outcome=executed` |
+| 14:45 恢复 HY2 | core log `using 🎯 Cursor 专用[JP-VPS-HY2]` ×46/min |
+
+#### 根因链（代码叶子）
+
+| 层级 | 根因 | 代码/日志 |
+| --- | --- | --- |
+| L0 | `udpOnLeafStrict=0 && udpFullScanCandidates=0` 判为 `absent` | `hy2ParentByteDeathRecoveryCore.ts` **L128–129** |
+| L1 | 未接 vitality 反证 | `recoveryCoordinator.ts` **L64**（修复前 `classifyUdpParentObservation` 直读） |
+| L2 | UDP_PARENT_ABSENT → failover Reality | `recoveryCoordinatorPolicyCore.ts` **L140–155** |
+| L3 | failover 后无 failback | 无 `attemptCursorDedicatedHy2FailbackIfDue`（修复前） |
+| L4 | 5s 内二次误报 → emergency | app L14919（failoverAttempted 后仍 emergency）· soak 缺失 |
+| L5 | Reality:443 dial 全 timeout | core log 291 条 · `vps-proxies.yaml` JP-VPS-Reality **port 443** |
+
+#### 修复内容
+
+| 模块 | 改动 |
+| --- | --- |
+| `recoveryFailoverGovernanceCore.ts` | vitality 反证降级 absent→unknown · 60s failover soak · failback 判定 |
+| `hy2ParentByteDeathRecoveryCore.ts` | plan 时 vitality 成功 → `byte_death_udp_evidence_insufficient` |
+| `recoveryCoordinatorPolicyCore.ts` | soak 窗口内 block UDP_PARENT_ABSENT 升级 |
+| `recoveryCoordinator.ts` | buildFact 接 vitality · failover 完成写 `lastFailoverCompletedAtMs` |
+| `recoveryCursorDedicatedFailback.ts` | Reality→HY2 自动 failback |
+| `hy2TunnelVitality.ts` | 探针成功后触发 failback |
+| `hy2ParentSidecar.ts` | evidence_insufficient 不 submit coordinator |
+| `bug20260903ReplayCore.ts` | +1 fixture `0903_false_udp_absent_vitality_counterproof` |
+
+#### 100% 修复边界（诚实）
+
+| 范围 | 判定 | 依据 |
+| --- | --- | --- |
+| **Sep3 L0 误报链（13:25 场景）** | **git 已修 · 生产未修** | replay 5/5 · 26 单测 · 但 **未 INSTALLED** |
+| **004 failback 执行** | **git 有缺陷** | selection.json 11:43  stale HY2 · mihomo 13:25–14:41 走 Reality · failback 会 skip |
+| **14:41 dial-timeout 集群检测** | **未修** | grep 无 `dialTimeoutCluster` · 14:41 静默（stall=0）· 295 timeout |
+| **14:41 VPS:443 物理拒连根因** | **未定位** | 无 VPS ss/tcpdump · 客户端仅见 timeout |
+| **生产生效** | **否** | `/Applications/Sparkle.app` @1.30.53 c0cba9f |
+
+#### 遗漏 / 下一 commit
+
+1. **dial-timeout 集群检测**（≥5 条/10s `45.76.104.78:443 timeout` → 强制 failback + toast）— **代码不存在**（grep 零命中）
+2. **failback SSOT 缺陷（004 自身 bug）**：`recoveryCursorDedicatedFailback.ts` L28 读 `readCursorDedicatedManualSelection()`，但 14:41 物理对账：
+   - core log L14:41:21：`using 🎯 Cursor 专用[JP-VPS-Reality]` + 295× `dial tcp 45.76.104.78:443: i/o timeout`
+   - `~/.sparkle/cursor-dedicated-selection.json` mtime **11:43** · `node=JP-VPS-HY2`（13:25 failover 未落盘）
+   - → 004 failback 会判 `already_on_hy2_leaf` **不执行** · 须改读 `resolveCursorDedicatedActiveNode()`（`cursorDedicatedNodeResolver.ts` L17–24 · mihomo `groups().now`）
+3. **TransportLongevityTruth 代理指标欺骗**（排查手册反模式 #2）：`mihomoQuicSilentStallObserver.ts` L141–144 从 marathon QUIC 链推 `activeHy2Leaf`，14:41 期间 log 仍报 `leaf=JP-VPS-HY2` 而 core 走 Reality
+4. 装包 + T0 soak 30min 三端马拉松
+
+#### 踩坑 / 防复发
+
+① **vitality 成功 + udp 快照为零 = 证据不足，不是 absent** ② **failover 到 Reality 后必须 failback HY2** ③ **failover 后 60s soak 禁止二次 emergency** ④ 排查手册反模式 #2：不能只看 stall=0 断言健康 — 14:41 有 291 timeout 但 stall=0
+
+#### 验收
+
+- [x] `tsx --test` recoveryFailoverGovernance + byteDeath + coordinatorPolicy + bug20260903 replay
+- [ ] `pnpm run agent:upgrade:mac`
+- [ ] T0 清空 core log · 30min 三端马拉松 · 0 次误 emergency · 0 次 Reality 锁死 >60s
 
 ### BUG-2026-09-02-001 · Marathon 稳定性观测缺失 / Cursor 桥接技术债 · **INSTALLED @1.30.53 199ff203 · 待 soak**
 

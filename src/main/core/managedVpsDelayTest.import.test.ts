@@ -14,5 +14,7 @@ describe('managedVpsDelayTest import guard', () => {
       /import\s*\{\s*formatUnknownErrorForUi\s*\}\s*from\s*['"]\.\.\/utils\/formatUnknownErrorForLog['"]/,
     )
     assert.match(source, /await getAppConfig\(\)/)
+    assert.match(source, /explicit cooldown wait_ms=/)
+    assert.doesNotMatch(source, /throw new VpsDelayTestExplicitCooldownError/)
   })
 })

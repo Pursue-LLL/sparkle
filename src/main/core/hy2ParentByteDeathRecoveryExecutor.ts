@@ -4,6 +4,7 @@
 
 import { appendAppLog } from '../utils/log'
 import { mihomoCloseConnection, mihomoGetConnections } from './mihomoApi'
+import { getLastHy2TunnelVitalityAtMs } from './hy2TunnelVitality'
 import { resetTransportLongevityHy2ParentChainBirth } from './transportLongevityTruth'
 import {
   executeByteDeathParentMutationWithDeps,
@@ -37,8 +38,12 @@ export async function executeByteDeathParentMutation(
   input: ByteDeathParentMutationInput,
   deps?: Partial<typeof defaultRuntimeDeps>,
 ): Promise<ByteDeathParentMutationResult> {
-  return executeByteDeathParentMutationWithDeps(input, {
-    ...defaultRuntimeDeps,
-    ...deps,
-  })
+  const lastVitalitySuccessAtMs = input.lastVitalitySuccessAtMs ?? getLastHy2TunnelVitalityAtMs()
+  return executeByteDeathParentMutationWithDeps(
+    { ...input, lastVitalitySuccessAtMs },
+    {
+      ...defaultRuntimeDeps,
+      ...deps,
+    },
+  )
 }

@@ -1,5 +1,8 @@
 /** Global cap on concurrent mihomo proxy delay API calls — avoids TUN/mihomo storms. */
 
+import { resolveMihomoDelayProbeMaxConcurrent } from './mihomoDataPlaneLoadCore'
+import { getCachedMihomoActiveConnectionCount } from './mihomoDataPlaneLoadState'
+
 export const MIHOMO_DELAY_PROBE_MAX_CONCURRENT = 2
 export const COMMERCIAL_PROBE_MAX_CONCURRENCY = 3
 const SLOT_WAIT_MS = 250
@@ -26,7 +29,8 @@ export function getActiveMihomoDelayProbes(): number {
 }
 
 export function isMihomoDelayProbeCongested(): boolean {
-  return activeDelayProbes >= MIHOMO_DELAY_PROBE_MAX_CONCURRENT
+  const maxConcurrent = resolveMihomoDelayProbeMaxConcurrent(getCachedMihomoActiveConnectionCount())
+  return activeDelayProbes >= maxConcurrent
 }
 
 export async function withMihomoDelayProbeSlot<T>(fn: () => Promise<T>): Promise<T> {

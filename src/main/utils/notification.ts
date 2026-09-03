@@ -3,6 +3,7 @@ import { getAppConfig } from '../config/app'
 
 export type AppNotificationVariant = 'default' | 'accent' | 'success' | 'warning' | 'danger'
 type AppNotificationMode = 'system' | 'toast'
+export type AppNotificationActionKind = 'copy-bug-report'
 
 export interface AppNotificationPayload {
   id?: string
@@ -11,6 +12,8 @@ export interface AppNotificationPayload {
   persistent?: boolean
   url?: string
   variant?: AppNotificationVariant
+  forceToast?: boolean
+  actionKind?: AppNotificationActionKind
 }
 
 const pendingToastNotifications: AppNotificationPayload[] = []
@@ -34,7 +37,7 @@ export async function showNotification(payload: AppNotificationPayload): Promise
     // fall back to system notifications when config is not readable yet
   }
 
-  if (notificationMode === 'toast') {
+  if (payload.forceToast === true || notificationMode === 'toast') {
     const window = getVisibleMainRendererWindow()
     if (window) {
       window.webContents.send('app-notification', notification)

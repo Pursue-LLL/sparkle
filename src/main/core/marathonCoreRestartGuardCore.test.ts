@@ -44,27 +44,34 @@ describe('marathonCoreRestartGuardCore', () => {
         recentActiveLifecycleStreamCount: 0,
         updatedAtMs: 1_000
       },
-      false
+      true
     )
     assert.equal(decision.blocked, true)
     assert.equal(decision.reason, 'cursor_conn_active')
   })
 
-  it('allows cold restart only when cursor_conn is zero and idle', () => {
+  it('emergency context bypasses cursor_conn_active block', () => {
     const decision = shouldBlockMarathonCoreColdRestart(
       {
-        quiesceActive: false,
-        cursorConnectionCount: 0,
-        recentActiveLifecycleStreamCount: 0,
-        updatedAtMs: 1_000
+        quiesceActive: true,
+        cursorConnectionCount: 42,
+        recentActiveLifecycleStreamCount: 3,
+        updatedAtMs: 1_000,
       },
-      false
+      false,
+      {
+        leafId: 'JP-VPS-HY2',
+        evidenceReason: 'byte_death_udp_absent_requires_core_restart',
+        requestedAtMs: 900,
+        deadlineMs: 50_000,
+      },
+      1_000,
     )
     assert.equal(decision.blocked, false)
-    assert.equal(decision.reason, 'idle')
+    assert.equal(decision.reason, 'emergency_core_recovery')
   })
 
-  it('fails closed when cursor connection observation is unavailable', () => {
+  it('allows cold restart only when cursor_conn is zero and idle', () => {
     const decision = shouldBlockMarathonCoreColdRestart(
       {
         quiesceActive: false,

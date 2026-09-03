@@ -5,6 +5,33 @@
 
 ---
 
+## 2026-09-03 15:10 CST · **开发基线 CODE-DONE（未装包）** · BUG-2026-09-03-004 Failover 治理 · replay 5/5 · 单测 26/26
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | 生产仍为 **1.30.53 INSTALLED c0cba9f** · 本条目为 **git 工作区 CODE-DONE** |
+| **Git** | 工作区未 commit · 待 bump **1.30.54** |
+| **T0** | 代码完成 2026-09-03 15:10 CST · **未 agent:upgrade:mac** |
+| **状态** | **待装包 + live soak** — 取代能力：误 UDP-absent failover 链 |
+
+### 核心能力（2026-09-03 004 新增 · CODE-DONE）
+
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| **vitality UDP-absent 反证** | ✅ CODE | `udp=0` + vitality<60s → `evidence_insufficient`，不 failover/emergency |
+| **failover 60s soak** | ✅ CODE | 防止 13:25 式 5s 内二次 emergency |
+| **HY2 auto failback** | ✅ CODE | Reality 锁死后 vitality 成功 → 自动切回 JP-VPS-HY2 |
+| **dial-timeout 集群检测** | ❌ 未做 | 14:41 291 timeout 静默盲区仍在 |
+| **replay gate** | ✅ 5/5 | +`0903_false_udp_absent_vitality_counterproof` |
+
+### 已知遗漏（禁止声称 100% 全断连修复）
+
+1. dial-timeout 集群检测未实现
+2. VPS:443 物理拒连根因未穿透（无 VPS 日志）
+3. failback SSOT 仅读 selection.json，未对账 mihomo 实时选中
+
+---
+
 ## 2026-09-03 13:20 CST · **生产基线 @1.30.53 INSTALLED edf84174** · Sep2 tier0 SEL + 空白订阅恢复 + 集体死亡 toast · **待 soak**
 
 | 字段 | 内容 |

@@ -134,9 +134,42 @@ export function classifyUdpParentObservation(
 /** Leaf TCP close is collateral during marathon when mihomo omits HY2 UDP parent rows. */
 export function isByteDeathUdpParentAbsent(
   resolution: Hy2ParentUdpResolution,
+  counterEvidence?: { lastVitalitySuccessAtMs?: number; nowMs: number },
 ): boolean {
-  return classifyUdpParentObservation(resolution) === 'absent'
+  if (classifyUdpParentObservation(resolution) !== 'absent') {
+    return false
+  }
+  if (
+    counterEvidence &&
+    isRecentVitalityDialSuccess({
+      lastVitalitySuccessAtMs: counterEvidence.lastVitalitySuccessAtMs,
+      nowMs: counterEvidence.nowMs,
+    })
+  ) {
+    return false
+  }
+  return true
 }
+
+/** Recent successful connect_path dial proves the HY2 UDP parent is alive (contradicts 'absent'). */
+export function isRecentVitalityDialSuccess(input: {
+  lastVitalitySuccessAtMs: number | undefined
+  nowMs: number
+  freshnessMs?: number
+}): boolean {
+  const freshness = input.freshness ?? VITALITY_DIAL_SUCCESS_FRESHNESS_MS
+  return (
+    typeof input.lastVitalitySuccessAtMs === 'number' &&
+    input.lastVitalitySuccessAtMs > 0 &&
+    input.nowMs - input.lastVitalitySuccessAtMs <= freshness
+  )
+}
+
+/** Vitality dial success freshness window — recent success contradicts 'udp absent' triage. */
+export const VITALITY_DIAL_SUCCESS_FRESHNESS_MS = 60_000
+
+/** Scan incomplete or recent vitality dial success — diagnostic only, no mutation/escalation. */
+export const BYTE_DEATH_UDP_EVIDENCE_INSUFFICIENT = 'byte_death_udp_evidence_insufficient'
 
 export function planByteDeathParentMutation(input: {
   connections: readonly ControllerConnectionDetail[]
@@ -144,6 +177,8 @@ export function planByteDeathParentMutation(input: {
   trackedFirstSeenAtMsById: ReadonlyMap<string, number>
   trackedLastByteChangeAtMsById: ReadonlyMap<string, number>
   nowMs: number
+  /** Recent successful vitality dial contradicts 'udp absent' — downgrade to diagnostic-only. */
+  lastVitalitySuccessAtMs?: number
 }): ByteDeathParentMutationPlan {
   const resolution = resolveHy2ParentUdpOutboundConnectionId({
     connections: input.connections,
@@ -162,6 +197,17 @@ export function planByteDeathParentMutation(input: {
   }
   const udpObservation = classifyUdpParentObservation(resolution)
   if (udpObservation === 'absent') {
+    if (
+      isRecentVitalityDialSuccess({
+        lastVitalitySuccessAtMs: input.lastVitalitySuccessAtMs,
+        nowMs: input.nowMs,
+      })
+    ) {
+      return {
+        action: 'none',
+        reason: BYTE_DEATH_UDP_EVIDENCE_INSUFFICIENT,
+      }
+    }
     return {
       action: 'none',
       reason: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,

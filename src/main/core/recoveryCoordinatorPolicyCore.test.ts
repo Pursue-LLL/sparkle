@@ -9,6 +9,7 @@ import {
   MAX_FAILOVER_DISPATCHES,
   type RecoveryFact,
 } from './recoveryCoordinatorPolicyCore'
+import { resolveUdpParentStateForRecovery } from './recoveryFailoverGovernanceCore'
 
 const nowMs = 2_000_000
 
@@ -143,5 +144,40 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
       nowMs,
     })
     assert.equal(result.action.reason, 'stale_generation_discarded')
+  })
+
+  it('failover soak window blocks repeat UDP absent escalation', () => {
+    const state = {
+      ...createInitialRecoveryCoordinatorPolicyState(nowMs),
+      lastFailoverCompletedAtMs: nowMs - 5_000,
+      failoverAttempted: true,
+      failoverDispatchCount: 1,
+    }
+    const result = decideRecoveryCoordinatorAction({
+      state,
+      fact: baseFact(),
+      event: {
+        type: 'UDP_PARENT_ABSENT',
+        leafId: 'JP-VPS-HY2',
+        generation: 1,
+        observedAt: nowMs,
+        detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
+      },
+      nowMs,
+    })
+    assert.equal(result.action.kind, 'none')
+    assert.equal(result.action.reason, 'failover_soak_window_active')
+  })
+
+  it('vitality counterproof maps snapshot absent to unknown at recovery boundary', () => {
+    const state = resolveUdpParentStateForRecovery({
+      resolution: {
+        source: 'none',
+        diagnostics: { totalConnections: 43, udpOnLeafStrict: 0, udpFullScanCandidates: 0 },
+      },
+      lastVitalitySuccessAtMs: nowMs - 4_000,
+      nowMs,
+    })
+    assert.equal(state, 'unknown')
   })
 })

@@ -29,6 +29,7 @@ export interface ByteDeathParentMutationInput {
   nowMs: number
   maxByteStallMs: number
   cursorConnectionCount: number
+  lastVitalitySuccessAtMs?: number
 }
 
 export type CloseConnectionFn = (connectionId: string) => Promise<void>
@@ -117,6 +118,7 @@ export async function executeByteDeathParentMutationWithDeps(
     trackedFirstSeenAtMsById: input.trackedFirstSeenAtMsById,
     trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
     nowMs: input.nowMs,
+    lastVitalitySuccessAtMs: input.lastVitalitySuccessAtMs,
   })
 
   await log(
@@ -185,7 +187,12 @@ export async function executeByteDeathParentMutationWithDeps(
   }
 
   if (plan.action === 'close_leaf_connections') {
-    if (isByteDeathUdpParentAbsent(diagnostics)) {
+    if (
+      isByteDeathUdpParentAbsent(diagnostics, {
+        lastVitalitySuccessAtMs: input.lastVitalitySuccessAtMs,
+        nowMs: input.nowMs,
+      })
+    ) {
       const escalateReason = 'byte_death_udp_absent_requires_core_restart'
       await log(
         formatByteDeathRecoveryLogLine({

@@ -63,6 +63,29 @@ describe('transportLongevityTruthCore R-34a', () => {
     assert.equal(persisted.hy2ParentChainBirthMs, birthMs)
   })
 
+  it('R-40c: stale zero ages with old birth still expose persisted parent age', () => {
+    const nowMs = 2_000_000_000
+    const birthMs = nowMs - HY2_PARENT_SIDECAR_DIAL_AGE_MS - 60_000
+    const persisted = resolvePersistedHy2ParentChainAgeMs({
+      nowMs,
+      activeHy2Leaf: 'JP-VPS-HY2',
+      previousSnapshot: {
+        schemaVersion: 2,
+        updatedAtMs: nowMs - 5_000,
+        cursorConnectionCount: 15,
+        httpParentChainAgeMs: 0,
+        outboundHy2SessionAgeMs: 0,
+        hy2ParentChainBirthMs: birthMs,
+        maxByteStallMs: 0,
+        frozenQuicCursorCount: 0,
+        activeHy2Leaf: 'JP-VPS-HY2',
+      },
+      computedHttpParentChainAgeMs: 0,
+      computedOutboundHy2SessionAgeMs: 0,
+    })
+    assert.ok(persisted.httpParentChainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS)
+  })
+
   it('R-40b explicit birth reset ignores stale computed UDP age', () => {
     const nowMs = 600_000_000
     const resetBirthMs = nowMs - 5_000
