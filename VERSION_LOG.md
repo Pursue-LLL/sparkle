@@ -5,7 +5,19 @@
 
 ---
 
-## 2026-09-03 15:38 CST · **生产基线 @1.30.55 INSTALLED 7464c014** · BUG-006 age SSOT + failback 门控 + Reality 恶性循环 · 单测 46/46 · **当前最佳 SSOT**
+## 2026-09-03 16:15 CST · **开发基线 CODE-DONE @1.30.56** · BUG-007/008 集群检测 + 强制 UDP 刷新 + circuit bypass · **待装包**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | git **1.30.56** · stamp `2026.0903.1615` |
+| **007** | core log tail watcher（GUI + service 双路径）· 移除 ws/out 双 ingest 死代码 |
+| **008** | 集群触发 **直接 close UDP parent**（不信任 vitality 探针假阳性）· circuit breaker bypass |
+| **16:10 live** | circuit open `byte_death_udp_evidence_insufficient` 阻断 sidecar · 0 条 CursorDialFailureCluster |
+| **VPS** | sing-box **1.14.0** 已替换二进制（config OK）· restart 待确认 |
+
+---
+
+## 2026-09-03 15:38 CST · **生产基线 @1.30.55 INSTALLED 7464c014** · BUG-006 age SSOT + failback 门控 + Reality 恶性循环 · 单测 46/46 · **已被 1.30.56 取代（待装）**
 
 | 字段 | 内容 |
 | --- | --- |

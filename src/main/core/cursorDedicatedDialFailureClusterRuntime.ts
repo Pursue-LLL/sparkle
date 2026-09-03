@@ -91,9 +91,66 @@ async function dispatchDialFailureClusterRecovery(
     })
     if (!udpResolution.connectionId) {
       await appendAppLog(
-        `[CursorDialFailureCluster]: outcome=skipped reason=no_udp_parent_found ` +
+        `[CursorDialFailureCluster]: outcome=planned action=fallback_ladder reason=no_udp_parent_found ` +
           `total_connections=${udpResolution.diagnostics?.totalConnections ?? connections.length}\n`,
       )
+
+      const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
+      const marathonTruth = await resolveMarathonSSETruthNow(snapshot.cursorConnectionCount)
+      const { runHy2ParentSidecarIfDue } = await import('./hy2ParentSidecar')
+      const sidecar = await runHy2ParentSidecarIfDue({
+        snapshot,
+        connections,
+        trackedFirstSeenAtMsById: new Map(),
+        trackedLastByteChangeAtMsById: new Map(),
+        marathonTruth,
+        cursorConnectionCount: snapshot.cursorConnectionCount,
+        nowMs,
+        dialFailureClusterEscalation: true,
+        emergencyStallEscalation: true,
+        recoveryIneffective: true,
+      })
+      if (sidecar.outcome === 'executed') {
+        const { notifyRecoveryCircuitSuccess } = await import('./recoveryCircuitBreaker')
+        await notifyRecoveryCircuitSuccess()
+        await appendAppLog(
+          `[CursorDialFailureCluster]: outcome=executed action=${sidecar.action} reason=${sidecar.reason} ` +
+            `fallback=sidecar_after_no_udp cluster_size=${clusterSize}\n`,
+        )
+        return
+      }
+
+      const { requestEmergencyCoreRecovery } = await import('./emergencyCoreRecovery')
+      const { DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART } = await import(
+        './cursorDedicatedDialFailureClusterCore'
+      )
+      const emergency = await requestEmergencyCoreRecovery({
+        reason: 'confirmed_udp_parent_absent',
+        leafId: snapshot.activeHy2Leaf?.trim() ?? activeLeaf,
+        evidenceReason: DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
+        cursorConnectionCount: snapshot.cursorConnectionCount,
+        nowMs,
+      })
+      await appendAppLog(
+        `[CursorDialFailureCluster]: outcome=${emergency.executed ? 'executed' : 'failed'} ` +
+          `action=emergency_core_recovery reason=${emergency.reason} cluster_size=${clusterSize}\n`,
+      )
+      if (emergency.executed) {
+        try {
+          const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
+          await notifyCollectiveDeathAlert({
+            trigger: 'byte_death_exhausted',
+            title: '网络集体恢复中',
+            body: `Cursor 专用路径 ${clusterSize} 次 dial 失败，已触发 emergency core 重建。`,
+            cursorConnectionCount: snapshot.cursorConnectionCount,
+            leafId: activeLeaf,
+            evidenceReason: DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
+            tsMs: nowMs,
+          })
+        } catch {
+          // best-effort toast
+        }
+      }
       return
     }
 

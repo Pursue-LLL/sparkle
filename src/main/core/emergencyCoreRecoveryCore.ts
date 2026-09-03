@@ -31,6 +31,7 @@ const ALLOWED_EVIDENCE = new Set<string>([
   BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
   'byte_death_probe_only_without_udp_close',
   'recovery_circuit_breaker_open',
+  'cursor_dedicated_dial_failure_cluster_udp_absent',
 ])
 
 export function buildEmergencyCoreRecoveryDeadline(
