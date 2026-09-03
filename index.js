@@ -1,14 +1,14 @@
 Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 const require_chunk = require("./chunk-Ble4zEEl.js");
-const require_buildStamp = require("./buildStamp-8xqMQFfx.js");
+const require_buildStamp = require("./buildStamp-BZq7ivbE.js");
 const require_app = require("./app-BLpEMg19.js");
 const require_marathonQuiesceCore = require("./marathonQuiesceCore-CmNRCAlX.js");
 const require_cursorProxyGroup = require("./cursorProxyGroup-CnkyyiAA.js");
-const require_log = require("./log-1KiOwbO7.js");
-const require_marathonHy2OnlyCore = require("./marathonHy2OnlyCore-DUTUvkzr.js");
+const require_log = require("./log-D-M0sTkW.js");
+const require_marathonHy2OnlyCore = require("./marathonHy2OnlyCore-CpRJ9ejl.js");
 const require_cursorCriticalTransportCore = require("./cursorCriticalTransportCore-hZCb8D-c.js");
 const require_notification = require("./notification-D8sgqYGf.js");
-const require_manager = require("./manager-DrmYFZR8.js");
+const require_manager = require("./manager-Cb7AU2zn.js");
 const require_emergencyCoreRestartBridge = require("./emergencyCoreRestartBridge-DavdYJvt.js");
 const require_coreReadyTimestamp = require("./coreReadyTimestamp-HUjUC2dn.js");
 const require_mihomoDataPlaneLoadCore = require("./mihomoDataPlaneLoadCore-DgbpLCdo.js");
@@ -19,11 +19,11 @@ const require_networkStartupGraceCore = require("./networkStartupGraceCore-DUPXR
 const require_cursorTransportHealthCore = require("./cursorTransportHealthCore-w9ve3-jH.js");
 const require_formatUnknownErrorForLog = require("./formatUnknownErrorForLog-BHr2wQV9.js");
 const require_marathonCoreRestartGuardCore = require("./marathonCoreRestartGuardCore-BhYZIBrs.js");
-const require_connectPartitionReader = require("./connectPartitionReader-B8wk9SXh.js");
+const require_connectPartitionReader = require("./connectPartitionReader-BOEWFGVG.js");
 const require_macos26ElectronMitigationCore = require("./macos26ElectronMitigationCore-CFdjV-Nh.js");
-const require_api2ProbeLedgerCore = require("./api2ProbeLedgerCore-CagnKeCm.js");
-const require_postCoreBootstrap = require("./postCoreBootstrap-CUTBS-Db.js");
-const require_emergencyRecoverySmokeCli = require("./emergencyRecoverySmokeCli-DnnpLU5l.js");
+const require_api2ProbeLedgerCore = require("./api2ProbeLedgerCore-B3uagRZ2.js");
+const require_postCoreBootstrap = require("./postCoreBootstrap-D83PmYa7.js");
+const require_emergencyRecoverySmokeCli = require("./emergencyRecoverySmokeCli-BSxbURv_.js");
 let _electron_toolkit_utils = require("@electron-toolkit/utils");
 let electron = require("electron");
 let axios = require("axios");
@@ -1376,8 +1376,8 @@ function applyCorporateNameserverPolicy(profile, servers) {
 async function resolveCorporateNameserverList() {
 	const { getAppConfig } = await Promise.resolve().then(() => (init_config(), config_exports));
 	const { originDNS } = await getAppConfig();
-	const { readDhcpPrivateDnsServers } = await Promise.resolve().then(() => require("./corporateDhcpDns-CFFluDmV.js"));
-	const { resolveCorporateNameservers } = await Promise.resolve().then(() => require("./corporateDnsCore--fDMaBIU.js"));
+	const { readDhcpPrivateDnsServers } = await Promise.resolve().then(() => require("./corporateDhcpDns-lQsgb15C.js"));
+	const { resolveCorporateNameservers } = await Promise.resolve().then(() => require("./corporateDnsCore-CccD6b3E.js"));
 	return resolveCorporateNameservers({
 		originDns: originDNS,
 		dhcpDns: await readDhcpPrivateDnsServers()
@@ -3641,7 +3641,7 @@ function formatMarathonSwitchBlockDetail(reason, cursorConnectionCount, marathon
 async function confirmCursorProxySwitch(groupName, fromProxy, toProxy) {
 	if (!require_cursorProxyGroup.isCursorSelectorGroupName(groupName)) return true;
 	if (fromProxy === toProxy) return false;
-	const { evaluateMarathonProtocolSwitchBlock } = await Promise.resolve().then(() => require("./marathonProtocolContract-CXH5PXRm.js"));
+	const { evaluateMarathonProtocolSwitchBlock } = await Promise.resolve().then(() => require("./marathonProtocolContract-CxzzEsxx.js"));
 	const block = await evaluateMarathonProtocolSwitchBlock({
 		group: groupName,
 		fromNode: fromProxy,
@@ -5516,6 +5516,8 @@ async function startMihomoApiStreams() {
 	await startMihomoConnections();
 	await startMihomoLogs();
 	await startMihomoMemory();
+	const { startCoreLogDialFailureTailWatcher } = await Promise.resolve().then(() => require("./coreLogDialFailureTailWatcher-C_-o6tje.js"));
+	startCoreLogDialFailureTailWatcher();
 	retry = 10;
 }
 async function startMihomoApiStreamsWithGrace(timeoutMs = 1e4) {
@@ -5618,7 +5620,7 @@ async function resolveServiceCoreLaunchAction(serviceCoreRunning) {
 	if (!serviceCoreRunning || !await probeMihomoCoreLive()) return "start";
 	try {
 		const runtime = await getRuntimeConfig();
-		const { resolveExpectedProxyProviderIds, collectRunningProxyProviderIds, formatProviderParityMismatchLog, formatProviderHotReloadLog, shouldRestartServiceCoreForProviderParity } = await Promise.resolve().then(() => require("./serviceCoreProviderParityCore-DVZzgKY-.js"));
+		const { resolveExpectedProxyProviderIds, collectRunningProxyProviderIds, formatProviderParityMismatchLog, formatProviderHotReloadLog, shouldRestartServiceCoreForProviderParity } = await Promise.resolve().then(() => require("./serviceCoreProviderParityCore-BvXi5_ly.js"));
 		const { loadRuntimeConfigFromDisk } = await Promise.resolve().then(() => (init_factory(), factory_exports));
 		const expectedIds = await resolveExpectedProxyProviderIds({
 			runtimeConfig: runtime,
@@ -5652,7 +5654,7 @@ async function launchServiceCore(serviceProfile, serviceCoreRunning) {
 	if (action === "restart") await require_manager.restartCore(serviceProfile);
 }
 async function resolveStartCoreMutationIntent(useServiceCore, serviceCoreRunning) {
-	const { resolveElevatedStartCoreMutationIntent, resolveServiceStartCoreMutationIntent } = await Promise.resolve().then(() => require("./startCoreMutationGuardCore-B2LrckEj.js"));
+	const { resolveElevatedStartCoreMutationIntent, resolveServiceStartCoreMutationIntent } = await Promise.resolve().then(() => require("./startCoreMutationGuardCore-CkMkpnbG.js"));
 	if (useServiceCore) {
 		if (!serviceCoreRunning) return {
 			wouldMutate: false,
@@ -5664,7 +5666,7 @@ async function resolveStartCoreMutationIntent(useServiceCore, serviceCoreRunning
 			reason: intent.reason
 		};
 	}
-	const { resolveCoreFootprintBeforeStartOnly } = await Promise.resolve().then(() => require("./staleMihomoApiSocketHygiene-C5WtpjlX.js"));
+	const { resolveCoreFootprintBeforeStartOnly } = await Promise.resolve().then(() => require("./staleMihomoApiSocketHygiene-BfU4bKK3.js"));
 	const footprint = await resolveCoreFootprintBeforeStartOnly({
 		hasChildProcess: Boolean(child && !child.killed),
 		corePidPath: path.default.join(require_app.dataDir(), "core.pid"),
@@ -5719,7 +5721,7 @@ async function startCore(detached = false) {
 	await checkProfileWithRetry();
 	if (!serviceCoreRunning) {
 		if (!await stopCoreWithOutcome()) {
-			const { resolveCoreFootprintBeforeStartOnly } = await Promise.resolve().then(() => require("./staleMihomoApiSocketHygiene-C5WtpjlX.js"));
+			const { resolveCoreFootprintBeforeStartOnly } = await Promise.resolve().then(() => require("./staleMihomoApiSocketHygiene-BfU4bKK3.js"));
 			const footprint = await resolveCoreFootprintBeforeStartOnly({
 				hasChildProcess: Boolean(child && !child.killed),
 				corePidPath: path.default.join(require_app.dataDir(), "core.pid"),
@@ -6128,6 +6130,8 @@ async function ensureServiceCoreStreamsStarted() {
 		await startMihomoLogs();
 		await startMihomoMemory();
 		require_log.setMihomoLogSource("ws");
+		const { startCoreLogDialFailureTailWatcher } = await Promise.resolve().then(() => require("./coreLogDialFailureTailWatcher-C_-o6tje.js"));
+		startCoreLogDialFailureTailWatcher();
 		retry = 10;
 		serviceCoreStreamsActive = true;
 	})();
@@ -6534,6 +6538,33 @@ var init_profileConfigRecoveryCore = require_chunk.__esmMin((() => {
 	init_profileConfigRecoveryPureCore();
 }));
 //#endregion
+//#region src/main/core/profileCacheRefreshPureCore.ts
+function formatMissingSubscriptionUrlError(locale = "zh") {
+	return locale === "zh" ? "订阅 URL 为空，无法从远端更新。请在订阅设置中填入链接。" : "Subscription URL is empty. Add the subscription link in profile settings.";
+}
+var init_profileCacheRefreshPureCore = require_chunk.__esmMin((() => {}));
+//#endregion
+//#region src/main/core/profileCacheRefreshCore.ts
+async function readProfileDiskUpdatedMs(profileId) {
+	const path = require_app.profilePath(profileId);
+	if (!(0, fs.existsSync)(path)) return;
+	return (await (0, fs_promises.stat)(path)).mtimeMs;
+}
+async function reloadCurrentProfileFromDiskCache(profileId) {
+	const { generateProfile, getRuntimeConfig } = await Promise.resolve().then(() => (init_factory(), factory_exports));
+	const { reloadMihomoProfileProviders, resolveVpsProviderId } = await Promise.resolve().then(() => (init_provider(), provider_exports));
+	await generateProfile();
+	const proxyProviders = (await getRuntimeConfig())["proxy-providers"];
+	const hasVpsProvider = Boolean(proxyProviders?.[resolveVpsProviderId(profileId)]);
+	await reloadMihomoProfileProviders(profileId, hasVpsProvider);
+	await require_log.appendAppLog(`[ProfileCacheRefresh]: reloaded profile=${profileId} source=disk_cache providers=${hasVpsProvider ? 2 : 1}\n`);
+}
+var init_profileCacheRefreshCore = require_chunk.__esmMin((() => {
+	require_app.init_dirs();
+	require_log.init_log();
+	init_profileCacheRefreshPureCore();
+}));
+//#endregion
 //#region src/main/config/profile.ts
 function getCertFingerprint(cert) {
 	return crypto.default.createHash("sha256").update(cert.raw).digest("hex").toUpperCase();
@@ -6649,7 +6680,16 @@ async function createProfile(item) {
 	switch (newItem.type) {
 		case "remote": {
 			const { "mixed-port": mixedPort = 7890 } = await getControledMihomoConfig();
-			if (!item.url) throw new Error("Empty URL");
+			if (!item.url) {
+				if ((0, fs.existsSync)(require_app.profilePath(id))) {
+					const { current } = await getProfileConfig();
+					if (current === id) await reloadCurrentProfileFromDiskCache(id);
+					const diskUpdatedMs = await readProfileDiskUpdatedMs(id);
+					if (diskUpdatedMs) newItem.updated = diskUpdatedMs;
+					break;
+				}
+				throw new Error(formatMissingSubscriptionUrlError());
+			}
 			let res;
 			if (newItem.substore) {
 				const urlObj = new url.URL(`http://127.0.0.1:${subStorePort}${item.url}`);
@@ -6911,6 +6951,7 @@ var init_profile = require_chunk.__esmMin((() => {
 	init_provider();
 	init_profileSubscriptionDisplayCore();
 	init_profileConfigRecoveryCore();
+	init_profileCacheRefreshCore();
 	require_log.init_log();
 	FILE_PERMISSION_ELEVATION_REQUIRED = "FILE_PERMISSION_ELEVATION_REQUIRED";
 }));
@@ -7233,7 +7274,7 @@ async function mihomoProviderHealthcheckDeduped(providerName) {
 	return run;
 }
 async function refreshProviderLeafBeforeDelay(providerName, options) {
-	const { evaluateMarathonProviderMutationBlock } = await Promise.resolve().then(() => require("./marathonDataPlaneMutationGuard-4uywQw3x.js"));
+	const { evaluateMarathonProviderMutationBlock } = await Promise.resolve().then(() => require("./marathonDataPlaneMutationGuard-kful044s.js"));
 	if ((await evaluateMarathonProviderMutationBlock(options?.purpose)).blocked) return;
 	const refreshWithHealthcheck = require_mihomoProxyDelayCore.shouldRefreshProviderLeafBeforeDelay(options?.purpose);
 	if (refreshWithHealthcheck && !require_mihomoProxyDelayCore.isMarathonRescueDelayPurpose(options?.purpose)) {
@@ -7487,10 +7528,10 @@ var init_mihomoApi = require_chunk.__esmMin((() => {
 		return await (await getAxios()).get("/providers/proxies");
 	};
 	mihomoUpdateProxyProviders = async (name, options) => {
-		const { evaluateMarathonProviderMutationBlock } = await Promise.resolve().then(() => require("./marathonDataPlaneMutationGuard-4uywQw3x.js"));
+		const { evaluateMarathonProviderMutationBlock } = await Promise.resolve().then(() => require("./marathonDataPlaneMutationGuard-kful044s.js"));
 		const guard = await evaluateMarathonProviderMutationBlock(options?.purpose);
 		if (guard.blocked) {
-			const { appendAppLog } = await Promise.resolve().then(() => require("./log-1KiOwbO7.js")).then((n) => (n.init_log(), n.log_exports));
+			const { appendAppLog } = await Promise.resolve().then(() => require("./log-D-M0sTkW.js")).then((n) => (n.init_log(), n.log_exports));
 			await appendAppLog(require_marathonDataPlaneMutationGuardCore.formatMarathonProviderMutationBlockedLogLine({
 				operation: "provider_update",
 				providerName: name,
@@ -7518,7 +7559,7 @@ var init_mihomoApi = require_chunk.__esmMin((() => {
 			const current = ((await mihomoGroups())?.find((item) => item.name === group))?.now ?? "";
 			previousCursorNode = current;
 			if (current !== proxy) {
-				const { evaluateMarathonProtocolSwitchBlock, logMarathonProtocolSwitchBlocked } = await Promise.resolve().then(() => require("./marathonProtocolContract-CXH5PXRm.js"));
+				const { evaluateMarathonProtocolSwitchBlock, logMarathonProtocolSwitchBlocked } = await Promise.resolve().then(() => require("./marathonProtocolContract-CxzzEsxx.js"));
 				const block = await evaluateMarathonProtocolSwitchBlock({
 					group,
 					fromNode: current,
@@ -7540,7 +7581,7 @@ var init_mihomoApi = require_chunk.__esmMin((() => {
 		if (source === "auto" && isCursorGroup && previousCursorNode && previousCursorNode !== proxy) {
 			const { shouldDeferCursorFailover } = await Promise.resolve().then(() => (init_networkStabilityMonitor(), networkStabilityMonitor_exports));
 			if (await shouldDeferCursorFailover(previousCursorNode)) {
-				const { appendAppLog } = await Promise.resolve().then(() => require("./log-1KiOwbO7.js")).then((n) => (n.init_log(), n.log_exports));
+				const { appendAppLog } = await Promise.resolve().then(() => require("./log-D-M0sTkW.js")).then((n) => (n.init_log(), n.log_exports));
 				await appendAppLog(`[mihomoChangeProxy]: defer auto switch ${group} "${previousCursorNode}" → "${proxy}" — api2 reachable\n`);
 				return false;
 			}
@@ -7551,8 +7592,8 @@ var init_mihomoApi = require_chunk.__esmMin((() => {
 			await writeCursorDedicatedManualSelection(proxy);
 		}
 		if (source === "protocol_contract" && previousCursorNode && previousCursorNode !== proxy) {
-			const { appendAppLog } = await Promise.resolve().then(() => require("./log-1KiOwbO7.js")).then((n) => (n.init_log(), n.log_exports));
-			const { formatMarathonProtocolUpgradeLogLine } = await Promise.resolve().then(() => require("./marathonProtocolContractCore-BSso-rqu.js"));
+			const { appendAppLog } = await Promise.resolve().then(() => require("./log-D-M0sTkW.js")).then((n) => (n.init_log(), n.log_exports));
+			const { formatMarathonProtocolUpgradeLogLine } = await Promise.resolve().then(() => require("./marathonProtocolContractCore-DQIowspq.js"));
 			await appendAppLog(formatMarathonProtocolUpgradeLogLine({
 				group,
 				fromNode: previousCursorNode,
@@ -7757,7 +7798,7 @@ var init_mihomoApi = require_chunk.__esmMin((() => {
 				mainWindow?.webContents.send("mihomoConnections", payload);
 				(async () => {
 					try {
-						const { observeMihomoConnectionsForQuicSilentStall } = await Promise.resolve().then(() => require("./mihomoQuicSilentStallObserver-BVPJKh7M.js"));
+						const { observeMihomoConnectionsForQuicSilentStall } = await Promise.resolve().then(() => require("./mihomoQuicSilentStallObserver-B7MR307J.js"));
 						await observeMihomoConnectionsForQuicSilentStall(payload);
 					} catch {}
 				})();
@@ -8158,8 +8199,8 @@ async function readMarathonCoreRestartGuardSnapshot(nowMs = Date.now()) {
 	const cursorConnectionCount = await countCursorConnections().catch(() => -1);
 	let recentActiveLifecycleStreamCount;
 	try {
-		const { readStreamLifecycleJournalTail } = await Promise.resolve().then(() => require("./streamLifecycleJournal-BtZj4EVF.js"));
-		const { countRecentActiveLifecycleStreams } = await Promise.resolve().then(() => require("./marathonCoreRestartGuardLifecycleCore-C0Hgw2AA.js"));
+		const { readStreamLifecycleJournalTail } = await Promise.resolve().then(() => require("./streamLifecycleJournal-DAF-L23F.js"));
+		const { countRecentActiveLifecycleStreams } = await Promise.resolve().then(() => require("./marathonCoreRestartGuardLifecycleCore-BabFlbeH.js"));
 		recentActiveLifecycleStreamCount = countRecentActiveLifecycleStreams({
 			events: readStreamLifecycleJournalTail(),
 			nowMs
@@ -8181,7 +8222,7 @@ async function refreshMarathonCoreRestartGuardStateFile(snapshot) {
 	await (0, fs_promises.writeFile)(statePath, `${JSON.stringify(payload)}\n`, "utf-8");
 }
 async function probeMihomoCoreLive(maxWaitMs = BOOTSTRAP_CORE_PROBE_MS) {
-	const { waitForMihomoControllerReady } = await Promise.resolve().then(() => require("./postCoreBootstrap-CUTBS-Db.js")).then((n) => (n.init_postCoreBootstrap(), n.postCoreBootstrap_exports));
+	const { waitForMihomoControllerReady } = await Promise.resolve().then(() => require("./postCoreBootstrap-D83PmYa7.js")).then((n) => (n.init_postCoreBootstrap(), n.postCoreBootstrap_exports));
 	return waitForMihomoControllerReady(maxWaitMs);
 }
 /** When mihomo is down, cursor_conn=-1 would block cold lifecycle forever — skip guard until core is live. */
@@ -8270,10 +8311,10 @@ async function syncMarathonQuiesceIfNeeded(cursorConnectionCount, nowMs = Date.n
 	const transition = require_marathonQuiesceCore.advanceMarathonQuiesceState(cursorConnectionCount, quiesceState, nowMs);
 	quiesceState = transition.state;
 	if (previousConn === 0 && cursorConnectionCount > 0) {
-		const { resolveCursorDedicatedActiveNode } = await Promise.resolve().then(() => require("./cursorHy2MarathonKeepalive-Cbc9KkEX.js"));
+		const { resolveCursorDedicatedActiveNode } = await Promise.resolve().then(() => require("./cursorHy2MarathonKeepalive-CKKHu3rz.js"));
 		const activeNode = await resolveCursorDedicatedActiveNode();
 		if (activeNode) {
-			const { notifyMarathonStartedOnSuboptimalLeafIfNeeded } = await Promise.resolve().then(() => require("./marathonProtocolContract-CXH5PXRm.js"));
+			const { notifyMarathonStartedOnSuboptimalLeafIfNeeded } = await Promise.resolve().then(() => require("./marathonProtocolContract-CxzzEsxx.js"));
 			await notifyMarathonStartedOnSuboptimalLeafIfNeeded(cursorConnectionCount, activeNode);
 		}
 	}
@@ -8287,7 +8328,7 @@ async function syncMarathonQuiesceIfNeeded(cursorConnectionCount, nowMs = Date.n
 	await refreshMarathonCoreRestartGuardStateAfterQuiesce(cursorConnectionCount);
 	if (cursorConnectionCount === 0) {
 		const { readMarathonCoreRestartGuardSnapshot } = await Promise.resolve().then(() => (init_marathonCoreRestartGuard(), marathonCoreRestartGuard_exports));
-		const { maybeExecuteDeferredProfileUpdateDue } = await Promise.resolve().then(() => require("./deferredProfileUpdateDue-kI2sADaY.js"));
+		const { maybeExecuteDeferredProfileUpdateDue } = await Promise.resolve().then(() => require("./deferredProfileUpdateDue-Btq2omfA.js"));
 		await maybeExecuteDeferredProfileUpdateDue(await readMarathonCoreRestartGuardSnapshot());
 	}
 }
@@ -8421,7 +8462,7 @@ function vpsProviderFilePath(profileId) {
 }
 /** Idle-only backfill: patch on-disk VPS provider yaml to marathon-safe dial-timeout without mid-session reload. */
 async function ensureVpsProviderMarathonDialTimeoutBootstrapAtIdle(cursorConnectionCount) {
-	const { resolveMarathonSSETruthNow } = await Promise.resolve().then(() => require("./marathonSSETruthRuntime-DWbpbN-v.js"));
+	const { resolveMarathonSSETruthNow } = await Promise.resolve().then(() => require("./marathonSSETruthRuntime-vbM1Qor4.js"));
 	if (!require_marathonQuiesceCore.shouldAllowMarathonDialToleranceBootstrapAtIdle(cursorConnectionCount, (await resolveMarathonSSETruthNow(cursorConnectionCount)).marathonTruthActive)) return false;
 	const { current } = await getProfileConfig();
 	const providerPath = vpsProviderFilePath(current);
@@ -8509,11 +8550,11 @@ async function logTransportRecoveryDecision(options) {
 	await require_log.appendAppLog(`[CursorTransportHealth]: ${summary}\n`);
 	const shouldAttachSnapshots = options.source === "hung_scan" || options.action !== "none";
 	const vpsNodeSnapshots = shouldAttachSnapshots ? await (async () => {
-		const { collectCanonicalVpsNodeSnapshots } = await Promise.resolve().then(() => require("./canonicalVpsNodeSnapshot-u5CMWpah.js"));
+		const { collectCanonicalVpsNodeSnapshots } = await Promise.resolve().then(() => require("./canonicalVpsNodeSnapshot-CNLGmGOe.js"));
 		return collectCanonicalVpsNodeSnapshots();
 	})() : void 0;
 	const mihomoVpsHistorySnapshot = shouldAttachSnapshots ? await (async () => {
-		const { collectCanonicalVpsNodeHistorySnapshots } = await Promise.resolve().then(() => require("./canonicalVpsNodeSnapshot-u5CMWpah.js"));
+		const { collectCanonicalVpsNodeHistorySnapshots } = await Promise.resolve().then(() => require("./canonicalVpsNodeSnapshot-CNLGmGOe.js"));
 		return collectCanonicalVpsNodeHistorySnapshots();
 	})() : void 0;
 	await appendTransportObservabilityEvent({
@@ -8677,7 +8718,7 @@ function resolveTransportProbeAttribution(probe, connectPartition) {
 }
 async function executeRecoveryL2() {
 	const nowMs = Date.now();
-	const circuitGate = await (await Promise.resolve().then(() => require("./recoveryCircuitBreaker-BLhpyx5p.js"))).assertRecoveryCircuitAllowsMutation({ nowMs });
+	const circuitGate = await (await Promise.resolve().then(() => require("./recoveryCircuitBreaker-Bz1oR9Pq.js"))).assertRecoveryCircuitAllowsMutation({ nowMs });
 	if (!circuitGate.allowed) {
 		await require_log.appendAppLog(`[CursorTransportHealth]: L2 blocked — ${circuitGate.reason}\n`);
 		return;
@@ -8765,9 +8806,9 @@ async function evaluateAndRecoverTransport(probe, attribution, options = {}) {
 }
 /** Proactive HY2/TUIC warmth — §22 MTDO single entry (non-destructive dial only). */
 async function runMarathonSessionWarmthIfDue(cursorConnectionCount) {
-	const { ensureMihomoApiReachableForMarathon } = await Promise.resolve().then(() => require("./mihomoApiSocketWatchdog-wtvHjd-Q.js"));
+	const { ensureMihomoApiReachableForMarathon } = await Promise.resolve().then(() => require("./mihomoApiSocketWatchdog-DRvUzvP3.js"));
 	await ensureMihomoApiReachableForMarathon("warmth_precheck");
-	const { runMarathonTransportDialCycle } = await Promise.resolve().then(() => require("./marathonTransportDialOrchestrator-Blza0m7u.js"));
+	const { runMarathonTransportDialCycle } = await Promise.resolve().then(() => require("./marathonTransportDialOrchestrator-kCPf9M6g.js"));
 	await runMarathonTransportDialCycle(cursorConnectionCount);
 }
 async function runHungConnectionScanCycle() {
@@ -8778,23 +8819,23 @@ async function runHungConnectionScanCycle() {
 		syncMarathonDialToleranceIfNeeded(rows.length);
 		const { syncMarathonQuiesceIfNeeded } = await Promise.resolve().then(() => (init_marathonQuiesce(), marathonQuiesce_exports));
 		await syncMarathonQuiesceIfNeeded(rows.length);
-		const { evaluateAndLogSegmentHandoffDue } = await Promise.resolve().then(() => require("./cursorSegmentHandoff-BwJuMhQ_.js"));
+		const { evaluateAndLogSegmentHandoffDue } = await Promise.resolve().then(() => require("./cursorSegmentHandoff-CHZh3X27.js"));
 		await evaluateAndLogSegmentHandoffDue(rows.length);
-		const { syncAgentTransportFailuresFromCursorLogs } = await Promise.resolve().then(() => require("./agentTransportFailureSync-Dy6MFCn7.js")).then((n) => (n.init_agentTransportFailureSync(), n.agentTransportFailureSync_exports));
-		const { resolveCursorDedicatedActiveNode } = await Promise.resolve().then(() => require("./cursorHy2MarathonKeepalive-Cbc9KkEX.js"));
+		const { syncAgentTransportFailuresFromCursorLogs } = await Promise.resolve().then(() => require("./agentTransportFailureSync-tp69QFps.js")).then((n) => (n.init_agentTransportFailureSync(), n.agentTransportFailureSync_exports));
+		const { resolveCursorDedicatedActiveNode } = await Promise.resolve().then(() => require("./cursorHy2MarathonKeepalive-CKKHu3rz.js"));
 		const activeNode = await resolveCursorDedicatedActiveNode();
 		await syncAgentTransportFailuresFromCursorLogs({ proxyNodeFallback: activeNode });
 		try {
-			const { logMaxStepsRateIfDue } = await Promise.resolve().then(() => require("./maxStepsRateObserver-puKTXHxz.js"));
+			const { logMaxStepsRateIfDue } = await Promise.resolve().then(() => require("./maxStepsRateObserver-BxQNLyTN.js"));
 			await logMaxStepsRateIfDue();
 		} catch {}
 		await runMarathonSessionWarmthIfDue(rows.length);
 		try {
-			const { evaluatePendingRecoveryHonestyIfDue } = await Promise.resolve().then(() => require("./mihomoQuicSilentStallRecovery-DfAy6EPk.js"));
+			const { evaluatePendingRecoveryHonestyIfDue } = await Promise.resolve().then(() => require("./mihomoQuicSilentStallRecovery-DUKjHUQm.js"));
 			await evaluatePendingRecoveryHonestyIfDue();
 		} catch {}
 		if (rows.length === 0 && activeNode) {
-			const { runMarathonProtocolColdStartGateIfDue } = await Promise.resolve().then(() => require("./marathonProtocolContract-CXH5PXRm.js"));
+			const { runMarathonProtocolColdStartGateIfDue } = await Promise.resolve().then(() => require("./marathonProtocolContract-CxzzEsxx.js"));
 			await runMarathonProtocolColdStartGateIfDue(activeNode, 0);
 		}
 		const hungIds = require_cursorTransportHealthCore.selectHungCursorConnectionsToClose(rows);
@@ -8803,7 +8844,7 @@ async function runHungConnectionScanCycle() {
 			if (rows.length > 0 && nowMs - lastHungScanHeartbeatAtMs >= HUNG_SCAN_HEARTBEAT_MS) {
 				lastHungScanHeartbeatAtMs = nowMs;
 				await require_log.appendAppLog(`[CursorTransportHealth]: hung_scan_heartbeat cursor_connections=${rows.length} hung=0\n`);
-				const { collectCanonicalVpsNodeHistorySnapshots } = await Promise.resolve().then(() => require("./canonicalVpsNodeSnapshot-u5CMWpah.js"));
+				const { collectCanonicalVpsNodeHistorySnapshots } = await Promise.resolve().then(() => require("./canonicalVpsNodeSnapshot-CNLGmGOe.js"));
 				const mihomoVpsHistorySnapshot = await collectCanonicalVpsNodeHistorySnapshots();
 				await appendTransportObservabilityEvent({
 					kind: "transport_hung_scan",
@@ -9317,7 +9358,7 @@ async function appendLiveTransportProbeToLedger(probe, method, options) {
 }
 async function appendDeferredProbeCacheEvent(cursorConnCount) {
 	const recent = getRecentCursorProbe();
-	const { appendApi2ProbeLedgerRow } = await Promise.resolve().then(() => require("./api2ProbeLedgerCore-CagnKeCm.js")).then((n) => (n.init_api2ProbeLedgerCore(), n.api2ProbeLedgerCore_exports));
+	const { appendApi2ProbeLedgerRow } = await Promise.resolve().then(() => require("./api2ProbeLedgerCore-B3uagRZ2.js")).then((n) => (n.init_api2ProbeLedgerCore(), n.api2ProbeLedgerCore_exports));
 	await appendApi2ProbeLedgerRow({
 		ts: (/* @__PURE__ */ new Date()).toISOString(),
 		scope: "active",
@@ -9337,10 +9378,10 @@ async function runCursorTransportConnectivityCheck(options = {}) {
 	const proxyNode = await resolveCurrentProxyNode();
 	const { getMarathonQuiesceSnapshot } = await Promise.resolve().then(() => (init_marathonQuiesce(), marathonQuiesce_exports));
 	const { shouldAllowObservabilityDial } = await Promise.resolve().then(() => require("./marathonQuiesceCore-CmNRCAlX.js")).then((n) => (n.init_marathonQuiesceCore(), n.marathonQuiesceCore_exports));
-	const { resolveMarathonObservabilityDialContext, withMarathonObservabilityDialBudget } = await Promise.resolve().then(() => require("./marathonObservabilityDialBudget-CJT8GroJ.js"));
+	const { resolveMarathonObservabilityDialContext, withMarathonObservabilityDialBudget } = await Promise.resolve().then(() => require("./marathonObservabilityDialBudget-DFIc6i5k.js"));
 	const quiesceSnapshot = getMarathonQuiesceSnapshot();
 	const { safeGetLastCoreReadyAtMs } = await Promise.resolve().then(() => require("./coreReadyTimestamp-HUjUC2dn.js")).then((n) => (n.init_coreReadyTimestamp(), n.coreReadyTimestamp_exports));
-	const { shouldDeferObservabilityDialDuringPostCoreRestartQuarantine } = await Promise.resolve().then(() => require("./coreRestartQuarantineCore-BCuJXmDd.js"));
+	const { shouldDeferObservabilityDialDuringPostCoreRestartQuarantine } = await Promise.resolve().then(() => require("./coreRestartQuarantineCore-BB3PiPKv.js"));
 	const skipMarketplace = shouldDeferObservabilityDialDuringPostCoreRestartQuarantine("marketplace_probe", safeGetLastCoreReadyAtMs()) || !shouldAllowObservabilityDial("marketplace_probe", quiesceSnapshot.active, quiesceSnapshot.cursorConnectionCount);
 	const probeOptions = {
 		...transport,
@@ -9399,7 +9440,7 @@ function getRecentCursorProbe(maxAgeMs = RECENT_PROBE_MAX_AGE_MS) {
 async function shouldDeferCursorFailover(currentProxy) {
 	const transport = await resolveProbeTransportOptions();
 	const proxyNode = await resolveCurrentProxyNode();
-	const { resolveMarathonObservabilityDialContext, withMarathonObservabilityDialBudget } = await Promise.resolve().then(() => require("./marathonObservabilityDialBudget-CJT8GroJ.js"));
+	const { resolveMarathonObservabilityDialContext, withMarathonObservabilityDialBudget } = await Promise.resolve().then(() => require("./marathonObservabilityDialBudget-DFIc6i5k.js"));
 	const budgetResult = await withMarathonObservabilityDialBudget("defer_check", await resolveMarathonObservabilityDialContext(), async () => proxyNode ? runTransportProbePairViaCursorNode(proxyNode, transport) : runTransportProbePair(transport));
 	if (budgetResult.outcome === "skipped_busy" || budgetResult.value === null) return require_cursorTransportHealthCore.shouldDeferDestructiveRecoveryAfterLiveProbe(lastCursorProbe?.ok ?? false, currentProxy, proxyNode);
 	const probe = budgetResult.value;
@@ -10839,15 +10880,15 @@ function registerIpcMainHandlers() {
 	electron.ipcMain.handle("mihomoProxyDelay", (_e, proxy, url, options) => ipcErrorWrapper(mihomoProxyDelay)(proxy, url, options));
 	electron.ipcMain.handle("mihomoGroupDelay", (_e, group, url, options) => ipcErrorWrapper(mihomoGroupDelay)(group, url, options));
 	electron.ipcMain.handle("runManagedVpsDelayTests", (_e, proxyNames, testUrl, options) => ipcErrorWrapper(async () => {
-		const { runManagedVpsDelayTests } = await Promise.resolve().then(() => require("./managedVpsDelayTest-CBdXC518.js"));
+		const { runManagedVpsDelayTests } = await Promise.resolve().then(() => require("./managedVpsDelayTest-B0nGFw_k.js"));
 		return runManagedVpsDelayTests(proxyNames, testUrl, options);
 	})());
 	electron.ipcMain.handle("runManagedVpsDelayTestSingle", (_e, proxyName, testUrl, options) => ipcErrorWrapper(async () => {
-		const { runManagedVpsDelayTestSingle } = await Promise.resolve().then(() => require("./managedVpsDelayTest-CBdXC518.js"));
+		const { runManagedVpsDelayTestSingle } = await Promise.resolve().then(() => require("./managedVpsDelayTest-B0nGFw_k.js"));
 		return runManagedVpsDelayTestSingle(proxyName, testUrl, options);
 	})());
 	electron.ipcMain.handle("runNetworkTriangulationDiagnostic", () => ipcErrorWrapper(async () => {
-		const { runNetworkTriangulationDiagnostic } = await Promise.resolve().then(() => require("./networkTriangulationDiagnostic-C8JRcYNj.js"));
+		const { runNetworkTriangulationDiagnostic } = await Promise.resolve().then(() => require("./networkTriangulationDiagnostic-DpD_hi3T.js"));
 		return runNetworkTriangulationDiagnostic();
 	})());
 	electron.ipcMain.handle("mihomoRulesDisable", (_e, rules) => ipcErrorWrapper(mihomoRulesDisable)(rules));
@@ -10917,10 +10958,10 @@ function registerIpcMainHandlers() {
 	electron.ipcMain.handle("getVersion", () => electron.app.getVersion());
 	electron.ipcMain.handle("getBuildStamp", () => ({
 		buildStamp: require_buildStamp.SPARKLE_BUILD_STAMP,
-		semver: "1.30.53"
+		semver: "1.30.57"
 	}));
 	electron.ipcMain.handle("getCollectiveDeathBugReport", ipcErrorWrapper(async () => {
-		const { getLatestCollectiveDeathBugReportText } = await Promise.resolve().then(() => require("./collectiveDeathBugReport-DkQ2lr4-.js"));
+		const { getLatestCollectiveDeathBugReportText } = await Promise.resolve().then(() => require("./collectiveDeathBugReport-DxtNGd7y.js"));
 		return getLatestCollectiveDeathBugReportText();
 	}));
 	electron.ipcMain.handle("platform", () => process.platform);
@@ -11669,7 +11710,7 @@ async function runMacOs26HeadlessBootstrap() {
 	}
 	let apiReady = false;
 	try {
-		const { runCoreReadinessPipeline } = await Promise.resolve().then(() => require("./coreReadinessGate-LBwOZpkQ.js"));
+		const { runCoreReadinessPipeline } = await Promise.resolve().then(() => require("./coreReadinessGate-DbyFZ-qQ.js"));
 		const { startPromise } = await runCoreReadinessPipeline("macos26-headless-bootstrap");
 		await Promise.race([startPromise, delay$1(CORE_INIT_RACE_MS$1)]);
 		apiReady = true;
@@ -11711,7 +11752,7 @@ async function runGuardedDueProfileUpdatesSecondInstance() {
 	const guard = await evaluateProfileUpdateDueGuard();
 	if (guard.blocked) {
 		await require_log.appendAppLog(formatProfileUpdateDeferLog("second-instance", guard));
-		const { markDeferredProfileUpdateDue } = await Promise.resolve().then(() => require("./deferredProfileUpdateDue-kI2sADaY.js"));
+		const { markDeferredProfileUpdateDue } = await Promise.resolve().then(() => require("./deferredProfileUpdateDue-Btq2omfA.js"));
 		await markDeferredProfileUpdateDue("second-instance");
 		return null;
 	}
@@ -11728,7 +11769,7 @@ async function runProfileUpdateDueCli() {
 		updateCachedMihomoActiveConnectionCount(activeCount);
 		if (isMihomoDataPlaneBusy(activeCount)) {
 			await require_log.appendAppLog(`[ProfileUpdaterCli]: deferred data_plane_busy active_connections=${activeCount}\n`);
-			const { markDeferredProfileUpdateDue } = await Promise.resolve().then(() => require("./deferredProfileUpdateDue-kI2sADaY.js"));
+			const { markDeferredProfileUpdateDue } = await Promise.resolve().then(() => require("./deferredProfileUpdateDue-Btq2omfA.js"));
 			await markDeferredProfileUpdateDue("profile-update-cli");
 			return 0;
 		}
@@ -11736,13 +11777,13 @@ async function runProfileUpdateDueCli() {
 	const guard = await evaluateProfileUpdateBootstrapGuard();
 	if (guard.blocked) {
 		await require_log.appendAppLog(formatProfileUpdateDeferLog("deferred", guard));
-		const { markDeferredProfileUpdateDue } = await Promise.resolve().then(() => require("./deferredProfileUpdateDue-kI2sADaY.js"));
+		const { markDeferredProfileUpdateDue } = await Promise.resolve().then(() => require("./deferredProfileUpdateDue-Btq2omfA.js"));
 		await markDeferredProfileUpdateDue("profile-update-cli");
 		return 0;
 	}
 	let updatedCount = 0;
 	try {
-		const { runCoreReadinessPipeline } = await Promise.resolve().then(() => require("./coreReadinessGate-LBwOZpkQ.js"));
+		const { runCoreReadinessPipeline } = await Promise.resolve().then(() => require("./coreReadinessGate-DbyFZ-qQ.js"));
 		const { startPromise } = await runCoreReadinessPipeline("profile-update-cli");
 		await Promise.race([startPromise, delay(CORE_INIT_RACE_MS)]);
 		updatedCount = await runDueProfileUpdates("cli");
@@ -12171,7 +12212,7 @@ var init_main = require_chunk.__esmMin((() => {
 			}
 			if (commandline.includes("--sparkle-emergency-recovery-smoke")) {
 				try {
-					const { runEmergencyRecoverySmokeCli } = await Promise.resolve().then(() => require("./emergencyRecoverySmokeCli-DnnpLU5l.js")).then((n) => (n.init_emergencyRecoverySmokeCli(), n.emergencyRecoverySmokeCli_exports));
+					const { runEmergencyRecoverySmokeCli } = await Promise.resolve().then(() => require("./emergencyRecoverySmokeCli-BSxbURv_.js")).then((n) => (n.init_emergencyRecoverySmokeCli(), n.emergencyRecoverySmokeCli_exports));
 					await runEmergencyRecoverySmokeCli();
 					await require_log.appendAppLog("[EmergencyRecoverySmoke]: second-instance completed\n");
 				} catch (error) {
@@ -12246,7 +12287,7 @@ var init_main = require_chunk.__esmMin((() => {
 			}
 			if (process.argv.includes("--sparkle-emergency-recovery-smoke")) {
 				try {
-					const { runEmergencyRecoverySmokeCli } = await Promise.resolve().then(() => require("./emergencyRecoverySmokeCli-DnnpLU5l.js")).then((n) => (n.init_emergencyRecoverySmokeCli(), n.emergencyRecoverySmokeCli_exports));
+					const { runEmergencyRecoverySmokeCli } = await Promise.resolve().then(() => require("./emergencyRecoverySmokeCli-BSxbURv_.js")).then((n) => (n.init_emergencyRecoverySmokeCli(), n.emergencyRecoverySmokeCli_exports));
 					await runEmergencyRecoverySmokeCli();
 				} catch (error) {
 					await require_log.appendAppLog(`[EmergencyRecoverySmoke]: exit error: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -12266,7 +12307,7 @@ var init_main = require_chunk.__esmMin((() => {
 			const coreStartPromise = (async () => {
 				try {
 					if (_electron_toolkit_utils.is.dev) await initialWindowDisplayPromise;
-					const { runCoreReadinessPipeline } = await Promise.resolve().then(() => require("./coreReadinessGate-LBwOZpkQ.js"));
+					const { runCoreReadinessPipeline } = await Promise.resolve().then(() => require("./coreReadinessGate-DbyFZ-qQ.js"));
 					const { startPromise } = await runCoreReadinessPipeline("gui");
 					require_postCoreBootstrap.runPostCoreBootstrap(startPromise).catch(async (error) => {
 						await require_log.appendAppLog(`[PostCoreBootstrap]: failed: ${error instanceof Error ? error.message : String(error)}\n`);

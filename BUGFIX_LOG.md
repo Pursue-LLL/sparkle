@@ -1,6 +1,7 @@
 # Sparkle Bugfix Log
 
-> **2026-09-03 16:20 最新**：**BUG-2026-09-03-007/008 CODE-DONE @1.30.56** · core log tail 集群检测 + 强制 close UDP parent + circuit breaker bypass · 16:10 断连时 circuit open 阻断全部恢复
+> **2026-09-03 16:30 最新**：**BUG-2026-09-03-009 INSTALLED @1.30.57** · dial 集群 `no_udp_parent_found` 死胡同 → sidecar/emergency 回退 ladder · 1.30.56 装包缺此路径
+> **2026-09-03 16:20 上一版**：**BUG-2026-09-03-007/008 CODE-DONE @1.30.56** · core log tail 集群检测 + 强制 close UDP parent + circuit breaker bypass · 16:10 断连时 circuit open 阻断全部恢复
 > **2026-09-03 15:10 上一版**：**BUG-2026-09-03-004 CODE-DONE @git（未装包）** · 误报 UDP-absent → failover Reality 锁死 + 14:41 集体 dial timeout · failover 治理 + vitality failback
 > **2026-09-03 13:20 上一版**：**BUG-2026-09-03-003 INSTALLED @1.30.53 c0cba9f** · profile.yaml 0B 空白订阅恢复 + 侧边栏刷新 dnd + 磁盘缓存 reload + 更新时间显示
 > **2026-09-03 13:18 上一版**：**BUG-2026-09-03-001/002 INSTALLED @1.30.53 c0cba9f** · Sep2 tier0 SEL + 集体死亡 toast · profile recovery @856749f
@@ -43,6 +44,21 @@
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
 
 ---
+
+### BUG-2026-09-03-009 · 1.30.56 dial 集群 recovery 死胡同（no_udp_parent → skipped）· **INSTALLED @1.30.57**
+
+| 字段 | 内容 |
+| --- | --- |
+| **状态** | **R1 INSTALLED** · 2026-09-03 **16:38 CST** · CDHash `e31065431396634e90caa1dfceb8dcf9ec18439a` · stamp `2026.0903.1626` |
+| **发生版本** | **1.30.56 INSTALLED** · 2026-09-03 **16:19–16:21 CST** 三端 Cursor Network Diagnostic 10/10 FAIL |
+| **严重度** | P0 — Cursor-2/3 专用 HY2 全路径 `context deadline exceeded` · TLS 握手失败 · circuit open 阻断 sidecar |
+| **症状** | Network Diagnostic：HTTP/2/SSL/API/Ping/Chat/Agent/Marketplace/Auth/Downloads/CDN 全 FAIL · `Client network socket disconnected before secure TLS connection was established` · DNS/Cursor Tab/Agent Endpoint DNS 成功 |
+| **物理证据** | app **08:19–08:21** `CursorDialFailureCluster outcome=skipped reason=no_udp_parent_found` ×3 · core **33+** 条 `dial 🎯 Cursor 专用 ... error: context deadline exceeded` · **08:11+** circuit `recovery_circuit_breaker_open last=byte_death_udp_evidence_insufficient` · 直连 api2 **200** · 经 :7890 **FAIL**（core 已停） |
+| **根因链** | **L0** JP-VPS-HY2 隧道完全死亡（无 UDP parent 行）· **L1** 1.30.56 集群 recovery 仅 close UDP parent，找不到即 `skipped` · **L2** circuit breaker open 阻断常规 sidecar · **L3** 无 emergency 回退 → 集体断持续至 core stop |
+| **修复** | `cursorDedicatedDialFailureClusterRuntime.ts`：`no_udp_parent_found` → **fallback ladder** ① `runHy2ParentSidecarIfDue(dialFailureClusterEscalation=true)` ② `requestEmergencyCoreRecovery(confirmed_udp_parent_absent)` · 新增 `DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART` |
+| **为何 007/008 不够** | 008 假设存在 stale UDP parent 可 close；HY2 全死时 mihomo 无 UDP 行 → close 路径 noop · git 有 fallback 但未打入 1.30.56 asar |
+| **验收** | [x] 打开 Sparkle → proxy api2 **200** [ ] 装 1.30.57 后复现 dial 集群须见 `fallback_ladder` 或 `emergency_core_recovery` 非 `skipped` |
+| **代码位置** | `cursorDedicatedDialFailureClusterRuntime.ts` · `cursorDedicatedDialFailureClusterCore.ts` · `hy2ParentSidecar.ts` `dialFailureClusterEscalation` |
 
 ### BUG-2026-09-03-001 · Sep2 赛中 84s 断网 + Aug31 空白订阅 · **INSTALLED @1.30.53 c0cba9f**
 
