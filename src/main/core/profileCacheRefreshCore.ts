@@ -3,6 +3,8 @@ import { stat } from 'fs/promises'
 import { profilePath } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 
+export { formatMissingSubscriptionUrlError } from './profileCacheRefreshPureCore'
+
 export async function readProfileDiskUpdatedMs(profileId: string): Promise<number | undefined> {
   const path = profilePath(profileId)
   if (!existsSync(path)) {
@@ -23,10 +25,4 @@ export async function reloadCurrentProfileFromDiskCache(profileId: string): Prom
   await appendAppLog(
     `[ProfileCacheRefresh]: reloaded profile=${profileId} source=disk_cache providers=${hasVpsProvider ? 2 : 1}\n`
   )
-}
-
-export function formatMissingSubscriptionUrlError(locale: 'zh' | 'en' = 'zh'): string {
-  return locale === 'zh'
-    ? '订阅 URL 为空，无法从远端更新。请在订阅设置中填入链接。'
-    : 'Subscription URL is empty. Add the subscription link in profile settings.'
 }
