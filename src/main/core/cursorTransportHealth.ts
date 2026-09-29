@@ -1,8 +1,5 @@
 import axios from 'axios'
 import { appendAppLog } from '../utils/log'
-import { showNotification } from '../utils/notification'
-import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
-import { safeGetLastCoreReadyAtMs } from './coreReadyTimestamp'
 import { listCursorConnectionRows } from './cursorConnectionHygiene'
 import { getMarathonQuiesceSnapshot } from './marathonQuiesce'
 import { probeApi2ViaMihomoNode } from './cursorApi2MihomoProbe'
@@ -10,11 +7,7 @@ import { decideTransportRecoveryExecution } from './cursorTransportHealthCore'
 import { readConnectPartitionSignalAsync } from './connectPartitionReader'
 import { getRecentCursorProbe } from './networkStabilityMonitor'
 import { syncMarathonDialToleranceIfNeeded } from './marathonDialTolerance'
-import { mihomoCloseConnection,
-  mihomoCloseConnections,
-  mihomoFlushFakeIpCache,
-  mihomoProxyDelay } from './mihomoApi'
-import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
+import { mihomoProxyDelay } from './mihomoApi'
 import {
   currentPlatformRelease,
   shouldDisableHungScanOnMacOs26,
@@ -240,32 +233,12 @@ export async function runTransportProbePair(options: {
 /** BUG-2026-08-31 provenance anchor: the L1 close path must keep its recovery-circuit guard visible. */
 export async function executeRecoveryL1(rows: Awaited<ReturnType<typeof listCursorConnectionRows>>): Promise<number> {
   const nowMs = Date.now()
-  const circuitGate = await (
-    await import('./recoveryCircuitBreaker')
-  ).assertRecoveryCircuitAllowsMutation({ nowMs })
-  if (!circuitGate.allowed) {
-    await appendAppLog(
-      `[CursorTransportHealth]: L1 blocked — ${circuitGate.reason}\n`,
-    )
-    return 0
-  }
   const ids = selectCriticalHostConnectionsToClose(rows)
-  let closed = 0
-  for (const id of ids) {
-    try {
-      await mihomoCloseConnection(id)
-      closed += 1
-    } catch {
-      // ignore
-    }
-  }
-  cooldowns.lastL1AtMs = Date.now()
-  if (closed > 0) {
-    await appendAppLog(
-      `[CursorTransportHealth]: L1 closed ${closed} critical-host Cursor connection(s) (transport_partition_stale)\n`
-    )
-  }
-  return closed
+  cooldowns.lastL1AtMs = nowMs
+  await appendAppLog(
+    `[CursorTransportHealth]: L1 pure_pipe_protection — skipped closing ${ids.length} critical-host connection(s)\n`,
+  )
+  return 0
 }
 
 export { probeApi2ViaMihomoNode } from './cursorApi2MihomoProbe'
@@ -347,47 +320,14 @@ export function resolveTransportProbeAttribution(
 
 async function executeRecoveryL2(): Promise<void> {
   const nowMs = Date.now()
-  const circuitGate = await (
-    await import('./recoveryCircuitBreaker')
-  ).assertRecoveryCircuitAllowsMutation({ nowMs })
-  if (!circuitGate.allowed) {
-    await appendAppLog(
-      `[CursorTransportHealth]: L2 blocked — ${circuitGate.reason}\n`,
-    )
-    return
-  }
-  await mihomoCloseConnections()
-  try {
-    await mihomoFlushFakeIpCache()
-    await appendAppLog(
-      '[CursorTransportHealth]: L2 flushed fake-ip cache (store-fake-ip mapping)\n',
-    )
-  } catch (error) {
-    await appendAppLog(
-      `[CursorTransportHealth]: L2 fake-ip flush failed: ${formatUnknownErrorForLog(error)}\n`,
-    )
-  }
-  cooldowns.lastL2AtMs = Date.now()
-  await appendAppLog('[CursorTransportHealth]: L2 flushed all mihomo outbound connections\n')
+  cooldowns.lastL2AtMs = nowMs
+  await appendAppLog('[CursorTransportHealth]: L2 pure_pipe_protection — skipped closing all connections\n')
 }
 
 async function executeRecoveryL3(): Promise<void> {
-  if (isCoreWithinStartupGrace(safeGetLastCoreReadyAtMs())) {
-    await appendAppLog('[CursorTransportHealth]: defer L3 restartCore — core startup grace\n')
-    return
-  }
-  cooldowns.lastL3AtMs = Date.now()
-  await appendAppLog('[CursorTransportHealth]: L3 restarting mihomo core after recovery ladder exhaustion\n')
-  await showNotification({
-    id: 'sparkle-transport-health-l3',
-    title: 'Sparkle: 传输层恢复',
-    body: '挂死连接清理后 api2 仍不可用，正在重启 core…',
-    variant: 'warning'
-  })
-  const { restartCore } = await import('./manager')
-  await restartCore()
-  priorRecoveryFailed = false
-  tunInterfaceLostConfirmed = false
+  const nowMs = Date.now()
+  cooldowns.lastL3AtMs = nowMs
+  await appendAppLog('[CursorTransportHealth]: L3 pure_pipe_protection — skipped restartCore after recovery ladder\n')
 }
 
 export async function executeTransportRecovery(action: RecoveryAction): Promise<void> {

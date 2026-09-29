@@ -3,8 +3,7 @@
 // [POS] BUG-2026-09-03-005/008 — tail-detected dial clusters → force HY2 UDP parent refresh.
 
 import { appendAppLog } from '../utils/log'
-import { mihomoCloseConnection, mihomoGetConnections } from './mihomoApi'
-import { measuredLongflowEvidence } from './proxyStackDeadlockCore'
+import { mihomoGetConnections } from './mihomoApi'
 import {
   classifyCursorDedicatedDialFailureLine,
   CURSOR_DIAL_FAILURE_CLUSTER_RECOVERY_COOLDOWN_MS,
@@ -117,76 +116,17 @@ async function dispatchDialFailureClusterRecovery(
         return
       }
 
-      const { requestEmergencyCoreRecovery } = await import('./emergencyCoreRecovery')
-      const { DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART } = await import(
-        './cursorDedicatedDialFailureClusterCore'
-      )
-      const emergency = await requestEmergencyCoreRecovery({
-        reason: 'confirmed_udp_parent_absent',
-        leafId: snapshot.activeHy2Leaf?.trim() ?? activeLeaf,
-        evidenceReason: DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
-        cursorConnectionCount: snapshot.cursorConnectionCount,
-        longflow: measuredLongflowEvidence({
-          maxByteStallMs: snapshot.maxByteStallMs,
-          frozenQuicCursorCount: snapshot.frozenQuicCursorCount,
-          cursorConnectionCount: snapshot.cursorConnectionCount,
-        }),
-        nowMs,
-      })
       await appendAppLog(
-        `[CursorDialFailureCluster]: outcome=${emergency.executed ? 'executed' : 'failed'} ` +
-          `action=emergency_core_recovery reason=${emergency.reason} cluster_size=${clusterSize}\n`,
+        `[CursorDialFailureCluster]: pure_pipe_protection — skipped emergency_core_recovery cluster_size=${clusterSize}\n`,
       )
-      if (emergency.executed) {
-        try {
-          const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
-          await notifyCollectiveDeathAlert({
-            trigger: 'byte_death_exhausted',
-            title: '网络集体恢复中',
-            body: `Cursor 专用路径 ${clusterSize} 次 dial 失败，已触发 emergency core 重建。`,
-            cursorConnectionCount: snapshot.cursorConnectionCount,
-            leafId: activeLeaf,
-            evidenceReason: DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
-            tsMs: nowMs,
-          })
-        } catch {
-          // best-effort toast
-        }
-      }
       return
     }
 
-    await mihomoCloseConnection(udpResolution.connectionId)
-    const { resetTransportLongevityHy2ParentChainBirth } = await import(
-      './transportLongevityTruth'
-    )
-    await resetTransportLongevityHy2ParentChainBirth(
-      snapshot.activeHy2Leaf?.trim() ?? activeLeaf,
-      nowMs,
-    )
-
-    const { notifyRecoveryCircuitSuccess } = await import('./recoveryCircuitBreaker')
-    await notifyRecoveryCircuitSuccess()
-
+    // Pure-Pipe: do not close UDP parent connection
     await appendAppLog(
-      `[CursorDialFailureCluster]: outcome=executed action=close_udp_parent ` +
-        `udp_connection_id=${udpResolution.connectionId} source=${udpResolution.source} ` +
-        `cluster_size=${clusterSize} reason=${forcePlan.reason}\n`,
+      `[CursorDialFailureCluster]: pure_pipe_protection — skipped close_udp_parent cluster_size=${clusterSize}\n`,
     )
-    try {
-      const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
-      await notifyCollectiveDeathAlert({
-        trigger: 'byte_death_exhausted',
-        title: '网络集体恢复中',
-        body: `Cursor 专用路径 ${clusterSize} 次 dial 失败，已强制重建 HY2 会话。`,
-        cursorConnectionCount: snapshot.cursorConnectionCount,
-        leafId: activeLeaf,
-        evidenceReason: 'cursor_dedicated_dial_failure_cluster',
-        tsMs: nowMs,
-      })
-    } catch {
-      // best-effort toast
-    }
+    return
   } finally {
     recoveryInFlight = false
   }

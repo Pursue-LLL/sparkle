@@ -18,12 +18,12 @@ import {
 /** License Worker + Cloudflare Workers — fake-ip breaks TLS to *.workers.dev. */
 export { TIER0_FAKE_IP_FILTER as CURSOR_FAKE_IP_FILTER } from './fakeIpRoutingIntegrity'
 
-/** Cursor domains resolve via stable DoH — avoids ENOTFOUND during TUN DNS jitter. */
+/** Cursor domains resolve via standard proxy nameserver or fast DNS instead of hardcoded domestic DoH. */
 const CURSOR_NAMESERVER_POLICY: Readonly<Record<string, readonly string[]>> = {
-  '+.cursor.sh': ['https://dns.alidns.com/dns-query', 'tls://223.5.5.5'],
-  '+.cursor.com': ['https://dns.alidns.com/dns-query', 'tls://223.5.5.5'],
-  '+.cursorapi.com': ['https://dns.alidns.com/dns-query', 'tls://223.5.5.5'],
-  '+.cursor-cdn.com': ['https://dns.alidns.com/dns-query']
+  '+.cursor.sh': ['1.1.1.1', '8.8.8.8'],
+  '+.cursor.com': ['1.1.1.1', '8.8.8.8'],
+  '+.cursorapi.com': ['1.1.1.1', '8.8.8.8'],
+  '+.cursor-cdn.com': ['1.1.1.1', '8.8.8.8']
 }
 
 /** Marathon Agent SSE: TCP keepalive must exceed typical proxy idle (15–30min). */
