@@ -12,8 +12,8 @@ export const CURSOR_TUN_UDP_TIMEOUT_SEC = 3600
 /** macOS utun + QUIC: kernel GSO often causes silent UDP loss on HY2 paths. */
 export const CURSOR_TUN_GSO_DARWIN = false
 
-/** Slightly below 1500 to leave headroom for HY2/TUN encapsulation on Darwin. */
-export const CURSOR_TUN_MTU_DARWIN = 1400
+/** Pure-pipe MTU 1360 eliminates IP fragmentation for QUIC/TLS headers on Darwin. */
+export const CURSOR_TUN_MTU_DARWIN = 1360
 
 export function isHysteria2Proxy(proxy: unknown): proxy is Record<string, unknown> {
   if (typeof proxy !== 'object' || proxy === null) return false

@@ -124,7 +124,7 @@ export const defaultControledMihomoConfig: Partial<MihomoConfig> = {
     'auto-detect-interface': true,
     'dns-hijack': ['any:53'],
     'route-exclude-address': [],
-    mtu: 1500
+    mtu: 1360
   },
   dns: {
     enable: true,

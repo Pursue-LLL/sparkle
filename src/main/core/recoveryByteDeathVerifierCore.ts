@@ -18,6 +18,7 @@ export interface ByteDeathRecoveryAttemptRecord {
   baselineMaxByteStallMs: number
   baselineCarrier?: RecoveryHonestyCarrierSnapshot
   connectionId?: string
+  anchorProbeOk?: boolean
 }
 
 export interface ByteDeathRecoveryHonestyEvaluation {

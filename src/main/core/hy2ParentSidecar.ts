@@ -616,6 +616,7 @@ export async function runHy2ParentSidecarIfDue(input: {
               ? { upload: udpConn.upload ?? 0, download: udpConn.download ?? 0 }
               : undefined,
             connectionId: udpResolution.connectionId,
+            anchorProbeOk: api2AnchorOk,
           })
         } else {
           await notifyRecoveryCircuitSuccess()
