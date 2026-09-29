@@ -22,12 +22,12 @@ describe('canonicalVpsNodeSnapshotCore', () => {
               history: [{ time: '2026-07-17T08:05:00Z', delay: 100 }]
             },
             {
-              name: 'JP-VPS-Reality',
+              name: 'KR-VPS-Reality',
               alive: true,
               history: [{ time: '2026-07-17T08:05:01Z', delay: 834 }]
             },
             {
-              name: 'JP-VPS-TLS',
+              name: 'KR-VPS-TLS',
               alive: true,
               history: [{ time: '2026-07-17T08:05:02Z', delay: 255 }]
             }
@@ -38,7 +38,7 @@ describe('canonicalVpsNodeSnapshotCore', () => {
     assert.equal(snapshots.length, 2)
     assert.deepEqual(
       snapshots.map((item) => item.name),
-      ['JP-VPS-Reality', 'JP-VPS-TLS']
+      ['KR-VPS-Reality', 'KR-VPS-TLS']
     )
     assert.equal(snapshots[1]?.delay, 255)
   })
@@ -53,7 +53,7 @@ describe('canonicalVpsNodeSnapshotCore', () => {
         demo: {
           proxies: [
             {
-              name: 'JP-VPS-HY2',
+              name: 'KR-VPS-HY2',
               alive: true,
               history: historyEntries
             },

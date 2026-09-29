@@ -15,7 +15,7 @@ describe('hy2ParentSidecarCore R-35a', () => {
     outboundHy2SessionAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 1,
     maxByteStallMs: 0,
     frozenQuicCursorCount: 0,
-    activeHy2Leaf: 'JP-VPS-HY2',
+    activeHy2Leaf: 'KR-VPS-HY2',
   }
 
   it('triggers sidecar dial when marathon active and session aged', () => {

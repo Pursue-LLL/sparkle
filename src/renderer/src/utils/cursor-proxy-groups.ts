@@ -14,8 +14,8 @@ export const AUTO_SELECT_DELAY_TEST_URL = 'https://chatgpt.com' as const
 export const HONG_KONG_DELAY_TEST_URL = 'https://grok.com' as const
 export const CURSOR_AUTO_SELECT_GROUP_NAME = 'Sparkle-自动-Cursor' as const
 
-const REGION_AUTO_SELECT_PREFIX = 'Sparkle-自动-' as const
-const HONG_KONG_FILTER_GROUP_NAME = '🇭🇰 香港节点' as const
+const REGION_AUTO_SELECT_PREFIX = 'Sparkle-' as const
+const HONG_KONG_FILTER_GROUP_NAME = 'Sparkle-香港' as const
 
 function isSparkleCursorAutoSelectGroup(groupName: string): boolean {
   return groupName === CURSOR_AUTO_SELECT_GROUP_NAME
@@ -23,12 +23,14 @@ function isSparkleCursorAutoSelectGroup(groupName: string): boolean {
 
 function isSparkleRegionalAutoSelectGroup(groupName: string): boolean {
   return (
-    groupName.startsWith(REGION_AUTO_SELECT_PREFIX) && !isSparkleCursorAutoSelectGroup(groupName)
+    groupName.startsWith(REGION_AUTO_SELECT_PREFIX) &&
+    !isSparkleCursorAutoSelectGroup(groupName) &&
+    !isHongKongFilterGroupName(groupName)
   )
 }
 
 function isHongKongFilterGroupName(groupName: string): boolean {
-  return groupName === HONG_KONG_FILTER_GROUP_NAME
+  return groupName === HONG_KONG_FILTER_GROUP_NAME || groupName === '🇭🇰 香港节点'
 }
 
 export function isCursorDedicatedGroupName(groupName: string): boolean {

@@ -11,7 +11,7 @@ import {
   proxyDelayDisplayColor,
   resolveVpsLeafProxyDelayDisplay,
 } from '@renderer/utils/proxy-delay-sample-age'
-import { getLatencyTruthSummaryForNode } from '@renderer/utils/ipc'
+import { getLatencyTruthSummaryForNode, mihomoUnfixedProxy } from '@renderer/utils/ipc'
 import { isVpsCursorLeafNode } from '@renderer/utils/delay-test'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
 

@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import {
   assertPostQuitInstallAllowed,
+  type PreInstallCursorConnSnapshot,
   buildPreInstallCursorConnSnapshot,
   getPreInstallCursorConnSnapshotPath,
   parsePreInstallCursorConnSnapshot,
@@ -42,7 +43,7 @@ async function writeSnapshot(caller: string, cursorConnArg: string): Promise<voi
 
 async function assertSnapshot(caller: string): Promise<void> {
   const path = getPreInstallCursorConnSnapshotPath()
-  let snapshot = null
+  let snapshot: PreInstallCursorConnSnapshot | null = null
   try {
     snapshot = parsePreInstallCursorConnSnapshot(JSON.parse(await readFile(path, 'utf8')))
   } catch {

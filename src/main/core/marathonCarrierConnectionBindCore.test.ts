@@ -25,7 +25,7 @@ function conn(
     download: partial.download,
     uploadSpeed: 0,
     downloadSpeed: 0,
-    chains: ['JP-VPS-HY2'],
+    chains: ['KR-VPS-HY2'],
     metadata: {
       network: 'tcp',
       host: partial.host,
@@ -49,7 +49,7 @@ function frozenTracked(input: {
       download: input.download,
       host: input.host,
     }),
-    'JP-VPS-HY2',
+    'KR-VPS-HY2',
     input.lastBytesChangeAtMs,
   )
 }
@@ -125,7 +125,7 @@ describe('marathonCarrierConnectionBindCore R-38', () => {
         kind: 'single',
         connectionId: OBS_CONN,
         host: 'api2.cursor.sh',
-        leaf: 'JP-VPS-HY2',
+        leaf: 'KR-VPS-HY2',
         network: 'tcp',
         stallMs,
         upload: 2426,
@@ -159,7 +159,7 @@ describe('marathonCarrierConnectionBindCore R-38', () => {
       [
         CARRIER_CONN,
         {
-          ...createMihomoQuicStallTrackedConnection(connections[0]!, 'JP-VPS-HY2', nowMs),
+          ...createMihomoQuicStallTrackedConnection(connections[0]!, 'KR-VPS-HY2', nowMs),
           firstSeenAtMs: nowMs - MIHOMO_QUIC_STALL_MIN_CONN_AGE_MS - 10_000,
           lastBytesChangeAtMs: nowMs - MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS - 1_000,
         },
@@ -204,7 +204,7 @@ describe('marathonCarrierConnectionBindCore R-38', () => {
       [
         OBS_CONN,
         {
-          ...createMihomoQuicStallTrackedConnection(connections[0]!, 'JP-VPS-HY2', nowMs),
+          ...createMihomoQuicStallTrackedConnection(connections[0]!, 'KR-VPS-HY2', nowMs),
           firstSeenAtMs: nowMs - 120_000,
           lastBytesChangeAtMs: nowMs - 60_000,
         },
@@ -215,7 +215,7 @@ describe('marathonCarrierConnectionBindCore R-38', () => {
         kind: 'single',
         connectionId: OBS_CONN,
         host: 'api2.cursor.sh',
-        leaf: 'JP-VPS-HY2',
+        leaf: 'KR-VPS-HY2',
         stallMs: 60_000,
         frozenQuicCursorCount: 1,
         totalQuicCursorCount: 5,
@@ -262,7 +262,7 @@ describe('marathonCarrierConnectionBindCore R-38', () => {
         kind: 'single',
         connectionId: OBS_CONN,
         host: 'api2.cursor.sh',
-        leaf: 'JP-VPS-HY2',
+        leaf: 'KR-VPS-HY2',
         network: 'tcp',
         stallMs,
         upload: 52_722,

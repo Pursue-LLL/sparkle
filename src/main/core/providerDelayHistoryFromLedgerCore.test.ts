@@ -9,7 +9,7 @@ import type { Api2ProbeLedgerRow } from './api2ProbeLedgerRowCore'
 function row(partial: Partial<Api2ProbeLedgerRow> & Pick<Api2ProbeLedgerRow, 'ts' | 'method'>): Api2ProbeLedgerRow {
   return {
     scope: 'active',
-    node: 'JP-VPS-HY2',
+    node: 'KR-VPS-HY2',
     latency_ms: 300,
     ok: true,
     authoritative: true,
@@ -23,9 +23,9 @@ describe('providerDelayHistoryFromLedgerCore', () => {
       row({ ts: '2026-07-24T06:00:00.000Z', method: 'transport_pair', latency_ms: 296 }),
       row({ ts: '2026-07-24T06:01:00.000Z', method: 'session_nudge', latency_ms: 312 }),
       row({ ts: '2026-07-24T06:02:00.000Z', method: 'deferred', latency_ms: -1, ok: false }),
-      row({ ts: '2026-07-24T06:03:00.000Z', method: 'transport_pair', node: 'KR-VPS-HY2', latency_ms: 200 }),
+      row({ ts: '2026-07-24T06:03:00.000Z', method: 'transport_pair', node: 'SG-01', latency_ms: 200 }),
     ]
-    const history = ledgerRowsToProviderDelayHistory(rows, 'JP-VPS-HY2')
+    const history = ledgerRowsToProviderDelayHistory(rows, 'KR-VPS-HY2')
     assert.equal(history.length, 1)
     assert.equal(history[0]?.delay, 296)
   })
@@ -38,7 +38,7 @@ describe('providerDelayHistoryFromLedgerCore', () => {
         latency_ms: 200 + index,
       }),
     )
-    const history = ledgerRowsToProviderDelayHistory(rows, 'JP-VPS-HY2', 3)
+    const history = ledgerRowsToProviderDelayHistory(rows, 'KR-VPS-HY2', 3)
     assert.equal(history.length, 3)
     assert.deepEqual(
       history.map((entry) => entry.delay),
@@ -54,6 +54,6 @@ describe('providerDelayHistoryFromLedgerCore', () => {
         latency_ms: 250 + index,
       }),
     )
-    assert.equal(ledgerRowsToProviderDelayHistory(rows, 'JP-VPS-HY2').length, LEDGER_PROVIDER_DELAY_HISTORY_LIMIT)
+    assert.equal(ledgerRowsToProviderDelayHistory(rows, 'KR-VPS-HY2').length, LEDGER_PROVIDER_DELAY_HISTORY_LIMIT)
   })
 })

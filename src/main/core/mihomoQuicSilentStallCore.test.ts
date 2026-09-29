@@ -20,7 +20,7 @@ import {
 function quicConn(
   partial: Partial<ControllerConnectionDetail> & { leaf?: string },
 ): ControllerConnectionDetail {
-  const leaf = partial.leaf ?? 'JP-VPS-HY2'
+  const leaf = partial.leaf ?? 'KR-VPS-HY2'
   return {
     id: partial.id ?? 'conn-1',
     metadata: {
@@ -42,18 +42,18 @@ function quicConn(
 
 describe('mihomoQuicSilentStallCore R-17', () => {
   it('resolveMarathonQuIcLeafFromChains matches HY2 and TUIC', () => {
-    assert.equal(resolveMarathonQuIcLeafFromChains(['Cursor专用', 'JP-VPS-HY2']), 'JP-VPS-HY2')
-    assert.equal(resolveMarathonQuIcLeafFromChains(['Cursor专用', 'JP-VPS-TUIC']), 'JP-VPS-TUIC')
-    assert.equal(resolveMarathonQuIcLeafFromChains(['Cursor专用', 'JP-VPS-TLS']), undefined)
+    assert.equal(resolveMarathonQuIcLeafFromChains(['Cursor专用', 'KR-VPS-HY2']), 'KR-VPS-HY2')
+    assert.equal(resolveMarathonQuIcLeafFromChains(['Cursor专用', 'KR-VPS-TUIC']), 'KR-VPS-TUIC')
+    assert.equal(resolveMarathonQuIcLeafFromChains(['Cursor专用', 'KR-VPS-TLS']), undefined)
   })
 
   it('detects HY2 critical-host transport connections', () => {
-    assert.equal(isMarathonQuIcCursorTransportConnection(quicConn({ leaf: 'JP-VPS-HY2' })), true)
+    assert.equal(isMarathonQuIcCursorTransportConnection(quicConn({ leaf: 'KR-VPS-HY2' })), true)
     assert.equal(
       isMarathonQuIcCursorTransportConnection(
         quicConn({
-          leaf: 'JP-VPS-Reality',
-          chains: ['Cursor专用', 'JP-VPS-Reality'],
+          leaf: 'KR-VPS-Reality',
+          chains: ['Cursor专用', 'KR-VPS-Reality'],
           metadata: { network: 'tcp', host: 'api2.cursor.sh' } as ControllerConnectionDetail['metadata'],
         }),
       ),
@@ -62,12 +62,12 @@ describe('mihomoQuicSilentStallCore R-17', () => {
   })
 
   it('detects TUIC critical-host transport connections', () => {
-    assert.equal(isMarathonQuIcCursorTransportConnection(quicConn({ leaf: 'JP-VPS-TUIC' })), true)
+    assert.equal(isMarathonQuIcCursorTransportConnection(quicConn({ leaf: 'KR-VPS-TUIC' })), true)
     assert.equal(
       isMarathonQuIcCursorTransportConnection(
         quicConn({
-          leaf: 'JP-VPS-TUIC',
-          chains: ['Cursor专用', 'JP-VPS-TUIC'],
+          leaf: 'KR-VPS-TUIC',
+          chains: ['Cursor专用', 'KR-VPS-TUIC'],
           metadata: { network: 'udp', host: 'api2direct.cursor.sh' } as ControllerConnectionDetail['metadata'],
         }),
       ),
@@ -83,10 +83,10 @@ describe('mihomoQuicSilentStallCore R-17', () => {
       lastBytesChangeAtMs: nowMs - MIHOMO_QUIC_STALL_BYTE_UNCHANGED_MS - 1,
       firstSeenAtMs: nowMs - MIHOMO_QUIC_STALL_MIN_CONN_AGE_MS - 1,
       host: 'api2direct.cursor.sh',
-      leaf: 'JP-VPS-HY2',
+      leaf: 'KR-VPS-HY2',
       network: 'tcp',
     }
-    assert.equal(isMarathonQuIcConnectionFrozen(quicConn({ leaf: 'JP-VPS-HY2' }), tracked, nowMs), true)
+    assert.equal(isMarathonQuIcConnectionFrozen(quicConn({ leaf: 'KR-VPS-HY2' }), tracked, nowMs), true)
   })
 
   it('flags frozen aged TUIC flow', () => {
@@ -97,11 +97,11 @@ describe('mihomoQuicSilentStallCore R-17', () => {
       lastBytesChangeAtMs: nowMs - 60_000,
       firstSeenAtMs: nowMs - 120_000,
       host: 'api2direct.cursor.sh',
-      leaf: 'JP-VPS-TUIC',
+      leaf: 'KR-VPS-TUIC',
       network: 'tcp',
     }
     assert.equal(
-      isMarathonQuIcConnectionFrozen(quicConn({ leaf: 'JP-VPS-TUIC' }), tracked, nowMs),
+      isMarathonQuIcConnectionFrozen(quicConn({ leaf: 'KR-VPS-TUIC' }), tracked, nowMs),
       true,
     )
   })
@@ -118,7 +118,7 @@ describe('mihomoQuicSilentStallCore R-17', () => {
           lastBytesChangeAtMs: nowMs - 60_000,
           firstSeenAtMs: nowMs - 120_000,
           host: 'api2direct.cursor.sh',
-          leaf: 'JP-VPS-TUIC',
+          leaf: 'KR-VPS-TUIC',
           network: 'tcp',
         },
       ],
@@ -127,7 +127,7 @@ describe('mihomoQuicSilentStallCore R-17', () => {
       connections: [
         quicConn({
           id,
-          leaf: 'JP-VPS-TUIC',
+          leaf: 'KR-VPS-TUIC',
           metadata: {
             network: 'tcp',
             host: 'api2direct.cursor.sh',
@@ -140,7 +140,7 @@ describe('mihomoQuicSilentStallCore R-17', () => {
       cursorConnectionCount: 20,
     })
     assert.equal(observations.length, 1)
-    assert.equal(observations[0]?.leaf, 'JP-VPS-TUIC')
+    assert.equal(observations[0]?.leaf, 'KR-VPS-TUIC')
     assert.equal(observations[0]?.kind, 'single')
   })
 
@@ -150,7 +150,7 @@ describe('mihomoQuicSilentStallCore R-17', () => {
     const connections: ControllerConnectionDetail[] = []
     for (let index = 0; index < MIHOMO_QUIC_STALL_AGGREGATE_FROZEN_MIN; index += 1) {
       const id = `conn-${index}`
-      const leaf = index % 2 === 0 ? 'JP-VPS-HY2' : 'JP-VPS-TUIC'
+      const leaf = index % 2 === 0 ? 'KR-VPS-HY2' : 'KR-VPS-TUIC'
       connections.push(
         quicConn({
           id,
@@ -190,9 +190,10 @@ describe('mihomoQuicSilentStallCore R-17', () => {
   it('countMarathonFrozenQuicCursorConnections counts byte-frozen QUIC cursor transports', () => {
     const nowMs = 1_000_000
     const trackedById = new Map<string, MihomoQuicStallTrackedConnection>()
-    const connection = quicConn({ id: 'c1', leaf: 'JP-VPS-TUIC' })
+    const connection = quicConn({ id: 'c1', leaf: 'KR-VPS-TUIC' })
     trackedById.set(connection.id, {
       host: 'api2.cursor.sh',
+      leaf: 'KR-VPS-TUIC',
       network: 'udp',
       upload: 100,
       download: 200,
@@ -212,13 +213,13 @@ describe('mihomoQuicSilentStallCore R-17', () => {
   it('dedupe + log line include observe_only and frozen_quic_cursor', () => {
     const observation = {
       kind: 'aggregate' as const,
-      leaf: 'JP-VPS-TUIC',
+      leaf: 'KR-VPS-TUIC',
       stallMs: 50_000,
       frozenQuicCursorCount: 6,
       totalQuicCursorCount: 10,
       cursorConnectionCount: 90,
     }
-    assert.equal(mihomoQuicSilentStallDedupeKey(observation), 'aggregate:JP-VPS-TUIC')
+    assert.equal(mihomoQuicSilentStallDedupeKey(observation), 'aggregate:KR-VPS-TUIC')
     assert.equal(shouldSkipMihomoQuicSilentStallEmit(Date.now() - 1_000, Date.now(), observation), true)
     assert.match(formatMihomoQuicSilentStallLogLine(observation), /recovery=R-33/)
     assert.match(formatMihomoQuicSilentStallLogLine(observation), /frozen_quic_cursor=6/)

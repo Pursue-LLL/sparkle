@@ -14,14 +14,14 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const gate = evaluateMarathonProtocolColdStartGate({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      activeNode: 'JP-VPS-HY2',
+      activeNode: 'KR-VPS-HY2',
     })
     assert.equal(gate.required, false)
     assert.equal(gate.riskClass, 'none')
   })
 
   it('requires cold-start gate for TUIC and Reality', () => {
-    for (const node of ['JP-VPS-TUIC', 'KR-VPS-Reality'] as const) {
+    for (const node of ['KR-VPS-TUIC', 'KR-VPS-Reality'] as const) {
       const gate = evaluateMarathonProtocolColdStartGate({
         cursorConnectionCount: 0,
         marathonTruthActive: false,
@@ -35,11 +35,11 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const gate = evaluateMarathonProtocolColdStartGate({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      activeNode: 'JP-VPS-TLS',
+      activeNode: 'KR-VPS-TLS',
     })
     assert.equal(gate.required, true)
     assert.equal(gate.riskClass, 'suboptimal_leaf')
-    assert.equal(gate.recommendedNode, 'JP-VPS-HY2')
+    assert.equal(gate.recommendedNode, 'KR-VPS-HY2')
     assert.match(formatMarathonProtocolColdStartGateLogLine(gate), /gate_required/)
   })
 
@@ -47,7 +47,7 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const gate = evaluateMarathonProtocolColdStartGate({
       cursorConnectionCount: 12,
       marathonTruthActive: false,
-      activeNode: 'JP-VPS-HY2',
+      activeNode: 'KR-VPS-HY2',
     })
     assert.equal(gate.required, false)
   })
@@ -56,7 +56,7 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const gate = evaluateMarathonProtocolColdStartGate({
       cursorConnectionCount: 0,
       marathonTruthActive: true,
-      activeNode: 'JP-VPS-HY2',
+      activeNode: 'KR-VPS-HY2',
     })
     assert.equal(gate.required, false)
   })
@@ -65,8 +65,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const gate = evaluateMarathonProtocolColdStartGate({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      activeNode: 'JP-VPS-HY2',
-      manualSelectionNode: 'JP-VPS-HY2',
+      activeNode: 'KR-VPS-HY2',
+      manualSelectionNode: 'KR-VPS-HY2',
     })
     assert.equal(gate.required, false)
     assert.equal(gate.riskClass, 'none')
@@ -76,8 +76,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 18,
       marathonTruthActive: true,
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-TLS',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-TLS',
       source: 'auto',
     })
     assert.equal(decision.allowed, false)
@@ -88,8 +88,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 3,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-TLS',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-TLS',
       source: 'auto',
     })
     assert.equal(decision.allowed, false)
@@ -100,8 +100,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 18,
       marathonTruthActive: true,
-      fromNode: 'JP-VPS-TLS',
-      toNode: 'JP-VPS-HY2',
+      fromNode: 'KR-VPS-TLS',
+      toNode: 'KR-VPS-HY2',
       source: 'manual',
     })
     assert.equal(decision.allowed, true)
@@ -112,8 +112,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 18,
       marathonTruthActive: true,
-      fromNode: 'JP-VPS-Reality',
-      toNode: 'JP-VPS-HY2',
+      fromNode: 'KR-VPS-Reality',
+      toNode: 'KR-VPS-HY2',
       source: 'hy2_vitality_failback',
     })
     assert.equal(decision.allowed, true)
@@ -124,8 +124,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 3,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-TLS',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-TLS',
       source: 'manual',
     })
     assert.equal(decision.allowed, false)
@@ -136,8 +136,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 20,
       marathonTruthActive: true,
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-TUIC',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-TUIC',
       source: 'manual',
     })
     assert.equal(decision.allowed, false)
@@ -148,8 +148,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 20,
       marathonTruthActive: true,
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-Reality',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-Reality',
       source: 'recovery_coordinator',
     })
     assert.equal(decision.allowed, true)
@@ -160,8 +160,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 7,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-Reality',
-      toNode: 'JP-VPS-HY2',
+      fromNode: 'KR-VPS-Reality',
+      toNode: 'KR-VPS-HY2',
       source: 'manual',
     })
     assert.equal(decision.allowed, true)
@@ -172,8 +172,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-TLS',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-TLS',
       source: 'protocol_contract',
       mutationSnapshot: {
         cursorConnectionCount: 0,
@@ -191,8 +191,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-TLS',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-TLS',
       source: 'protocol_contract',
       mutationSnapshot: {
         cursorConnectionCount: 0,
@@ -210,8 +210,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-TLS',
-      toNode: 'JP-VPS-HY2',
+      fromNode: 'KR-VPS-TLS',
+      toNode: 'KR-VPS-HY2',
       source: 'protocol_contract',
     })
     assert.equal(decision.allowed, true)
@@ -222,7 +222,7 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 18,
       marathonTruthActive: true,
-      fromNode: 'JP-VPS-HY2',
+      fromNode: 'KR-VPS-HY2',
       toNode: 'DIRECT',
       source: 'manual',
     })
@@ -245,8 +245,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-TLS',
-      toNode: 'Sparkle-自动-新加坡',
+      fromNode: 'KR-VPS-TLS',
+      toNode: 'Sparkle-新加坡',
       source: 'manual',
     })
     assert.equal(decision.allowed, true)
@@ -258,8 +258,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
       const decision = evaluateMarathonProtocolSwitchDecision({
         cursorConnectionCount: 0,
         marathonTruthActive: false,
-        fromNode: 'JP-VPS-TLS',
-        toNode: 'JP-VPS-HY2',
+        fromNode: 'KR-VPS-TLS',
+        toNode: 'KR-VPS-HY2',
         source,
       })
       assert.equal(decision.allowed, true, source)
@@ -271,8 +271,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-TUIC',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-TUIC',
       source: 'manual',
     })
     assert.equal(decision.allowed, false)
@@ -283,8 +283,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     const decision = evaluateMarathonProtocolSwitchDecision({
       cursorConnectionCount: 0,
       marathonTruthActive: false,
-      fromNode: 'JP-VPS-TLS',
-      toNode: 'JP-VPS-HY2',
+      fromNode: 'KR-VPS-TLS',
+      toNode: 'KR-VPS-HY2',
       source: 'manual',
     })
     assert.equal(decision.allowed, true)
@@ -294,8 +294,8 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
   it('formatMarathonProtocolSwitchBlockedLogLine includes marathon_truth_active', () => {
     const line = formatMarathonProtocolSwitchBlockedLogLine({
       group: '🎯 Cursor 专用',
-      fromNode: 'JP-VPS-HY2',
-      toNode: 'JP-VPS-TLS',
+      fromNode: 'KR-VPS-HY2',
+      toNode: 'KR-VPS-TLS',
       reason: 'blocked_marathon_active',
       cursorConnectionCount: 20,
       marathonTruthActive: true,
@@ -307,7 +307,7 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
 
   it('formatMarathonProtocolLateStartLogLine marks gate_missed', () => {
     const line = formatMarathonProtocolLateStartLogLine({
-      activeNode: 'JP-VPS-HY2',
+      activeNode: 'KR-VPS-HY2',
       cursorConnectionCount: 4,
     })
     assert.match(line, /marathon_started_on_suboptimal_leaf/)
@@ -318,21 +318,21 @@ describe('marathonProtocolContractCore R-30/R-31', () => {
     assert.equal(
       resolveShouldAutoUpgradeSuboptimalIdleTls({
         cursorConnectionCount: 0,
-        activeNode: 'JP-VPS-HY2',
+        activeNode: 'KR-VPS-HY2',
       }),
       false,
     )
     assert.equal(
       resolveShouldAutoUpgradeSuboptimalIdleTls({
         cursorConnectionCount: 12,
-        activeNode: 'JP-VPS-HY2',
+        activeNode: 'KR-VPS-HY2',
       }),
       false,
     )
     assert.equal(
       resolveShouldAutoUpgradeSuboptimalIdleTls({
         cursorConnectionCount: 0,
-        activeNode: 'JP-VPS-TLS',
+        activeNode: 'KR-VPS-TLS',
       }),
       false,
     )

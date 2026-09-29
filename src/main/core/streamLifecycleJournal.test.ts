@@ -3,16 +3,13 @@ import { describe, it } from 'node:test'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import {
-  appendStreamLifecycleJournalEvents,
-  compactStreamLifecycleJournalIfOversized,
+import { appendStreamLifecycleJournalEvents,
   mergeStreamLifecycleJournalEvents,
   readStreamLifecycleJournalTail,
   readStreamLifecycleJournalTailText,
   setStreamLifecycleJournalPathForTests,
   STREAM_LIFECYCLE_JOURNAL_MAX_BYTES,
-  STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES,
-} from './streamLifecycleJournal'
+  STREAM_LIFECYCLE_JOURNAL_READ_TAIL_BYTES } from './streamLifecycleJournal'
 import type { StreamLifecycleEvent } from './streamLifecycleTruthCore'
 
 describe('streamLifecycleJournal P10-1', () => {

@@ -31,13 +31,13 @@ describe('cursorDedicatedSelectionCore', () => {
     tmpFile = path.join(dir, 'cursor-dedicated-selection.json')
     process.env.SPARKLE_CURSOR_SELECTION_FILE = tmpFile
 
-    await writeCursorDedicatedManualSelection('JP-VPS-Reality')
-    assert.equal(await readCursorDedicatedManualSelection(), 'JP-VPS-Reality')
+    await writeCursorDedicatedManualSelection('KR-VPS-Reality')
+    assert.equal(await readCursorDedicatedManualSelection(), 'KR-VPS-Reality')
     assert.equal(resolveCursorDedicatedSelectionPath(), tmpFile)
 
     const raw = await readFile(tmpFile, 'utf8')
     const parsed = JSON.parse(raw) as { node: string; updatedAtMs: number }
-    assert.equal(parsed.node, 'JP-VPS-Reality')
+    assert.equal(parsed.node, 'KR-VPS-Reality')
     assert.equal(typeof parsed.updatedAtMs, 'number')
   })
 })

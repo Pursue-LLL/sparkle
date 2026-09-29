@@ -53,6 +53,12 @@ export type MarathonProtocolSwitchBlockReason =
   | 'blocked_marathon_hy2_only_tls_denied'
   | 'protocol_downgrade_from_tls'
   | 'hy2_vitality_confirmed_failback'
+  /** Decision needs no action (empty target / same node). */
+  | 'noop'
+  /** Recovery-coordinator failover overrides: protocol upgrade / lateral escape / trusted target. */
+  | 'recovery_failover_protocol_upgrade'
+  | 'recovery_failover_lateral_escape'
+  | 'recovery_failover_trusted_target'
 
 export interface MarathonProtocolColdStartGateResult {
   required: boolean

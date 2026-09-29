@@ -21,7 +21,7 @@ describe('cursor-proxy-groups probe url helpers', () => {
     )
     assert.equal(
       resolveEffectiveDelayTestUrl({
-        groupName: 'Sparkle-自动-日本',
+        groupName: 'Sparkle-日本',
         delayTestUrlScope: 'group'
       }),
       AUTO_SELECT_DELAY_TEST_URL

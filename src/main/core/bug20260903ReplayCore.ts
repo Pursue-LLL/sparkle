@@ -26,6 +26,12 @@ import {
 } from './cursorDedicatedDialFailureClusterCore'
 import { evaluateEmergencyCoreRecoveryAdmission } from './emergencyCoreRecoveryCore'
 import { evaluateSidecarExternalVerification } from './recoveryApi2AnchorCore'
+import {
+  evaluateProxyStackDeadlockAdmission,
+  measuredLongflowEvidence,
+  unknownLongflowEvidence,
+  PROXY_STACK_LONGFLOW_EVIDENCE_UNKNOWN,
+} from './proxyStackDeadlockCore'
 
 export interface Bug20260903ReplayVerdict {
   fixtureId: string
@@ -201,27 +207,91 @@ export function replayBug20260903FalseUdpAbsentWithVitality(): Bug20260903Replay
   })
   const plan = planByteDeathParentMutation({
     connections: [],
-    activeLeaf: 'JP-VPS-HY2',
+    activeLeaf: 'KR-VPS-HY2',
     trackedFirstSeenAtMsById: new Map(),
     trackedLastByteChangeAtMsById: new Map(),
     nowMs,
     lastVitalitySuccessAtMs: nowMs - 45_000,
   })
+  // HY2-only VPS (KR) — no TCP failover leaves exist, so failback from a TCP leaf is rejected.
   const failback = shouldFailbackCursorDedicatedToHy2({
-    currentLeaf: 'JP-VPS-Reality',
+    currentLeaf: 'KR-VPS-Reality',
     lastVitalitySuccessAtMs: nowMs - 3_000,
     nowMs,
   })
   const ok =
     udpState === 'unknown' &&
     plan.reason === 'byte_death_udp_evidence_insufficient' &&
-    failback.failback === true
+    failback.failback === false &&
+    failback.reason === 'current_leaf_not_tcp_failover_target'
   return {
     fixtureId: '0903_false_udp_absent_vitality_counterproof',
     ok,
     detail: ok
-      ? 'vitality counterproof blocks absent escalation and enables HY2 failback'
+      ? 'vitality counterproof blocks absent escalation; HY2-only stack rejects TCP failback'
       : `udpState=${udpState} plan=${plan.reason} failback=${failback.failback}`,
+  }
+}
+
+/** Sep 4 15:00: emergency core restart requires proxy-stack deadlock proof. */
+export function replayBug20260904ProxyStackDeadlockGate(): Bug20260903ReplayVerdict {
+  const noData = measuredLongflowEvidence({
+    maxByteStallMs: 0,
+    frozenQuicCursorCount: 0,
+    cursorConnectionCount: 0,
+  })
+  const alive = evaluateProxyStackDeadlockAdmission(
+    {
+      mixedPortApi2Ok: true,
+      controllerReachable: true,
+      leafProbes: [{ leaf: 'JP-VPS-HY2', ok: false }],
+    },
+    noData,
+  )
+  const dead = evaluateProxyStackDeadlockAdmission(
+    { mixedPortApi2Ok: false, controllerReachable: false, leafProbes: [] },
+    noData,
+  )
+  const unknown = evaluateProxyStackDeadlockAdmission(
+    {
+      mixedPortApi2Ok: true,
+      controllerReachable: true,
+      leafProbes: [{ leaf: 'JP-VPS-HY2', ok: false }],
+    },
+    unknownLongflowEvidence('replay_no_longevity_data'),
+  )
+  const unknownIsExplicit =
+    unknown.confirmed === false &&
+    unknown.reason === `${PROXY_STACK_LONGFLOW_EVIDENCE_UNKNOWN}:replay_no_longevity_data`
+  const ok =
+    alive.confirmed === false &&
+    alive.reason === 'proxy_stack_alive_mixed_port_api2' &&
+    dead.confirmed === true &&
+    unknownIsExplicit
+  return {
+    fixtureId: '0904_proxy_stack_deadlock_gate',
+    ok,
+    detail: ok
+      ? 'mixed-port alive blocks restart; controller+mixed-port down admits; unknown evidence is explicit'
+      : `alive=${alive.confirmed}/${alive.reason} dead=${dead.confirmed}/${dead.reason} unknown=${unknown.confirmed}/${unknown.reason}`,
+  }
+}
+
+/** Sep 4 14:31: commercial Cursor dedicated leaf must not force HY2 UDP refresh on dial cluster. */
+export function replayBug20260904CommercialLeafSkipsHy2ClusterUdp(): Bug20260903ReplayVerdict {
+  const forcePlan = shouldForceParentUdpRefreshOnDialCluster({
+    clusterSize: CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT,
+    activeLeaf: '🇸🇬 新加坡 02',
+  })
+  const ok =
+    forcePlan.force === false &&
+    forcePlan.reason === 'dial_cluster_commercial_leaf_skip_hy2_udp'
+  return {
+    fixtureId: '0904_commercial_leaf_skips_hy2_cluster_udp',
+    ok,
+    detail: ok
+      ? 'commercial leaf skips HY2 UDP refresh on dial cluster'
+      : `force=${forcePlan.force}/${forcePlan.reason}`,
   }
 }
 
@@ -231,7 +301,7 @@ export function replayBug20260903DialClusterNoUdpFallback(): Bug20260903ReplayVe
     clusterSize: CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT,
     activeLeaf: 'JP-VPS-HY2',
   })
-  const admission = evaluateEmergencyCoreRecoveryAdmission({
+  const admissionWithoutStack = evaluateEmergencyCoreRecoveryAdmission({
     request: {
       reason: 'confirmed_udp_parent_absent',
       leafId: 'JP-VPS-HY2',
@@ -242,16 +312,29 @@ export function replayBug20260903DialClusterNoUdpFallback(): Bug20260903ReplayVe
     },
     nowMs: 2_000_000,
   })
+  const admissionWithStack = evaluateEmergencyCoreRecoveryAdmission({
+    request: {
+      reason: 'confirmed_udp_parent_absent',
+      leafId: 'JP-VPS-HY2',
+      evidenceReason: DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
+      cursorConnectionCount: 12,
+      requestedAtMs: 2_000_000,
+      deadlineMs: 2_045_000,
+    },
+    nowMs: 2_000_000,
+    stackDeadlockConfirmed: true,
+  })
   const ok =
     forcePlan.force === true &&
     forcePlan.reason === 'dial_failure_cluster_force_udp_refresh' &&
-    admission.admitted === true
+    admissionWithoutStack.admitted === false &&
+    admissionWithStack.admitted === true
   return {
     fixtureId: '0903_dial_cluster_no_udp_fallback_ladder',
     ok,
     detail: ok
-      ? 'cluster forces UDP refresh + emergency evidence admitted'
-      : `force=${forcePlan.force}/${forcePlan.reason} admitted=${admission.admitted}`,
+      ? 'cluster forces UDP refresh; emergency requires stack-deadlock proof'
+      : `force=${forcePlan.force}/${forcePlan.reason} admitted_without_stack=${admissionWithoutStack.admitted} admitted_with_stack=${admissionWithStack.admitted}`,
   }
 }
 
@@ -280,7 +363,7 @@ export function replayBug20260903StaleSessionOverridesVitality(): Bug20260903Rep
     fixtureId: '0903_stale_session_overrides_vitality_counterproof',
     ok,
     detail: ok
-      ? 'stale session age overrides vitality counterproof → core restart'
+      ? 'stale session age overrides vitality counterproof → coordinator escalation'
       : `plan=${plan.action}/${plan.reason}`,
   }
 }
@@ -340,6 +423,8 @@ export async function runBug20260903ReplayGate(): Promise<Bug20260903ReplayResul
     await replayBug20260903Aug31DiskProviderParity(),
     replayBug20260903ParentStaleTier0Vitality(),
     replayBug20260903FalseUdpAbsentWithVitality(),
+    replayBug20260904CommercialLeafSkipsHy2ClusterUdp(),
+    replayBug20260904ProxyStackDeadlockGate(),
     replayBug20260903DialClusterNoUdpFallback(),
     replayBug20260903StaleSessionOverridesVitality(),
     replayBug20260903Api2AnchorRejectsFalseSuccess(),

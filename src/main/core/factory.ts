@@ -1,3 +1,4 @@
+import { DEFAULT_REGION_PRIORITY } from './regionPriority'
 import {
   getControledMihomoConfig,
   getProfileConfig,
@@ -14,7 +15,7 @@ import {
   mihomoWorkConfigPath,
   mihomoWorkDir,
   overridePath
-} from '../utils/dirs'
+, profilesDir } from '../utils/dirs'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { copyFile, mkdir, readdir, writeFile } from 'fs/promises'
 import { deepMerge } from '../utils/merge'
@@ -221,7 +222,7 @@ async function generateProfileImpl(): Promise<void> {
     cursorDedicatedGroupRenameNotified = true
     const detail =
       `Cursor 代理组已统一为「${CURSOR_DEDICATED_GROUP_NAME}」，所有 Cursor 流量走专用组。` +
-      '请在 Sparkle 代理页重新确认 VPS 节点（建议 JP-VPS-HY2）。'
+      '请在 Sparkle 代理页重新确认 VPS 节点（建议 KR-VPS-HY2）。'
     await appendAppLog(`[Factory]: ${detail}\n`)
     void showNotification({
       title: 'Cursor 代理组已更新',
@@ -241,6 +242,25 @@ async function generateProfileImpl(): Promise<void> {
     await appendAppLog(formatAutoSelectAnyTlsExclusionLogLine(anyTlsExclusion))
   }
   await logGenerateProfileStep('auto_switch_groups', stepStartedAtMs)
+  // sparkle-fast：`自动选择` 的专属 provider 文件——每次生成都按地区优先级重排
+  // （纯排序，零探测机器；切换行为由 mihomo 原生 fallback 承担）。
+  try {
+    const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } = await import(
+      './sparkleFastProviderCore'
+    )
+    await writeFileSync(
+      path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME),
+      stringifyYaml(
+        buildSparkleFastProviderDocument({
+          proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
+          regionPriority: [...DEFAULT_REGION_PRIORITY]
+        })
+      ),
+      'utf8'
+    )
+  } catch {
+    // best-effort：写失败沿用上一份文件
+  }
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)
   const { cursorBidiOptimize = true, cursorProxyAppPathPrefixes } = await getAppConfig()

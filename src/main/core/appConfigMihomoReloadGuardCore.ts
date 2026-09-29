@@ -32,11 +32,17 @@ export function shouldDeferAppConfigMihomoReload(
   return shouldBlockMarathonCoreColdRestart(toCoreRestartSnapshot(snapshot), false).blocked
 }
 
-/** Profile save hot-reload uses the same marathon lifecycle defer contract as app-config IPC. */
+/** Profile provider hot-reload is connection-safe (existing connections keep their
+ * outbound sockets; only new connections pick up the refreshed pool) — defer only
+ * while marathon streams are actually in a protected lifecycle window, not merely
+ * because Cursor has connections open. */
 export function shouldDeferProfileProviderReload(
   snapshot: AppConfigMihomoReloadGuardSnapshot,
 ): boolean {
-  return shouldDeferAppConfigMihomoReload(snapshot)
+  if (snapshot.quiesceActive || snapshot.recentActiveLifecycleStreamCount > 0) {
+    return true
+  }
+  return false
 }
 
 /** Shell scripts read ~/.sparkle/marathon-core-restart-guard.json — shared defer predicate. */

@@ -23,7 +23,7 @@ export interface AgentTransportFailureRow {
   /** P25a: renderer agent-error disconnectPhase (e.g. phase1_stream). */
   disconnectPhase?: string
   /** Actual routing class inferred from the Cursor log root + generated path rules. */
-  routeKind?: 'dedicated-proxy' | 'direct' | 'unknown'
+  routeKind?: 'dedicated-proxy' | 'node-select' | 'direct' | 'unknown'
   cursorLogRoot?: string
 }
 

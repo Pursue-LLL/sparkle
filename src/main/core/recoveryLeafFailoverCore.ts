@@ -1,13 +1,8 @@
 // [INPUT] failed leaf · available Cursor dedicated members
 // [OUTPUT] resolveLeafFailoverTarget
-// [POS] Phase-1 SSOT — JP-VPS-HY2 failure → trusted TCP fallback within Cursor 专用.
+// [POS] HY2-only VPS — failover to 自动选择 or DIRECT (no JP TCP leaves).
 
-export const CURSOR_LEAF_FAILOVER_PREFERENCE = [
-  'JP-VPS-TLS',
-  'JP-VPS-Reality',
-  '自动选择',
-  'DIRECT',
-] as const
+export const CURSOR_LEAF_FAILOVER_PREFERENCE = ['自动选择', 'DIRECT'] as const
 
 export function resolveLeafFailoverTarget(input: {
   failedLeafId: string

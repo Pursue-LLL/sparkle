@@ -107,7 +107,7 @@ export function buildNonAnyTlsRegionalMembers(
 }
 
 function resolveRegionFromSparkleAutoGroupName(groupName: string): string | undefined {
-  const prefix = 'Sparkle-自动-'
+  const prefix = 'Sparkle-'
   if (!groupName.startsWith(prefix)) {
     return undefined
   }

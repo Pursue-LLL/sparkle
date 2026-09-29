@@ -8,15 +8,15 @@ import {
 
 describe('marathonTransportPreflightCore R-19', () => {
   it('classifies TLS and QUIC marathon leaves', () => {
-    assert.equal(resolveMarathonTransportProtocolClass('JP-VPS-TLS'), 'tcp_tls')
-    assert.equal(resolveMarathonTransportProtocolClass('JP-VPS-TUIC'), 'quic_inbound')
-    assert.equal(resolveMarathonTransportProtocolClass('JP-VPS-HY2'), 'quic_inbound')
-    assert.equal(resolveMarathonTransportProtocolClass('Sparkle-自动-新加坡'), 'other')
+    assert.equal(resolveMarathonTransportProtocolClass('KR-VPS-TLS'), 'tcp_tls')
+    assert.equal(resolveMarathonTransportProtocolClass('KR-VPS-TUIC'), 'quic_inbound')
+    assert.equal(resolveMarathonTransportProtocolClass('KR-VPS-HY2'), 'quic_inbound')
+    assert.equal(resolveMarathonTransportProtocolClass('Sparkle-新加坡'), 'other')
   })
 
   it('marks QUIC leaves as split_brain_class risk', () => {
     const result = resolveMarathonTransportPreflight({
-      activeNode: 'JP-VPS-TUIC',
+      activeNode: 'KR-VPS-TUIC',
       cursorConnectionCount: 22,
     })
     assert.equal(result.quicLeafActive, true)
@@ -27,7 +27,7 @@ describe('marathonTransportPreflightCore R-19', () => {
 
   it('marks trusted TLS leaf as low risk', () => {
     const result = resolveMarathonTransportPreflight({
-      activeNode: 'JP-VPS-TLS',
+      activeNode: 'KR-VPS-TLS',
       cursorConnectionCount: 18,
     })
     assert.equal(result.quicLeafActive, false)

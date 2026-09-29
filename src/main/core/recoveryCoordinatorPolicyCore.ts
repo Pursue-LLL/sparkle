@@ -64,6 +64,11 @@ export type RecoveryCoordinatorAction =
   | { kind: 'failback_leaf'; leafId: string; targetLeaf: string; reason: string }
   | { kind: 'mark_degraded'; leafId: string; reason: string }
 
+/** Logging-safe reason for every action variant (emergency carries `evidenceReason`). */
+export function resolveRecoveryActionReason(action: RecoveryCoordinatorAction): string {
+  return 'reason' in action ? action.reason : action.evidenceReason
+}
+
 export interface RecoveryCoordinatorPolicyState {
   leafState: LeafRecoveryState
   coreState: CoreRecoveryState
@@ -111,7 +116,7 @@ export function decideRecoveryCoordinatorAction(input: {
   nowMs: number
 }): { state: RecoveryCoordinatorPolicyState; action: RecoveryCoordinatorAction } {
   const { fact, event, nowMs } = input
-  let state = { ...input.state }
+  const state = { ...input.state }
 
   if (event.generation < state.activeGeneration) {
     return {

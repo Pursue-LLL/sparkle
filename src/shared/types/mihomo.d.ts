@@ -33,7 +33,7 @@ interface MihomoConfig {
   port?: number
   proxies?: []
   'proxy-groups'?: []
-  rules?: []
+  rules?: string[]
   hosts?: { [key: string]: string | string[] }
   'geodata-mode'?: boolean
   'geo-auto-update'?: boolean

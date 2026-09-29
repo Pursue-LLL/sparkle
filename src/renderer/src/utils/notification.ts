@@ -13,6 +13,8 @@ export interface AppNotificationPayload {
   actionKind?: 'copy-bug-report'
   timeout?: number
   onClose?: () => void
+  /** 通知上的动作按钮属性（透传给 UI 组件）。 */
+  actionProps?: Record<string, unknown>
 }
 
 const toastKeys = new Map<string, string>()

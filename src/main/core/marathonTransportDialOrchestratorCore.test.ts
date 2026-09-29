@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import {
-  MTDO_COALESCE_MS,
-  MTDO_OBSERVABILITY_BUNDLE_MS,
+import { MTDO_OBSERVABILITY_BUNDLE_MS,
   MTDO_CONNECT_PATH_PULSE_INTERVAL_MS,
   selectMarathonTransportDialTrigger,
   shouldCoalesceMarathonTransportDial,
-  shouldRunIndependentConnectPathPulse,
-} from './marathonTransportDialOrchestratorCore'
+  shouldRunIndependentConnectPathPulse } from './marathonTransportDialOrchestratorCore'
 import { CURSOR_HY2_MARATHON_CONN_THRESHOLD } from './cursorHy2MarathonKeepaliveCore'
 
 describe('marathonTransportDialOrchestratorCore', () => {

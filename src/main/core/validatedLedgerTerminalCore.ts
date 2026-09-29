@@ -2,7 +2,7 @@
 // [OUTPUT] parse · classify max-steps · merge with jsonl terminals
 // [POS] G8 Plane F — SSOT turn terminal for MaxStepsRate (ledger primary, jsonl gap-fill).
 
-import type { AgentTransportFailureRow } from './connectPartitionDetectCore'
+import type { AgentTransportFailureRow } from './agentTransportFailureWriterCore'
 
 export interface ValidatedLedgerTerminalRow {
   ts: number

@@ -10,6 +10,7 @@ import { SPARKLE_BUILD_STAMP, SPARKLE_SEMVER } from '../../shared/buildStamp'
 import {
   filterCollectiveDeathLogLines,
   formatCollectiveDeathBugReport,
+  orderAppLogNamesNewestFirst,
   type CollectiveDeathBugReportContext,
   type CollectiveDeathTriggerKind,
 } from './collectiveDeathBugReportCore'
@@ -48,15 +49,18 @@ async function readLatestAppLogLines(maxLines: number): Promise<string[]> {
   if (!existsSync(logDir)) {
     return []
   }
-  const files = (await readdir(logDir))
-    .filter((name) => name.startsWith('app-') && name.endsWith('.log'))
-    .sort()
-  const latest = files.at(-1)
-  if (!latest) {
-    return []
+  const ordered = orderAppLogNamesNewestFirst(await readdir(logDir))
+  const collected: string[] = []
+  for (const name of ordered) {
+    if (collected.length >= maxLines) {
+      break
+    }
+    const text = await readFile(join(logDir, name), 'utf8')
+    const need = maxLines - collected.length
+    // Older day's tail must precede the newer lines already collected.
+    collected.unshift(...text.split('\n').slice(-need))
   }
-  const text = await readFile(join(logDir, latest), 'utf8')
-  return text.split('\n').slice(-maxLines)
+  return collected.slice(-maxLines)
 }
 
 async function readStabilityEventTail(maxRows: number): Promise<string[]> {
@@ -96,7 +100,7 @@ export async function buildCollectiveDeathBugReport(
     leafId: input.leafId,
     evidenceReason: input.evidenceReason,
     drainMs: input.drainMs,
-    logLines: filterCollectiveDeathLogLines(rawLogLines),
+    logLines: filterCollectiveDeathLogLines(rawLogLines, tsMs),
     stabilityEventLines: await readStabilityEventTail(8),
     longevitySnapshotJson: await readLongevitySnapshotJson(),
   }

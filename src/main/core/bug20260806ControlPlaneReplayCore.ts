@@ -10,11 +10,8 @@ import {
 } from './dialAdmissionArbiterCore'
 import { resolveFrozenSurgicalPrunePlan } from './frozenSurgicalPruneCore'
 import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
-import {
-  filterHy2LeafConnections,
-  planByteDeathParentMutation,
-  selectByteDeathLeafCloseTargets,
-} from './hy2ParentByteDeathRecoveryCore'
+import { planByteDeathParentMutation,
+  selectByteDeathLeafCloseTargets } from './hy2ParentByteDeathRecoveryCore'
 import { resolveMarathonRescueDialAdmissionClass } from './marathonRescueDialExecutor'
 import { resolveHy2ParentRotationAfterPrunePlan } from './hy2ParentRotationCore'
 import { MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS } from './marathonSseCarrierPruneCore'
@@ -96,6 +93,7 @@ export function replayBug20260806FrozenPruneByteDeathBypass(): Bug20260806Replay
       host: 'api2.cursor.sh',
       stallMs: MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS + 60_000,
       cursorConnectionCount: 158,
+      totalQuicCursorCount: 158,
       frozenQuicCursorCount: 5,
       leaf: 'JP-VPS-HY2',
     },
@@ -218,14 +216,14 @@ export function replayBug20260806Eadc68deLeafClosePlan(): Bug20260806ReplayVerdi
     nowMs,
   })
   const ok =
-    plan.action === 'none' &&
-    plan.reason === 'byte_death_udp_absent_requires_core_restart' &&
+    plan.action === 'close_leaf_connections' &&
+    plan.reason === 'byte_death_udp_absent_close_leaf_rebuild' &&
     leafTargets.length === 8
   return {
     fixtureId: 'eadc68de_no_udp_parent_birth_reset_plan',
     ok,
     detail: ok
-      ? 'C-8.13 SSOT escalates core restart (zero leaf close) when mihomo omits UDP rows'
+      ? 'C-8.13 SSOT rebuilds parent via frozen-leaf close batch when mihomo omits UDP rows'
       : `plan action=${plan.action} reason=${plan.reason} frozenBatch=${leafTargets.length}`,
   }
 }

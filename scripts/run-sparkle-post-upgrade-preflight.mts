@@ -1,11 +1,11 @@
 #!/usr/bin/env tsx
 /** CLI for preflight-sparkle-1280.sh — avoids ARG_MAX from inlined asar bundle text. */
 import { readFileSync } from 'node:fs'
-import { collectSparkleMainProcessAsarSource } from './sparkleMainAsarSourceCore.ts'
+import { collectSparkleMainProcessAsarSource } from './sparkleMainAsarSourceCore'
 import {
   evaluateSparklePostUpgradePreflight,
   formatSparklePostUpgradePreflightReport,
-} from './sparklePostUpgradePreflightCore.ts'
+} from './sparklePostUpgradePreflightCore'
 
 function readOptional(path: string | undefined): string {
   if (!path) return ''

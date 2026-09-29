@@ -10,7 +10,7 @@ import {
   countPostCoreBootstrapNotReachableSinceLine,
   hasApi2ProbePlaneOnSinceLine,
   hasMihomoApiReadySinceLine,
-} from './upgradeSparklePostInstallGateCore.ts'
+} from './upgradeSparklePostInstallGateCore'
 
 const ROOT = join(import.meta.dirname, '..')
 const LOG_DIR = join(homedir(), 'Library/Application Support/sparkle/logs')

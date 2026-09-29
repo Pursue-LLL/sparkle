@@ -6,7 +6,6 @@ import {
   chainsReferenceActiveLeaf,
   filterHy2LeafConnections,
   formatByteDeathRecoveryLogLine,
-  isByteDeathUdpParentAbsent,
   planByteDeathParentMutation,
   selectByteDeathLeafCloseTargets,
 } from './hy2ParentByteDeathRecoveryCore'
@@ -16,42 +15,42 @@ const nowMs = 2_000_000
 function prodLikeConnections(count: number): ControllerConnectionDetail[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `tcp-${index}`,
-    chains: ['Cursor专用', 'JP-VPS-HY2'],
+    chains: ['Cursor专用', 'KR-VPS-HY2'],
     metadata: { network: 'tcp', host: 'api2.cursor.sh' },
   })) as ControllerConnectionDetail[]
 }
 
 describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
-  it('chainsReferenceActiveLeaf matches prod chain hop Cursor专用 → JP-VPS-HY2', () => {
+  it('chainsReferenceActiveLeaf matches prod chain hop Cursor专用 → KR-VPS-HY2', () => {
     assert.equal(
-      chainsReferenceActiveLeaf(['Cursor专用', 'JP-VPS-HY2'], 'JP-VPS-HY2'),
+      chainsReferenceActiveLeaf(['Cursor专用', 'KR-VPS-HY2'], 'KR-VPS-HY2'),
       true,
     )
-    assert.equal(chainsReferenceActiveLeaf(['DIRECT'], 'JP-VPS-HY2'), false)
+    assert.equal(chainsReferenceActiveLeaf(['DIRECT'], 'KR-VPS-HY2'), false)
   })
 
-  it('C-8.13: udp absent + frozen conns + no vitality → escalate core restart', () => {
+  it('C-8.13: udp absent + frozen conns + no vitality → close-leaf rebuild plan', () => {
     const connections = prodLikeConnections(94)
     const trackedLastByteChangeAtMsById = new Map(
       connections.map((conn) => [conn.id, nowMs - 120_000]),
     )
     const targets = selectByteDeathLeafCloseTargets({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedLastByteChangeAtMsById,
       nowMs,
     })
     assert.equal(targets.length, BYTE_DEATH_LEAF_CLOSE_MAX_BATCH)
     const plan = planByteDeathParentMutation({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedFirstSeenAtMsById: new Map(),
       trackedLastByteChangeAtMsById,
       nowMs,
       lastVitalitySuccessAtMs: undefined,
     })
-    assert.equal(plan.action, 'none')
-    assert.equal(plan.reason, 'byte_death_udp_absent_requires_core_restart')
+    assert.equal(plan.action, 'close_leaf_connections')
+    assert.equal(plan.reason, 'byte_death_udp_absent_close_leaf_rebuild')
   })
 
   it('skips healthy leaf conns with stall below 90s threshold', () => {
@@ -64,7 +63,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     )
     const targets = selectByteDeathLeafCloseTargets({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedLastByteChangeAtMsById,
       nowMs,
     })
@@ -82,7 +81,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     )
     const targets = selectByteDeathLeafCloseTargets({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedLastByteChangeAtMsById,
       nowMs,
     })
@@ -93,14 +92,14 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     const connections = [
       {
         id: 'udp-parent',
-        chains: ['Cursor专用', 'JP-VPS-HY2'],
+        chains: ['Cursor专用', 'KR-VPS-HY2'],
         metadata: { network: 'udp' },
       },
       ...prodLikeConnections(3),
     ] as ControllerConnectionDetail[]
     const plan = planByteDeathParentMutation({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedFirstSeenAtMsById: new Map(),
       trackedLastByteChangeAtMsById: new Map(),
       nowMs,
@@ -113,7 +112,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     const connections = [
       {
         id: 'udp-parent',
-        chains: ['OTHER', 'JP-VPS-HY2'],
+        chains: ['OTHER', 'KR-VPS-HY2'],
         metadata: { network: 'udp' },
       },
       ...prodLikeConnections(12),
@@ -125,7 +124,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     )
     const plan = planByteDeathParentMutation({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedFirstSeenAtMsById: new Map([['udp-parent', nowMs - 500_000]]),
       trackedLastByteChangeAtMsById,
       nowMs,
@@ -137,7 +136,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     const connections = prodLikeConnections(94)
     const plan = planByteDeathParentMutation({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedFirstSeenAtMsById: new Map(),
       trackedLastByteChangeAtMsById: new Map(),
       nowMs,
@@ -152,7 +151,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     const staleAgeMs = 175_961_819
     const plan = planByteDeathParentMutation({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedFirstSeenAtMsById: new Map(),
       trackedLastByteChangeAtMsById: new Map(),
       nowMs,
@@ -162,31 +161,6 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     })
     assert.equal(plan.action, 'none')
     assert.equal(plan.reason, 'byte_death_udp_absent_requires_core_restart')
-  })
-
-  it('isByteDeathUdpParentAbsent false when vitality recent', () => {
-    assert.equal(
-      isByteDeathUdpParentAbsent(
-        { source: 'none', diagnostics: { totalConnections: 94, udpOnLeafStrict: 0, udpFullScanCandidates: 0 } },
-        { lastVitalitySuccessAtMs: nowMs - 3_000, nowMs },
-      ),
-      false,
-    )
-  })
-
-  it('isByteDeathUdpParentAbsent true when diagnostics all zero', () => {
-    assert.equal(
-      isByteDeathUdpParentAbsent({ source: 'none', diagnostics: { totalConnections: 94, udpOnLeafStrict: 0, udpFullScanCandidates: 0 } }),
-      true,
-    )
-    assert.equal(
-      isByteDeathUdpParentAbsent({
-        source: 'mihomo_full_scan_hy2_udp',
-        connectionId: 'udp-1',
-        diagnostics: { totalConnections: 94, udpOnLeafStrict: 0, udpFullScanCandidates: 1 },
-      }),
-      false,
-    )
   })
 
   it('formatByteDeathRecoveryLogLine includes closed_count for G2 gate', () => {
@@ -205,7 +179,7 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
     const connections = prodLikeConnections(10)
     const targets = selectByteDeathLeafCloseTargets({
       connections,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedLastByteChangeAtMsById: new Map(),
       nowMs,
     })
@@ -221,13 +195,13 @@ describe('hy2ParentByteDeathRecoveryCore @1.30.32', () => {
           metadata: { network: 'tcp' },
         } as ControllerConnectionDetail,
       ],
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       trackedFirstSeenAtMsById: new Map(),
       trackedLastByteChangeAtMsById: new Map(),
       nowMs,
     })
     assert.equal(plan.action, 'none')
     assert.equal(plan.reason, 'byte_death_udp_absent_requires_core_restart')
-    assert.equal(filterHy2LeafConnections([], 'JP-VPS-HY2').length, 0)
+    assert.equal(filterHy2LeafConnections([], 'KR-VPS-HY2').length, 0)
   })
 })

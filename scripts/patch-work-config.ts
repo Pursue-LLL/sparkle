@@ -23,9 +23,9 @@ async function main() {
     .map((proxy) => proxy.name)
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 
-  const customProxyGroups = await import('../src/main/core/customProxyGroups.ts')
-  const defaultAutoSwitchProxy = await import('../src/main/core/defaultAutoSwitchProxy.ts')
-  const profileGroupNormalize = await import('../src/main/core/profileGroupNormalize.ts')
+  const customProxyGroups = await import('../src/main/core/customProxyGroups')
+  const defaultAutoSwitchProxy = await import('../src/main/core/defaultAutoSwitchProxy')
+  const profileGroupNormalize = await import('../src/main/core/profileGroupNormalize')
 
   const subscriptionGroupNames =
     profileGroupNormalize.collectSubscriptionGroupNames(subscriptionProfile)

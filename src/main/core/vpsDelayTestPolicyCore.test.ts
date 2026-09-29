@@ -14,8 +14,8 @@ import {
 
 describe('vpsDelayTestPolicyCore', () => {
   it('detects VPS leaf batches', () => {
-    assert.equal(isVpsCursorLeafBatch(['JP-VPS-HY2', 'KR-VPS-TUIC']), true)
-    assert.equal(isVpsCursorLeafBatch(['JP-VPS-HY2', 'SG-01']), false)
+    assert.equal(isVpsCursorLeafBatch(['KR-VPS-HY2', 'KR-VPS-TUIC']), true)
+    assert.equal(isVpsCursorLeafBatch(['KR-VPS-HY2', 'SG-01']), false)
   })
 
   it('defers ui batch delay under cursor marathon load or burst', () => {

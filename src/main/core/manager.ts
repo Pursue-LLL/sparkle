@@ -54,7 +54,6 @@ import {
   type AppNotificationPayload,
   type AppNotificationVariant
 } from '../utils/notification'
-import { registerEmergencyCoreRestartHandler } from './emergencyCoreRestartBridge'
 import { stopChildProcess } from './process-control'
 import {
   recoverDNS,
@@ -64,6 +63,7 @@ import {
 } from './network'
 import { checkProfileWithRetry } from './profileCheckRetry'
 import * as coreReadyTimestamp from './coreReadyTimestamp'
+import { createCoreHookWaiter, createCoreStartupHook } from './startupHook'
 import { runPostCoreReadyLifecycle, setPendingCoreReadyReason } from './coreLifecycle'
 import {
   createCoreEnvironment,
@@ -1248,38 +1248,6 @@ export async function restartCore(force = false): Promise<void> {
     void showNotification({ title: '内核启动出错', body: `${e}`, variant: 'danger' })
   }
 }
-
-export async function restartCoreEmergency(input: {
-  leafId: string
-  evidenceReason: string
-  requestedAtMs: number
-  deadlineMs: number
-}): Promise<void> {
-  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
-  const guard = await evaluateMarathonCoreColdRestart('restartCore', true, {
-    leafId: input.leafId,
-    evidenceReason: input.evidenceReason,
-    requestedAtMs: input.requestedAtMs,
-    deadlineMs: input.deadlineMs,
-  })
-  if (guard.blocked) {
-    const reason = `emergency_core_restart_blocked cursor_conn=${guard.snapshot.cursorConnectionCount}`
-    await appendAppLog(`[Manager]: ${reason}\n`)
-    throw new Error(reason)
-  }
-  try {
-    clearTailscaleAuthNotifications()
-    await stopCoreUnchecked(true)
-    setPendingCoreReadyReason('emergency')
-    const promises = await startCore()
-    await Promise.all(promises)
-  } catch (e) {
-    void showNotification({ title: '内核启动出错', body: `${e}`, variant: 'danger' })
-    throw e instanceof Error ? e : new Error(String(e))
-  }
-}
-
-registerEmergencyCoreRestartHandler(restartCoreEmergency)
 
 export async function keepCoreAlive(): Promise<void> {
   try {

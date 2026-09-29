@@ -60,7 +60,7 @@ describe('marathonCoreRestartGuardCore', () => {
       },
       false,
       {
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         evidenceReason: 'byte_death_udp_absent_requires_core_restart',
         requestedAtMs: 900,
         deadlineMs: 50_000,

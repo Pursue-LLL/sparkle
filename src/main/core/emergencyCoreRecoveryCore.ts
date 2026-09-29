@@ -67,6 +67,8 @@ export function evaluateEmergencyCoreRecoveryAdmission(input: {
   inFlight?: boolean
   lastCompletedAtMs?: number
   lastReadinessApi2Verified?: boolean
+  /** BUG-016: require proxy-stack deadlock proof before cold restart. */
+  stackDeadlockConfirmed?: boolean
 }): EmergencyCoreRecoveryAdmission {
   const { request, nowMs } = input
   if (input.inFlight) {
@@ -88,6 +90,9 @@ export function evaluateEmergencyCoreRecoveryAdmission(input: {
   }
   if (!ALLOWED_EVIDENCE.has(request.evidenceReason.trim())) {
     return { admitted: false, reason: 'emergency_evidence_not_allowed', drainMs: 0 }
+  }
+  if (input.stackDeadlockConfirmed !== true) {
+    return { admitted: false, reason: 'proxy_stack_not_confirmed_deadlock', drainMs: 0 }
   }
   const drainMs =
     request.cursorConnectionCount > 0 ? EMERGENCY_CORE_RECOVERY_DRAIN_MS : 0

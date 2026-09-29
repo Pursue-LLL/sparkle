@@ -15,7 +15,7 @@ describe('transportLongevityTruthCore R-34a', () => {
       connections: [
         {
           id: 'udp-1',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'udp' },
         } as ControllerConnectionDetail,
       ],
@@ -28,12 +28,12 @@ describe('transportLongevityTruthCore R-34a', () => {
             lastBytesChangeAtMs: nowMs,
             firstSeenAtMs: nowMs - HY2_PARENT_ROTATE_AGE_MS - 1_000,
             host: '',
-            leaf: 'JP-VPS-HY2',
+            leaf: 'KR-VPS-HY2',
             network: 'udp',
           },
         ],
       ]),
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
       nowMs,
     })
     assert.ok(ageMs >= HY2_PARENT_ROTATE_AGE_MS)
@@ -44,7 +44,7 @@ describe('transportLongevityTruthCore R-34a', () => {
     const birthMs = nowMs - HY2_PARENT_SIDECAR_DIAL_AGE_MS - 60_000
     const persisted = resolvePersistedHy2ParentChainAgeMs({
       nowMs,
-      activeHy2Leaf: 'JP-VPS-HY2',
+      activeHy2Leaf: 'KR-VPS-HY2',
       previousSnapshot: {
         schemaVersion: 2,
         updatedAtMs: nowMs - 5_000,
@@ -54,7 +54,7 @@ describe('transportLongevityTruthCore R-34a', () => {
         hy2ParentChainBirthMs: birthMs,
         maxByteStallMs: 0,
         frozenQuicCursorCount: 0,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       computedHttpParentChainAgeMs: 0,
       computedOutboundHy2SessionAgeMs: 0,
@@ -68,7 +68,7 @@ describe('transportLongevityTruthCore R-34a', () => {
     const birthMs = nowMs - HY2_PARENT_SIDECAR_DIAL_AGE_MS - 60_000
     const persisted = resolvePersistedHy2ParentChainAgeMs({
       nowMs,
-      activeHy2Leaf: 'JP-VPS-HY2',
+      activeHy2Leaf: 'KR-VPS-HY2',
       previousSnapshot: {
         schemaVersion: 2,
         updatedAtMs: nowMs - 5_000,
@@ -78,7 +78,7 @@ describe('transportLongevityTruthCore R-34a', () => {
         hy2ParentChainBirthMs: birthMs,
         maxByteStallMs: 0,
         frozenQuicCursorCount: 0,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       computedHttpParentChainAgeMs: 0,
       computedOutboundHy2SessionAgeMs: 0,
@@ -91,7 +91,7 @@ describe('transportLongevityTruthCore R-34a', () => {
     const resetBirthMs = nowMs - 5_000
     const persisted = resolvePersistedHy2ParentChainAgeMs({
       nowMs,
-      activeHy2Leaf: 'JP-VPS-HY2',
+      activeHy2Leaf: 'KR-VPS-HY2',
       previousSnapshot: {
         schemaVersion: 2,
         updatedAtMs: nowMs - 1_000,
@@ -101,7 +101,7 @@ describe('transportLongevityTruthCore R-34a', () => {
         hy2ParentChainBirthMs: resetBirthMs,
         maxByteStallMs: 0,
         frozenQuicCursorCount: 0,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       computedHttpParentChainAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 60_000,
       computedOutboundHy2SessionAgeMs: HY2_PARENT_SIDECAR_DIAL_AGE_MS + 60_000,
@@ -123,12 +123,12 @@ describe('hy2ParentRotationCore R-34b', () => {
         outboundHy2SessionAgeMs: HY2_PARENT_ROTATE_AGE_MS + 1,
         maxByteStallMs: 0,
         frozenQuicCursorCount: 0,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       connections: [
         {
           id: 'tcp-live',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'tcp', host: 'api2direct.cursor.sh' },
         } as ControllerConnectionDetail,
       ],
@@ -152,12 +152,12 @@ describe('hy2ParentRotationCore R-34b', () => {
         outboundHy2SessionAgeMs: 0,
         maxByteStallMs: 88499,
         frozenQuicCursorCount: 1,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       connections: [
         {
           id: 'udp-parent',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'udp' },
         } as ControllerConnectionDetail,
       ],
@@ -182,17 +182,17 @@ describe('hy2ParentRotationCore R-34b', () => {
         outboundHy2SessionAgeMs: 4 * 60 * 60 * 1000 + 1,
         maxByteStallMs: 146_002,
         frozenQuicCursorCount: 2,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       connections: [
         {
           id: 'tcp-live',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'tcp', host: 'api2direct.cursor.sh' },
         } as ControllerConnectionDetail,
         {
           id: 'udp-parent',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'udp' },
         } as ControllerConnectionDetail,
       ],
@@ -223,17 +223,17 @@ describe('hy2ParentRotationCore R-34b', () => {
         outboundHy2SessionAgeMs: 2_610_790,
         maxByteStallMs: 144_500,
         frozenQuicCursorCount: 2,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       connections: [
         {
           id: 'tcp-live',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'tcp', host: 'api2.cursor.sh' },
         } as ControllerConnectionDetail,
         {
           id: 'udp-parent',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'udp' },
         } as ControllerConnectionDetail,
       ],

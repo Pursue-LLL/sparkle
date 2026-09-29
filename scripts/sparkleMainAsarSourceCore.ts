@@ -25,7 +25,7 @@ export function collectSparkleMainProcessDiskSource(mainOutDir: string): string 
 
 export function listSparkleMainProcessJsRelPaths(appAsarPath: string): string[] {
   return asar
-    .listPackage(appAsarPath)
+    .listPackage(appAsarPath, { isPack: false })
     .filter((entry) => MAIN_JS_PATH_RE.test(entry))
     .map((entry) => entry.slice(1))
     .sort()

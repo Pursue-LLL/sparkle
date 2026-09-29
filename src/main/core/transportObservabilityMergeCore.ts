@@ -5,8 +5,8 @@
 import {
   isConnectPingTransportFailure,
   resolveConnectPartitionWindowMs,
-  type AgentTransportFailureRow,
 } from './connectPartitionDetectCore'
+import type { AgentTransportFailureRow } from './agentTransportFailureWriterCore'
 import { rowDedupeKey } from './agentTransportFailureWriterCore'
 
 function parseFailureTs(raw: number | string | undefined): number | undefined {
@@ -34,7 +34,7 @@ export function mergeTransportFailureRows(
       if (ts === undefined) {
         continue
       }
-      const normalized: AgentTransportFailureRow = { ...row, ts }
+      const normalized: AgentTransportFailureRow & { ts: number } = { ...row, ts }
       const key = rowDedupeKey(normalized)
       if (seen.has(key)) {
         continue

@@ -53,9 +53,18 @@ describe('cursorDedicatedDialFailureClusterCore @1.30.54', () => {
   it('008: dial cluster forces UDP refresh without vitality probe', () => {
     const plan = shouldForceParentUdpRefreshOnDialCluster({
       clusterSize: CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT,
-      activeLeaf: 'JP-VPS-HY2',
+      activeLeaf: 'KR-VPS-HY2',
     })
     assert.equal(plan.force, true)
     assert.equal(plan.reason, 'dial_failure_cluster_force_udp_refresh')
+  })
+
+  it('015: commercial Cursor dedicated leaf skips HY2 UDP refresh on dial cluster', () => {
+    const plan = shouldForceParentUdpRefreshOnDialCluster({
+      clusterSize: CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT,
+      activeLeaf: '🇸🇬 新加坡 02',
+    })
+    assert.equal(plan.force, false)
+    assert.equal(plan.reason, 'dial_cluster_commercial_leaf_skip_hy2_udp')
   })
 })

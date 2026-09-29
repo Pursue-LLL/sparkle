@@ -2,7 +2,7 @@ import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { readCursorDedicatedManualSelection } from './cursorDedicatedSelectionCore'
 import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'
 
-export const CURSOR_DEFAULT_VPS_NODE = 'JP-VPS-HY2' as const
+export const CURSOR_DEFAULT_VPS_NODE = 'KR-VPS-HY2' as const
 
 /** Never auto-select transports that can reintroduce QUIC or Reality handshake failure modes. */
 export function isCursorSuboptimalNode(name: string): boolean {

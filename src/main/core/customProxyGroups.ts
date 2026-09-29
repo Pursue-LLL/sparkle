@@ -5,16 +5,16 @@ import {
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName,
   prependCursorDedicatedDirectOption,
+  HONG_KONG_DELAY_TEST_URL,
 } from './cursorProxyGroup'
 import {
   filterMarathonCursorEligibleVpsLeaves,
   MARATHON_CURSOR_VPS_PROVIDER_FILTER,
 } from './marathonHy2OnlyCore'
 import { resolveVpsProviderId } from './vpsProviderSplitCore'
-import { buildHongKongUrlTestDefaults } from './defaultAutoSwitchProxy'
 
 /** Sparkle-injected HK filter group — members rebuilt on every generateProfile(). */
-export const HONG_KONG_FILTER_GROUP_NAME = '🇭🇰 香港节点' as const
+export const HONG_KONG_FILTER_GROUP_NAME = 'Sparkle-香港' as const
 
 const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
   CURSOR_DEDICATED_GROUP_NAME,
@@ -28,6 +28,11 @@ const HONG_KONG_PROVIDER_FILTER = '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong'
 interface ProxyGroupConfig {
   name: string
   type?: string
+  url?: string
+  interval?: number
+  tolerance?: number
+  timeout?: number
+  lazy?: boolean
   proxies?: string[]
   use?: string[]
   filter?: string
@@ -261,12 +266,16 @@ function buildHongKongGroupConfig(
   leafNames: string[],
   profileId: string | undefined
 ): ProxyGroupConfig | null {
-  const urlTestDefaults = buildHongKongUrlTestDefaults()
-
+  // 香港组按规则路由 x.com/Stripe 流量，必须自动挑"能开 Grok"的活节点——
+  // select 组会永远钉在第一个成员（哪怕超时），因此这里必须是 url-test（支持手动固定）。
   if (profileId) {
     return {
       name: HONG_KONG_FILTER_GROUP_NAME,
-      ...urlTestDefaults,
+      type: 'url-test',
+      url: HONG_KONG_DELAY_TEST_URL,
+      interval: 300,
+      timeout: 5000,
+      lazy: true,
       use: [profileId],
       filter: HONG_KONG_PROVIDER_FILTER
     }
@@ -278,7 +287,7 @@ function buildHongKongGroupConfig(
   }
   return {
     name: HONG_KONG_FILTER_GROUP_NAME,
-    ...urlTestDefaults,
+    type: 'select',
     proxies: hkMembers
   }
 }

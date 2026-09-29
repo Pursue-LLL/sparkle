@@ -2,7 +2,7 @@
 // [OUTPUT] ingestValidatedLedgerTerminals · readValidatedLedgerTerminalCache
 // [POS] G8 incremental ingest — stream_terminated only, checkpointed append to ~/.sparkle cache.
 
-import { appendFileSync, createReadStream, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'fs'
+import { appendFileSync, closeSync, createReadStream, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'fs'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
@@ -10,7 +10,7 @@ import {
   parseValidatedLedgerTerminalLine,
   type ValidatedLedgerTerminalRow,
 } from './validatedLedgerTerminalCore'
-import { discoverGuardValidatedLedgerPaths, guardLegacyRootDir } from './guardValidatedLedgerPathsCore'
+import { discoverGuardValidatedLedgerPaths } from './guardValidatedLedgerPathsCore'
 
 const INGEST_CHUNK_BYTES = 2_097_152
 const CACHE_MAX_LINES = 20_000
@@ -40,13 +40,6 @@ export function resetValidatedLedgerIngestPathsForTests(): void {
   testLedgerPathOverride = null
   testCachePathOverride = null
   testCheckpointPathOverride = null
-}
-
-function guardLedgerPath(): string {
-  return (
-    testLedgerPathOverride ??
-    join(guardLegacyRootDir(), 'runtime-events', 'validated-ledger.v1.jsonl')
-  )
 }
 
 interface MultiLedgerTerminalCheckpoint {

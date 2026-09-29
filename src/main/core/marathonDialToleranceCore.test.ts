@@ -11,7 +11,7 @@ import {
 
 describe('marathonDialToleranceCore', () => {
   const proxies = [
-    { name: 'JP-VPS-HY2', type: 'hysteria2', server: '1.2.3.4' },
+    { name: 'KR-VPS-HY2', type: 'hysteria2', server: '1.2.3.4' },
     { name: 'Commercial-1', type: 'ss', server: '9.9.9.9' },
   ]
 

@@ -10,7 +10,7 @@ import {
 
 function row(partial: Partial<Api2ProbeLedgerRow> & Pick<Api2ProbeLedgerRow, 'ts' | 'scope' | 'method'>): Api2ProbeLedgerRow {
   return {
-    node: 'JP-VPS-HY2',
+    node: 'KR-VPS-HY2',
     latency_ms: 300,
     ok: true,
     authoritative: true,
@@ -80,7 +80,7 @@ describe('latencyTruthFromLedgerCore', () => {
 
   it('ledgerRowsToLatencyTruthSummary includes marathon_connect_path_pulse in mac path', () => {
     const rows = [
-      row({ ts: '2026-07-24T06:00:00.000Z', scope: 'vps', node: 'JP-VPS', method: 'ssh_curl', latency_ms: 500 }),
+      row({ ts: '2026-07-24T06:00:00.000Z', scope: 'vps', node: 'KR-VPS', method: 'ssh_curl', latency_ms: 500 }),
       row({
         ts: '2026-07-24T06:02:00.000Z',
         scope: 'active',
@@ -89,7 +89,7 @@ describe('latencyTruthFromLedgerCore', () => {
       }),
       row({ ts: '2026-07-24T06:03:00.000Z', scope: 'active', method: 'transport_pair', latency_ms: 300 }),
     ]
-    const summary = ledgerRowsToLatencyTruthSummary(rows, 'JP-VPS-HY2')
+    const summary = ledgerRowsToLatencyTruthSummary(rows, 'KR-VPS-HY2')
     assert.equal(summary.macFullPathSamples, 2)
     assert.equal(summary.macFullPathP50, 296.5)
     assert.equal(summary.macFullPathLastTs, '2026-07-24T06:03:00.000Z')
@@ -97,8 +97,8 @@ describe('latencyTruthFromLedgerCore', () => {
 
   it('ledgerRowsToLatencyTruthSummary splits vps body vs mac full path per node', () => {
     const rows = [
-      row({ ts: '2026-07-24T06:00:00.000Z', scope: 'vps', node: 'JP-VPS', method: 'ssh_curl', latency_ms: 500 }),
-      row({ ts: '2026-07-24T06:01:00.000Z', scope: 'vps', node: 'JP-VPS', method: 'ssh_curl', latency_ms: 540 }),
+      row({ ts: '2026-07-24T06:00:00.000Z', scope: 'vps', node: 'KR-VPS', method: 'ssh_curl', latency_ms: 500 }),
+      row({ ts: '2026-07-24T06:01:00.000Z', scope: 'vps', node: 'KR-VPS', method: 'ssh_curl', latency_ms: 540 }),
       row({ ts: '2026-07-24T06:02:00.000Z', scope: 'active', method: 'transport_pair', latency_ms: 280 }),
       row({ ts: '2026-07-24T06:03:00.000Z', scope: 'active', method: 'transport_pair', latency_ms: 300 }),
       row({ ts: '2026-07-24T06:04:00.000Z', scope: 'active', method: 'session_nudge', latency_ms: 780 }),
@@ -106,11 +106,12 @@ describe('latencyTruthFromLedgerCore', () => {
         ts: '2026-07-24T06:05:00.000Z',
         scope: 'vps',
         method: 'ssh_curl',
-        node: 'KR-VPS',
+        // Non-canonical region must not count toward KR-VPS body samples.
+        node: 'US-VPS',
         latency_ms: 200,
       }),
     ]
-    const summary = ledgerRowsToLatencyTruthSummary(rows, 'JP-VPS-HY2')
+    const summary = ledgerRowsToLatencyTruthSummary(rows, 'KR-VPS-HY2')
     assert.equal(summary.vpsBodySamples, 2)
     assert.equal(summary.vpsBodyP50, 520)
     assert.equal(summary.vpsBodyLastTs, '2026-07-24T06:01:00.000Z')

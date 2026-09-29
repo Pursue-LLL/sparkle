@@ -65,11 +65,12 @@ describe('mihomoProxyDelayCore', () => {
             name: '199e64b94e8-vps',
             type: 'Proxy',
             vehicleType: 'HTTP',
-            proxies: [{ name: 'JP-VPS-HY2', type: 'Hysteria2', alive: true, history: [] }],
+            expectedStatus: '200',
+            proxies: [{ name: 'KR-VPS-HY2', type: 'Hysteria2', alive: true, history: [] } as unknown as ControllerProxiesDetail],
           },
         },
       },
-      'JP-VPS-HY2',
+      'KR-VPS-HY2',
     )
     assert.equal(providerName, '199e64b94e8-vps')
   })

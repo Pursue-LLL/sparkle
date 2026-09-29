@@ -70,17 +70,38 @@ function readBuildStampFromSource(root: string): string | null {
   return match?.[1] ?? null
 }
 
-function runGit(root: string, args: string[]): string | null {
+/**
+ * `git diff HEAD --` on this repo is multi-MB; the execFileSync default
+ * maxBuffer (1MB) threw ENOBUFS, which was silently swallowed into an empty
+ * diff — making the tree fingerprint the empty-string hash and letting every
+ * build look "fresh" (install-only stale bundles). Raise the cap and never let
+ * a failed diff masquerade as a clean tree.
+ */
+export const GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024
+
+type GitResult = { ok: true; text: string } | { ok: false }
+
+function runGit(root: string, args: string[]): GitResult {
   try {
     const output = execFileSync('git', args, {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
-    return output.length > 0 ? output : null
+      maxBuffer: GIT_MAX_BUFFER_BYTES,
+    })
+    return { ok: true, text: output }
   } catch {
-    return null
+    return { ok: false }
   }
+}
+
+/** Fail-safe: an unavailable diff must NOT look like a clean tree. */
+export function resolveWorkingTreeDiffText(input: {
+  ok: boolean
+  text?: string
+  gitCommit: string
+}): string {
+  return input.ok ? (input.text ?? '') : `git_diff_failed@${input.gitCommit}`
 }
 
 export function collectCurrentBuildMeta(root: string): SparkleBuildMeta | null {
@@ -90,8 +111,16 @@ export function collectCurrentBuildMeta(root: string): SparkleBuildMeta | null {
     return null
   }
 
-  const gitCommit = runGit(root, ['rev-parse', 'HEAD']) ?? 'unknown'
-  const diffText = runGit(root, ['diff', 'HEAD', '--']) ?? ''
+  const commitResult = runGit(root, ['rev-parse', 'HEAD'])
+  const gitCommit = commitResult.ok && commitResult.text.trim().length > 0
+    ? commitResult.text.trim()
+    : 'unknown'
+  const diffResult = runGit(root, ['diff', 'HEAD', '--'])
+  const diffText = resolveWorkingTreeDiffText({
+    ok: diffResult.ok,
+    text: diffResult.ok ? diffResult.text : undefined,
+    gitCommit,
+  })
   const sourceTreeHash = formatSourceTreeHash(gitCommit, digestWorkingTreeDiff(diffText))
 
   return { semver, buildStamp, gitCommit, sourceTreeHash }

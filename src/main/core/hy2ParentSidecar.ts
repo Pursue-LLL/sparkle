@@ -18,6 +18,7 @@ import {
 } from './hy2ParentSidecarCore'
 import { executeByteDeathParentMutation } from './hy2ParentByteDeathRecoveryExecutor'
 import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
+import { measuredLongflowEvidence } from './proxyStackDeadlockCore'
 import { countActiveInnerCriticalFlows } from './hy2ParentRotationCore'
 import {
   assertRecoveryCircuitAllowsMutation,
@@ -32,6 +33,7 @@ import {
   evaluateSidecarExternalVerification,
   requiresRecoveryApi2Anchor,
 } from './recoveryApi2AnchorCore'
+import { mihomoCloseConnection } from './mihomoApi'
 
 const SIDECAR_ACTION_COOLDOWN_MS = 300_000
 
@@ -85,7 +87,6 @@ async function maybeResetHy2ParentChainBirth(input: {
 
 async function closeUdpOutbound(connectionId: string): Promise<{ ok: boolean; err?: string }> {
   try {
-    const { mihomoCloseConnection } = await import('./mihomoApi')
     await mihomoCloseConnection(connectionId)
     return { ok: true }
   } catch (error) {
@@ -313,7 +314,7 @@ export async function runHy2ParentSidecarIfDue(input: {
       rotatePlan.action === 'close_udp_outbound' &&
       rotatePlan.udpConnectionId
     ) {
-      const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+      const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'KR-VPS-HY2'
       const closed = await closeUdpOutbound(rotatePlan.udpConnectionId)
       if (closed.ok) {
         parentUdpClosedThisInvocation = true
@@ -371,7 +372,7 @@ export async function runHy2ParentSidecarIfDue(input: {
           const { scheduleByteDeathRecoveryVerification } = await import(
             './recoveryByteDeathVerifier'
           )
-          const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+          const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'KR-VPS-HY2'
           const udpConn = input.connections.find(
             (conn) => conn.id === rotatePlan.udpConnectionId,
           )
@@ -397,7 +398,7 @@ export async function runHy2ParentSidecarIfDue(input: {
     }
 
     if (dialPlan.action === 'sidecar_dial') {
-      const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+      const activeLeaf = input.snapshot.activeHy2Leaf?.trim() ?? 'KR-VPS-HY2'
       if (
         marathonGlobalByteDeath &&
         rotatePlan.action === 'none' &&
@@ -478,6 +479,11 @@ export async function runHy2ParentSidecarIfDue(input: {
               leafId: activeLeaf,
               evidenceReason: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
               cursorConnectionCount: input.cursorConnectionCount,
+              longflow: measuredLongflowEvidence({
+                maxByteStallMs: input.snapshot.maxByteStallMs,
+                frozenQuicCursorCount: input.snapshot.frozenQuicCursorCount,
+                cursorConnectionCount: input.cursorConnectionCount,
+              }),
               nowMs,
             })
             await appendSidecarLog(
@@ -485,6 +491,7 @@ export async function runHy2ParentSidecarIfDue(input: {
                 `action=emergency_core_recovery reason=${emergency.reason} ` +
                 `trigger=${STALE_SESSION_OVERRIDES_VITALITY_COUNTERPROOF}\n`,
             )
+            lastHy2ParentSidecarActionAtMs = nowMs
             return {
               outcome: emergency.executed ? 'executed' : 'failed',
               action: 'emergency_core_recovery',

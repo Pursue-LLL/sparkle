@@ -7,6 +7,7 @@ import {
   createInitialRecoveryCoordinatorPolicyState,
   decideRecoveryCoordinatorAction,
   MAX_FAILOVER_DISPATCHES,
+  resolveRecoveryActionReason,
   type RecoveryFact,
 } from './recoveryCoordinatorPolicyCore'
 import { resolveUdpParentStateForRecovery } from './recoveryFailoverGovernanceCore'
@@ -15,7 +16,7 @@ const nowMs = 2_000_000
 
 function baseFact(overrides: Partial<RecoveryFact> = {}): RecoveryFact {
   return {
-    leafId: 'JP-VPS-HY2',
+    leafId: 'KR-VPS-HY2',
     observedAt: nowMs,
     generation: 1,
     stallState: 'confirmed',
@@ -36,7 +37,7 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
       fact: baseFact(),
       event: {
         type: 'UDP_PARENT_ABSENT',
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         generation: 1,
         observedAt: nowMs,
         detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
@@ -60,7 +61,7 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
       fact: baseFact(),
       event: {
         type: 'UDP_PARENT_ABSENT',
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         generation: 1,
         observedAt: nowMs,
         detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
@@ -78,7 +79,7 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
       fact: baseFact({ cursorConnectionCount: 0 }),
       event: {
         type: 'UDP_PARENT_ABSENT',
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         generation: 1,
         observedAt: nowMs,
         detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
@@ -99,7 +100,7 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
       fact: baseFact(),
       event: {
         type: 'UDP_PARENT_ABSENT',
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         generation: 1,
         observedAt: nowMs,
         detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
@@ -117,7 +118,7 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
       fact: baseFact({ udpParentState: 'unknown', stallState: 'suspected' }),
       event: {
         type: 'UDP_PARENT_UNKNOWN',
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         generation: 1,
         observedAt: nowMs,
       },
@@ -137,13 +138,13 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
       fact: baseFact({ generation: 3 }),
       event: {
         type: 'UDP_PARENT_ABSENT',
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         generation: 3,
         observedAt: nowMs,
       },
       nowMs,
     })
-    assert.equal(result.action.reason, 'stale_generation_discarded')
+    assert.equal(resolveRecoveryActionReason(result.action), 'stale_generation_discarded')
   })
 
   it('failover soak window blocks repeat UDP absent escalation', () => {
@@ -158,7 +159,7 @@ describe('recoveryCoordinatorPolicyCore @phase1', () => {
       fact: baseFact(),
       event: {
         type: 'UDP_PARENT_ABSENT',
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         generation: 1,
         observedAt: nowMs,
         detail: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,

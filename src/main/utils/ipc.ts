@@ -1,4 +1,5 @@
 import { app, ipcMain } from 'electron'
+import { getUserAgent } from './userAgent'
 import { SPARKLE_BUILD_STAMP, SPARKLE_SEMVER } from '../../shared/buildStamp'
 import {
   mihomoChangeProxy,
@@ -69,11 +70,6 @@ import {
   stopCore,
   stopNetworkDetection
 } from '../core/manager'
-import {
-  startProxyHealthMonitor,
-  stopProxyHealthMonitor,
-  restartProxyHealthMonitor
-} from '../core/proxyHealthMonitor'
 import {
   restartCommercialNodeBenchmark,
   stopCommercialNodeBenchmark,
@@ -482,9 +478,6 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('quitWithoutCore', ipcErrorWrapper(quitWithoutCore))
   ipcMain.handle('startNetworkDetection', ipcErrorWrapper(startNetworkDetection))
   ipcMain.handle('stopNetworkDetection', ipcErrorWrapper(stopNetworkDetection))
-  ipcMain.handle('startProxyHealthMonitor', () => startProxyHealthMonitor())
-  ipcMain.handle('stopProxyHealthMonitor', () => stopProxyHealthMonitor())
-  ipcMain.handle('restartProxyHealthMonitor', () => restartProxyHealthMonitor())
   ipcMain.handle('startCommercialNodeBenchmark', () => startCommercialNodeBenchmark())
   ipcMain.handle('stopCommercialNodeBenchmark', () => stopCommercialNodeBenchmark())
   ipcMain.handle('restartCommercialNodeBenchmark', () => restartCommercialNodeBenchmark())

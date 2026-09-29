@@ -74,12 +74,6 @@ function parseUpdateTime(time: string): { hours: number; minutes: number } | nul
   return { hours, minutes }
 }
 
-function startOfLocalDayMs(now: Date): number {
-  const dayStart = new Date(now)
-  dayStart.setHours(0, 0, 0, 0)
-  return dayStart.getTime()
-}
-
 export function isProfileUpdateDueNow(
   item: ProfileItem,
   now = new Date(),

@@ -15,20 +15,20 @@ function snapshot(
     outboundHy2SessionAgeMs: 0,
     maxByteStallMs: MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS,
     frozenQuicCursorCount: 2,
-    activeHy2Leaf: 'JP-VPS-HY2',
+    activeHy2Leaf: 'KR-VPS-HY2',
     ...overrides,
   }
 }
 
 const tcpLive = {
   id: 'tcp-live',
-  chains: ['JP-VPS-HY2'],
+  chains: ['KR-VPS-HY2'],
   metadata: { network: 'tcp', host: 'api2.cursor.sh' },
 } as ControllerConnectionDetail
 
 const udpParent = {
   id: 'udp-parent',
-  chains: ['JP-VPS-HY2'],
+  chains: ['KR-VPS-HY2'],
   metadata: { network: 'udp' },
 } as ControllerConnectionDetail
 

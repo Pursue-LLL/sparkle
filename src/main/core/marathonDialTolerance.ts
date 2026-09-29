@@ -38,6 +38,9 @@ export async function ensureVpsProviderMarathonDialTimeoutBootstrapAtIdle(
   }
 
   const { current } = await getProfileConfig()
+  if (!current) {
+    return false
+  }
   const providerPath = vpsProviderFilePath(current)
   if (!existsSync(providerPath)) {
     bootstrapVerifiedThisSession = true

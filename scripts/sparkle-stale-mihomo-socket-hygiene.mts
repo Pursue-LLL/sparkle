@@ -6,7 +6,7 @@ import http from 'node:http'
 import {
   formatStaleMihomoApiSocketAction,
   shouldRemoveStaleMihomoApiSocket,
-} from './sparkleStaleMihomoSocketHygieneCore.ts'
+} from './sparkleStaleMihomoSocketHygieneCore'
 
 const SOCKET_PATH = process.env.SPARKLE_MIHOMO_SOCKET ?? '/tmp/sparkle-mihomo-api.sock'
 

@@ -11,10 +11,7 @@ import {
   computeMaxStepsRateSnapshot,
   formatMaxStepsRateLogLine,
 } from './maxStepsRateObserverCore'
-import {
-  computeStreamAttemptMaxStepsRateSnapshot,
-  formatStreamAttemptMaxStepsRateLogSuffix,
-} from './streamAttemptMaxStepsRateCore'
+import { computeStreamAttemptMaxStepsRateSnapshot } from './streamAttemptMaxStepsRateCore'
 import { computePhysicalMaxStepsRateSnapshot } from './physicalMaxStepsRateCore'
 import { projectPhysicalNetworkStarts } from './physicalNetworkStartFromLedgerCore'
 import { countLedgerHttpSegmentStarted, ingestPhysicalNetworkStartsFromLedger } from './physicalNetworkStartIngest'

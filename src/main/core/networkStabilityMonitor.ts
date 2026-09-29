@@ -16,12 +16,9 @@ import { safeGetLastCoreReadyAtMs } from './coreReadyTimestamp'
 import { countCursorConnections, startCursorConnectionHygiene, stopCursorConnectionHygiene } from './cursorConnectionHygiene'
 import { runMarathonSessionWarmthIfDue } from './cursorTransportHealth'
 import { isTransportPairHealthy } from './cursorTransportHealthCore'
-import {
-  shouldDeferProbeForCursorLoad,
-  shouldDeferDestructiveRecoveryAfterLiveProbe,
+import { shouldDeferDestructiveRecoveryAfterLiveProbe,
   type MandatoryProbeContext,
-  type ProbeAttribution
-} from './cursorTransportHealthCore'
+  type ProbeAttribution } from './cursorTransportHealthCore'
 import { shouldDeferProbeForCursorLoadUnderMarathonQuiesce } from './marathonQuiesceCore'
 import {
   clearTunInterfaceLostConfirmed,

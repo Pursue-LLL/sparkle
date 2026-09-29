@@ -4,7 +4,7 @@ import {
   buildRecoveredProfileItemFromDisk,
   mergeProfileConfigItems,
   profileIdFromSubscriptionFile
-} from './profileConfigRecoveryPureCore.ts'
+} from './profileConfigRecoveryPureCore'
 
 describe('profileConfigRecoveryCore', () => {
   it('profileIdFromSubscriptionFile ignores auxiliary provider files', () => {

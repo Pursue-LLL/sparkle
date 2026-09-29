@@ -40,8 +40,8 @@ describe('mihomoGroupMembersCore', () => {
 
   it('resolveGroupMemberProxies prefers /proxies then provider lookup', () => {
     const proxiesDict = {
-      'Sparkle-自动-新加坡': {
-        name: 'Sparkle-自动-新加坡',
+      'Sparkle-新加坡': {
+        name: 'Sparkle-新加坡',
         type: 'URLTest',
         alive: true,
         all: ['SG-01'],
@@ -91,13 +91,13 @@ describe('mihomoGroupMembersCore', () => {
     })
 
     const resolved = resolveGroupMemberProxies(
-      ['Sparkle-自动-新加坡', 'KR-VPS-TUIC', 'MISSING-NODE'],
+      ['Sparkle-新加坡', 'KR-VPS-TUIC', 'MISSING-NODE'],
       proxiesDict,
       providerLookup
     )
 
     assert.equal(resolved.length, 3)
-    assert.equal(resolved[0].name, 'Sparkle-自动-新加坡')
+    assert.equal(resolved[0].name, 'Sparkle-新加坡')
     assert.equal(resolved[1].name, 'KR-VPS-TUIC')
     assert.equal((resolved[1] as ControllerProxiesDetail).history[0]?.delay, 297)
     assert.equal(resolved[2].name, 'MISSING-NODE')

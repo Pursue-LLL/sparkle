@@ -1,4 +1,3 @@
-import { ensureCorporateDirectRules, ensureCorporateDnsPolicy } from './corporateDirectRules'
 
 const RULE_BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'DNS', 'NOOP'])
 const RULE_MODIFIERS = new Set(['no-resolve'])

@@ -23,7 +23,7 @@ describe('marathonRescueDialExecutor behavioral', () => {
     resetDialAdmissionArbiterForTests()
     resetCursorDedicatedNodeResolverStateForTests()
     setSkipMarathonSessionDialAppLogForTests(true)
-    setCursorDedicatedActiveNodeOverrideForTests('JP-VPS-HY2')
+    setCursorDedicatedActiveNodeOverrideForTests('KR-VPS-HY2')
     setHy2SessionNudgeDialPairOverrideForTests(async () => ({
       api2Result: { delay: 320 },
       api2geoResult: { delay: 310 },
@@ -57,7 +57,7 @@ describe('marathonRescueDialExecutor behavioral', () => {
     resetDialAdmissionArbiterForTests()
     resetCursorDedicatedNodeResolverStateForTests()
     setSkipMarathonSessionDialAppLogForTests(true)
-    setCursorDedicatedActiveNodeOverrideForTests('JP-VPS-HY2')
+    setCursorDedicatedActiveNodeOverrideForTests('KR-VPS-HY2')
     const nowMs = 5_994_000
     const incidentGeneration = buildRecoveryIncidentGeneration(
       'token_gap',
@@ -90,7 +90,7 @@ describe('marathonRescueDialExecutor behavioral', () => {
     resetMarathonSessionDialExecutorStateForTests()
     resetCursorDedicatedNodeResolverStateForTests()
     setSkipMarathonSessionDialAppLogForTests(true)
-    setCursorDedicatedActiveNodeOverrideForTests('JP-VPS-HY2')
+    setCursorDedicatedActiveNodeOverrideForTests('KR-VPS-HY2')
     setHy2SessionNudgeDialPairOverrideForTests(async () => ({
       api2Result: { delay: 320 },
       api2geoResult: { delay: 310 },
@@ -109,7 +109,7 @@ describe('marathonRescueDialExecutor behavioral', () => {
     resetMarathonSessionDialExecutorStateForTests()
     resetCursorDedicatedNodeResolverStateForTests()
     setSkipMarathonSessionDialAppLogForTests(true)
-    setCursorDedicatedActiveNodeOverrideForTests('JP-VPS-HY2')
+    setCursorDedicatedActiveNodeOverrideForTests('KR-VPS-HY2')
     setHy2SessionNudgeDialPairOverrideForTests(async () => ({
       api2Result: { delay: 0, message: 'timeout' },
       api2geoResult: { delay: 0 },

@@ -6,7 +6,7 @@ import {
   formatProviderParityMismatchLog,
   resolveExpectedProxyProviderIds,
   shouldRestartServiceCoreForProviderParity
-} from './serviceCoreProviderParityCore.ts'
+} from './serviceCoreProviderParityCore'
 
 describe('serviceCoreProviderParityCore', () => {
   it('collectProxyProviderIds returns sorted keys', () => {

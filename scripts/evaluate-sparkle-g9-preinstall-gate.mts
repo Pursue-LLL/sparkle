@@ -5,12 +5,12 @@ import { copyFileSync, existsSync, readFileSync, readdirSync, statSync } from 'n
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { evaluateMaxStepsRateUpgradeGate } from './maxStepsRateUpgradeGateCore.ts'
+import { evaluateMaxStepsRateUpgradeGate } from './maxStepsRateUpgradeGateCore'
 import {
   evaluateRemedialG9Upgrade,
   parseUpgradeIncidentRegistry,
   REMEDIAL_G9_INCIDENT_REGISTRY_RELATIVE,
-} from './upgradeSafeWindowCore.ts'
+} from './upgradeSafeWindowCore'
 
 function pickLastMatching(text: string, prefix: string): string | null {
   const lines = text.split('\n')

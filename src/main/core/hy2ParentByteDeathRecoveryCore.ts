@@ -133,38 +133,6 @@ export function classifyUdpParentObservation(
 }
 
 /** Leaf TCP close is collateral during marathon when mihomo omits HY2 UDP parent rows. */
-export function isByteDeathUdpParentAbsent(
-  resolution: Hy2ParentUdpResolution,
-  counterEvidence?: {
-    lastVitalitySuccessAtMs?: number
-    nowMs: number
-    outboundHy2SessionAgeMs?: number
-    httpParentChainAgeMs?: number
-  },
-): boolean {
-  if (classifyUdpParentObservation(resolution) !== 'absent') {
-    return false
-  }
-  if (
-    counterEvidence &&
-    shouldOverrideVitalityCounterproofForStaleSession({
-      outboundHy2SessionAgeMs: counterEvidence.outboundHy2SessionAgeMs,
-      httpParentChainAgeMs: counterEvidence.httpParentChainAgeMs,
-    })
-  ) {
-    return true
-  }
-  if (
-    counterEvidence &&
-    isRecentVitalityDialSuccess({
-      lastVitalitySuccessAtMs: counterEvidence.lastVitalitySuccessAtMs,
-      nowMs: counterEvidence.nowMs,
-    })
-  ) {
-    return false
-  }
-  return true
-}
 
 /** Recent successful connect_path dial proves the HY2 UDP parent is alive (contradicts 'absent'). */
 export function isRecentVitalityDialSuccess(input: {
@@ -172,7 +140,7 @@ export function isRecentVitalityDialSuccess(input: {
   nowMs: number
   freshnessMs?: number
 }): boolean {
-  const freshness = input.freshness ?? VITALITY_DIAL_SUCCESS_FRESHNESS_MS
+  const freshness = input.freshnessMs ?? VITALITY_DIAL_SUCCESS_FRESHNESS_MS
   return (
     typeof input.lastVitalitySuccessAtMs === 'number' &&
     input.lastVitalitySuccessAtMs > 0 &&
@@ -247,6 +215,21 @@ export function planByteDeathParentMutation(input: {
       return {
         action: 'none',
         reason: BYTE_DEATH_UDP_EVIDENCE_INSUFFICIENT,
+      }
+    }
+    // 整核冷重启已移除：重建父会话的唯一手段 = 关闭冻结叶连接，
+    // 逼 mihomo 重建 HY2 UDP parent（无目标时交由协调器叶轮换）。
+    const absentTargets = selectByteDeathLeafCloseTargets({
+      connections: input.connections,
+      activeLeaf: input.activeLeaf,
+      trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
+      nowMs: input.nowMs,
+    })
+    if (absentTargets.length > 0) {
+      return {
+        action: 'close_leaf_connections',
+        reason: 'byte_death_udp_absent_close_leaf_rebuild',
+        leafTargetCount: absentTargets.length,
       }
     }
     return {

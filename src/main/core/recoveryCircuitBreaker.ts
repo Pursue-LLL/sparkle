@@ -93,9 +93,9 @@ export async function notifyRecoveryCircuitFailure(input: {
     const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
     void notifyCollectiveDeathAlert({
       trigger: 'recovery_circuit_open',
-      title: '代理恢复已熔断',
+      title: '代理自检已熔断',
       body:
-        '连续恢复失败，系统将尝试切换节点或紧急重建。可点击「复制 Bug 信息」粘贴给 AI 分析。',
+        '后台自检通道连续失败，已暂停自动重试 10 分钟，不影响正常上网。可点击「复制 Bug 信息」粘贴给 AI 分析。',
       tsMs: input.nowMs,
       evidenceReason: input.reason,
     })

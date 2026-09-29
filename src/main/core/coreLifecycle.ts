@@ -3,6 +3,7 @@
 // [POS] SSOT — post core-ready hygiene (fake-ip flush after cold restart).
 
 import { appendAppLog } from '../utils/log'
+import { mihomoFlushFakeIpCache } from './mihomoApi'
 import {
   formatCoreLifecycleLogLine,
   POST_CORE_READY_FAKE_IP_FLUSH_RETRIES,
@@ -33,7 +34,6 @@ export function consumePendingCoreReadyReason(): CoreReadyReason {
 }
 
 async function flushFakeIpCacheWithRetry(reason: CoreReadyReason): Promise<boolean> {
-  const { mihomoFlushFakeIpCache } = await import('./mihomoApi')
   for (let attempt = 1; attempt <= POST_CORE_READY_FAKE_IP_FLUSH_RETRIES; attempt += 1) {
     try {
       await mihomoFlushFakeIpCache()
@@ -71,5 +71,13 @@ async function flushFakeIpCacheWithRetry(reason: CoreReadyReason): Promise<boole
 export async function runPostCoreReadyLifecycle(): Promise<{ fakeIpFlushOk: boolean }> {
   const reason = consumePendingCoreReadyReason()
   const fakeIpFlushOk = await flushFakeIpCacheWithRetry(reason)
+  try {
+    // BUG-2026-09-15-014: the failover monitor was only reachable through renderer IPC
+    // (`src/main/utils/ipc.ts`), so on macOS 26 (GUI exits to background) the
+    // Cursor-dedicated group never failed over. Drive it from the main process too.
+
+  } catch {
+    // best-effort: 自动选择 keeps its previous provider file on any failure
+  }
   return { fakeIpFlushOk }
 }

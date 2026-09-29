@@ -319,6 +319,26 @@ export const mihomoChangeProxy = async (
     const targetGroup = groups?.find((item) => item.name === group)
     const current = targetGroup?.now ?? ''
     previousCursorNode = current
+    const { isCursorDedicatedManualOnlySwitchAllowed, formatCursorDedicatedManualOnlyBlockedLogLine } =
+      await import('./cursorDedicatedManualOnlyCore')
+    if (
+      current &&
+      current !== proxy &&
+      !isCursorDedicatedManualOnlySwitchAllowed({
+        source,
+        fromNode: current,
+      })
+    ) {
+      const { appendAppLog } = await import('../utils/log')
+      await appendAppLog(
+        formatCursorDedicatedManualOnlyBlockedLogLine({
+          source,
+          fromNode: current,
+          toNode: proxy,
+        }),
+      )
+      return false
+    }
     if (current !== proxy) {
       const {
         evaluateMarathonProtocolSwitchBlock,

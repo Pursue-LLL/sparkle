@@ -86,7 +86,7 @@ describe('marathonStabilityAttributionCore', () => {
       },
     })
     assert.match(report, /Phase 0 归因报告/)
-    assert.match(report, /JP-VPS-Reality/)
+    assert.match(report, /KR-VPS-Reality/)
     assert.match(report, /0\.25%/)
   })
 

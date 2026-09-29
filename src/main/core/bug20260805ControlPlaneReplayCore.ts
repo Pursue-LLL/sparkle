@@ -8,7 +8,7 @@ import {
   resolveDialAdmission,
 } from './dialAdmissionArbiterCore'
 import { evaluateRecoveryHonesty } from './recoveryHonestyCore'
-import { evaluateMaxStepsRateUpgradeGate } from '../../../scripts/maxStepsRateUpgradeGateCore.ts'
+import { evaluateMaxStepsRateUpgradeGate } from '../../../scripts/maxStepsRateUpgradeGateCore'
 
 export interface Bug20260805ReplayVerdict {
   fixtureId: string

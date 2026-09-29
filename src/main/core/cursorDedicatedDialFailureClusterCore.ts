@@ -1,6 +1,8 @@
-// [INPUT] mihomo core log lines (Cursor dedicated dial failures)
-// [OUTPUT] classify · sliding-window cluster detection
-// [POS] BUG-2026-09-03-005 — silent collective disconnect when stall=0 but dial errors spike.
+// [INPUT] mihomo core log lines (Cursor dedicated dial failures) · aiTrafficIsolationCore
+// [OUTPUT] classify · sliding-window cluster detection · HY2-only UDP refresh gate
+// [POS] BUG-2026-09-03-005/008 — silent collective disconnect when stall=0 but dial errors spike.
+
+import { isMarathonCursorHy2Leaf } from './aiTrafficIsolationCore'
 
 /** Minimum Cursor专用 dial failures in window to treat as collective disconnect. */
 export const CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT = 5
@@ -80,6 +82,9 @@ export function shouldForceParentUdpRefreshOnDialCluster(input: {
   }
   if (input.clusterSize < CURSOR_DIAL_FAILURE_CLUSTER_MIN_COUNT) {
     return { force: false, reason: 'cluster_below_threshold' }
+  }
+  if (!isMarathonCursorHy2Leaf(input.activeLeaf)) {
+    return { force: false, reason: 'dial_cluster_commercial_leaf_skip_hy2_udp' }
   }
   return { force: true, reason: 'dial_failure_cluster_force_udp_refresh' }
 }

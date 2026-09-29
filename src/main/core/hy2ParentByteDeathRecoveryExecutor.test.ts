@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { BYTE_DEATH_LEAF_CLOSE_MAX_BATCH } from './hy2ParentByteDeathRecoveryCore'
 import {
   executeByteDeathParentMutationWithDeps,
   executeLeafCloseBatch,
@@ -12,8 +13,8 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     const closed: string[] = []
     const batch = await executeLeafCloseBatch({
       targets: [
-        { id: 'a', chains: ['JP-VPS-HY2'] } as ControllerConnectionDetail,
-        { id: 'b', chains: ['JP-VPS-HY2'] } as ControllerConnectionDetail,
+        { id: 'a', chains: ['KR-VPS-HY2'] } as ControllerConnectionDetail,
+        { id: 'b', chains: ['KR-VPS-HY2'] } as ControllerConnectionDetail,
       ],
       closeFn: async (id) => {
         if (id === 'b') {
@@ -27,11 +28,11 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     assert.match(batch.err ?? '', /close rejected/)
   })
 
-  it('C-8.13: udp absent marathon → escalate core restart, zero leaf close', async () => {
+  it('C-8.13: udp absent marathon → close frozen leaf batch (parent session rebuilt, core restart removed)', async () => {
     const logLines: string[] = []
     const connections = Array.from({ length: 12 }, (_, index) => ({
       id: `tcp-${index}`,
-      chains: ['Cursor专用', 'JP-VPS-HY2'],
+      chains: ['Cursor专用', 'KR-VPS-HY2'],
       metadata: { network: 'tcp', host: 'api2.cursor.sh' },
     })) as ControllerConnectionDetail[]
     const trackedLastByteChangeAtMsById = new Map(
@@ -41,7 +42,7 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     let birthReset = false
     const result = await executeByteDeathParentMutationWithDeps(
       {
-        activeLeaf: 'JP-VPS-HY2',
+        activeLeaf: 'KR-VPS-HY2',
         connections,
         trackedFirstSeenAtMsById: new Map(),
         trackedLastByteChangeAtMsById,
@@ -62,17 +63,16 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
         },
       },
     )
-    assert.equal(result.mutated, false)
-    assert.equal(result.plan.action, 'none')
-    assert.equal(result.plan.reason, 'byte_death_udp_absent_requires_core_restart')
-    assert.equal(closedIds.length, 0)
+    assert.equal(result.mutated, true)
+    assert.equal(result.plan.action, 'close_leaf_connections')
+    assert.equal(result.plan.reason, 'byte_death_udp_absent_close_leaf_rebuild')
+    assert.equal(closedIds.length, BYTE_DEATH_LEAF_CLOSE_MAX_BATCH)
     assert.equal(birthReset, false)
     assert.ok(
       logLines.some(
         (line) =>
-          line.includes('action=none') &&
-          line.includes('outcome=failed') &&
-          line.includes('byte_death_udp_absent_requires_core_restart'),
+          line.includes('action=close_leaf_connections') &&
+          line.includes('outcome=executed'),
       ),
     )
   })
@@ -82,7 +82,7 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     const closedIds: string[] = []
     const result = await executeByteDeathParentMutationWithDeps(
       {
-        activeLeaf: 'JP-VPS-HY2',
+        activeLeaf: 'KR-VPS-HY2',
         connections: [],
         trackedFirstSeenAtMsById: new Map(),
         trackedLastByteChangeAtMsById: new Map(),
@@ -114,12 +114,12 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     const connections = [
       {
         id: 'udp-parent',
-        chains: ['Cursor专用', 'JP-VPS-HY2'],
+        chains: ['Cursor专用', 'KR-VPS-HY2'],
         metadata: { network: 'udp' },
       },
       ...Array.from({ length: 12 }, (_, index) => ({
         id: `tcp-${index}`,
-        chains: ['Cursor专用', 'JP-VPS-HY2'],
+        chains: ['Cursor专用', 'KR-VPS-HY2'],
         metadata: { network: 'tcp', host: 'api2.cursor.sh' },
       })),
     ] as ControllerConnectionDetail[]
@@ -131,7 +131,7 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     const closedIds: string[] = []
     const result = await executeByteDeathParentMutationWithDeps(
       {
-        activeLeaf: 'JP-VPS-HY2',
+        activeLeaf: 'KR-VPS-HY2',
         connections,
         trackedFirstSeenAtMsById: new Map([['udp-parent', nowMs - 500_000]]),
         trackedLastByteChangeAtMsById,
@@ -160,7 +160,7 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     let birthReset = false
     const result = await executeByteDeathParentMutationWithDeps(
       {
-        activeLeaf: 'JP-VPS-HY2',
+        activeLeaf: 'KR-VPS-HY2',
         connections: [],
         trackedFirstSeenAtMsById: new Map(),
         trackedLastByteChangeAtMsById: new Map(),
@@ -189,10 +189,10 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
     const closedIds: string[] = []
     const result = await executeByteDeathParentMutationWithDeps(
       {
-        activeLeaf: 'JP-VPS-HY2',
+        activeLeaf: 'KR-VPS-HY2',
         connections: Array.from({ length: 12 }, (_, index) => ({
           id: `tcp-${index}`,
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
         })) as ControllerConnectionDetail[],
         trackedFirstSeenAtMsById: new Map(),
         trackedLastByteChangeAtMsById: new Map(

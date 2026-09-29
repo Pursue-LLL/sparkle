@@ -41,7 +41,9 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `transportMutationGateCore.ts` / `transportMutationGateRuntime.ts` | MTIC-v2：赛中禁止 HY2→TLS 等 transport mutation |
 | `recoveryCircuitBreakerCore.ts` / `recoveryCircuitBreaker.ts` | **P1/P1.5** 连续 recovery 失败熔断 · 假成功守卫 · circuit open 时 restartCore 阶梯（defer 后重试） |
 | `aiTrafficIsolationCore.ts` | **W2** AI/Codex 组剔除 Marathon Cursor HY2 leaf（factory 注入） |
-| `collectiveDeathBugReportCore.ts` / `collectiveDeathBugReport.ts` / `collectiveDeathAlert.ts` | **BUG-2026-09-03-002** 集体死亡 GUI toast + 「复制 Bug 信息」IPC |
+| `collectiveDeathBugReportCore.ts` / `collectiveDeathBugReport.ts` / `collectiveDeathAlert.ts` | **BUG-2026-09-03-002** 集体死亡 GUI toast + 「复制 Bug 信息」IPC；**BUG-2026-09-15-001** 按日历日选最新 `app-*.log`（禁字典序）+ 30min 窗口对齐 + `[ProxyStackDeadlock]` 标记 |
+| `proxyStackDeadlockCore.ts` / `proxyStackDeadlockRuntime.ts` | **BUG-2026-09-15-001** emergency core restart 的 proxy-stack 死锁门禁；**longflow 证据契约** `LongflowEvidence = measured \| unknown`（禁止 `?? 0` 静默零填充）；`selectLeafProbeTargets` 在 controller 不可达时不伪造叶子失败 |
+| `emergencyCoreRecovery.ts` / `emergencyCoreRecoveryCore.ts` | **BUG-2026-09-15-004** 紧急升级**只决策+记录、不停内核**（`emergency_core_restart_removed`）：整核 `stop+start` 会断所有 App，已从代码中移除；卡顿交由非破坏性恢复（vitality/sidecar/leaf） |
 | `profileConfigRecoveryCore.ts` / `profileConfigRecoveryPureCore.ts` | **BUG-2026-09-03-003** 空/损坏 `profile.yaml` 从 `.bak` + 磁盘 profiles 恢复 · 禁止 persist 空配置 |
 | `recoveryFailoverGovernanceCore.ts` | **BUG-004/006** vitality 反证 · failback 判定 · **Reality 上 suppress HY2 absent** |
 | `recoveryCursorDedicatedFailback.ts` | **BUG-004/006** Reality→HY2 failback · mihomo live · **marathon 门控 hy2_vitality_failback** |
@@ -100,7 +102,8 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `cursorNetworkOptimize.ts`                                              | Cursor DNS/TUN/keepalive 优化                                                                                                                                         |
 | `fakeIpRoutingIntegrity.ts`                                             | fake-ip 路由一致性：Tier0 Cursor · **Tier0 Direct** · Tier1 Proxy · sniffer 完整性                                                                                  |
 | `coreLifecycleCore.ts` / `coreLifecycle.ts`                             | **CoreLifecycle SSOT** — post core-ready fake-ip flush（cold/emergency/manual restart 后卫生）                                                                      |
-| `proxyHealthMonitor.ts`                                                 | SG/TW/JP failover（🎯 Cursor 专用，api2 测速）；**Marathon quiesce active 全暂停**（含 exit hysteresis 60s）                                                         |
+| `proxyHealthMonitor.ts` | 商用节点 failover（failover-only）。**BUG-2026-09-15-007**：切换触发 `proxyTimeoutThreshold`（现 2000ms）、目标只挑 `proxySwitchMaxTargetDelayMs`（500ms）、顺序 `proxySwitchPriority`（新加坡→台湾→日本→韩国→美国）、每 `proxyHealthCheckInterval`（300s）复测；Marathon quiesce active 全暂停（含 exit hysteresis） |
+| `defaultAutoSwitchProxy.ts` | 地区自动组生成：`type:url-test` + **`interval:300` + `tolerance:2000`（迟滞）+ `lazy:true`**（BUG-2026-09-15-007），消除 60s 无迟滞抖动导致 AI 长流断连 |
 | `mihomoApi.ts`                                                          | mihomo REST 封装（delay 经 mihomoProbeCoordinator gate **除 marathon_rescue** BUG-015；Resource not found → provider leaf BUG-012/014；L2 fake-ip flush BUG-013） |
 | `mihomoProxyDelayCore.ts`                                               | **BUG-012/014/015** isMihomoApiResourceNotFoundError · resolveProviderNameForLeaf · isMarathonRescueDelayPurpose · shouldBypassMihomoDelayProbeSlot |
 | `cursorDedicatedDefault.ts`                                             | 启动恢复手选；无手选时默认 **`JP-VPS-TLS`**（trusted standard TLS）；Reality/HY2/TUIC 标 suboptimal，禁止自动回落 |

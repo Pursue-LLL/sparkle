@@ -34,7 +34,7 @@ describe('vlessVisionMuxGuardCore', () => {
 
   it('writes smux false even when multiplex and smux are absent (implicit mux guard)', () => {
     const input = {
-      name: 'JP-VPS-Reality',
+      name: 'KR-VPS-Reality',
       type: 'vless',
       flow: 'xtls-rprx-vision'
     }
@@ -54,12 +54,12 @@ describe('vlessVisionMuxGuardCore', () => {
   it('summarizes guard actions for all vision nodes', () => {
     const summary = summarizeVlessVisionMuxGuard([
       { name: 'KR-VPS-Reality', type: 'vless', flow: 'xtls-rprx-vision', multiplex: { enabled: true } },
-      { name: 'JP-VPS-Reality', type: 'vless', flow: 'xtls-rprx-vision' },
+      { name: 'KR-VPS-Reality', type: 'vless', flow: 'xtls-rprx-vision' },
       { name: 'KR-VPS-HY2', type: 'hysteria2' }
     ])
     assert.equal(summary.visionNodeCount, 2)
     assert.equal(summary.strippedMultiplexCount, 1)
     assert.equal(summary.ensuredSmuxOffCount, 2)
-    assert.deepEqual(summary.visionNodeNames, ['KR-VPS-Reality', 'JP-VPS-Reality'])
+    assert.deepEqual(summary.visionNodeNames, ['KR-VPS-Reality', 'KR-VPS-Reality'])
   })
 })

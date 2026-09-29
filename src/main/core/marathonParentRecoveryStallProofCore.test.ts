@@ -10,7 +10,7 @@ const baseObservation = {
   kind: 'single' as const,
   connectionId: 'conn-1',
   host: 'api2.cursor.sh',
-  leaf: 'JP-VPS-HY2',
+  leaf: 'KR-VPS-HY2',
   network: 'tcp',
   connAgeMs: 200_000,
   totalQuicCursorCount: 10,

@@ -4,6 +4,7 @@ import {
   digestWorkingTreeDiff,
   evaluateDistFreshness,
   formatSourceTreeHash,
+  resolveWorkingTreeDiffText,
 } from './sparkleDistFreshnessCore'
 
 describe('sparkleDistFreshnessCore', () => {
@@ -52,5 +53,18 @@ describe('sparkleDistFreshnessCore', () => {
     })
     assert.equal(result.fresh, false)
     assert.equal(result.reason, 'semver_mismatch')
+  })
+
+  it('ADVERSARIAL: a failed git diff must never look like a clean tree', () => {
+    const failed = resolveWorkingTreeDiffText({ ok: false, gitCommit: 'abc' })
+    const clean = resolveWorkingTreeDiffText({ ok: true, text: '', gitCommit: 'abc' })
+    assert.match(failed, /git_diff_failed@abc/)
+    assert.notEqual(digestWorkingTreeDiff(failed), digestWorkingTreeDiff(clean))
+  })
+
+  it('ADVERSARIAL: a multi-MB diff is never the empty-string hash', () => {
+    const emptyHash = digestWorkingTreeDiff('')
+    const bigHash = digestWorkingTreeDiff('x'.repeat(2 * 1024 * 1024))
+    assert.notEqual(bigHash, emptyHash)
   })
 })

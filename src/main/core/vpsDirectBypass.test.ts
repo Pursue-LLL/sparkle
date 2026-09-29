@@ -16,7 +16,7 @@ describe('vpsDirectBypass', () => {
   it('collects VPS server IPs from leaf proxies', async () => {
     const ips = await collectVpsServerIps([
       { name: 'KR-VPS-Reality', server: '203.0.113.10', type: 'vless' },
-      { name: 'JP-VPS-HY2', server: '198.51.100.10', type: 'hysteria2' },
+      { name: 'KR-VPS-HY2', server: '198.51.100.10', type: 'hysteria2' },
       { name: '🇸🇬新加坡-01 S 1.0x', server: 'productandservice.infralinkplus.com', type: 'ss' }
     ])
     assert.deepEqual(ips, ['198.51.100.10', '203.0.113.10'])
@@ -31,7 +31,7 @@ describe('vpsDirectBypass', () => {
 
     await ensureVpsDirectBypass(profile, [
       { name: 'KR-VPS-Reality', server: '203.0.113.10', type: 'vless' },
-      { name: 'JP-VPS-TUIC', server: '198.51.100.10', type: 'tuic' }
+      { name: 'KR-VPS-TUIC', server: '198.51.100.10', type: 'tuic' }
     ])
 
     const rules = profile.rules as string[] | undefined

@@ -97,7 +97,7 @@ export async function evaluateMarathonProtocolSwitchBlock(input: {
 }
 
 export async function executeMarathonProtocolColdStartUpgrade(
-  activeNode: string,
+  _activeNode: string,
   recommendedNode: string,
 ): Promise<boolean> {
   return mihomoChangeProxy(CURSOR_DEDICATED_GROUP_NAME, recommendedNode, {

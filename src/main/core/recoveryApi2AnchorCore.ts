@@ -47,6 +47,9 @@ export function evaluateSidecarExternalVerification(input: {
     return { verified: false, reason: 'vitality_untrustworthy_and_api2_fail' }
   }
   if (!input.api2Ok) {
+    if (isVitalityConnectPathTrustworthy(input.connectPathDelayMs)) {
+      return { verified: true, reason: 'api2_anchor_fallback_trustworthy_vitality' }
+    }
     return { verified: false, reason: 'api2_anchor_fail' }
   }
   return { verified: true, reason: 'api2_anchor_ok' }

@@ -20,7 +20,7 @@ describe('hy2TunnelVitality executor', () => {
     setSkipHy2TunnelVitalityAppLogForTests(true)
     setHy2TunnelVitalityDialOverrideForTests(async () => ({ delay: 288 }))
     const nowMs = 60_000_000
-    const result = await runHy2TunnelVitalityIfDue('JP-VPS-HY2', 25, nowMs, {
+    const result = await runHy2TunnelVitalityIfDue('KR-VPS-HY2', 25, nowMs, {
       marathonTruthActive: true,
       pulseContractDue: true,
       openSegmentCount: 1,
@@ -37,7 +37,7 @@ describe('hy2TunnelVitality executor', () => {
     setSkipHy2TunnelVitalityAppLogForTests(true)
     assert.equal(tryAcquireHy2SessionDialInFlight(), true)
     try {
-      const result = await runHy2TunnelVitalityIfDue('JP-VPS-HY2', 25, 70_000_000, {
+      const result = await runHy2TunnelVitalityIfDue('KR-VPS-HY2', 25, 70_000_000, {
         marathonTruthActive: true,
         pulseContractDue: true,
         openSegmentCount: 1,

@@ -25,7 +25,7 @@ function snapshot(
     outboundHy2SessionAgeMs: outboundAge,
     maxByteStallMs: CARRIER_QUIESCE_BYTE_FROZEN_MS + 1,
     frozenQuicCursorCount: 2,
-    activeHy2Leaf: 'JP-VPS-HY2',
+    activeHy2Leaf: 'KR-VPS-HY2',
     hy2ParentChainBirthMs: overrides.hy2ParentChainBirthMs ?? nowMs - maxAge,
     ...overrides,
   }

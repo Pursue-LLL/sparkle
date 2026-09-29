@@ -555,7 +555,7 @@ async function maybeRunHy2ParentRotationAfterPrune(
       }) &&
       latestLongevitySnapshot.maxByteStallMs >= 90_000
     ) {
-      const activeLeaf = latestLongevitySnapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+      const activeLeaf = latestLongevitySnapshot.activeHy2Leaf?.trim() ?? 'KR-VPS-HY2'
       const { executeByteDeathParentMutation } = await import('./hy2ParentByteDeathRecoveryExecutor')
       const mutation = await executeByteDeathParentMutation({
         activeLeaf,
@@ -583,7 +583,7 @@ async function maybeRunHy2ParentRotationAfterPrune(
   const closed = await closeStalledConnection(plan.udpConnectionId, nowMs)
   lastHy2ParentRotationAtMs = nowMs
   if (closed.ok) {
-    const activeLeaf = latestLongevitySnapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2'
+    const activeLeaf = latestLongevitySnapshot.activeHy2Leaf?.trim() ?? 'KR-VPS-HY2'
     if (!marathonGlobalByteDeath) {
       const { resetTransportLongevityHy2ParentChainBirth } = await import('./transportLongevityTruth')
       await resetTransportLongevityHy2ParentChainBirth(activeLeaf, nowMs)
