@@ -4,7 +4,7 @@ import crypto from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { countCursorConnections } from './marathonMihomoConnectionsCountCore.ts'
+import { countCursorConnections } from './marathonMihomoConnectionsCountCore'
 
 const DIRECT_SOCKET = process.env.SPARKLE_MIHOMO_SOCKET ?? '/tmp/sparkle-mihomo-api.sock'
 const SERVICE_SOCKET = process.env.SPARKLE_SERVICE_SOCKET ?? '/tmp/sparkle-service.sock'

@@ -32,13 +32,15 @@ describe('recoveryCircuitBreaker P1 wiring', () => {
     assert.match(coordinator, /notifyRecoveryCircuitSuccess/)
   })
 
-  it('emergency core recovery uses bridge invoke (no manager dynamic import)', () => {
+  it('BUG-2026-09-15-004: emergency escalation never stops the core', () => {
     const source = readFileSync(path.join(ROOT, 'emergencyCoreRecovery.ts'), 'utf8')
-    assert.match(source, /invokeEmergencyCoreRestart/)
-    assert.doesNotMatch(source, /import \{ restartCoreEmergency \} from '\.\/manager'/)
+    assert.match(source, /EMERGENCY_CORE_RESTART_REMOVED/)
+    assert.doesNotMatch(source, /invokeEmergencyCoreRestart/)
+    assert.doesNotMatch(source, /stopCoreUnchecked/)
     assert.doesNotMatch(source, /await import\('\.\/manager'\)/)
-    const bridge = readFileSync(path.join(ROOT, 'emergencyCoreRestartBridge.ts'), 'utf8')
-    assert.match(bridge, /registerEmergencyCoreRestartHandler/)
-    assert.match(readFileSync(path.join(ROOT, 'manager.ts'), 'utf8'), /registerEmergencyCoreRestartHandler\(restartCoreEmergency\)/)
+    assert.doesNotMatch(
+      readFileSync(path.join(ROOT, 'manager.ts'), 'utf8'),
+      /restartCoreEmergency|registerEmergencyCoreRestartHandler/,
+    )
   })
 })

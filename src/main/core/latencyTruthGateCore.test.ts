@@ -15,7 +15,7 @@ describe('latencyTruthGateCore', () => {
       vpsBodyLastTs: '2026-08-07T06:00:00.000Z',
     }
     const gate = evaluateLatencyDeltaFromSummary(summary)
-    const line = formatLatencyTruthGateLogLine('JP-VPS-HY2', summary, gate)
+    const line = formatLatencyTruthGateLogLine('KR-VPS-HY2', summary, gate)
     assert.match(line, /mac_p50=271/)
     assert.match(line, /vps_p50=519/)
     assert.match(line, /high=0/)

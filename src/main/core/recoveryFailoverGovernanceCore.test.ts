@@ -52,37 +52,38 @@ describe('recoveryFailoverGovernanceCore @1.30.54', () => {
     )
   })
 
-  it('failback to HY2 when on Reality and vitality recent', () => {
+  it('HY2-only: no failback from legacy TCP leaf (decommissioned)', () => {
     const decision = shouldFailbackCursorDedicatedToHy2({
-      currentLeaf: 'JP-VPS-Reality',
+      currentLeaf: 'KR-VPS-Reality',
       lastVitalitySuccessAtMs: nowMs - 3_000,
       nowMs,
     })
-    assert.equal(decision.failback, true)
-    assert.equal(decision.targetLeaf, 'JP-VPS-HY2')
+    assert.equal(decision.failback, false)
+    assert.equal(decision.reason, 'current_leaf_not_tcp_failover_target')
+    assert.equal(decision.targetLeaf, 'KR-VPS-HY2')
   })
 
   it('no failback when already on HY2', () => {
     const decision = shouldFailbackCursorDedicatedToHy2({
-      currentLeaf: 'JP-VPS-HY2',
+      currentLeaf: 'KR-VPS-HY2',
       lastVitalitySuccessAtMs: nowMs - 3_000,
       nowMs,
     })
     assert.equal(decision.failback, false)
   })
 
-  it('1.30.55: suppress HY2 udp absent escalation when cursor dedicated is on Reality', () => {
+  it('HY2-only: suppress escalation only for legacy TCP failover leaves', () => {
     assert.equal(
       shouldSuppressHy2UdpAbsentEscalation({
-        hy2LeafId: 'JP-VPS-HY2',
-        cursorDedicatedActiveLeaf: 'JP-VPS-Reality',
+        hy2LeafId: 'KR-VPS-HY2',
+        cursorDedicatedActiveLeaf: 'KR-VPS-Reality',
       }),
-      true,
+      false,
     )
     assert.equal(
       shouldSuppressHy2UdpAbsentEscalation({
-        hy2LeafId: 'JP-VPS-HY2',
-        cursorDedicatedActiveLeaf: 'JP-VPS-HY2',
+        hy2LeafId: 'KR-VPS-HY2',
+        cursorDedicatedActiveLeaf: 'KR-VPS-HY2',
       }),
       false,
     )

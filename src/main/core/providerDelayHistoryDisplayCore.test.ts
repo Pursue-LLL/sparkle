@@ -11,7 +11,7 @@ describe('providerDelayHistoryDisplayCore', () => {
       JSON.stringify({
         ts: '2026-07-23T08:00:00.000Z',
         scope: 'active',
-        node: 'JP-VPS-HY2',
+        node: 'KR-VPS-HY2',
         latency_ms: 511,
         ok: true,
         method: 'session_nudge',
@@ -19,7 +19,8 @@ describe('providerDelayHistoryDisplayCore', () => {
       JSON.stringify({
         ts: '2026-07-23T08:00:01.000Z',
         scope: 'active',
-        node: 'KR-VPS-HY2',
+        // Different node must not count toward KR-VPS-HY2 anchors.
+        node: 'SG-01',
         latency_ms: 320,
         ok: true,
         method: 'session_nudge',
@@ -29,7 +30,7 @@ describe('providerDelayHistoryDisplayCore', () => {
     const anchors = readSessionNudgeAnchorsFromLedger(
       raw,
       Date.parse('2026-07-23T07:59:00.000Z'),
-      'JP-VPS-HY2',
+      'KR-VPS-HY2',
     )
     assert.equal(anchors.length, 1)
     assert.equal(anchors[0]?.delayMs, 511)

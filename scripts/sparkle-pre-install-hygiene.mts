@@ -9,7 +9,7 @@ import {
   formatPreInstallHygieneLog,
   PRE_INSTALL_JOURNAL_TRUNCATE_BYTES,
   type PreInstallHygieneInput,
-} from './sparklePreInstallHygieneCore.ts'
+} from './sparklePreInstallHygieneCore'
 
 const JOURNAL_PATH = path.join(homedir(), '.sparkle', 'stream-lifecycle-journal.v1.jsonl')
 

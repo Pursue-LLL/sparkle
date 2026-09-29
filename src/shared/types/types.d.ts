@@ -41,6 +41,8 @@ type MihomoProxyType =
   | 'AnyTLS'
   | 'Sudoku'
   | 'Masque'
+  /** Placeholder mihomo reports for a proxy whose protocol it does not expose. */
+  | 'Unknown'
 type TunStack = 'gvisor' | 'mixed' | 'system'
 type FindProcessMode = 'off' | 'strict' | 'always'
 type DnsMode = 'normal' | 'fake-ip' | 'redir-host'
@@ -64,9 +66,17 @@ type Fingerprints =
   | '360'
   | 'qq'
 
+/** 与 src/main/core/mihomoProxyDelayCore.ts 的 MihomoDelayPurpose 保持一致。 */
 interface MihomoDelayOptions {
   timeoutMs?: number
-  purpose?: 'default' | 'marathon_rescue'
+  purpose?:
+    | 'default'
+    | 'marathon_rescue'
+    | 'user_explicit'
+    | 'hy2_tunnel_vitality'
+    | 'hy2_parent_sidecar'
+    | 'tier0_provider_parity_hot_reload'
+    | 'session_nudge'
 }
 
 interface ManagedVpsDelayTestOptions {

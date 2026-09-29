@@ -27,7 +27,7 @@ describe('api2ProbeLedgerCore', () => {
     const sample = ledgerRowToBenchmarkSample({
       ts: '2026-07-10T02:00:00.000Z',
       scope: 'vps',
-      node: 'JP-VPS-HY2',
+      node: 'KR-VPS-HY2',
       region: 'JP',
       kind: 'vps',
       latency_ms: 180,
@@ -35,7 +35,7 @@ describe('api2ProbeLedgerCore', () => {
       authoritative: true,
       method: 'mihomo_delay'
     })
-    assert.equal(sample.node, 'JP-VPS-HY2')
+    assert.equal(sample.node, 'KR-VPS-HY2')
     assert.equal(sample.delay_ms, 180)
     assert.equal(sample.kind, 'vps')
   })

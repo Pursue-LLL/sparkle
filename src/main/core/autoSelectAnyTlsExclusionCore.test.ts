@@ -23,10 +23,10 @@ describe('autoSelectAnyTlsExclusionCore', () => {
   })
 
   it('recognizes url-test auto-select group names only', () => {
-    assert.equal(isAutoSelectUrlTestGroupName('Sparkle-自动-新加坡', 'url-test'), true)
+    assert.equal(isAutoSelectUrlTestGroupName('Sparkle-新加坡', 'url-test'), true)
     assert.equal(isAutoSelectUrlTestGroupName('自动选择', 'url-test'), true)
     assert.equal(isAutoSelectUrlTestGroupName('🤖 AI', 'select'), false)
-    assert.equal(isAutoSelectUrlTestGroupName('Sparkle-自动-新加坡', 'select'), false)
+    assert.equal(isAutoSelectUrlTestGroupName('Sparkle-新加坡', 'select'), false)
   })
 
   it('builds regional members without anytls', () => {
@@ -37,7 +37,7 @@ describe('autoSelectAnyTlsExclusionCore', () => {
   it('strips anytls from url-test proxy lists but not select groups', () => {
     const groups = [
       {
-        name: 'Sparkle-自动-新加坡',
+        name: 'Sparkle-新加坡',
         type: 'url-test',
         proxies: ['🇸🇬 新加坡 01', '🇸🇬 新加坡 02'],
       },
@@ -51,9 +51,15 @@ describe('autoSelectAnyTlsExclusionCore', () => {
   })
 
   it('materializes provider-mode regional url-test without anytls', () => {
-    const groups = [
+    const groups: Array<{
+      name: string
+      type: string
+      use: string[]
+      filter: string
+      proxies?: string[]
+    }> = [
       {
-        name: 'Sparkle-自动-新加坡',
+        name: 'Sparkle-新加坡',
         type: 'url-test',
         use: ['77caf1sub001'],
         filter: '新加坡|(?i)\\bSG\\b|singapore',
@@ -75,7 +81,7 @@ describe('autoSelectAnyTlsExclusionCore', () => {
   it('noops when catalog lacks proxy types', () => {
     const groups = [
       {
-        name: 'Sparkle-自动-新加坡',
+        name: 'Sparkle-新加坡',
         type: 'url-test',
         proxies: ['🇸🇬 新加坡 01', '🇸🇬 新加坡 02'],
       },
@@ -91,14 +97,14 @@ describe('autoSelectAnyTlsExclusionCore', () => {
   it('removes url-test group when every member is anytls and prunes select refs', () => {
     const groups = [
       {
-        name: 'Sparkle-自动-测试区',
+        name: 'Sparkle-测试区',
         type: 'url-test',
         proxies: ['测试 01'],
       },
       {
         name: '🤖 AI',
         type: 'select',
-        proxies: ['Sparkle-自动-测试区', '测试 02'],
+        proxies: ['Sparkle-测试区', '测试 02'],
       },
     ]
     const result = excludeAnyTlsFromAutoSelectUrlTestGroups(groups, [
@@ -106,7 +112,7 @@ describe('autoSelectAnyTlsExclusionCore', () => {
       { name: '测试 02', type: 'hysteria2' },
     ])
     assert.equal(result.groupsRemoved.length, 1)
-    assert.equal(groups.some((group) => group.name === 'Sparkle-自动-测试区'), false)
+    assert.equal(groups.some((group) => group.name === 'Sparkle-测试区'), false)
     assert.deepEqual(groups.find((group) => group.name === '🤖 AI')?.proxies, ['测试 02'])
   })
 

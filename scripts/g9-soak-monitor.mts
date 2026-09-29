@@ -6,8 +6,8 @@ import path from 'node:path'
 import {
   evaluateG9SoakPass,
   parseG9SoakMetrics,
-} from './g9SoakMonitorCore.ts'
-import { evaluateMaxStepsRateUpgradeGate } from './maxStepsRateUpgradeGateCore.ts'
+} from './g9SoakMonitorCore'
+import { evaluateMaxStepsRateUpgradeGate } from './maxStepsRateUpgradeGateCore'
 
 const LOG_DIR = path.join(homedir(), 'Library/Application Support/sparkle/logs')
 const SNAPSHOT_PATH = path.join(homedir(), '.sparkle', 'max-steps-rate-snapshot.jsonl')

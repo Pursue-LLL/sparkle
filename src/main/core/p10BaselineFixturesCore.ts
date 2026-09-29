@@ -168,8 +168,23 @@ export function evaluateP10Code8UnknownGolden(hasInnerDetails: boolean): P10Base
   }
 }
 
+interface P10BaselineManifestShape {
+  cursor315: { workbenchMainJsSha256: string; stockWorkbenchMainJsSha256: string }
+  macSparkle: { mihomoYamlSha256: string }
+  vpsJpHy2: { configJsonSha256: string; hy2QuicUdpTimeout: string }
+}
+
+interface P10WorkbenchDiffShape {
+  stockIfmPatchMarkerCount: number
+  patchedIfmPatchMarkerCount: number
+  stockWorkbenchMainJsSha256: string
+  patchedWorkbenchMainJsSha256: string
+  patch482PresentOnDisk: boolean
+  patch482ActiveInMemory: boolean
+}
+
 export function evaluateP10BaselineManifestFixture(
-  manifest: typeof P10_BASELINE_MANIFEST = P10_BASELINE_MANIFEST,
+  manifest: P10BaselineManifestShape = P10_BASELINE_MANIFEST,
 ): P10BaselineVerdict {
   const ok =
     manifest.cursor315.workbenchMainJsSha256.length === 64 &&
@@ -188,7 +203,7 @@ export function evaluateP10BaselineManifestFixture(
 }
 
 export function evaluateP10WorkbenchStockPatchedDiff(
-  diff: typeof P10_WORKBENCH_STOCK_PATCHED_DIFF = P10_WORKBENCH_STOCK_PATCHED_DIFF,
+  diff: P10WorkbenchDiffShape = P10_WORKBENCH_STOCK_PATCHED_DIFF,
 ): P10BaselineVerdict {
   const ok =
     diff.stockIfmPatchMarkerCount === 0 &&

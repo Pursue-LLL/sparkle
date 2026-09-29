@@ -30,12 +30,12 @@ describe('vpsL4ProbeCore', () => {
 
   it('builds ok result when both curls succeed', () => {
     const result = buildVpsL4ProbeResult(
-      'jp-vps',
-      'JP-VPS',
+      'kr-vps',
+      'KR-VPS',
       'api2 0.621000 200\nmarketplace 0.249000 200\n',
       '',
       {
-        sshHost: 'jp-vps',
+        sshHost: 'kr-vps',
         hostName: '198.51.100.10',
         port: 22,
         identityFiles: [],
@@ -51,7 +51,7 @@ describe('vpsL4ProbeCore', () => {
   })
 
   it('marks failure when api2 line missing', () => {
-    const result = buildVpsL4ProbeResult('jp-vps', 'JP-VPS', 'marketplace 0.200000 200\n', '')
+    const result = buildVpsL4ProbeResult('kr-vps', 'KR-VPS', 'marketplace 0.200000 200\n', '')
     assert.equal(result.api2Ok, false)
     assert.equal(result.authoritative, true)
     assert.equal(result.probeAttribution, undefined)
@@ -77,17 +77,17 @@ describe('vpsL4ProbeCore', () => {
 
   it('resolves leaf proxy fallback by region', () => {
     const leafProxies = [
-      { name: 'JP-VPS-HY2', server: '198.51.100.10', type: 'hysteria2' }
+      { name: 'KR-VPS-HY2', server: '198.51.100.10', type: 'hysteria2' }
     ]
-    assert.equal(resolveVpsServerIpByRegion('JP-VPS', leafProxies), '198.51.100.10')
+    assert.equal(resolveVpsServerIpByRegion('KR-VPS', leafProxies), '198.51.100.10')
   })
 
   it('falls back to leaf proxy IP when ssh -G hostname is alias', () => {
     const target = resolveVpsSshTarget(
-      'jp-vps',
-      'JP-VPS',
-      { hostName: 'jp-vps', port: 22, identityFiles: [] },
-      [{ name: 'JP-VPS-HY2', server: '198.51.100.10', type: 'hysteria2' }]
+      'kr-vps',
+      'KR-VPS',
+      { hostName: 'kr-vps', port: 22, identityFiles: [] },
+      [{ name: 'KR-VPS-HY2', server: '198.51.100.10', type: 'hysteria2' }]
     )
     assert.equal(target?.hostName, '198.51.100.10')
     assert.equal(target?.resolvedVia, 'leaf_proxy_fallback')
@@ -96,7 +96,7 @@ describe('vpsL4ProbeCore', () => {
   it('builds ssh args with ProxyCommand=none and explicit HostName', () => {
     const args = buildVpsSshArgs(
       {
-        sshHost: 'jp-vps',
+        sshHost: 'kr-vps',
         hostName: '198.51.100.10',
         port: 22,
         user: 'root',
@@ -120,7 +120,7 @@ describe('vpsL4ProbeCore', () => {
       'root',
       '-i',
       '~/.ssh/id_ed25519',
-      'jp-vps',
+      'kr-vps',
       'echo ok'
     ])
   })
@@ -137,15 +137,15 @@ describe('vpsL4ProbeCore', () => {
     resetVpsL4ProbeSshFailureBackoffForTests()
     assert.equal(resolveVpsL4ProbeIntervalMs(), VPS_L4_PROBE_INTERVAL_MS)
 
-    const sshFail = buildVpsL4ProbeResult('jp-vps', 'JP-VPS', '', 'ssh timeout')
+    const sshFail = buildVpsL4ProbeResult('kr-vps', 'KR-VPS', '', 'ssh timeout')
     for (let i = 0; i < VPS_L4_PROBE_SSH_FAIL_BACKOFF_AFTER; i += 1) {
       recordVpsL4ProbeSshOutcome(sshFail)
     }
     assert.equal(resolveVpsL4ProbeIntervalMs(), VPS_L4_PROBE_SSH_FAIL_INTERVAL_MS)
 
     const ok = buildVpsL4ProbeResult(
-      'jp-vps',
-      'JP-VPS',
+      'kr-vps',
+      'KR-VPS',
       'api2 0.621000 200\nmarketplace 0.249000 200\n',
       ''
     )

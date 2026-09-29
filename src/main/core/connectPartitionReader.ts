@@ -9,9 +9,9 @@ import {
   detectConnectPartitionSignal,
   resolveConnectPartitionWindowMs,
   CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS,
-  type AgentTransportFailureRow,
   type ConnectPartitionSignal,
 } from './connectPartitionDetectCore'
+import type { AgentTransportFailureRow } from './agentTransportFailureWriterCore'
 import {
   countConnectPingFailuresInWindow,
   mergeTransportFailureRows,

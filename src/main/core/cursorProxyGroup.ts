@@ -55,7 +55,7 @@ export const AUTO_SELECT_DELAY_TEST_URL = 'https://chatgpt.com' as const
 /** Hong Kong url-test group probes Grok reachability for Stripe/X/Grok traffic. */
 export const HONG_KONG_DELAY_TEST_URL = 'https://grok.com' as const
 
-const REGION_AUTO_SELECT_PREFIX = 'Sparkle-自动-' as const
+const REGION_AUTO_SELECT_PREFIX = 'Sparkle-' as const
 
 /** Url-test sub-group inside 自动选择 fallback — marathon-eligible VPS leaves only. */
 export const CURSOR_AUTO_SELECT_GROUP_NAME = 'Sparkle-自动-Cursor' as const
@@ -66,7 +66,11 @@ export function isSparkleCursorAutoSelectGroup(groupName: string): boolean {
 
 export function isSparkleRegionalAutoSelectGroup(groupName: string): boolean {
   return (
-    groupName.startsWith(REGION_AUTO_SELECT_PREFIX) && !isSparkleCursorAutoSelectGroup(groupName)
+    groupName.startsWith(REGION_AUTO_SELECT_PREFIX) &&
+    !isSparkleCursorAutoSelectGroup(groupName) &&
+    // Dedicated HK group and the 优选 picker share the `Sparkle-` prefix but are
+    // managed on their own — they must not be treated as regional sub-groups.
+    !isHongKongFilterGroupName(groupName)
   )
 }
 
@@ -75,7 +79,7 @@ export function isSparkleAutoSelectSubGroup(groupName: string): boolean {
 }
 
 export function isHongKongFilterGroupName(groupName: string): boolean {
-  return groupName === '🇭🇰 香港节点'
+  return groupName === 'Sparkle-香港' || groupName === '🇭🇰 香港节点'
 }
 
 export function isCursorDedicatedGroupName(groupName: string): boolean {

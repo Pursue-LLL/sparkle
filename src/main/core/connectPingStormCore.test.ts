@@ -56,14 +56,15 @@ describe('connectPingStormCore', () => {
       [
         {
           ts: new Date(NOW - 60_000).toISOString(),
+          authoritative: true,
           scope: 'vps',
-          node: 'JP-VPS',
+          node: 'KR-VPS',
           method: 'ssh_curl',
           latency_ms: 518,
           ok: true,
         },
       ],
-      'JP-VPS-HY2',
+      'KR-VPS-HY2',
       NOW,
     )
     assert.equal(ok, true)

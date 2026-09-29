@@ -13,7 +13,7 @@ describe('marathonSseCarrierPruneCore R-35b′', () => {
     kind: 'single' as const,
     connectionId: 'conn-carrier-1',
     host: 'api2direct.cursor.sh',
-    leaf: 'JP-VPS-HY2',
+    leaf: 'KR-VPS-HY2',
     network: 'tcp',
     stallMs: 47_000,
     connAgeMs: 200_000,

@@ -1,5 +1,5 @@
 import { is } from '@electron-toolkit/utils'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync } from 'fs'
 import { ensureDirectoryExists } from './logDirEnsureCore'
 import { app } from 'electron'
 import path from 'path'

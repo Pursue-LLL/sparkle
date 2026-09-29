@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { AgentTransportFailureRow } from './connectPartitionDetectCore'
+import type { AgentTransportFailureRow } from './agentTransportFailureWriterCore'
 import {
   isMaxStepsLedgerTerminal,
   mergeTerminalsForMaxStepsRate,

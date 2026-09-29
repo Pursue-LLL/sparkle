@@ -12,7 +12,7 @@ function baseConfig(): AppConfig {
     cursorBidiOptimize: true,
     cursorSysProxyLock: false,
     cursorProxyAppPathPrefixes: []
-  } as AppConfig
+  } as unknown as AppConfig
 }
 
 describe('migrateLegacyCursorDefaults', () => {

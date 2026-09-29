@@ -184,7 +184,7 @@ describe('injectCursorDomainRules', () => {
   it('removes subscription PROCESS-NAME Cursor rules when path prefixes are configured', () => {
     const profile = {
       'proxy-groups': [
-        { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['JP-VPS-Reality'] },
+        { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['KR-VPS-Reality'] },
         { name: GENERAL_PROXY_GROUP_NAME, type: 'select', proxies: ['SG-01'] }
       ],
       rules: [
@@ -214,7 +214,7 @@ describe('injectCursorDomainRules', () => {
   })
 
   it('routes Cursor.app to 自动选择 and Cursor-2/3 to Cursor 专用', () => {
-    const profile = profileWithCursorGroups(['JP-VPS-HY2'])
+    const profile = profileWithCursorGroups(['KR-VPS-HY2'])
     profile.rules = ['DOMAIN-SUFFIX,cursor.sh,🌍 国外媒体', 'GEOIP,us,DIRECT']
 
     injectCursorDomainRules(profile, [])

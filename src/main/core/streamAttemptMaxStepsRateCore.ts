@@ -2,7 +2,7 @@
 // [OUTPUT] computeStreamAttemptMaxStepsRateSnapshot
 // [POS] P28b SSOT — rolling last 100 stream attempts (incl. reconnects), observe-only SLO.
 
-import type { AgentTransportFailureRow } from './connectPartitionDetectCore'
+import type { AgentTransportFailureRow } from './agentTransportFailureWriterCore'
 import type { MarathonSegmentCacheRecord } from './marathonSegmentCache'
 import {
   isMaxStepsLedgerTerminal,

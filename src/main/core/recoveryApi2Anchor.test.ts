@@ -19,20 +19,20 @@ describe('recoveryApi2Anchor', () => {
   it('probeRecoveryApi2Anchor returns ok from override', async () => {
     setRecoveryApi2AnchorOverrideForTests(async () => ({
       ok: true,
-      leaf: 'JP-VPS-HY2',
+      leaf: 'KR-VPS-HY2',
       latencyMs: 320,
       probeVia: 'cursor_dedicated_mihomo',
     }))
     assert.equal(await probeRecoveryApi2Anchor(), true)
     const detailed = await probeRecoveryApi2AnchorDetailed()
-    assert.equal(detailed.leaf, 'JP-VPS-HY2')
+    assert.equal(detailed.leaf, 'KR-VPS-HY2')
     assert.equal(detailed.probeVia, 'cursor_dedicated_mihomo')
   })
 
   it('probeRecoveryApi2Anchor returns false when cursor dedicated leaf fails', async () => {
     setRecoveryApi2AnchorOverrideForTests(async () => ({
       ok: false,
-      leaf: 'JP-VPS-HY2',
+      leaf: 'KR-VPS-HY2',
       latencyMs: 5001,
       errorDetail: 'timeout',
       probeVia: 'cursor_dedicated_mihomo',

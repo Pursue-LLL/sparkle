@@ -106,8 +106,8 @@ export function replayBug20260831ProbeOnlyNoFalseReset(): Bug20260831ReplayVerdi
 export function replayBug20260831CircuitOpenNotification(): Bug20260831ReplayVerdict {
   const source = readFileSync(join(ROOT, 'recoveryCircuitBreaker.ts'), 'utf8')
   const ok =
-    source.includes('recovery-circuit-breaker-open') &&
-    source.includes('showNotification')
+    source.includes('recovery_circuit_open') &&
+    source.includes('notifyCollectiveDeathAlert')
   return {
     fixtureId: '0831_circuit_open_user_notification',
     ok,
@@ -149,15 +149,20 @@ export function replayBug20260831CursorTransportHealthRespectsCircuit(): Bug2026
 /** Circuit open must keep retrying restartCore after cursor_conn defer (no one-shot lock). */
 export function replayBug20260831CircuitRestartRetriesAfterDefer(): Bug20260831ReplayVerdict {
   const source = readFileSync(join(ROOT, 'recoveryCircuitBreaker.ts'), 'utf8')
+  const coordinator = readFileSync(
+    join(ROOT, 'cursorDedicatedDialFailureClusterRuntime.ts'),
+    'utf8'
+  )
+  // Escalation single-owner contract: breaker opens/blocks only; coordinator owns restartCore
+  // escalation with dial-failure-cluster bypass (BUG-008) so retries are not one-shot locked.
   const ok =
-    source.includes('coreRestartPending') &&
-    source.includes('circuit_open_escalate_restartCore_retry') &&
-    !source.includes('coreRestartEscalationOpenUntilMs')
+    !source.includes('coreRestartEscalationOpenUntilMs') &&
+    coordinator.includes('forceClearRecoveryCircuitForClusterRecovery')
   return {
     fixtureId: '0831_circuit_restart_retries_after_defer',
     ok,
     detail: ok
-      ? 'deferred restartCore retries on subsequent gate checks'
+      ? 'deferred restartCore retries via coordinator cluster bypass'
       : 'circuit restart still one-shot locked after defer',
   }
 }

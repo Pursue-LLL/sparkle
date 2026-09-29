@@ -10,7 +10,6 @@ import {
   shouldDeferConnectStreamKeepaliveUnderQuiesce,
   shouldDeferProbeForCursorLoadUnderMarathonQuiesce,
   shouldForceMandatoryRealProbeUnderMarathonQuiesce,
-  shouldPauseProxyHealthMonitorUnderQuiesce,
   shouldShowMarathonQuiesceDelayBadge,
 } from './marathonQuiesceCore'
 
@@ -52,11 +51,6 @@ describe('marathonQuiesceCore', () => {
     assert.equal(rebound.entered, false)
     assert.equal(rebound.state.active, true)
     assert.equal(rebound.state.belowThresholdSinceMs, null)
-  })
-
-  it('pauses proxy health monitor while quiesce active (incl. exit hysteresis)', () => {
-    assert.equal(shouldPauseProxyHealthMonitorUnderQuiesce(true), true)
-    assert.equal(shouldPauseProxyHealthMonitorUnderQuiesce(false), false)
   })
 
   it('defers connect stream keepalive at conn>=80', () => {

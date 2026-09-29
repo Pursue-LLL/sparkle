@@ -3,6 +3,8 @@
 // [POS] BUG-2026-09-03-005/008 — tail-detected dial clusters → force HY2 UDP parent refresh.
 
 import { appendAppLog } from '../utils/log'
+import { mihomoCloseConnection, mihomoGetConnections } from './mihomoApi'
+import { measuredLongflowEvidence } from './proxyStackDeadlockCore'
 import {
   classifyCursorDedicatedDialFailureLine,
   CURSOR_DIAL_FAILURE_CLUSTER_RECOVERY_COOLDOWN_MS,
@@ -49,11 +51,7 @@ async function dispatchDialFailureClusterRecovery(
     await forceClearRecoveryCircuitForClusterRecovery(nowMs, clusterSize)
 
     const { resolveCursorDedicatedActiveNode } = await import('./cursorDedicatedNodeResolver')
-    const activeLeaf = (await resolveCursorDedicatedActiveNode()) ?? 'JP-VPS-HY2'
-    const { attemptCursorDedicatedHy2FailbackIfDue } = await import(
-      './recoveryCursorDedicatedFailback'
-    )
-    await attemptCursorDedicatedHy2FailbackIfDue(activeLeaf, nowMs)
+    const activeLeaf = (await resolveCursorDedicatedActiveNode()) ?? 'KR-VPS-HY2'
 
     const { readTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
     const snapshot = await readTransportLongevityTruthSnapshot()
@@ -64,7 +62,6 @@ async function dispatchDialFailureClusterRecovery(
       return
     }
 
-    const { mihomoGetConnections } = await import('./mihomoApi')
     const connectionPayload = await mihomoGetConnections()
     const connections = connectionPayload.connections ?? []
 
@@ -129,6 +126,11 @@ async function dispatchDialFailureClusterRecovery(
         leafId: snapshot.activeHy2Leaf?.trim() ?? activeLeaf,
         evidenceReason: DIAL_FAILURE_CLUSTER_UDP_ABSENT_REQUIRES_CORE_RESTART,
         cursorConnectionCount: snapshot.cursorConnectionCount,
+        longflow: measuredLongflowEvidence({
+          maxByteStallMs: snapshot.maxByteStallMs,
+          frozenQuicCursorCount: snapshot.frozenQuicCursorCount,
+          cursorConnectionCount: snapshot.cursorConnectionCount,
+        }),
         nowMs,
       })
       await appendAppLog(
@@ -154,7 +156,6 @@ async function dispatchDialFailureClusterRecovery(
       return
     }
 
-    const { mihomoCloseConnection } = await import('./mihomoApi')
     await mihomoCloseConnection(udpResolution.connectionId)
     const { resetTransportLongevityHy2ParentChainBirth } = await import(
       './transportLongevityTruth'

@@ -154,6 +154,9 @@ export async function runDueProfileUpdates(source: 'timer' | 'cli' = 'cli'): Pro
 
 export async function initProfileUpdater(): Promise<void> {
   const { items, current } = await getProfileConfig(true)
+  if (!current) {
+    return
+  }
   const currentItem = (await getFreshProfileItem(current)) ?? (await getCurrentProfileItem())
   for (const item of items.filter((i) => i.id !== current)) {
     if (shouldScheduleProfileUpdater(item)) {

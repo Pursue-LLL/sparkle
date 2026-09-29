@@ -2,7 +2,7 @@
 // [OUTPUT] computeMaxStepsRateSnapshot
 // [POS] P28 observe-only — max-steps terminal rate; primary SLO = rolling last 100 turns.
 
-import type { AgentTransportFailureRow } from './connectPartitionDetectCore'
+import type { AgentTransportFailureRow } from './agentTransportFailureWriterCore'
 import type { MarathonSegmentCacheRecord } from './marathonSegmentCache'
 import {
   isMaxStepsLedgerTerminal,

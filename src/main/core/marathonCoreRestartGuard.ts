@@ -51,9 +51,10 @@ export async function readMarathonCoreRestartGuardSnapshot(
 }
 
 export async function refreshMarathonCoreRestartGuardStateFile(
-  snapshot?: MarathonCoreRestartGuardSnapshot
+  snapshot?: Partial<MarathonCoreRestartGuardSnapshot>
 ): Promise<void> {
-  const resolvedSnapshot = snapshot ?? (await readMarathonCoreRestartGuardSnapshot())
+  const base = await readMarathonCoreRestartGuardSnapshot()
+  const resolvedSnapshot = snapshot ? { ...base, ...snapshot } : base
   const forceOverride = isMarathonCoreRestartForceOverride()
   const payload = buildMarathonCoreRestartGuardStateFilePayload(resolvedSnapshot, forceOverride)
   const statePath = getMarathonCoreRestartGuardStateFilePath()
@@ -106,7 +107,7 @@ export async function evaluateMarathonCoreColdRestart(
   caller: CoreLifecycleCaller,
   forceRequested = false,
   emergency?: import('./marathonCoreRestartGuardCore').EmergencyCoreRecoveryGuardContext,
-): Promise<{ blocked: boolean; snapshot: MarathonCoreRestartGuardSnapshot }> {
+): Promise<{ blocked: boolean; reason: string; snapshot: MarathonCoreRestartGuardSnapshot }> {
   const snapshot = await readMarathonCoreRestartGuardSnapshot()
   const forceOverride = forceRequested || isMarathonCoreRestartForceOverride()
   const decision = shouldBlockMarathonCoreColdRestart(snapshot, forceOverride, emergency)
@@ -123,9 +124,9 @@ export async function evaluateMarathonCoreColdRestart(
     if (planned.emit) {
       await appendAppLog(planned.line)
     }
-    return { blocked: true, snapshot }
+    return { blocked: true, reason: decision.reason, snapshot }
   }
 
   await appendAppLog(formatCoreLifecycleScheduledLog(caller, snapshot))
-  return { blocked: false, snapshot }
+  return { blocked: false, reason: decision.reason, snapshot }
 }

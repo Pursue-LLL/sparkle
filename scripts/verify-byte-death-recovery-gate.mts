@@ -53,7 +53,7 @@ interface ByteDeathRecoveryWindow {
 
 let byteDeathRecoveryWindow: ByteDeathRecoveryWindow | undefined
 
-function closeByteDeathRecoveryWindow(ts: string): void {
+function closeByteDeathRecoveryWindow(_ts: string): void {
   if (byteDeathRecoveryWindow == null) {
     return
   }

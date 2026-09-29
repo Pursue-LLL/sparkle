@@ -51,7 +51,7 @@ export function collectCanonicalVpsNodeSnapshotsFromProviders(
       if (!isCanonicalVpsNodeName(leaf.name)) {
         continue
       }
-      const latest = pickLatestSuccessfulProviderDelay(leaf.history ?? [])
+      const latest = pickLatestSuccessfulProviderDelay((leaf.history ?? []) as ControllerProxiesHistory[])
       if (!latest) {
         continue
       }

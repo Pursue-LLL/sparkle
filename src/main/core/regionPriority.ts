@@ -1,4 +1,75 @@
-export const DEFAULT_REGION_PRIORITY = ['新加坡', '日本', '台湾', '韩国', '美国'] as const
+export const DEFAULT_REGION_PRIORITY = ['台湾', '日本', '韩国', '新加坡', '美国'] as const
+
+/** `自动选择` 的额外国家白名单（五个优先地区之外）；香港不含任何关键词 → 天然排除。 */
+const EXTRA_COUNTRY_PATTERNS: readonly string[] = [
+  '印度',
+  '印度尼西亚',
+  '印尼',
+  '英国',
+  '德国',
+  '法国',
+  '意大利',
+  '西班牙',
+  '荷兰',
+  '比利时',
+  '瑞士',
+  '瑞典',
+  '挪威',
+  '芬兰',
+  '丹麦',
+  '冰岛',
+  '爱尔兰',
+  '葡萄牙',
+  '希腊',
+  '奥地利',
+  '捷克',
+  '波兰',
+  '匈牙利',
+  '罗马尼亚',
+  '保加利亚',
+  '乌克兰',
+  '俄罗斯',
+  '土耳其',
+  '加拿大',
+  '墨西哥',
+  '巴西',
+  '阿根廷',
+  '智利',
+  '秘鲁',
+  '哥伦比亚',
+  '澳大利亚',
+  '新西兰',
+  '菲律宾',
+  '泰国',
+  '越南',
+  '马来西亚',
+  '柬埔寨',
+  '缅甸',
+  '老挝',
+  '孟加拉',
+  '斯里兰卡',
+  '巴基斯坦',
+  '尼泊尔',
+  '蒙古',
+  '哈萨克斯坦',
+  '以色列',
+  '阿联酋',
+  '沙特',
+  '卡塔尔',
+  '埃及',
+  '南非',
+] as const
+
+/** `自动选择` 的 provider filter：只命中国家/地区节点（香港与信息占位节点不命中）。 */
+export function buildAutoSelectCountryFilter(): string {
+  return [...Object.values(REGION_PROVIDER_FILTERS), ...EXTRA_COUNTRY_PATTERNS].join('|')
+}
+
+/** 节点名命中屏蔽地区（香港等）= 不得进入 自动选择。 */
+export function isBlockedRegionNodeName(nodeName: string): boolean {
+  const lowered = nodeName.toLowerCase()
+  return BLOCKED_REGION_KEYWORDS.some((keyword) => lowered.includes(keyword))
+}
 
 export const BLOCKED_REGION_KEYWORDS = ['香港', 'hongkong', 'hong kong'] as const
 

@@ -19,17 +19,17 @@ import {
 } from './cursorHy2MarathonKeepaliveCore'
 
 test('isHy2CursorNode matches VPS HY2 leaf names', () => {
-  assert.equal(isHy2CursorNode('JP-VPS-HY2'), true)
   assert.equal(isHy2CursorNode('KR-VPS-HY2'), true)
-  assert.equal(isHy2CursorNode('JP-VPS-Reality'), false)
-  assert.equal(isHy2CursorNode('JP-VPS-TUIC'), false)
+  assert.equal(isHy2CursorNode('KR-VPS-HY2'), true)
+  assert.equal(isHy2CursorNode('KR-VPS-Reality'), false)
+  assert.equal(isHy2CursorNode('KR-VPS-TUIC'), false)
 })
 
 test('isMarathonQuIcInboundCursorNode matches HY2 and TUIC marathon nodes', () => {
-  assert.equal(isMarathonQuIcInboundCursorNode('JP-VPS-HY2'), true)
-  assert.equal(isMarathonQuIcInboundCursorNode('JP-VPS-TUIC'), true)
+  assert.equal(isMarathonQuIcInboundCursorNode('KR-VPS-HY2'), true)
   assert.equal(isMarathonQuIcInboundCursorNode('KR-VPS-TUIC'), true)
-  assert.equal(isMarathonQuIcInboundCursorNode('JP-VPS-Reality'), false)
+  assert.equal(isMarathonQuIcInboundCursorNode('KR-VPS-TUIC'), true)
+  assert.equal(isMarathonQuIcInboundCursorNode('KR-VPS-Reality'), false)
 })
 
 test('shouldDeferMarathonWarmth defers warmth but not rescue at conn>=80', async () => {
@@ -92,7 +92,7 @@ test('isTokenGapRescueEligible requires stale rids and gap threshold', async () 
 
 test('shouldRunHy2MarathonSessionKeepalive requires HY2/TUIC active and marathon load', () => {
   const base = {
-    activeNode: 'JP-VPS-HY2',
+    activeNode: 'KR-VPS-HY2',
     cursorConnectionCount: CURSOR_HY2_MARATHON_CONN_THRESHOLD,
     lastKeepaliveAtMs: 0,
     nowMs: 1_000_000
@@ -101,14 +101,14 @@ test('shouldRunHy2MarathonSessionKeepalive requires HY2/TUIC active and marathon
   assert.equal(
     shouldRunHy2MarathonSessionKeepalive({
       ...base,
-      activeNode: 'JP-VPS-TUIC'
+      activeNode: 'KR-VPS-TUIC'
     }),
     true
   )
   assert.equal(
     shouldRunHy2MarathonSessionKeepalive({
       ...base,
-      activeNode: 'JP-VPS-Reality'
+      activeNode: 'KR-VPS-Reality'
     }),
     false
   )
@@ -126,7 +126,7 @@ test('shouldRunHy2MarathonSessionKeepalive respects interval', () => {
   const lastKeepaliveAtMs = nowMs - CURSOR_HY2_SESSION_KEEPALIVE_INTERVAL_MS + 1
   assert.equal(
     shouldRunHy2MarathonSessionKeepalive({
-      activeNode: 'JP-VPS-HY2',
+      activeNode: 'KR-VPS-HY2',
       cursorConnectionCount: 72,
       lastKeepaliveAtMs,
       nowMs
@@ -135,7 +135,7 @@ test('shouldRunHy2MarathonSessionKeepalive respects interval', () => {
   )
   assert.equal(
     shouldRunHy2MarathonSessionKeepalive({
-      activeNode: 'JP-VPS-HY2',
+      activeNode: 'KR-VPS-HY2',
       cursorConnectionCount: 72,
       lastKeepaliveAtMs: nowMs - CURSOR_HY2_SESSION_KEEPALIVE_INTERVAL_MS,
       nowMs

@@ -16,7 +16,7 @@ describe('natStaleSuspectObserverCore', () => {
       streamPrimarySub: 'server-eof',
       originalRequestId: 'parent-rid',
       requestId: 'segment-rid',
-      proxyNode: 'JP-VPS-HY2',
+      proxyNode: 'KR-VPS-HY2',
       probeLatencyMs: 287,
       cursorConnectionCount: 42,
       tsMs: 1_700_000_000_000,

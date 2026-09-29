@@ -45,6 +45,9 @@ async function applyMarathonQuiesceHealthCheckPatch(
 ): Promise<void> {
   try {
     const { current } = await getProfileConfig()
+    if (!current) {
+      return
+    }
     const { diffWorkDir = false } = await getAppConfig()
     const changed = await patchRuntimeProxyProviderHealthCheckEnable(current, enable, diffWorkDir)
     await appendAppLog(

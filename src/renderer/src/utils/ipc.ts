@@ -645,17 +645,11 @@ export async function stopNetworkDetection(): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('stopNetworkDetection'))
 }
 
-export async function startProxyHealthMonitor(): Promise<void> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('startProxyHealthMonitor'))
-}
 
-export async function stopProxyHealthMonitor(): Promise<void> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('stopProxyHealthMonitor'))
-}
 
-export async function restartProxyHealthMonitor(): Promise<void> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('restartProxyHealthMonitor'))
-}
+
+
+
 
 export async function startCommercialNodeBenchmark(): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('startCommercialNodeBenchmark'))

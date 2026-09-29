@@ -3,10 +3,12 @@
 // [POS] BUG-2026-09-03-011 — 4h stale HY2 session hard rotate with api2 anchor.
 
 import { appendAppLog } from '../utils/log'
+import { mihomoGetConnections } from './mihomoApi'
 import {
   HY2_PARENT_SIDECAR_DIAL_AGE_MS,
   resolveEffectiveHy2ParentChainAgeMs,
 } from './hy2ParentSidecarCore'
+import { measuredLongflowEvidence } from './proxyStackDeadlockCore'
 
 let proactiveRotateInFlight = false
 let lastProactiveRotateAtMs = 0
@@ -44,7 +46,6 @@ export async function runProactiveHy2HardRotateIfDue(nowMs?: number): Promise<vo
         `effective_chain_age_ms=${chainAgeMs} ` +
         `cursor_conn=${snapshot.cursorConnectionCount}\n`,
     )
-    const { mihomoGetConnections } = await import('./mihomoApi')
     const connectionPayload = await mihomoGetConnections()
     const connections = connectionPayload.connections ?? []
     const { resolveMarathonSSETruthNow } = await import('./marathonSSETruthRuntime')
@@ -71,9 +72,14 @@ export async function runProactiveHy2HardRotateIfDue(nowMs?: number): Promise<vo
     const { requestEmergencyCoreRecovery } = await import('./emergencyCoreRecovery')
     const emergency = await requestEmergencyCoreRecovery({
       reason: 'proactive_hard_rotate_failed',
-      leafId: snapshot.activeHy2Leaf?.trim() ?? 'JP-VPS-HY2',
+      leafId: snapshot.activeHy2Leaf?.trim() ?? 'KR-VPS-HY2',
       evidenceReason: 'proactive_hard_rotate_api2_anchor',
       cursorConnectionCount: snapshot.cursorConnectionCount,
+      longflow: measuredLongflowEvidence({
+        maxByteStallMs: snapshot.maxByteStallMs,
+        frozenQuicCursorCount: snapshot.frozenQuicCursorCount,
+        cursorConnectionCount: snapshot.cursorConnectionCount,
+      }),
       nowMs: atMs,
     })
     await appendAppLog(

@@ -16,7 +16,7 @@ async function resolve4WithTimeout(host: string): Promise<string[]> {
   }
 }
 
-export const VPS_SSH_HOST_ALIASES = ['jp-vps'] as const
+export const VPS_SSH_HOST_ALIASES = ['kr-vps'] as const
 
 function parseIpv4(ip: string): number[] | null {
   if (!IPV4_PATTERN.test(ip)) {

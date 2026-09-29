@@ -7,12 +7,9 @@ import { readdir, readFile, stat } from 'fs/promises'
 import path from 'path'
 import { parseYaml } from '../utils/yaml'
 import { profileConfigPath, profilesDir } from '../utils/dirs'
-import {
-  buildRecoveredProfileItemFromDisk,
-  isEmptyPersistableProfileConfig,
+import { buildRecoveredProfileItemFromDisk,
   mergeProfileConfigItems,
-  profileIdFromSubscriptionFile
-} from './profileConfigRecoveryPureCore'
+  profileIdFromSubscriptionFile } from './profileConfigRecoveryPureCore'
 
 export {
   buildRecoveredProfileItemFromDisk,

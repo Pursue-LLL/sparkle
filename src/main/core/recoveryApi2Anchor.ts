@@ -67,14 +67,39 @@ export async function probeRecoveryApi2AnchorDetailed(
   const { resolveCursorDedicatedActiveNode } = await import('./cursorDedicatedNodeResolver')
   const leaf = (await resolveCursorDedicatedActiveNode())?.trim()
   if (leaf) {
-    const { probeApi2ViaMihomoNode } = await import('./cursorTransportHealth')
-    const probe = await probeApi2ViaMihomoNode(leaf)
+    let probe: { ok: boolean; latencyMs: number; errorDetail?: string }
+    try {
+      const { probeApi2ViaMihomoNode } = await import('./cursorApi2MihomoProbe')
+      if (typeof probeApi2ViaMihomoNode !== 'function') {
+        throw new Error('probeApi2ViaMihomoNode_unavailable')
+      }
+      probe = await probeApi2ViaMihomoNode(leaf)
+    } catch (error) {
+      const fallback = await probeRecoveryApi2MixedPortFallback(maxWaitMs)
+      return {
+        ...fallback,
+        leaf,
+        errorDetail:
+          (error instanceof Error ? error.message : String(error)) +
+          (fallback.errorDetail ? `; fallback=${fallback.errorDetail}` : ''),
+        probeVia: 'mixed_port_fallback',
+      }
+    }
     if (probe.ok) {
       return {
         ok: true,
         leaf,
         latencyMs: probe.latencyMs,
         probeVia: 'cursor_dedicated_mihomo',
+      }
+    }
+    const fallback = await probeRecoveryApi2MixedPortFallback(maxWaitMs)
+    if (fallback.ok) {
+      return {
+        ...fallback,
+        leaf,
+        errorDetail: probe.errorDetail,
+        probeVia: 'mixed_port_fallback',
       }
     }
     return {

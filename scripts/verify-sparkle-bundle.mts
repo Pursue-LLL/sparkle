@@ -5,8 +5,8 @@ import path from 'node:path'
 import {
   collectSparkleMainProcessAsarSource,
   collectSparkleMainProcessDiskSource,
-} from './sparkleMainAsarSourceCore.ts'
-import { assertSparkleMainAsarBundle } from './upgradeSparkleAsarGateCore.ts'
+} from './sparkleMainAsarSourceCore'
+import { assertSparkleMainAsarBundle } from './upgradeSparkleAsarGateCore'
 
 const root = path.resolve(process.argv[2] ?? process.cwd())
 const mainOutDir = path.join(root, 'out/main')

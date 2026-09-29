@@ -4,7 +4,7 @@ import {
   evaluatePreInstallHygiene,
   PRE_INSTALL_DISK_BLOCK_USED_PCT,
   PRE_INSTALL_JOURNAL_TRUNCATE_THRESHOLD_BYTES,
-} from './sparklePreInstallHygieneCore.ts'
+} from './sparklePreInstallHygieneCore'
 
 describe('sparklePreInstallHygieneCore', () => {
   it('passes when journal and disk are healthy', () => {

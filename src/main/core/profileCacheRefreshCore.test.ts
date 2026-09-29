@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatMissingSubscriptionUrlError } from './profileCacheRefreshPureCore.ts'
+import { formatMissingSubscriptionUrlError } from './profileCacheRefreshPureCore'
 
 describe('profileCacheRefreshCore', () => {
   it('formatMissingSubscriptionUrlError is bilingual-ready', () => {

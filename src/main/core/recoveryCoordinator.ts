@@ -3,7 +3,9 @@
 // [POS] Phase-1 runtime coordinator — single recovery decision entry for byte-death.
 
 import { appendAppLog } from '../utils/log'
+import { mihomoChangeProxy, mihomoGroups } from './mihomoApi'
 import { requestEmergencyCoreRecovery } from './emergencyCoreRecovery'
+import { unknownLongflowEvidence } from './proxyStackDeadlockCore'
 import { notifyRecoveryCircuitSuccess } from './recoveryCircuitBreaker'
 import {
   classifyLeafFailureReason,
@@ -20,6 +22,7 @@ import { getLastHy2TunnelVitalityAtMs } from './hy2TunnelVitality'
 import {
   createInitialRecoveryCoordinatorPolicyState,
   decideRecoveryCoordinatorAction,
+  resolveRecoveryActionReason,
   type RecoveryCoordinatorEvent,
   type RecoveryCoordinatorEventType,
   type RecoveryFact,
@@ -138,7 +141,7 @@ export async function submitRecoveryCoordinatorEvent(input: {
     })
     policyState = decision.state
     await appendAppLog(
-      `[RecoveryCoordinator]: event=${event.type} leaf=${event.leafId} action=${decision.action.kind} reason=${decision.action.reason}\n`,
+      `[RecoveryCoordinator]: event=${event.type} leaf=${event.leafId} action=${decision.action.kind} reason=${resolveRecoveryActionReason(decision.action)}\n`,
     )
 
     if (decision.action.kind === 'request_emergency_core_recovery') {
@@ -147,6 +150,7 @@ export async function submitRecoveryCoordinatorEvent(input: {
         leafId: decision.action.leafId,
         evidenceReason: decision.action.evidenceReason,
         cursorConnectionCount: input.cursorConnectionCount,
+        longflow: unknownLongflowEvidence('recovery_coordinator_no_longevity_snapshot'),
         nowMs,
       })
       if (!result.executed) {
@@ -164,7 +168,6 @@ export async function submitRecoveryCoordinatorEvent(input: {
     }
 
     if (decision.action.kind === 'failover_leaf') {
-      const { mihomoGroups, mihomoChangeProxy } = await import('./mihomoApi')
       const groups = await mihomoGroups()
       const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
       const members =

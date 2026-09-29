@@ -19,7 +19,7 @@ import {
   parseNetworkStartedLedgerLine,
   type ParsedNetworkStartedLedgerRow,
 } from './physicalNetworkStartFromLedgerCore'
-import { discoverGuardValidatedLedgerPaths, guardLegacyRootDir } from './guardValidatedLedgerPathsCore'
+import { discoverGuardValidatedLedgerPaths } from './guardValidatedLedgerPathsCore'
 
 const INGEST_CHUNK_BYTES = 2_097_152
 
@@ -41,17 +41,6 @@ export function resetPhysicalNetworkStartIngestPathsForTests(): void {
   testLedgerPathOverride = null
   testCachePathOverride = null
   testCheckpointPathOverride = null
-}
-
-function guardRootDir(): string {
-  return guardLegacyRootDir()
-}
-
-function guardLedgerPath(): string {
-  return (
-    testLedgerPathOverride ??
-    join(guardRootDir(), 'runtime-events', 'validated-ledger.v1.jsonl')
-  )
 }
 
 function networkStartCachePath(): string {

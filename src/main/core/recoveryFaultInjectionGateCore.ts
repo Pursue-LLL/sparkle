@@ -2,10 +2,10 @@
 // [OUTPUT] runRecoveryFaultInjectionGate
 // [POS] Phase-1 fault matrix — pure policy assertions for recovery invariants.
 
-import {
-  createInitialRecoveryCoordinatorPolicyState,
+import { createInitialRecoveryCoordinatorPolicyState,
   decideRecoveryCoordinatorAction,
   type RecoveryFact,
+  resolveRecoveryActionReason,
 } from './recoveryCoordinatorPolicyCore'
 import {
   buildEmergencyCoreRecoveryDeadline,
@@ -27,7 +27,7 @@ export interface RecoveryFaultInjectionGateResult {
 
 function baseFact(overrides: Partial<RecoveryFact> = {}): RecoveryFact {
   return {
-    leafId: 'JP-VPS-HY2',
+    leafId: 'KR-VPS-HY2',
     observedAt: 10_000,
     generation: 1,
     stallState: 'confirmed',
@@ -49,7 +49,7 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
     fact: baseFact({ udpParentState: 'absent' }),
     event: {
       type: 'UDP_PARENT_ABSENT',
-      leafId: 'JP-VPS-HY2',
+      leafId: 'KR-VPS-HY2',
       generation: 1,
       observedAt: nowMs,
     },
@@ -66,7 +66,7 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
     fact: baseFact({ udpParentState: 'unknown' }),
     event: {
       type: 'UDP_PARENT_UNKNOWN',
-      leafId: 'JP-VPS-HY2',
+      leafId: 'KR-VPS-HY2',
       generation: 1,
       observedAt: nowMs,
     },
@@ -75,7 +75,7 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
   cases.push({
     name: 'udp_parent_unknown_no_mutation',
     ok: unknown.action.kind === 'none',
-    detail: unknown.action.reason,
+    detail: resolveRecoveryActionReason(unknown.action),
   })
 
   const probeOnly = decideRecoveryCoordinatorAction({
@@ -83,7 +83,7 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
     fact: baseFact({ udpParentState: 'present' }),
     event: {
       type: 'PROBE_ONLY_RESULT',
-      leafId: 'JP-VPS-HY2',
+      leafId: 'KR-VPS-HY2',
       generation: 1,
       observedAt: nowMs,
     },
@@ -97,7 +97,7 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
 
   const probeHonesty = evaluateByteDeathRecoveryHonesty({
     record: {
-      leafId: 'JP-VPS-HY2',
+      leafId: 'KR-VPS-HY2',
       attemptedAtMs: 1000,
       udpParentClosed: false,
       baselineMaxByteStallMs: 60_000,
@@ -115,13 +115,15 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
   const emergencyAdmission = evaluateEmergencyCoreRecoveryAdmission({
     request: {
       reason: 'confirmed_udp_parent_absent',
-      leafId: 'JP-VPS-HY2',
+      leafId: 'KR-VPS-HY2',
       evidenceReason: BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
       cursorConnectionCount: 26,
       requestedAtMs: nowMs,
       deadlineMs: buildEmergencyCoreRecoveryDeadline(nowMs),
     },
     nowMs: nowMs + 1000,
+    // BUG-016 gate requires deadlock proof; this case asserts drain, not the gate.
+    stackDeadlockConfirmed: true,
   })
   cases.push({
     name: 'cursor_conn_gt_zero_limited_drain_not_blocked',
@@ -141,7 +143,7 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
   cases.push({
     name: 'single_leaf_circuit_open_isolated',
     ok: leafOpen,
-    detail: `key=${leafCircuitKey({ leafId: 'JP-VPS-HY2', failureClass: 'probe_only' })}`,
+    detail: `key=${leafCircuitKey({ leafId: 'KR-VPS-HY2', failureClass: 'probe_only' })}`,
   })
 
   const staleGen = decideRecoveryCoordinatorAction({
@@ -149,7 +151,7 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
     fact: baseFact(),
     event: {
       type: 'UDP_PARENT_ABSENT',
-      leafId: 'JP-VPS-HY2',
+      leafId: 'KR-VPS-HY2',
       generation: 2,
       observedAt: nowMs,
     },
@@ -157,8 +159,8 @@ export function runRecoveryFaultInjectionGate(): RecoveryFaultInjectionGateResul
   })
   cases.push({
     name: 'stale_generation_discarded',
-    ok: staleGen.action.reason === 'stale_generation_discarded',
-    detail: staleGen.action.reason,
+    ok: resolveRecoveryActionReason(staleGen.action) === 'stale_generation_discarded',
+    detail: resolveRecoveryActionReason(staleGen.action),
   })
 
   const ok = cases.every((item) => item.ok)

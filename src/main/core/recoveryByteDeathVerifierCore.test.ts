@@ -9,7 +9,7 @@ describe('recoveryByteDeathVerifierCore @phase1', () => {
   it('probe-only without UDP close is ineffective', () => {
     const evaluation = evaluateByteDeathRecoveryHonesty({
       record: {
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         attemptedAtMs: 1000,
         udpParentClosed: false,
         baselineMaxByteStallMs: 60_000,
@@ -25,7 +25,7 @@ describe('recoveryByteDeathVerifierCore @phase1', () => {
   it('UDP closed + carrier bytes + api2 → success', () => {
     const evaluation = evaluateByteDeathRecoveryHonesty({
       record: {
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         attemptedAtMs: 1000,
         udpParentClosed: true,
         baselineMaxByteStallMs: 60_000,
@@ -43,7 +43,7 @@ describe('recoveryByteDeathVerifierCore @phase1', () => {
   it('UDP closed but api2 failed → ineffective', () => {
     const evaluation = evaluateByteDeathRecoveryHonesty({
       record: {
-        leafId: 'JP-VPS-HY2',
+        leafId: 'KR-VPS-HY2',
         attemptedAtMs: 1000,
         udpParentClosed: true,
         baselineMaxByteStallMs: 60_000,
@@ -60,7 +60,7 @@ describe('recoveryByteDeathVerifierCore @phase1', () => {
 
   it('shouldEvaluate respects min eval window', () => {
     const record = {
-      leafId: 'JP-VPS-HY2',
+      leafId: 'KR-VPS-HY2',
       attemptedAtMs: 1000,
       udpParentClosed: true,
       baselineMaxByteStallMs: 60_000,

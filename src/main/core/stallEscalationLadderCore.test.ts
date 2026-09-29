@@ -15,7 +15,7 @@ describe('stallEscalationLadderCore R-41', () => {
     kind: 'single' as const,
     connectionId: 'f1ee553d-5cb7-4db4-80bc-84489bff9acb',
     host: 'api2.cursor.sh',
-    leaf: 'JP-VPS-HY2',
+    leaf: 'KR-VPS-HY2',
     network: 'tcp',
     stallMs: 88_499,
     connAgeMs: 93_498,

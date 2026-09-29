@@ -5,7 +5,7 @@ import {
   isUpgradeBreakGlassEnabled,
   isUpgradeSafeWindowIdle,
   shouldRunPostInstallRecoveryRound,
-} from './upgradeSafeWindowCore.ts'
+} from './upgradeSafeWindowCore'
 
 describe('upgradeSafeWindowCore', () => {
   it('detects break-glass env', () => {

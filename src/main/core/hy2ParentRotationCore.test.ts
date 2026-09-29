@@ -15,17 +15,17 @@ describe('resolveHy2ParentRotationAfterPrunePlan @1.30.17', () => {
         outboundHy2SessionAgeMs: 11_282_033,
         maxByteStallMs: 144_500,
         frozenQuicCursorCount: 2,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       connections: [
         {
           id: 'tcp-live',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'tcp', host: 'api2direct.cursor.sh' },
         } as ControllerConnectionDetail,
         {
           id: 'udp-parent',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'udp' },
         } as ControllerConnectionDetail,
       ],
@@ -59,17 +59,17 @@ describe('resolveHy2ParentRotationAfterPrunePlan @1.30.17', () => {
         outboundHy2SessionAgeMs: 11_282_033,
         maxByteStallMs: 60_000,
         frozenQuicCursorCount: 0,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       connections: [
         {
           id: 'tcp-live',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'tcp', host: 'api2.cursor.sh' },
         } as ControllerConnectionDetail,
         {
           id: 'udp-parent',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'udp' },
         } as ControllerConnectionDetail,
       ],
@@ -102,17 +102,17 @@ describe('resolveHy2ParentRotationAfterPrunePlan @1.30.17', () => {
         outboundHy2SessionAgeMs: 5493,
         maxByteStallMs: 286_504,
         frozenQuicCursorCount: 10,
-        activeHy2Leaf: 'JP-VPS-HY2',
+        activeHy2Leaf: 'KR-VPS-HY2',
       },
       connections: [
         {
           id: 'tcp-live',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'tcp', host: 'api2.cursor.sh' },
         } as ControllerConnectionDetail,
         {
           id: 'udp-untracked-0806',
-          chains: ['JP-VPS-HY2'],
+          chains: ['KR-VPS-HY2'],
           metadata: { network: 'udp' },
         } as ControllerConnectionDetail,
       ],

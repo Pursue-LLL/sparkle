@@ -28,6 +28,14 @@ const FALLBACK_FILTER_DOMAINS = [
   '+.github.com'
 ] as const
 
+/** mihomo's fallback-filter values are a loose bag — only arrays/strings are string lists. */
+function asStringList(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.map(String)
+  }
+  return typeof value === 'string' && value.trim() ? [value] : undefined
+}
+
 function mergeStringList(
   existing: string[] | undefined,
   defaults: readonly string[]
@@ -150,8 +158,8 @@ export function ensureDnsFallbackIntegrity(profile: MihomoConfig): void {
     ...existingFilter,
     /** Overseas CDN IPs are valid for OpenAI/Google; ipcidr catches fake pollution only. */
     geoip: existingFilter.geoip ?? false,
-    ipcidr: mergeStringList(existingFilter.ipcidr, FALLBACK_FILTER_IPCIDR),
-    domain: mergeStringList(existingFilter.domain, FALLBACK_FILTER_DOMAINS)
+    ipcidr: mergeStringList(asStringList(existingFilter.ipcidr), FALLBACK_FILTER_IPCIDR),
+    domain: mergeStringList(asStringList(existingFilter.domain), FALLBACK_FILTER_DOMAINS)
   }
 }
 

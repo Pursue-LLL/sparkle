@@ -114,6 +114,10 @@ interface AppConfig {
   proxySwitchPriority?: string[]
   proxyHealthCheckInterval?: number
   proxyTimeoutThreshold?: number
+  /** BUG-2026-09-15-007: failover only picks nodes at/under this delay. */
+  proxySwitchMaxTargetDelayMs?: number
+  /** BUG-2026-09-15-009: 自动选择 only ever lists nodes at/under this delay. */
+  autoSelectMaxNodeDelayMs?: number
   /** Notify when Cursor proxy delay/latency exceeds thresholds (independent of autoProxySwitch). */
   networkAlertEnabled?: boolean
   networkAlertDelayThresholdMs?: number

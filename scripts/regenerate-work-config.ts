@@ -1,4 +1,4 @@
-import { generateProfile } from '../src/main/core/factory.ts'
+import { generateProfile } from '../src/main/core/factory'
 
 await generateProfile()
 console.log('REGENERATE_OK')

@@ -11,7 +11,7 @@ describe('mihomoQuicSilentStallRecoveryCore R-34', () => {
     kind: 'single' as const,
     connectionId: 'conn-stall-1',
     host: 'api2direct.cursor.sh',
-    leaf: 'JP-VPS-HY2',
+    leaf: 'KR-VPS-HY2',
     network: 'tcp',
     stallMs: 50_000,
     connAgeMs: 200_000,

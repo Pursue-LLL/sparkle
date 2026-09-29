@@ -6,7 +6,6 @@ import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import {
   buildLeafCloseReport,
   formatByteDeathRecoveryLogLine,
-  isByteDeathUdpParentAbsent,
   planByteDeathParentMutation,
   selectByteDeathLeafCloseTargets,
   type ByteDeathParentMutationPlan,
@@ -191,31 +190,6 @@ export async function executeByteDeathParentMutationWithDeps(
   }
 
   if (plan.action === 'close_leaf_connections') {
-    if (
-      isByteDeathUdpParentAbsent(diagnostics, {
-        lastVitalitySuccessAtMs: input.lastVitalitySuccessAtMs,
-        nowMs: input.nowMs,
-        outboundHy2SessionAgeMs: input.outboundHy2SessionAgeMs,
-        httpParentChainAgeMs: input.httpParentChainAgeMs,
-      })
-    ) {
-      const escalateReason = 'byte_death_udp_absent_requires_core_restart'
-      await log(
-        formatByteDeathRecoveryLogLine({
-          outcome: 'failed',
-          action: 'none',
-          reason: `${escalateReason} collateral_gate_blocked`,
-          maxByteStallMs: input.maxByteStallMs,
-          cursorConn: input.cursorConnectionCount,
-          udpLeafStrict: diagnostics.diagnostics?.udpOnLeafStrict,
-          udpFullScan: diagnostics.diagnostics?.udpFullScanCandidates,
-        }),
-      )
-      return {
-        plan: { action: 'none', reason: escalateReason },
-        mutated: false,
-      }
-    }
     const targets = selectByteDeathLeafCloseTargets({
       connections,
       activeLeaf: input.activeLeaf,

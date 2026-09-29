@@ -4,6 +4,8 @@
 
 /** Connect long-stream failures while short HTTP probes stay green (split-brain). */
 
+import type { AgentTransportFailureRow as WrittenTransportFailureRow } from './agentTransportFailureWriterCore'
+
 export const CONNECT_PARTITION_MIN_CURSOR_CONNECTIONS = 12
 export const CONNECT_PARTITION_MIN_PING_FAILURES = 2
 export const CONNECT_PARTITION_WINDOW_MS = 8_000
@@ -23,15 +25,14 @@ export function resolveConnectPartitionWindowMs(cursorConnectionCount: number): 
   return CONNECT_PARTITION_WINDOW_MS
 }
 
-export interface AgentTransportFailureRow {
+/**
+ * Reader-side view of the canonical transport-failure schema
+ * ({@link WrittenTransportFailureRow}): rows are read back from JSONL, where `ts`
+ * may still be a string and `connectCode` a number.
+ */
+export type AgentTransportFailureRow = Partial<WrittenTransportFailureRow> & {
   ts?: number | string
-  kind?: string
-  errMsg?: string
   connectCode?: string | number
-  reasonSub?: string
-  reasonType?: string
-  originalRequestId?: string
-  requestId?: string
 }
 
 export interface ConnectPartitionSignal {

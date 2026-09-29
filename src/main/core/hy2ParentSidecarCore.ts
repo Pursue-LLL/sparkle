@@ -12,7 +12,11 @@ export const HY2_PARENT_PROACTIVE_ROTATE_AGE_MS = HY2_PARENT_SIDECAR_DIAL_AGE_MS
 
 export const HY2_PARENT_SIDECAR_COOLDOWN_MS = 300_000
 
-export type Hy2ParentSidecarAction = 'none' | 'sidecar_dial' | 'close_udp_outbound'
+export type Hy2ParentSidecarAction =
+  | 'none'
+  | 'sidecar_dial'
+  | 'close_udp_outbound'
+  | 'emergency_core_recovery'
 
 export interface Hy2ParentSidecarPlan {
   action: Hy2ParentSidecarAction

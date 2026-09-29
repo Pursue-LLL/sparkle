@@ -9,11 +9,11 @@ describe('groupDelayTestCore', () => {
   it('splits Cursor dedicated members into VPS leaves vs DIRECT/others', () => {
     const partition = partitionGroupMembersForDelayTest([
       'DIRECT',
-      'JP-VPS-HY2',
-      'JP-VPS-TUIC',
-      'JP-VPS-Reality',
+      'KR-VPS-HY2',
+      'KR-VPS-TUIC',
+      'KR-VPS-Reality',
     ])
-    assert.deepEqual(partition.vpsLeafNames, ['JP-VPS-HY2', 'JP-VPS-TUIC', 'JP-VPS-Reality'])
+    assert.deepEqual(partition.vpsLeafNames, ['KR-VPS-HY2', 'KR-VPS-TUIC', 'KR-VPS-Reality'])
     assert.deepEqual(partition.otherNames, ['DIRECT'])
     assert.equal(shouldRunManagedVpsGroupDelayTest(partition), true)
   })

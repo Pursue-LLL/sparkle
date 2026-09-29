@@ -10,7 +10,7 @@ import {
   isUpgradeBreakGlassEnabled,
   isUpgradeSafeWindowIdle,
   type UpgradeSafeWindowSnapshot,
-} from './upgradeSafeWindowCore.ts'
+} from './upgradeSafeWindowCore'
 
 const GUARD_STATE_FILE = join(homedir(), '.sparkle', 'marathon-core-restart-guard.json')
 const POLL_INTERVAL_SEC = 30

@@ -8,7 +8,7 @@ import {
   collectCurrentBuildMeta,
   evaluateDistFreshness,
   readDistBuildMeta,
-} from './sparkleDistFreshnessCore.ts'
+} from './sparkleDistFreshnessCore'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = join(scriptDir, '..')

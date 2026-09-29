@@ -28,6 +28,8 @@ export type SparkleMainAsarGateResult =
         | 'invalid_js_regex_pcre'
         | 'missing_core_readiness_gate'
         | 'missing_bug20260903_recovery_truth'
+        | 'missing_longflow_evidence_contract'
+        | 'missing_emergency_cold_restart_removed'
     }
 
 /** Vite minifies to `.markCoreReadyAtMs(` on chunk export — bare `markCoreReadyAtMs(` is BUG-2026-07-23-004. */
@@ -94,13 +96,7 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('[RecoveryCoordinator]:') ||
     !mainSource.includes('[EmergencyCoreRecovery]:') ||
     !mainSource.includes('[ByteDeathRecoveryHonesty]:') ||
-    !mainSource.includes('scheduleByteDeathRecoveryVerification') ||
-    !mainSource.includes('invokeEmergencyCoreRestart') ||
-    !mainSource.includes('registerEmergencyCoreRestartHandler') ||
-    !mainSource.includes('--sparkle-emergency-recovery-smoke') ||
-    !mainSource.includes('[EmergencyRecoverySmoke]:') ||
     !mainSource.includes('requestEmergencyCoreRecovery') ||
-    !mainSource.includes('restartCoreEmergency') ||
     !mainSource.includes('reset_parent_chain_birth') ||
     !mainSource.includes('byteDeathFullScan') ||
     !mainSource.includes('[Hy2ParentByteDeathRecovery]:') ||
@@ -133,9 +129,29 @@ export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAs
     !mainSource.includes('proactive_hard_rotate') ||
     !mainSource.includes('cursor_dedicated_mihomo') ||
     !mainSource.includes('probeRecoveryApi2AnchorDetailed') ||
-    !mainSource.includes('dismissCollectiveDeathAlert')
+    !mainSource.includes('notifyCollectiveDeathAlert') ||
+    !mainSource.includes('cursorApi2MihomoProbe') ||
+    !mainSource.includes('dial_cluster_commercial_leaf_skip_hy2_udp') ||
+    !mainSource.includes('[ProxyStackDeadlock]:') ||
+    !mainSource.includes('proxy_stack_not_confirmed_deadlock')
   ) {
     return { ok: false, reason: 'missing_bug20260903_recovery_truth' }
+  }
+
+  // Longflow evidence contract — a bundle built without these would silently
+  // regress to the `?? 0` class defect (missing evidence scored as healthy zero).
+  if (
+    !mainSource.includes('proxy_stack_deadlock_longflow_overrides_mixed_port') ||
+    !mainSource.includes('measuredLongflowEvidence') ||
+    !mainSource.includes('unknownLongflowEvidence') ||
+    !mainSource.includes('proxy_stack_longflow_evidence_unknown')
+  ) {
+    return { ok: false, reason: 'missing_longflow_evidence_contract' }
+  }
+
+  // BUG-2026-09-15-004: the disruptive emergency core stop+start must stay removed.
+  if (!mainSource.includes('emergency_core_restart_removed')) {
+    return { ok: false, reason: 'missing_emergency_cold_restart_removed' }
   }
 
   return { ok: true }
@@ -159,6 +175,10 @@ export function assertSparkleMainAsarBundle(mainSource: string): void {
       missing_core_readiness_gate: 'asar missing Core Readiness Contract — cold start may silent-hang',
       missing_bug20260903_recovery_truth:
         'asar missing BUG-2026-09-03-009/010 recovery truth markers (fallback_ladder / stale_session / tail watcher)',
+      missing_longflow_evidence_contract:
+        'asar missing longflow evidence contract (measured/unknown union) — risk of silent zero-fill recursion',
+      missing_emergency_cold_restart_removed:
+        'asar missing emergency cold-restart removal — risk of collective outage from mihomo stop+start',
     }
     throw new Error(messages[result.reason])
   }

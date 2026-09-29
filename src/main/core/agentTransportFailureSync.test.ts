@@ -47,7 +47,7 @@ describe('agentTransportFailureSync', () => {
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
-      proxyNodeFallback: 'JP-VPS-HY2',
+      proxyNodeFallback: 'KR-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
       logWrites: false
     })
@@ -57,12 +57,12 @@ describe('agentTransportFailureSync', () => {
     const text = await readFile(jsonlPath, 'utf8')
     const row = JSON.parse(text.trim()) as Record<string, unknown>
     assert.equal(row.requestId, 'rid-sync-1')
-    assert.equal(row.proxyNode, 'JP-VPS-HY2')
+    assert.equal(row.proxyNode, 'KR-VPS-HY2')
     assert.equal(row.source, 'sparkle-sync')
 
     const secondPass = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
-      proxyNodeFallback: 'JP-VPS-HY2',
+      proxyNodeFallback: 'KR-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
       logWrites: false
     })
@@ -105,7 +105,7 @@ describe('agentTransportFailureSync', () => {
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
-      proxyNodeFallback: 'JP-VPS-HY2',
+      proxyNodeFallback: 'KR-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
       logWrites: false
     })
@@ -143,7 +143,7 @@ describe('agentTransportFailureSync', () => {
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
-      proxyNodeFallback: 'JP-VPS-HY2',
+      proxyNodeFallback: 'KR-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
       logWrites: false
     })
@@ -180,7 +180,7 @@ describe('agentTransportFailureSync', () => {
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
-      proxyNodeFallback: 'JP-VPS-HY2',
+      proxyNodeFallback: 'KR-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
       logWrites: false
     })
@@ -217,7 +217,7 @@ describe('agentTransportFailureSync', () => {
 
     const written = await syncAgentTransportFailuresFromCursorLogs({
       sinceMs: ts - 60_000,
-      proxyNodeFallback: 'JP-VPS-HY2',
+      proxyNodeFallback: 'KR-VPS-HY2',
       cursorDataDirs: [cursorDataDir],
       appPathPrefixes: ['/Applications/Cursor-3.1.15.app', '/Applications/Cursor-2.app'],
       logWrites: false

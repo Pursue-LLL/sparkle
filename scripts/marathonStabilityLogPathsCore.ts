@@ -2,7 +2,9 @@
 // [OUTPUT] resolve paths · list log files
 // [POS] Phase 0/0.5 — multi-file Sparkle log discovery only
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync,
+  readdirSync,
+  readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveSparkleDataHome } from './marathonStabilityAttributionCore'
 

@@ -22,7 +22,7 @@ describe('vpsProviderSplitCore', () => {
     const proxies = [
       { name: 'SG-01', type: 'trojan' },
       { name: 'KR-VPS-HY2', type: 'hysteria2' },
-      { name: 'JP-VPS-Reality', type: 'vless' }
+      { name: 'KR-VPS-Reality', type: 'vless' }
     ]
     const { commercial, vps } = partitionLeafProxies(proxies)
     assert.deepEqual(
@@ -31,7 +31,7 @@ describe('vpsProviderSplitCore', () => {
     )
     assert.deepEqual(
       vps.map((item) => (item as { name: string }).name),
-      ['KR-VPS-HY2', 'JP-VPS-Reality']
+      ['KR-VPS-HY2', 'KR-VPS-Reality']
     )
   })
 

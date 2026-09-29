@@ -34,12 +34,12 @@ function skippedActive() {
 describe('networkTriangulationDiagnosticCore', () => {
   it('builds probe plan when JP Reality node exists', () => {
     const plan = buildTriangulationProbePlan(
-      new Set([TRIANGULATION_JP_NODE, 'JP-VPS-HY2']),
-      'JP-VPS-HY2'
+      new Set([TRIANGULATION_JP_NODE, 'KR-VPS-HY2']),
+      'KR-VPS-HY2'
     )
     assert.equal(plan.kr.skipped, true)
     assert.equal(plan.jp.skipped, undefined)
-    assert.equal(plan.active.proxy, 'JP-VPS-HY2')
+    assert.equal(plan.active.proxy, 'KR-VPS-HY2')
     assert.equal(plan.marketplace.proxy, TRIANGULATION_JP_NODE)
     assert.equal(plan.marketplace.target, SPLIT_BRAIN_CONTROL_TARGET)
   })
@@ -86,7 +86,7 @@ describe('networkTriangulationDiagnosticCore', () => {
       },
       jp: okProbe(TRIANGULATION_JP_NODE, API2_PROBE_TARGET, 220),
       marketplace: okProbe(TRIANGULATION_JP_NODE, SPLIT_BRAIN_CONTROL_TARGET, 200),
-      active: okProbe('JP-VPS-HY2', API2_PROBE_TARGET, 360)
+      active: okProbe('KR-VPS-HY2', API2_PROBE_TARGET, 360)
     }
     const verdict = resolveTriangulationVerdict(input)
     assert.equal(verdict.layer, 'paths_healthy')

@@ -79,10 +79,6 @@ export function advanceMarathonQuiesceState(
   }
 }
 
-export function shouldPauseProxyHealthMonitorUnderQuiesce(quiesceActive: boolean): boolean {
-  return quiesceActive
-}
-
 export function shouldDeferConnectStreamKeepaliveUnderQuiesce(
   cursorConnectionCount: number,
 ): boolean {

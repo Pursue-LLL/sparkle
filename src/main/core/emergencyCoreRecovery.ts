@@ -1,6 +1,12 @@
-// [INPUT] emergencyCoreRecoveryCore · emergencyCoreRestartBridge · coreReadinessGate
+// [INPUT] emergencyCoreRecoveryCore · proxyStackDeadlockRuntime
 // [OUTPUT] requestEmergencyCoreRecovery
-// [POS] C-8.14 runtime — evidence-gated emergency core rebuild.
+// [POS] C-8.14 SSOT — evidence-gated escalation *decision* + log only.
+//
+// BUG-2026-09-15-004: the disruptive core stop+start was removed. A full mihomo
+// restart drops every proxied connection of every app, and during lossy upstream
+// periods it recurred every few minutes — turning a Cursor-only stall into a
+// collective outage. Escalation is now recorded for triage but never stops the
+// core; stalls are handled by non-disruptive recovery (vitality / sidecar / leaf).
 
 import { appendAppLog } from '../utils/log'
 import {
@@ -9,49 +15,10 @@ import {
   formatEmergencyCoreRecoveryLogLine,
   type EmergencyCoreRecoveryReason,
 } from './emergencyCoreRecoveryCore'
-import { invokeEmergencyCoreRestart } from './emergencyCoreRestartBridge'
+import type { LongflowEvidence } from './proxyStackDeadlockCore'
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
-async function verifyEmergencyDataPlaneReady(maxWaitMs: number): Promise<{
-  controllerReady: boolean
-  api2Ok: boolean
-  api2Leaf?: string
-  probeVia?: string
-}> {
-  const startedAtMs = Date.now()
-  const deadlineMs = startedAtMs + maxWaitMs
-  let controllerReady = false
-  let api2Ok = false
-  let api2Leaf: string | undefined
-  let probeVia: string | undefined
-  while (Date.now() < deadlineMs) {
-    if (!controllerReady) {
-      const { waitForMihomoControllerReady } = await import('./postCoreBootstrap')
-      controllerReady = await waitForMihomoControllerReady(
-        Math.min(8_000, Math.max(1_000, deadlineMs - Date.now())),
-      )
-    }
-    if (!api2Ok) {
-      const { probeRecoveryApi2AnchorDetailed } = await import('./recoveryApi2Anchor')
-      const probe = await probeRecoveryApi2AnchorDetailed(
-        Math.min(10_000, Math.max(3_000, deadlineMs - Date.now())),
-      )
-      api2Ok = probe.ok
-      api2Leaf = probe.leaf
-      probeVia = probe.probeVia
-    }
-    if (api2Ok) {
-      return { controllerReady, api2Ok: true, api2Leaf, probeVia }
-    }
-    await delay(3_000)
-  }
-  return { controllerReady, api2Ok: false, api2Leaf, probeVia }
-}
+/** Terminal outcome of an escalation request: recorded, never disruptive. */
+export const EMERGENCY_CORE_RESTART_REMOVED = 'emergency_core_restart_removed'
 
 export interface EmergencyCoreRecoveryInput {
   reason: EmergencyCoreRecoveryReason
@@ -59,16 +26,18 @@ export interface EmergencyCoreRecoveryInput {
   evidenceReason: string
   cursorConnectionCount: number
   nowMs?: number
+  /**
+   * Collective long-flow death proof — lets the deadlock gate override the
+   * mixed-port veto. Required by contract: pass `unknownLongflowEvidence(...)`
+   * when the caller genuinely has no measurement, never omit or zero-fill.
+   */
+  longflow: LongflowEvidence
 }
 
 let emergencyRecoveryInFlight = false
-let lastEmergencyCompletedAtMs = 0
-let lastEmergencyReadinessApi2Verified = true
 
-export function resetEmergencyCoreRecoveryForTests(nowMs = Date.now()): void {
+export function resetEmergencyCoreRecoveryForTests(): void {
   emergencyRecoveryInFlight = false
-  lastEmergencyCompletedAtMs = nowMs - 999_999_999
-  lastEmergencyReadinessApi2Verified = true
 }
 
 export async function requestEmergencyCoreRecovery(
@@ -87,118 +56,36 @@ export async function requestEmergencyCoreRecovery(
     return { executed: false, reason: 'emergency_recovery_in_flight' }
   }
   emergencyRecoveryInFlight = true
-  const request = {
-    reason: input.reason,
-    leafId: input.leafId,
-    evidenceReason: input.evidenceReason,
-    cursorConnectionCount: input.cursorConnectionCount,
-    requestedAtMs: nowMs,
-    deadlineMs: buildEmergencyCoreRecoveryDeadline(nowMs),
-  }
-  const admission = evaluateEmergencyCoreRecoveryAdmission({
-    request,
-    nowMs,
-    lastCompletedAtMs: lastEmergencyCompletedAtMs,
-    lastReadinessApi2Verified: lastEmergencyReadinessApi2Verified,
-  })
-  await appendAppLog(
-    formatEmergencyCoreRecoveryLogLine({
-      outcome: admission.admitted ? 'admitted' : 'blocked',
-      reason: admission.reason,
-      leafId: input.leafId,
-      cursorConn: input.cursorConnectionCount,
-      drainMs: admission.drainMs,
-    }),
-  )
-  if (!admission.admitted) {
-    emergencyRecoveryInFlight = false
-    return { executed: false, reason: admission.reason }
-  }
-  const shouldShowCollectiveDeathToast =
-    input.cursorConnectionCount > 0 || admission.drainMs > 0
   try {
-    if (shouldShowCollectiveDeathToast) {
-      const { notifyCollectiveDeathAlert } = await import('./collectiveDeathAlert')
-      void notifyCollectiveDeathAlert({
-        trigger: 'emergency_core_recovery',
-        title: '网络集体恢复中',
-        body: `代理核心正在紧急重建（约 ${Math.round(admission.drainMs / 1000)} 秒）。可点击「复制 Bug 信息」粘贴给 AI 分析。`,
-        cursorConnectionCount: input.cursorConnectionCount,
-        leafId: input.leafId,
-        evidenceReason: input.evidenceReason,
-        drainMs: admission.drainMs,
-        tsMs: nowMs,
-      })
-    }
-  } catch {
-    // alert is best-effort; emergency recovery must proceed
-  }
-  if (admission.drainMs > 0) {
-    await appendAppLog(
-      formatEmergencyCoreRecoveryLogLine({
-        outcome: 'planned',
-        reason: 'emergency_drain_before_restart',
-        leafId: input.leafId,
-        cursorConn: input.cursorConnectionCount,
-        drainMs: admission.drainMs,
-      }),
-    )
-    await delay(admission.drainMs)
-  }
-  try {
-    await invokeEmergencyCoreRestart({
+    const request = {
+      reason: input.reason,
       leafId: input.leafId,
       evidenceReason: input.evidenceReason,
+      cursorConnectionCount: input.cursorConnectionCount,
       requestedAtMs: nowMs,
-      deadlineMs: request.deadlineMs,
-    })
-    const readiness = await verifyEmergencyDataPlaneReady(90_000)
-    if (!readiness.api2Ok) {
-      lastEmergencyReadinessApi2Verified = false
-      await appendAppLog(
-        formatEmergencyCoreRecoveryLogLine({
-          outcome: 'failed',
-          reason: 'emergency_readiness_verification_failed',
-          leafId: input.leafId,
-          err:
-            `controller=${readiness.controllerReady ? 1 : 0} api2=${readiness.api2Ok ? 1 : 0}` +
-            ` probe_via=${readiness.probeVia ?? 'unknown'} leaf=${readiness.api2Leaf ?? 'unknown'}`,
-        }),
-      )
-      return { executed: false, reason: 'emergency_readiness_verification_failed' }
+      deadlineMs: buildEmergencyCoreRecoveryDeadline(nowMs),
     }
+    const { confirmProxyStackDeadlockForCoreRestart } = await import('./proxyStackDeadlockRuntime')
+    const stackVerdict = await confirmProxyStackDeadlockForCoreRestart(input.longflow)
+    const admission = evaluateEmergencyCoreRecoveryAdmission({
+      request,
+      nowMs,
+      lastCompletedAtMs: 0,
+      stackDeadlockConfirmed: stackVerdict.confirmed,
+    })
     await appendAppLog(
       formatEmergencyCoreRecoveryLogLine({
-        outcome: 'executed',
-        reason: 'emergency_core_recovery_completed',
+        outcome: 'blocked',
+        reason: admission.admitted
+          ? EMERGENCY_CORE_RESTART_REMOVED
+          : admission.reason === 'proxy_stack_not_confirmed_deadlock'
+            ? stackVerdict.reason
+            : admission.reason,
         leafId: input.leafId,
         cursorConn: input.cursorConnectionCount,
-        drainMs: readiness.controllerReady ? 0 : -1,
       }),
     )
-    await appendAppLog(
-      `[EmergencyCoreRecovery]: readiness controller=${readiness.controllerReady ? 1 : 0} api2=${readiness.api2Ok ? 1 : 0} probe_via=${readiness.probeVia ?? 'unknown'} leaf=${readiness.api2Leaf ?? 'unknown'}\n`,
-    )
-    try {
-      const { dismissCollectiveDeathAlert } = await import('./collectiveDeathAlert')
-      dismissCollectiveDeathAlert()
-    } catch {
-      // best-effort dismiss
-    }
-    lastEmergencyReadinessApi2Verified = true
-    lastEmergencyCompletedAtMs = Date.now()
-    return { executed: true, reason: 'emergency_core_recovery_completed' }
-  } catch (error) {
-    const err = error instanceof Error ? error.message : String(error)
-    await appendAppLog(
-      formatEmergencyCoreRecoveryLogLine({
-        outcome: 'failed',
-        reason: 'emergency_core_recovery_failed',
-        leafId: input.leafId,
-        err,
-      }),
-    )
-    return { executed: false, reason: err }
+    return { executed: false, reason: EMERGENCY_CORE_RESTART_REMOVED }
   } finally {
     emergencyRecoveryInFlight = false
   }

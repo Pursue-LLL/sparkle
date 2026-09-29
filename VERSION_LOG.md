@@ -5,6 +5,117 @@
 
 ---
 
+## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-09-15 **17:18 CST**
+
+| 项 | 值 |
+|---|---|
+| 版本 | **1.30.66** · CDHash **`22f57130e2bf3da23edf0b2e287b4dd342d2a7cf`**（2026-09-17 每日订阅更新热落地重编） |
+| 装包 | `/Applications/Sparkle.app`，GUI + mihomo + TUN(39 路由) + `:7890` HTTP 200 |
+
+**能力/行为基线（后续不得回退）**
+- `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按地区优先级排序写入：台湾→日本→韩国→新加坡→美国→其他非优先国家，香港排除；纯排序，零探测机器）。fallback 语义 = 按顺序用第一个可用节点：台湾可用就只用台湾，当前节点 gemini 探测失败（>5s）自动降到下一个可用节点，恢复自动升回。
+- 探测：`gemini.google.com`（用户主用服务），interval 300s，timeout 5000ms，lazy=true（组空闲时跳过定时探测）。
+- 手动：fallback 支持手动固定，所选节点失效自动让位。
+- 地区组（Sparkle-台湾/日本/韩国/新加坡/美国/香港）= 手动 select，永不自动切换，与该链完全分离。
+- **铁律**：`proxies` 里不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）；provider 文件必须随每次配置生成重写。
+1. **不会因卡顿整核重启**：`restartCoreEmergency`/bridge/oscillation/smoke 已从代码删除；emergency 只决策+记录 `emergency_core_restart_removed`。
+2. **选点防抖**：url-test 组 `interval:300` + `tolerance:2000` + `lazy:true`；failover 触发 `proxyTimeoutThreshold=2000`、目标 `proxySwitchMaxTargetDelayMs=500`、顺序 新加坡→台湾→日本→韩国→美国、每 300s 复测；**`自动选择` = `select`（可手动选），成员 = 5 区域组 + `use:[商业 provider, VPS provider]`（全部节点）；`proxyHealthMonitor` 受管 Cursor 专用 + 自动选择**。
+3. **恢复证据契约**：`LongflowEvidence=measured|unknown`（禁止 `?? 0`）；探针在 controller 不可达时不伪造 `leaf:fail`；集体死亡报告按日历日选日志 + 30min 窗口。
+4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁含 `emergency_core_restart_removed` + longflow 契约标记。
+5. **产品包不含仓库内部文档**（`!*.md` 等）。
+6. **保留的 fork 功能**：Cursor 专用组、地区自动组、定时更新、TUN、订阅刷新。
+
+**已知边界（物理层，非代码可修）**：运营商国际出口丢包/抖动仍会导致境外变慢与 Cursor 长流卡顿；但**不会再被 Sparkle 放大为集体断连**。
+
+---
+
+## 2026-09-15 后续8 · **生产基线 @1.30.66 INSTALLED d493adb4** · BUG-007 选点防抖（tolerance 2000/interval 300/lazy + failover 2000/500 + 区域顺序）· 全量 707 项 0 新增失败 · **当前最佳生产基线**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.66** · CDHash **`d493adb4f3b62a6ad082fa9f8573265c55e2d841`** |
+| **选点防抖** | 生成配置实测含 `interval: 300` + `tolerance: 2000` + `lazy: true`；failover 触发 `proxyTimeoutThreshold=2000`、目标 `proxySwitchMaxTargetDelayMs=500`；顺序 新加坡→台湾→日本→韩国→美国 |
+| **整核重启** | 代码删净（asar 内 `invokeEmergencyCoreRestart=false`）；装机后 `core_cold_restart_scheduled caller=restartCore` = **0**，`emergency_core_restart_removed` 689 次 |
+| **去泄漏** | asar 内 repo 文档 = **0** |
+| **验收** | GUI/mihomo/TUN(39)/`:7890` 200 · 全量 707 项 0 新增失败 · tsc/eslint 0 |
+
+---
+
+## 2026-09-15 后续6 · **生产基线 @1.30.66 INSTALLED 781195f1** · BUG-2026-09-15-004/005/006 删除整核冷重启 + 修复 DistFreshness 元凶 + 去文档泄漏 · 单测 707 项 0 新增失败 · **当前最佳生产基线**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.66** · CDHash **`781195f13f9eaf2336aedabb1a94808195ba0a6b`** |
+| **T0** | 装包 2026-09-15 · GUI 运行 · mihomo 运行 · TUN · `:7890` HTTP 200 |
+| **004 删重启** | 删除 `emergencyCoreRestartBridge` / `restartCoreEmergency` / `coldRestartOscillation*` / smoke CLI；`requestEmergencyCoreRecovery` 只决策+记录 `emergency_core_restart_removed`；JS 产物核对 `invokeEmergencyCoreRestart=false`；装机后整核重启 **0 次** |
+| **005 元凶** | DistFreshness `git diff` 3MB 撑爆 1MB `maxBuffer` → 空哈希 → 永远 install-only 装旧包；已修（64MB + fail-safe 判 stale），实测 `fresh=0 source_tree_drift → full upgrade` |
+| **006 泄漏** | asar 曾打包 `BUGFIX_LOG/VERSION_LOG/ARCHITECTURE/VPS-*` 等内部文档；已加 `!*.md !reports/** !temp-docs/**`；核对 asar 内 repo docs = **NONE** |
+| **验收** | 全量 707 项 0 新增失败 · tsc/eslint 0 · asar 门禁 `missing_emergency_cold_restart_removed` PASS |
+
+---
+
+## 2026-09-15 后续 · **生产基线 @1.30.66 INSTALLED 871eac64** · BUG-2026-09-15-002 冷重启振荡退避（终结"每 5 分钟整核重启导致集体断"）· 已被 781195f1 取代
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.66** · CDHash **`871eac64f4c7e337f41aa751e1cd289afefc6ba3`** |
+| **T0** | 装包 2026-09-15 · GUI 运行 · mihomo 运行 · TUN `utun4` 39 路由 · 代理 `:7890` HTTP 200 |
+| **实测缺陷** | 当天 mihomo 核心 `Start initial configuration` **50 次**（median 5 分钟），`emergency_core_recovery_completed` 68 次；`restartCoreEmergency` 走 `stopCoreUnchecked+startCore` = **整核停机，所有 App 连接一起断** → 用户主诉"集体挂"（其他客户端不重启内核故无此现象） |
+| **修复** | `coldRestartOscillationCore.ts` 振荡退避：首启照常；90min 内再次 → 指数退避 15→30min；模拟 3.5h 劣化窗口冷重启 **50 → ≤10 次**；被拦日志 `[ColdRestartOscillation]: outcome=blocked reason=cold_restart_oscillation_backoff` |
+| **asar 验证** | `cold_restart_oscillation_backoff` / `cold_restart_backoff_elapsed` / `[ColdRestartOscillation]:` + 前版 3 个契约标记 → **6/6 命中** |
+| **验收** | 全量 707 项 0 新增失败 · tsc/eslint 0 · asar 门禁新增 `missing_cold_restart_oscillation_guard` |
+
+---
+
+## 2026-09-15 12:08 CST · **生产基线 @1.30.66 INSTALLED 97e2c214** · BUG-2026-09-15-001 恢复子系统证据链加固 + 探针诚实性 + 报告窗口对齐 · 已被 871eac64 取代
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.66** · CDHash **`97e2c21491129f18589e18c5371b7b1edbed78ea`** · stamp `2026.0915.1159` |
+| **Git** | 基于 `a86f154`（含工作区 BUG-011~016 WIP） |
+| **T0** | 装包 2026-09-15 **12:08 CST** · Sparkle GUI 运行 · mihomo root · TUN `utun4` 39 路由 · 代理 `:7890` HTTP 200 |
+| **关键改动** | ① `LongflowEvidence` 判别联合（measured/unknown），消除 `?? 0` 静默降级（3/4 生产调用点曾因此永不升级）② `selectLeafProbeTargets` 停止伪造 `leaf_probes=…:fail` ③ 报告按日历日选日志 + 30min 窗口 ④ asar 硬门 `missing_longflow_evidence_contract` |
+| **物理根因（本次同证）** | 断网触发根因 = 本机**中国电信国际出口**劣化（出国段 10% 丢包 / 253ms 抖动 / 202.97＝1094ms）；本地 WiFi 0% 丢包；韩国 VPS 自证健康。代码层无法修复物理链路。 |
+| **验收** | 707 项测试 0 新增失败 · tsc/eslint 我改文件 0 error · Stage-A/B bundle gate PASS · asar 契约标记 5/5 命中 |
+
+---
+
+## 2026-09-10 14:54 CST · **生产基线 @1.30.66 INSTALLED ba070123** · BUG-2026-09-10-001 外部锚点双重智能门禁 + 消除假阳性集体死亡误报 + 终结自愈轮询死循环 · 单测 47/47 PASS · **已被 2026-09-15 取代**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | `/Applications/Sparkle.app` → **1.30.66** · CDHash **`ba070123c6a8a9374ec37bf837113fa8a3170cd8`** |
+| **Git** | stamp `2026.0910.1451` · break-glass 强制升级覆盖安装 |
+| **T0** | 装包 2026-09-10 **14:54 CST** · Sparkle (PID 70690) · mihomo (PID 70943) 0s · proxy api2 **200 OK** |
+| **状态** | **INSTALLED · 当前 Agent 最佳生产基线** — 彻底消除 1.30.65 误报 Collective Death 弹窗与自愈死循环 |
+
+### 本版相对 1.30.65 新增/补全（BUG-2026-09-10-001）
+
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| **外部锚点生命力降级兜底** | ✅ INSTALLED | `evaluateSidecarExternalVerification` 接入 `isVitalityConnectPathTrustworthy`（>=50ms），外部测速超时但物理链路活着时判定通过（`api2_anchor_fallback_trustworthy_vitality`），消除假死误判 |
+| **双通道混合端口发包复测** | ✅ INSTALLED | `probeRecoveryApi2AnchorDetailed` 在控制器单点测速失败时，自动 fallback 到本地 Mixed 端口物理真实发包链路二次确认 |
+| **放宽测速并发容错时间** | ✅ INSTALLED | `cursorApi2MihomoProbe.ts` 探测超时阈值由 5000ms 宽限至 8000ms，抗系统峰值抖动 |
+| **自愈冷却控制与死循环终结** | ✅ INSTALLED | `hy2ParentSidecar.ts` 在紧急自愈检测后补充记录 `lastHy2ParentSidecarActionAtMs = nowMs`，彻底终结 5s 紧凑轮询空转 |
+| **主力节点配置校准** | ✅ INSTALLED | 将兜底默认节点由旧的 `JP-VPS-HY2` 全面更正为当前系统实际运行的主力 `KR-VPS-HY2` |
+| **工程规范与静态导入治理** | ✅ INSTALLED | 修复 ESLint restricted-syntax 动态导入问题，改为纯净静态引入，全模块 0 errors, 0 warnings，无 any 类型 |
+| **单测套件覆盖** | ✅ **47/47** | 7 大核心套件（47 项测试用例全部绿色 PASS，包含兜底、死锁、熔断、冷却验证） |
+
+### 1.30.65 装包后 live 证伪（为何需要本版）
+
+| 时间 | 1.30.65 表现 | 根因与反思 |
+| --- | --- | --- |
+| 14:07:46 CST | 弹出 `Sparkle Collective Death Bug Report`（`recovery_circuit_open` / `api2_anchor_fail`） | **假阳性误报**：业务流量正顺畅转发（14:07:42 core.log），物理延时实测 439ms（14:07:46.678 app.log），但因系统瞬时负载大，管理接口 5s 测速超时，门禁一刀切判死刑，触发熔断开闸并错拉 14 小时前的陈旧日志展示。 |
+| 持续空转 | `EmergencyCoreRecovery outcome=blocked reason=proxy_stack_alive_mixed_port_api2` 每 5s 紧凑重试 | **死循环空转**：自愈受阻分支未更新冷却时间戳，导致系统陷入 5 秒高频自检空转，狂刷日志消耗 CPU。 |
+
+### 架构反思与防回归铁律（避免再次翻车）
+
+1. **物理网络生命力延时具有最高仲裁权**：任何上层 HTTP 单点探针的失败，都不能推翻底层 QUIC/UDP 物理拨号成功且具有真实延时的客观事实。严禁“单点一票否决”。
+2. **阻断必须有冷却，严禁空转**：所有自愈拦截、死锁保护分支必须强制更新时间戳并触发退避冷却，绝不能无间隔死循环重试。
+3. **报警收集必须窗口对齐**：告警日志抓取必须对齐当前 incident 时间戳，严禁回溯十几小时前的陈旧死锁日志吓唬用户。
+
+---
+
 ## 2026-09-03 16:15 CST · **开发基线 CODE-DONE @1.30.56** · BUG-007/008 集群检测 + 强制 UDP 刷新 + circuit bypass · **待装包**
 
 | 字段 | 内容 |

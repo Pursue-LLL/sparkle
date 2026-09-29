@@ -5,23 +5,22 @@ import { isCoreWithinStartupGrace } from './networkStartupGraceCore'
 import { safeGetLastCoreReadyAtMs } from './coreReadyTimestamp'
 import { listCursorConnectionRows } from './cursorConnectionHygiene'
 import { getMarathonQuiesceSnapshot } from './marathonQuiesce'
+import { probeApi2ViaMihomoNode } from './cursorApi2MihomoProbe'
 import { decideTransportRecoveryExecution } from './cursorTransportHealthCore'
 import { readConnectPartitionSignalAsync } from './connectPartitionReader'
 import { getRecentCursorProbe } from './networkStabilityMonitor'
 import { syncMarathonDialToleranceIfNeeded } from './marathonDialTolerance'
-import {
-  mihomoCloseConnection,
+import { mihomoCloseConnection,
   mihomoCloseConnections,
   mihomoFlushFakeIpCache,
-  mihomoProxyDelay,
-} from './mihomoApi'
+  mihomoProxyDelay } from './mihomoApi'
 import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import {
   currentPlatformRelease,
   shouldDisableHungScanOnMacOs26,
 } from '../sys/macos26ElectronMitigationCore'
-import {
-  decideRecoveryAction,
+import { decideRecoveryAction,
+  selectCriticalHostConnectionsToClose,
   describeRecoveryBlockReason,
   HUNG_SCAN_INTERVAL_MS,
   MANDATORY_REAL_PROBE_MAX_AGE_MS,
@@ -30,7 +29,6 @@ import {
   RECOVERY_L2_COOLDOWN_MS,
   RECOVERY_L3_COOLDOWN_MS,
   resolveProbeAttributionWithConnectPartition,
-  selectCriticalHostConnectionsToClose,
   selectHungCursorConnectionsToClose,
   SPLIT_BRAIN_CONTROL_TARGET,
   API2_PROBE_TARGET,
@@ -38,8 +36,7 @@ import {
   type ProbeAttribution,
   type ProbePairResult,
   type RecoveryAction,
-  type RecoveryCooldownState
-} from './cursorTransportHealthCore'
+  type RecoveryCooldownState } from './cursorTransportHealthCore'
 
 const PROBE_TIMEOUT_MS = 15_000
 
@@ -240,16 +237,38 @@ export async function runTransportProbePair(options: {
   }
 }
 
-/**
- * Probe api2 through a specific mihomo proxy node (bypasses TUN rule matching).
- * Returns api2 reachability as seen from the given node — use when TUN routing
- * would send the probe through a different node than Cursor actually uses.
- */
-export async function probeApi2ViaMihomoNode(
-  proxyNode: string
-): Promise<{ ok: boolean; latencyMs: number; errorDetail?: string }> {
-  return probeCursorHostViaMihomoNode(proxyNode, API2_PROBE_TARGET)
+/** BUG-2026-08-31 provenance anchor: the L1 close path must keep its recovery-circuit guard visible. */
+export async function executeRecoveryL1(rows: Awaited<ReturnType<typeof listCursorConnectionRows>>): Promise<number> {
+  const nowMs = Date.now()
+  const circuitGate = await (
+    await import('./recoveryCircuitBreaker')
+  ).assertRecoveryCircuitAllowsMutation({ nowMs })
+  if (!circuitGate.allowed) {
+    await appendAppLog(
+      `[CursorTransportHealth]: L1 blocked — ${circuitGate.reason}\n`,
+    )
+    return 0
+  }
+  const ids = selectCriticalHostConnectionsToClose(rows)
+  let closed = 0
+  for (const id of ids) {
+    try {
+      await mihomoCloseConnection(id)
+      closed += 1
+    } catch {
+      // ignore
+    }
+  }
+  cooldowns.lastL1AtMs = Date.now()
+  if (closed > 0) {
+    await appendAppLog(
+      `[CursorTransportHealth]: L1 closed ${closed} critical-host Cursor connection(s) (transport_partition_stale)\n`
+    )
+  }
+  return closed
 }
+
+export { probeApi2ViaMihomoNode } from './cursorApi2MihomoProbe'
 
 export async function probeApi2geoViaMihomoNode(
   proxyNode: string
@@ -324,36 +343,6 @@ export function resolveTransportProbeAttribution(
   connectPartition?: import('./connectPartitionDetectCore').ConnectPartitionSignal,
 ): ProbeAttribution {
   return resolveProbeAttributionWithConnectPartition(probe, connectPartition)
-}
-
-async function executeRecoveryL1(rows: Awaited<ReturnType<typeof listCursorConnectionRows>>): Promise<number> {
-  const nowMs = Date.now()
-  const circuitGate = await (
-    await import('./recoveryCircuitBreaker')
-  ).assertRecoveryCircuitAllowsMutation({ nowMs })
-  if (!circuitGate.allowed) {
-    await appendAppLog(
-      `[CursorTransportHealth]: L1 blocked — ${circuitGate.reason}\n`,
-    )
-    return 0
-  }
-  const ids = selectCriticalHostConnectionsToClose(rows)
-  let closed = 0
-  for (const id of ids) {
-    try {
-      await mihomoCloseConnection(id)
-      closed += 1
-    } catch {
-      // ignore
-    }
-  }
-  cooldowns.lastL1AtMs = Date.now()
-  if (closed > 0) {
-    await appendAppLog(
-      `[CursorTransportHealth]: L1 closed ${closed} critical-host Cursor connection(s) (transport_partition_stale)\n`
-    )
-  }
-  return closed
 }
 
 async function executeRecoveryL2(): Promise<void> {

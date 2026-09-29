@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /** CLI wrapper for upgradeSparkleAsarGateCore — used by upgrade-sparkle-local.sh */
-import { collectSparkleMainProcessAsarSource } from './sparkleMainAsarSourceCore.ts'
-import { assertSparkleMainAsarBundle } from './upgradeSparkleAsarGateCore.ts'
+import { collectSparkleMainProcessAsarSource } from './sparkleMainAsarSourceCore'
+import { assertSparkleMainAsarBundle } from './upgradeSparkleAsarGateCore'
 
 const appAsar = process.argv[2]
 if (!appAsar) {

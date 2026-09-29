@@ -21,7 +21,7 @@ describe('physicalMaxStepsRateCore P10-5', () => {
       networkStartId: `ns-${index}`,
       rendererBootId: 'boot-1',
       startedAtMs: 1_000_000 + index,
-      outcome: (index < 90 ? 'max_steps' : 'transport_error') as const,
+      outcome: index < 90 ? ('max_steps' as const) : ('transport_error' as const),
       closedAtMs: 1_000_100 + index,
     }))
     const snapshot = computePhysicalMaxStepsRateSnapshot({ starts })

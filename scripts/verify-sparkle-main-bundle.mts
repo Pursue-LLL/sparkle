@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /** Stage-A bundle gate — scan out/main/*.js before electron-builder (fail-fast ~30s). */
 import path from 'node:path'
-import { collectSparkleMainProcessDiskSource } from './sparkleMainAsarSourceCore.ts'
-import { assertSparkleMainAsarBundle } from './upgradeSparkleAsarGateCore.ts'
+import { collectSparkleMainProcessDiskSource } from './sparkleMainAsarSourceCore'
+import { assertSparkleMainAsarBundle } from './upgradeSparkleAsarGateCore'
 
 const mainOutDir = path.resolve(process.argv[2] ?? 'out/main')
 

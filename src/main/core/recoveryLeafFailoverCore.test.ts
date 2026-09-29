@@ -3,18 +3,18 @@ import { describe, it } from 'node:test'
 import { resolveLeafFailoverTarget } from './recoveryLeafFailoverCore'
 
 describe('recoveryLeafFailoverCore @phase1', () => {
-  it('prefers JP-VPS-TLS over Reality when HY2 fails', () => {
+  it('prefers 自动选择 when HY2 fails (HY2-only VPS)', () => {
     const target = resolveLeafFailoverTarget({
-      failedLeafId: 'JP-VPS-HY2',
-      availableMembers: ['JP-VPS-HY2', 'JP-VPS-Reality', 'JP-VPS-TLS', 'DIRECT'],
+      failedLeafId: 'KR-VPS-HY2',
+      availableMembers: ['KR-VPS-HY2', '自动选择', 'DIRECT'],
     })
-    assert.equal(target, 'JP-VPS-TLS')
+    assert.equal(target, '自动选择')
   })
 
   it('skips failed leaf', () => {
     const target = resolveLeafFailoverTarget({
-      failedLeafId: 'JP-VPS-HY2',
-      availableMembers: ['JP-VPS-HY2', '自动选择'],
+      failedLeafId: 'KR-VPS-HY2',
+      availableMembers: ['KR-VPS-HY2', '自动选择'],
     })
     assert.equal(target, '自动选择')
   })

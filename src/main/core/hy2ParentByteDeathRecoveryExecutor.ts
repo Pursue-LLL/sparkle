@@ -6,14 +6,11 @@ import { appendAppLog } from '../utils/log'
 import { mihomoCloseConnection, mihomoGetConnections } from './mihomoApi'
 import { getLastHy2TunnelVitalityAtMs } from './hy2TunnelVitality'
 import { resetTransportLongevityHy2ParentChainBirth } from './transportLongevityTruth'
-import {
-  executeByteDeathParentMutationWithDeps,
-  executeLeafCloseBatch,
+import { executeByteDeathParentMutationWithDeps,
   type ByteDeathParentMutationInput,
   type ByteDeathParentMutationResult,
   type CloseConnectionFn,
-  type ResetParentBirthFn,
-} from './hy2ParentByteDeathRecoveryExecutorImpl'
+  type ResetParentBirthFn } from './hy2ParentByteDeathRecoveryExecutorImpl'
 
 export type {
   ByteDeathParentMutationInput,

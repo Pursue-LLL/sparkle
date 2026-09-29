@@ -6,10 +6,10 @@ import {
 } from './upgradeSparkleAsarGateCore'
 
 const CONTROL_PLANE_MARKERS =
-  'emergency_parent_refresh_bypass requireCarrierBytesRecovery observability_probe_admitted carrier_recovered= resolveHy2ParentUdpOutboundConnectionId byte_death_no_udp_outbound_sidecar_emergency byte_death_probe_only_without_udp_close byte_death_close_frozen_leaf_batch byte_death_udp_absent_requires_core_restart byte_death_udp_parent_unknown [RecoveryCoordinator]: [EmergencyCoreRecovery]: [ByteDeathRecoveryHonesty]: scheduleByteDeathRecoveryVerification invokeEmergencyCoreRestart registerEmergencyCoreRestartHandler --sparkle-emergency-recovery-smoke [EmergencyRecoverySmoke]: requestEmergencyCoreRecovery restartCoreEmergency reset_parent_chain_birth byteDeathFullScan mihomoGetConnections [Hy2ParentByteDeathRecovery]: executeByteDeathParentMutation byte_death_mutation_failed_blocking_sidecar byte_death_rotation_ssot'
+  'emergency_parent_refresh_bypass requireCarrierBytesRecovery observability_probe_admitted carrier_recovered= resolveHy2ParentUdpOutboundConnectionId byte_death_no_udp_outbound_sidecar_emergency byte_death_probe_only_without_udp_close byte_death_close_frozen_leaf_batch byte_death_udp_absent_requires_core_restart byte_death_udp_parent_unknown [RecoveryCoordinator]: [EmergencyCoreRecovery]: [ByteDeathRecoveryHonesty]: scheduleByteDeathRecoveryVerification requestEmergencyCoreRecovery reset_parent_chain_birth byteDeathFullScan mihomoGetConnections [Hy2ParentByteDeathRecovery]: executeByteDeathParentMutation byte_death_mutation_failed_blocking_sidecar byte_death_rotation_ssot'
 
 const RECOVERY_TRUTH_MARKERS =
-  'fallback_ladder cursor_dedicated_dial_failure_cluster_udp_absent stale_session_overrides_vitality_counterproof coreLogDialFailureTailWatcher api2_anchor_rejected proactive_hard_rotate cursor_dedicated_mihomo probeRecoveryApi2AnchorDetailed dismissCollectiveDeathAlert'
+  'fallback_ladder cursor_dedicated_dial_failure_cluster_udp_absent stale_session_overrides_vitality_counterproof coreLogDialFailureTailWatcher api2_anchor_rejected proactive_hard_rotate cursor_dedicated_mihomo probeRecoveryApi2AnchorDetailed notifyCollectiveDeathAlert cursorApi2MihomoProbe dial_cluster_commercial_leaf_skip_hy2_udp [ProxyStackDeadlock]: proxy_stack_not_confirmed_deadlock proxy_stack_deadlock_longflow_overrides_mixed_port measuredLongflowEvidence unknownLongflowEvidence proxy_stack_longflow_evidence_unknown emergency_core_restart_removed'
 
 const CORE_READINESS_MARKERS = '[CoreReadiness]: runCoreReadinessPipeline'
 
@@ -94,5 +94,14 @@ describe('upgradeSparkleAsarGateCore', () => {
     assert.equal(result.ok, false)
     if (result.ok) throw new Error('expected failure')
     assert.equal(result.reason, 'missing_bug20260903_recovery_truth')
+  })
+
+  it('rejects bundle missing the longflow evidence contract', () => {
+    const source = `${BASE_MARKERS} ${CONTROL_PLANE_MARKERS} ${CORE_READINESS_MARKERS} ${RECOVERY_TRUTH_MARKERS}`
+    const withoutContract = source.replace(/measuredLongflowEvidence/g, '')
+    const result = validateSparkleMainAsarBundle(withoutContract)
+    assert.equal(result.ok, false)
+    if (result.ok) throw new Error('expected failure')
+    assert.equal(result.reason, 'missing_longflow_evidence_contract')
   })
 })

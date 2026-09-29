@@ -99,6 +99,9 @@ export function resolveMarathonTransportDialPlan(
     case 'high_latency_warmth':
     case 'periodic_session':
       return 'session_warmth_bundle'
+    case 'hy2_parent_sidecar':
+      // Rescue-family trigger (MARATHON_RESCUE_TRIGGERS) — dials the connect bundle.
+      return 'connect_rescue_bundle'
   }
 }
 

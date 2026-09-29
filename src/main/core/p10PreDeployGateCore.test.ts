@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import { defaultP10PreDeploySrcMainRoot, runP10PreDeployGate } from './p10PreDeployGateCore'
 

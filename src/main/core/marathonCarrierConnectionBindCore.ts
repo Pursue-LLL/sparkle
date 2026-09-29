@@ -36,7 +36,7 @@ function totalBytes(connection: ControllerConnectionDetail): number {
 }
 
 function connectionConnAgeMs(
-  connection: ControllerConnectionDetail,
+  _connection: ControllerConnectionDetail,
   tracked: MihomoQuicStallTrackedConnection,
   nowMs: number,
 ): number {

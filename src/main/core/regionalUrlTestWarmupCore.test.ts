@@ -27,7 +27,7 @@ describe('regionalUrlTestWarmupCore', () => {
     const result = await warmupRegionalUrlTestGroupsCore({
       mihomoGroups: async () => [
         {
-          name: 'Sparkle-自动-新加坡',
+          name: 'Sparkle-新加坡',
           type: 'URLTest',
           all: [],
           now: '',
@@ -50,7 +50,7 @@ describe('regionalUrlTestWarmupCore', () => {
           history: [],
           alive: true
         }
-      ],
+      ] as unknown as ControllerMixedGroup[],
       mihomoGroupDelay: async (group, url) => {
         delayed.push({ group, url: url ?? '' })
         return {}
@@ -60,7 +60,7 @@ describe('regionalUrlTestWarmupCore', () => {
     assert.equal(result.warmed, 2)
     assert.equal(result.failures.length, 0)
     assert.deepEqual(delayed, [
-      { group: 'Sparkle-自动-新加坡', url: AUTO_SELECT_DELAY_TEST_URL },
+      { group: 'Sparkle-新加坡', url: AUTO_SELECT_DELAY_TEST_URL },
       { group: CURSOR_AUTO_SELECT_GROUP_NAME, url: CURSOR_DELAY_TEST_URL },
     ])
   })

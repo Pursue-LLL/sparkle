@@ -9,4 +9,7 @@ out
 *.tsbuildinfo
 .idea
 *.ttf
+.tmp-*/
 .tmp-asar-live/
+temp-docs/
+dist.zip

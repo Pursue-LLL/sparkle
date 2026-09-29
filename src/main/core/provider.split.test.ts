@@ -14,7 +14,7 @@ describe('provider VPS split integration', () => {
       proxies: [
         { name: 'SG-01', type: 'trojan' },
         { name: 'KR-VPS-HY2', type: 'hysteria2' },
-        { name: 'JP-VPS-Reality', type: 'vless' }
+        { name: 'KR-VPS-Reality', type: 'vless' }
       ],
       'proxy-groups': [
         {

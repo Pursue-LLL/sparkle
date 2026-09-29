@@ -141,7 +141,7 @@ export async function observeMihomoConnectionsForQuicSilentStall(
   const activeHy2Leaf =
     resolveMarathonQuIcLeafFromChains(
       connections.find((c) => isMarathonQuIcCursorTransportConnection(c))?.chains ?? [],
-    ) ?? 'JP-VPS-HY2'
+    ) ?? 'KR-VPS-HY2'
 
   try {
     const { resolveMarathonSSETruthSnapshot } = await import('./marathonSSETruthRuntime')
@@ -239,6 +239,8 @@ export async function observeMihomoConnectionsForQuicSilentStall(
     }
     const finalLongevitySnapshot = {
       ...postSidecarSnapshot,
+      // 实时解析的叶名覆盖旧快照——禁止幽灵叶名（如已下线的 JP-VPS-HY2）流入证据
+      activeHy2Leaf,
       maxByteStallMs:
         postSidecarSnapshot.maxByteStallMs === 0 &&
         postSidecarSnapshot.httpParentChainAgeMs === 0

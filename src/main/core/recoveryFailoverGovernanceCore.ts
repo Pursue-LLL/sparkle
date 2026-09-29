@@ -10,13 +10,13 @@ import {
   VITALITY_DIAL_SUCCESS_FRESHNESS_MS,
 } from './hy2ParentByteDeathRecoveryCore'
 
-export const DEFAULT_CURSOR_HY2_LEAF = 'JP-VPS-HY2'
+export const DEFAULT_CURSOR_HY2_LEAF = 'KR-VPS-HY2'
 
 /** Soak window after failover before another UDP-absent escalation (matches Sep3 5s gap bug). */
 export const FAILOVER_SOAK_WINDOW_MS = 60_000
 
-/** Failover targets that must not stay bound during marathon when HY2 vitality is healthy. */
-export const MARATHON_FAILOVER_TCP_LEAVES = new Set(['JP-VPS-Reality', 'JP-VPS-TLS'])
+/** HY2-only VPS — no TCP failover leaves (JP Reality/TLS decommissioned 2026-09-04). */
+export const MARATHON_FAILOVER_TCP_LEAVES = new Set<string>()
 
 export function resolveUdpParentStateForRecovery(input: {
   resolution: Hy2ParentUdpResolution

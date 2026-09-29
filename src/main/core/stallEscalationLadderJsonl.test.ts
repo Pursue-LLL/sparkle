@@ -34,7 +34,7 @@ describe('stallEscalationLadderJsonl R-41b', () => {
         stallMs: 88499,
         upload: 2458,
         download: 4972,
-        leaf: 'JP-VPS-HY2',
+        leaf: 'KR-VPS-HY2',
         staleRequestIds: ['5f587792-788d-4188-a82c-913e1464a5f5'],
         cursorConnectionCount: 28,
         nowMs: 1_000_000,
@@ -49,7 +49,7 @@ describe('stallEscalationLadderJsonl R-41b', () => {
       assert.equal(row.kind, 'sparkle_stall_escalation')
       assert.equal(row.originalRequestId, '5f587792-788d-4188-a82c-913e1464a5f5')
       assert.equal(row.reasonSub, 'stall-escalation-emergency_sidecar_dial')
-      assert.equal(row.proxyNode, 'JP-VPS-HY2')
+      assert.equal(row.proxyNode, 'KR-VPS-HY2')
     } finally {
       process.env.HOME = previousHome
     }

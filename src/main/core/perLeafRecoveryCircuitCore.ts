@@ -61,7 +61,7 @@ export function recordLeafRecoveryFailure(input: {
 }
 
 export function recordLeafRecoverySuccess(
-  state: LeafRecoveryCircuitState,
+  _state: LeafRecoveryCircuitState,
 ): LeafRecoveryCircuitState {
   return createInitialLeafRecoveryCircuitState()
 }

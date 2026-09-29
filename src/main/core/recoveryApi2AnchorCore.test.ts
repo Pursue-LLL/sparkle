@@ -37,6 +37,17 @@ describe('recoveryApi2AnchorCore', () => {
     assert.equal(verdict.reason, 'api2_anchor_fail')
   })
 
+  it('escalation path accepts executed sidecar when api2 fails but vitality connect path is trustworthy', () => {
+    const verdict = evaluateSidecarExternalVerification({
+      sidecarOutcome: 'executed',
+      connectPathDelayMs: 439,
+      api2Ok: false,
+      requireApi2Anchor: true,
+    })
+    assert.equal(verdict.verified, true)
+    assert.equal(verdict.reason, 'api2_anchor_fallback_trustworthy_vitality')
+  })
+
   it('escalation path accepts executed sidecar when api2 ok', () => {
     const verdict = evaluateSidecarExternalVerification({
       sidecarOutcome: 'executed',
