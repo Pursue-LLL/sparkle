@@ -1,25 +1,8 @@
-import { getAppConfig } from '../config'
-import { appendAppLog } from '../utils/log'
 import { mihomoGetConnections } from './mihomoApi'
 import {
   isCursorConnection,
-  isIdleCursorConnection,
-  mergeConnectionIdsToClose,
-  selectGlobalIdleCursorConnectionsToClose,
-  selectStaleCursorConnectionsToClose,
-  shouldSkipCursorConnectionHygieneClose,
   type ConnectionHygieneRow
 } from './cursorConnectionHygieneCore'
-import { getMarathonQuiesceSnapshot } from './marathonQuiesce'
-
-const HYGIENE_INTERVAL_MS = 10 * 60_000
-const HYGIENE_START_DELAY_MS = 12 * 60_000
-const HYGIENE_SKIP_LOG_COOLDOWN_MS = 10 * 60_000
-
-let hygieneTimer: NodeJS.Timeout | null = null
-let hygieneStartTimer: NodeJS.Timeout | null = null
-let hygieneInFlight = false
-let lastHygieneSkipLogAt = 0
 
 function parseConnectionStartMs(start: string | undefined): number {
   if (!start) {
@@ -52,81 +35,10 @@ export async function countCursorConnections(): Promise<number> {
   return (await listCursorConnectionRows()).length
 }
 
-async function runCursorConnectionHygieneCycle(): Promise<void> {
-  if (hygieneInFlight) {
-    return
-  }
-
-  const { cursorConnectionHygieneEnabled = true } = await getAppConfig()
-  if (!cursorConnectionHygieneEnabled) {
-    return
-  }
-
-  hygieneInFlight = true
-  try {
-    const rows = await listCursorConnectionRows()
-    const { active: quiesceActive } = getMarathonQuiesceSnapshot()
-    if (shouldSkipCursorConnectionHygieneClose(rows.length, quiesceActive)) {
-      const nowMs = Date.now()
-      if (nowMs - lastHygieneSkipLogAt >= HYGIENE_SKIP_LOG_COOLDOWN_MS) {
-        lastHygieneSkipLogAt = nowMs
-        await appendAppLog(
-          `[CursorConnectionHygiene]: skip marathon_guard cursor_conn=${rows.length} quiesce=${quiesceActive}\n`,
-        )
-      }
-      return
-    }
-
-    const staleIds = mergeConnectionIdsToClose(
-      selectStaleCursorConnectionsToClose(rows),
-      selectGlobalIdleCursorConnectionsToClose(rows)
-    )
-    if (staleIds.length === 0) {
-      const nowMs = Date.now()
-      if (nowMs - lastHygieneSkipLogAt >= HYGIENE_SKIP_LOG_COOLDOWN_MS) {
-        lastHygieneSkipLogAt = nowMs
-        const idleCount = rows.filter((row) => isIdleCursorConnection(row, nowMs)).length
-        const idleRatio = rows.length > 0 ? (idleCount / rows.length).toFixed(2) : '0.00'
-        await appendAppLog(
-          `[CursorConnectionHygiene]: skip (cursor_conn=${rows.length}, idle_ratio=${idleRatio})\n`
-        )
-      }
-      return
-    }
-
-    if (staleIds.length > 0) {
-      await appendAppLog(
-        `[CursorConnectionHygiene]: pure_pipe_protection — skipped closing ${staleIds.length} idle Cursor connection(s)\n`,
-      )
-    }
-  } catch (error) {
-    await appendAppLog(
-      `[CursorConnectionHygiene]: cycle failed: ${error instanceof Error ? error.message : String(error)}\n`
-    )
-  } finally {
-    hygieneInFlight = false
-  }
-}
-
 export function startCursorConnectionHygiene(): void {
-  stopCursorConnectionHygiene()
-  hygieneStartTimer = setTimeout(() => {
-    hygieneStartTimer = null
-    void runCursorConnectionHygieneCycle()
-    hygieneTimer = setInterval(() => {
-      void runCursorConnectionHygieneCycle()
-    }, HYGIENE_INTERVAL_MS)
-  }, HYGIENE_START_DELAY_MS)
+  // Pure-Pipe: hygiene timer disabled to prevent disruptive background scanning
 }
 
 export function stopCursorConnectionHygiene(): void {
-  if (hygieneStartTimer) {
-    clearTimeout(hygieneStartTimer)
-    hygieneStartTimer = null
-  }
-  if (hygieneTimer) {
-    clearInterval(hygieneTimer)
-    hygieneTimer = null
-  }
-  hygieneInFlight = false
+  // Pure-Pipe: noop
 }

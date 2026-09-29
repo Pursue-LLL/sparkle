@@ -33,6 +33,8 @@ let lastHttpReconciledCursorConnectionCount = 0
 let lastObservedFrozenQuicCursorCount = 0
 let lastObservedMaxStallMs = 0
 let lastMaxStallSingleObservation: MihomoQuicSilentStallObservation | undefined
+let lastLoggedParentLifecyclePhase: string | undefined
+let lastLoggedLongevitySignature: string | undefined
 
 export function resetMihomoQuicSilentStallObserverForTests(): void {
   trackedById.clear()
@@ -226,7 +228,8 @@ export async function observeMihomoConnectionsForQuicSilentStall(
         refreshExhausted: false,
         marathonActive: marathonTruth.marathonTruthActive,
       })
-      if (phase !== 'young') {
+      if (phase !== 'young' && phase !== lastLoggedParentLifecyclePhase) {
+        lastLoggedParentLifecyclePhase = phase
         await appendAppLog(
           formatParentLifecycleLogLine({
             phase,
@@ -235,6 +238,8 @@ export async function observeMihomoConnectionsForQuicSilentStall(
             maxByteStallMs: postSidecarSnapshot.maxByteStallMs,
           }),
         )
+      } else if (phase === 'young') {
+        lastLoggedParentLifecyclePhase = 'young'
       }
     }
     const finalLongevitySnapshot = {
@@ -248,7 +253,9 @@ export async function observeMihomoConnectionsForQuicSilentStall(
           : lastObservedMaxStallMs,
     }
     await writeTransportLongevityTruthSnapshot(finalLongevitySnapshot)
-    if (cursorConnectionCount >= 12) {
+    const longevitySig = String(finalLongevitySnapshot.activeHy2Leaf) + ':' + String(finalLongevitySnapshot.frozenQuicCursorCount) + ':' + String(finalLongevitySnapshot.maxByteStallMs > 0)
+    if (cursorConnectionCount >= 12 && longevitySig !== lastLoggedLongevitySignature) {
+      lastLoggedLongevitySignature = longevitySig
       await appendAppLog(formatTransportLongevityTruthLogLine(finalLongevitySnapshot))
     }
   } catch {
