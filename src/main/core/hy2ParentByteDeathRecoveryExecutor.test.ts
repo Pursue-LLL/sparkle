@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { BYTE_DEATH_LEAF_CLOSE_MAX_BATCH } from './hy2ParentByteDeathRecoveryCore'
 import {
   executeByteDeathParentMutationWithDeps,
   executeLeafCloseBatch,
@@ -63,16 +62,16 @@ describe('hy2ParentByteDeathRecoveryExecutor @1.30.32', () => {
         },
       },
     )
-    assert.equal(result.mutated, true)
+    assert.equal(result.mutated, false)
     assert.equal(result.plan.action, 'close_leaf_connections')
     assert.equal(result.plan.reason, 'byte_death_udp_absent_close_leaf_rebuild')
-    assert.equal(closedIds.length, BYTE_DEATH_LEAF_CLOSE_MAX_BATCH)
+    assert.equal(closedIds.length, 0)
     assert.equal(birthReset, false)
     assert.ok(
       logLines.some(
         (line) =>
           line.includes('action=close_leaf_connections') &&
-          line.includes('outcome=executed'),
+          line.includes('outcome=skipped'),
       ),
     )
   })

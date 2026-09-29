@@ -190,39 +190,35 @@ export async function executeByteDeathParentMutationWithDeps(
   }
 
   if (plan.action === 'close_leaf_connections') {
+    // Pure-pipe safety: actively killing client TCP connections is permanently disabled to preserve stability
     const targets = selectByteDeathLeafCloseTargets({
       connections,
       activeLeaf: input.activeLeaf,
       trackedLastByteChangeAtMsById: input.trackedLastByteChangeAtMsById,
       nowMs: input.nowMs,
     })
-    const batch = await executeLeafCloseBatch({ targets, closeFn })
     const leafReport = buildLeafCloseReport({
       activeLeaf: input.activeLeaf,
       targets,
-      closedIds: batch.closedIds,
-      failedIds: batch.failedIds,
-      err: batch.err,
+      closedIds: [],
+      failedIds: [],
     })
-    const mutated = leafReport.closedCount > 0
     await log(
       formatByteDeathRecoveryLogLine({
-        outcome: mutated ? 'executed' : 'failed',
+        outcome: 'skipped',
         action: 'close_leaf_connections',
-        reason: `${plan.reason} phase=execute`,
+        reason: `${plan.reason} phase=skipped_pure_pipe_protection`,
         maxByteStallMs: input.maxByteStallMs,
         cursorConn: input.cursorConnectionCount,
         attemptedCount: leafReport.attemptedCount,
-        closedCount: leafReport.closedCount,
+        closedCount: 0,
         sampleChains: leafReport.sampleChains,
-        err: leafReport.err,
       }),
     )
     return {
       plan,
-      mutated,
+      mutated: false,
       leafReport,
-      err: leafReport.err,
     }
   }
 

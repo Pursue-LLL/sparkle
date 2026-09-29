@@ -38,6 +38,7 @@ export async function scheduleByteDeathRecoveryVerification(input: {
   maxByteStallMs: number
   baselineCarrier?: { upload: number; download: number }
   connectionId?: string
+  anchorProbeOk?: boolean
 }): Promise<void> {
   if (!input.udpParentClosed) {
     await notifyRecoveryCircuitFailure({
@@ -53,13 +54,20 @@ export async function scheduleByteDeathRecoveryVerification(input: {
     baselineMaxByteStallMs: input.maxByteStallMs,
     baselineCarrier: input.baselineCarrier,
     connectionId: input.connectionId,
+    anchorProbeOk: input.anchorProbeOk,
   })
   await appendAppLog(
     `[ByteDeathRecoveryHonesty]: outcome=planned reason=byte_death_verification_scheduled leaf=${input.leafId} stall_ms=${input.maxByteStallMs}\n`,
   )
 }
 
-async function resolveRecentApi2ProbeOk(nowMs: number): Promise<boolean> {
+async function resolveRecentApi2ProbeOk(
+  nowMs: number,
+  record?: ByteDeathRecoveryAttemptRecord,
+): Promise<boolean> {
+  if (record?.anchorProbeOk === true) {
+    return true
+  }
   const rows = await readApi2ProbeLedgerSince(nowMs - 90_000, 'active')
   return rows.some((row) => row.ok === true)
 }
@@ -76,7 +84,7 @@ export async function evaluatePendingByteDeathRecoveryIfDue(
     return { evaluated: false }
   }
   const record = pendingByteDeathRecovery!
-  const api2ProbeOk = await resolveRecentApi2ProbeOk(nowMs)
+  const api2ProbeOk = await resolveRecentApi2ProbeOk(nowMs, record)
   const evaluation = evaluateByteDeathRecoveryHonesty({
     record,
     nowMs,
