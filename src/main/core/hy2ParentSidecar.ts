@@ -2,7 +2,6 @@
 // [OUTPUT] runHy2ParentSidecarIfDue
 // [POS] R-35a execute — proactive HY2 parent sidecar dial + UDP outbound refresh @ 4h.
 
-import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import {
   formatCarrierQuiesceRefreshLogLine,
   isMarathonGlobalByteDeath,
@@ -33,7 +32,6 @@ import {
   evaluateSidecarExternalVerification,
   requiresRecoveryApi2Anchor,
 } from './recoveryApi2AnchorCore'
-import { mihomoCloseConnection } from './mihomoApi'
 
 const SIDECAR_ACTION_COOLDOWN_MS = 300_000
 
@@ -85,13 +83,9 @@ async function maybeResetHy2ParentChainBirth(input: {
   await resetTransportLongevityHy2ParentChainBirth(input.activeLeaf, input.nowMs)
 }
 
-async function closeUdpOutbound(connectionId: string): Promise<{ ok: boolean; err?: string }> {
-  try {
-    await mihomoCloseConnection(connectionId)
-    return { ok: true }
-  } catch (error) {
-    return { ok: false, err: formatUnknownErrorForLog(error) }
-  }
+async function closeUdpOutbound(_connectionId: string): Promise<{ ok: boolean; err?: string }> {
+  // Pure-Pipe: never close underlying UDP session
+  return { ok: true }
 }
 
 export function resolveProactiveUdpClosePlan(input: {

@@ -1,6 +1,6 @@
 import { getAppConfig } from '../config'
 import { appendAppLog } from '../utils/log'
-import { mihomoCloseConnection, mihomoGetConnections } from './mihomoApi'
+import { mihomoGetConnections } from './mihomoApi'
 import {
   isCursorConnection,
   isIdleCursorConnection,
@@ -94,19 +94,9 @@ async function runCursorConnectionHygieneCycle(): Promise<void> {
       return
     }
 
-    let closed = 0
-    for (const id of staleIds) {
-      try {
-        await mihomoCloseConnection(id)
-        closed += 1
-      } catch {
-        // ignore single close errors
-      }
-    }
-
-    if (closed > 0) {
+    if (staleIds.length > 0) {
       await appendAppLog(
-        `[CursorConnectionHygiene]: closed ${closed} idle Cursor connection(s); live=${rows.length - closed}\n`
+        `[CursorConnectionHygiene]: pure_pipe_protection — skipped closing ${staleIds.length} idle Cursor connection(s)\n`,
       )
     }
   } catch (error) {

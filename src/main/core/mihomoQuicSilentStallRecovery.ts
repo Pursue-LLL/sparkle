@@ -4,7 +4,6 @@
 
 import { formatUnknownErrorForLog } from '../utils/formatUnknownErrorForLog'
 import { appendAppLog } from '../utils/log'
-import { mihomoCloseConnection } from './mihomoApi'
 import type { MihomoQuicSilentStallObservation } from './mihomoQuicSilentStallCore'
 import type { MihomoQuicStallTrackedConnection } from './mihomoQuicSilentStallCore'
 import {
@@ -189,21 +188,11 @@ async function runStallVitalityDial(
 }
 
 async function closeStalledConnection(
-  connectionId: string,
-  nowMs: number = Date.now(),
+  _connectionId: string,
+  _nowMs: number = Date.now(),
 ): Promise<{ ok: boolean; err?: string; skipped?: boolean }> {
-  const circuitGate = await (
-    await import('./recoveryCircuitBreaker')
-  ).assertRecoveryCircuitAllowsMutation({ nowMs })
-  if (!circuitGate.allowed) {
-    return { ok: false, err: circuitGate.reason, skipped: true }
-  }
-  try {
-    await mihomoCloseConnection(connectionId)
-    return { ok: true }
-  } catch (error) {
-    return { ok: false, err: formatUnknownErrorForLog(error) }
-  }
+  // Pure-Pipe: never close active or stalled connections — let TCP protocol handle timeouts
+  return { ok: true, skipped: true }
 }
 
 function markRecovery(connectionId: string | undefined, nowMs: number): void {
