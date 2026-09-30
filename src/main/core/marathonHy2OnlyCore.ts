@@ -4,7 +4,7 @@
 
 import { isCursorProtocolUpgrade } from './cursorDedicatedDefault'
 
-export const MARATHON_CURSOR_OPTIMAL_VPS_NODE = 'KR-VPS-HY2' as const
+export const MARATHON_CURSOR_OPTIMAL_VPS_NODE = 'KR-VPS-Reality' as const
 
 const MARATHON_TLS_LEAF_RE = /-VPS-TLS$/i
 
@@ -30,8 +30,8 @@ export function filterMarathonCursorEligibleVpsLeaves(leaves: readonly string[])
   return leaves.filter((name) => !isMarathonExcludedCursorVpsLeaf(name))
 }
 
-/** Provider-mode Cursor 专用 filter — HY2 only. */
-export const MARATHON_CURSOR_VPS_PROVIDER_FILTER = '(?i)-VPS-HY2$'
+/** Provider-mode Cursor 专用 filter — Reality first, HY2 secondary. */
+export const MARATHON_CURSOR_VPS_PROVIDER_FILTER = '(?i)-VPS-(Reality|HY2)$'
 
 export function formatMarathonHy2OnlyTlsDeniedLogLine(input: {
   fromNode: string

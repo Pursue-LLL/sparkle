@@ -2,11 +2,11 @@ import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { readCursorDedicatedManualSelection } from './cursorDedicatedSelectionCore'
 import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'
 
-export const CURSOR_DEFAULT_VPS_NODE = 'KR-VPS-HY2' as const
+export const CURSOR_DEFAULT_VPS_NODE = 'KR-VPS-Reality' as const
 
-/** Never auto-select transports that can reintroduce QUIC or Reality handshake failure modes. */
+/** Never auto-select transports that can reintroduce QUIC failure modes. */
 export function isCursorSuboptimalNode(name: string): boolean {
-  return /-VPS-(Reality|TUIC|HY2)$/i.test(name)
+  return /-VPS-(TUIC|HY2)$/i.test(name)
 }
 
 /** Allow a one-way upgrade to trusted standard TLS even when the short api2 probe is green. */
