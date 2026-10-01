@@ -101,6 +101,19 @@
 
 ---
 
+### BUG-2026-10-01-002 · `自动选择` 的 AnyTLS 剔除靠负向断言，RE2 下从未生效 · **RUNTIME-VERIFIED**
+
+| 字段 | 内容 |
+| --- | --- |
+| **症状** | `自动选择` 报 `proxies_removed=12` 但运行时 32 个成员里 6 个 AnyTLS 仍在；AnyTLS 节点被 fallback 选中（实测 `now=🇹🇼 台湾 01`，type=anytls），前序候选探测失败后一路退化。 |
+| **根因** | `appendExcludeProxyNamesToProviderFilter` 给 `use:` 模式的 provider 改写 filter，拼出 `(?!^(A|B)$)(?:base)` 负向先行断言；mihomo 的 Go regexp 基于 **RE2，不支持 (?!...)**，过滤不成立。`自动选择` 前 5 位全是 AnyTLS → 静默失败 → fallback 退化到慢节点。 |
+| **修复** | 剔除下沉到 `sparkleFastProviderCore`：`buildSparkleFastProviderDocument` 在排序前按 `type=anytls` 过滤，不写入 provider 文件（`自动选择` 的成员唯一来源，`defaultAutoSwitchProxy.ts:275` `use=[FAST_NODE_PROVIDER_ID]`）。删除 `appendExcludeProxyNamesToProviderFilter` 与 `resolveRegionFromSparkleAutoGroupName` 及其调用分支（-46 行）。`use:` 模式的区域组与全部 Selector 组不再改写 filter。 |
+| **边界** | **仅 `自动选择` 剔除 AnyTLS**；`🔰手动选择`/`🤖AI`/`🔍Google`/`🧱GFW列表`/`Sparkle-*` 区域组按设计保留 AnyTLS 供手动点选。 |
+| **验证** | 单测：新增 `sparkleFastProviderCore.test.ts` 4 例 + 关联 27 例全通过；全量 700 tests / 684 pass / 16 fail，与基线 diff 仅少已删测试文件。运行时（reload 后 `PUT /providers/proxies/sparkle-fast`）：`自动选择` 26 成员 AnyTLS **0**、4 个 Selector 各 40 成员 AnyTLS **7 全保留**、订阅 provider `77caf1sub001` 32 节点 AnyTLS 7 未被触碰。真实隧道 `www.google.com` TLS 握手 **261ms**（AnyTLS 时期 351ms）。 |
+| **代码位置** | `sparkleFastProviderCore.ts` · `autoSelectAnyTlsExclusionCore.ts` · `defaultAutoSwitchProxy.ts:275` |
+
+---
+
 ### BUG-2026-09-15-007 · 选点抖动打断 AI 长流（Cursor/opencode/Codex/Antigravity 通病）· **CODE-DONE**
 
 | 字段 | 内容 |
