@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  appendExcludeProxyNamesToProviderFilter,
   buildNonAnyTlsRegionalMembers,
   excludeAnyTlsFromAutoSelectUrlTestGroups,
   isAnyTlsProxyType,
@@ -50,7 +49,7 @@ describe('autoSelectAnyTlsExclusionCore', () => {
     assert.deepEqual(groups[1]?.proxies, ['🇸🇬 新加坡 01', '🇸🇬 新加坡 02'])
   })
 
-  it('materializes provider-mode regional url-test without anytls', () => {
+  it('leaves provider-mode groups untouched (filter is left as authored)', () => {
     const groups: Array<{
       name: string
       type: string
@@ -66,15 +65,10 @@ describe('autoSelectAnyTlsExclusionCore', () => {
       },
     ]
     const result = excludeAnyTlsFromAutoSelectUrlTestGroups(groups, [...CATALOG])
-    assert.equal(result.groupsMutated, 1)
+    assert.equal(result.groupsMutated, 0)
+    assert.equal(result.proxiesRemoved, 0)
     assert.deepEqual(groups[0]?.use, ['77caf1sub001'])
-    assert.equal(
-      groups[0]?.filter,
-      appendExcludeProxyNamesToProviderFilter(
-        '新加坡|(?i)\\bSG\\b|singapore',
-        ['🇸🇬 新加坡 01'],
-      ),
-    )
+    assert.equal(groups[0]?.filter, '新加坡|(?i)\\bSG\\b|singapore')
     assert.equal(groups[0]?.proxies, undefined)
   })
 
