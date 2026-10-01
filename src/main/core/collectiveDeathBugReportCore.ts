@@ -8,7 +8,6 @@ export const COLLECTIVE_DEATH_LOG_MARKERS = [
   '[MihomoQuicStallRecovery]',
   '[RecoveryCoordinator]',
   '[StallEscalationLadder]',
-  '[RecoveryCircuitBreaker]',
   '[MihomoQuicSilentStall]',
   '[Hy2ParentSidecar]',
   '[ByteDeathRecoveryHonesty]',
@@ -19,7 +18,6 @@ export const COLLECTIVE_DEATH_LOG_MARKERS = [
 
 export type CollectiveDeathTriggerKind =
   | 'emergency_core_recovery'
-  | 'recovery_circuit_open'
   | 'byte_death_exhausted'
 
 export interface CollectiveDeathBugReportContext {

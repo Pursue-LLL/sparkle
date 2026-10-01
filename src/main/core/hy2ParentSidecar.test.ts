@@ -10,7 +10,7 @@ describe('hy2ParentSidecar R-35a execute', () => {
   it('source executes sidecar dial and UDP outbound refresh', () => {
     const source = readFileSync(path.join(ROOT, 'hy2ParentSidecar.ts'), 'utf8')
     assert.match(source, /runHy2TunnelVitalityIfDue/)
-    assert.match(source, /mihomoCloseConnection/)
+    assert.match(source, /closeUdpOutbound/)
     assert.match(source, /phase=execute/)
     assert.doesNotMatch(source, /phase=detect_only/)
     assert.match(source, /executeByteDeathParentMutation/)
@@ -31,11 +31,10 @@ describe('hy2ParentSidecar R-35a execute', () => {
     assert.match(source, /getLastHy2ParentSidecarDetectLogAtMsForTests/)
   })
 
-  it('P1 wires recovery circuit breaker and birth-reset false-success guard', () => {
+  it('birth-reset false-success guard stays wired without a circuit gate', () => {
     const source = readFileSync(path.join(ROOT, 'hy2ParentSidecar.ts'), 'utf8')
-    assert.match(source, /assertRecoveryCircuitAllowsMutation/)
-    assert.match(source, /notifyRecoveryCircuitFailure/)
     assert.match(source, /mutationClosedParentUdp/)
+    assert.doesNotMatch(source, /recoveryCircuitBreaker/)
     assert.doesNotMatch(
       source,
       /if \(mutation\.mutated\) \{\s*parentUdpClosedThisInvocation = true/,
@@ -51,15 +50,14 @@ describe('hy2ParentSidecar R-35a execute', () => {
     assert.match(source, /byte_death_rotation_ssot/)
   })
 
-  it('P1 SEL R2 parent_udp_refresh respects recovery circuit breaker', () => {
+  it('SEL R2 parent_udp_refresh always rotates without a circuit gate', () => {
     const source = readFileSync(
       path.join(ROOT, 'mihomoQuicSilentStallRecovery.ts'),
       'utf8',
     )
-    const block = source.slice(
-      source.indexOf("if (plan.action === 'parent_udp_refresh')"),
-      source.indexOf("if (plan.action === 'parent_udp_refresh')") + 900,
-    )
-    assert.match(block, /assertRecoveryCircuitAllowsMutation/)
+    const start = source.indexOf("if (plan.action === 'parent_udp_refresh')")
+    const block = source.slice(start, start + 900)
+    assert.match(block, /maybeRunHy2ParentRotationAfterPrune/)
+    assert.doesNotMatch(block, /assertRecoveryCircuitAllowsMutation/)
   })
 })

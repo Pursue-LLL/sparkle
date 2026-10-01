@@ -1,6 +1,6 @@
-// [INPUT] recoveryByteDeathVerifierCore · mihomoApi · api2ProbeLedger · recoveryCircuitBreaker
+// [INPUT] recoveryByteDeathVerifierCore · mihomoApi · api2ProbeLedger · recoveryCoordinator
 // [OUTPUT] recordByteDeathRecoveryAttempt · evaluatePendingByteDeathRecoveryIfDue
-// [POS] Phase-1 runtime — gate circuit clear on verified byte-death recovery.
+// [POS] Phase-1 runtime — report verified byte-death outcome straight to RecoveryCoordinator.
 
 import { appendAppLog } from '../utils/log'
 import { readApi2ProbeLedgerSince } from './api2ProbeLedgerCore'
@@ -10,10 +10,6 @@ import {
   shouldEvaluateByteDeathRecoveryHonesty,
   type ByteDeathRecoveryAttemptRecord,
 } from './recoveryByteDeathVerifierCore'
-import {
-  notifyRecoveryCircuitFailure,
-  notifyRecoveryCircuitSuccess,
-} from './recoveryCircuitBreaker'
 
 let pendingByteDeathRecovery: ByteDeathRecoveryAttemptRecord | undefined
 
@@ -41,10 +37,9 @@ export async function scheduleByteDeathRecoveryVerification(input: {
   anchorProbeOk?: boolean
 }): Promise<void> {
   if (!input.udpParentClosed) {
-    await notifyRecoveryCircuitFailure({
-      nowMs: input.nowMs,
-      reason: 'byte_death_probe_only_without_udp_close',
-    })
+    await appendAppLog(
+      `[ByteDeathRecoveryHonesty]: outcome=skipped reason=byte_death_probe_only_without_udp_close leaf=${input.leafId} stall_ms=${input.maxByteStallMs}\n`,
+    )
     return
   }
   recordByteDeathRecoveryAttempt({
@@ -96,7 +91,6 @@ export async function evaluatePendingByteDeathRecoveryIfDue(
   pendingByteDeathRecovery = undefined
 
   if (evaluation.outcome === 'success') {
-    await notifyRecoveryCircuitSuccess()
     const { submitRecoveryCoordinatorEvent } = await import('./recoveryCoordinator')
     await submitRecoveryCoordinatorEvent({
       event: {
@@ -113,9 +107,5 @@ export async function evaluatePendingByteDeathRecoveryIfDue(
     return { evaluated: true, outcome: 'success' }
   }
 
-  await notifyRecoveryCircuitFailure({
-    nowMs,
-    reason: evaluation.reason,
-  })
   return { evaluated: true, outcome: 'ineffective' }
 }

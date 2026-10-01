@@ -53,7 +53,7 @@ interface ByteDeathRecoveryWindow {
 
 let byteDeathRecoveryWindow: ByteDeathRecoveryWindow | undefined
 
-function closeByteDeathRecoveryWindow(_ts: string): void {
+function closeByteDeathRecoveryWindow(): void {
   if (byteDeathRecoveryWindow == null) {
     return
   }
@@ -111,7 +111,7 @@ for (const line of lines) {
 
   if (line.includes('[Hy2ParentByteDeathRecovery]:')) {
     if (line.includes('outcome=planned')) {
-      closeByteDeathRecoveryWindow(ts)
+      closeByteDeathRecoveryWindow()
       byteDeathRecoveryWindow = {
         plannedAt: ts,
         sawExecutedMutation: false,
@@ -145,10 +145,7 @@ for (const line of lines) {
     (line.includes('[Hy2ParentSidecar]') &&
       line.includes('action=close_udp_outbound') &&
       line.includes('outcome=executed') &&
-      line.includes('phase=execute')) ||
-    (line.includes('[RecoveryCircuitBreaker]') &&
-      line.includes('outcome=reset') &&
-      line.includes('reason=core_restart_after_circuit_open'))
+      line.includes('phase=execute'))
   ) {
     sawR2Executed = true
   }
@@ -219,22 +216,13 @@ const sidecarFailInWindow = lines.filter((line) => {
     line.includes('outcome=failed')
   )
 }).length
-const circuitOpenInWindow = lines.filter((line) => {
-  const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/)
-  if (!tsMatch) return false
-  return (
-    Date.parse(tsMatch[1]) >= cutoffMs &&
-    line.includes('[RecoveryCircuitBreaker]:') &&
-    line.includes('outcome=open')
-  )
-}).length
-if (sidecarFailInWindow >= 3 && circuitOpenInWindow === 0) {
+if (sidecarFailInWindow >= 3 && !sawR2Executed) {
   failures.push(
-    `repeated sidecar_dial failures (${sidecarFailInWindow}) without RecoveryCircuitBreaker open in last ${watchMinutes}m`,
+    `repeated sidecar_dial failures (${sidecarFailInWindow}) without any R2 recovery executed in last ${watchMinutes}m`,
   )
 }
 
-closeByteDeathRecoveryWindow('window_end')
+closeByteDeathRecoveryWindow()
 
 if (maxCursorConnSeen >= 20 && maxStallSeen >= 90_000 && !sawR2Executed) {
   failures.push(

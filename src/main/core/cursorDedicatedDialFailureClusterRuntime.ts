@@ -44,11 +44,6 @@ async function dispatchDialFailureClusterRecovery(
       `[CursorDialFailureCluster]: outcome=detected cluster_size=${clusterSize} action=dispatch_recovery\n`,
     )
 
-    const { forceClearRecoveryCircuitForClusterRecovery } = await import(
-      './recoveryCircuitBreaker'
-    )
-    await forceClearRecoveryCircuitForClusterRecovery(nowMs, clusterSize)
-
     const { resolveCursorDedicatedActiveNode } = await import('./cursorDedicatedNodeResolver')
     const activeLeaf = (await resolveCursorDedicatedActiveNode()) ?? 'KR-VPS-HY2'
 
@@ -107,8 +102,6 @@ async function dispatchDialFailureClusterRecovery(
         recoveryIneffective: true,
       })
       if (sidecar.outcome === 'executed') {
-        const { notifyRecoveryCircuitSuccess } = await import('./recoveryCircuitBreaker')
-        await notifyRecoveryCircuitSuccess()
         await appendAppLog(
           `[CursorDialFailureCluster]: outcome=executed action=${sidecar.action} reason=${sidecar.reason} ` +
             `fallback=sidecar_after_no_udp cluster_size=${clusterSize}\n`,

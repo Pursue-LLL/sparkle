@@ -10,7 +10,6 @@ export const EMERGENCY_CORE_RECOVERY_COOLDOWN_MS = 120_000
 
 export type EmergencyCoreRecoveryReason =
   | 'confirmed_udp_parent_absent'
-  | 'byte_death_circuit_open'
   | 'proactive_hard_rotate_failed'
 
 export interface EmergencyCoreRecoveryRequest {
@@ -31,7 +30,6 @@ export interface EmergencyCoreRecoveryAdmission {
 const ALLOWED_EVIDENCE = new Set<string>([
   BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART,
   'byte_death_probe_only_without_udp_close',
-  'recovery_circuit_breaker_open',
   'cursor_dedicated_dial_failure_cluster_udp_absent',
   'proactive_hard_rotate_api2_anchor',
 ])
