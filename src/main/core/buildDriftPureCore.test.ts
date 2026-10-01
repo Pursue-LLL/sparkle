@@ -1,6 +1,43 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { detectBuildDrift, normalizeCommit } from './buildDriftPureCore'
+import {
+  detectBuildDrift,
+  isTrackedDirtyOutsideBuildStamp,
+  normalizeCommit,
+} from './buildDriftPureCore'
+
+describe('isTrackedDirtyOutsideBuildStamp', () => {
+  const STAMP = 'src/shared/buildStamp.ts'
+
+  it('ignores a buildStamp-only modification — every build rewrites it', () => {
+    assert.equal(isTrackedDirtyOutsideBuildStamp([' M src/shared/buildStamp.ts'], STAMP), false)
+  })
+
+  it('flags a real source modification', () => {
+    assert.equal(
+      isTrackedDirtyOutsideBuildStamp([' M src/shared/buildStamp.ts', ' M src/main/core/factory.ts'], STAMP),
+      true
+    )
+  })
+
+  it('flags deletions, renames and staged changes', () => {
+    assert.equal(isTrackedDirtyOutsideBuildStamp([' D src/main/core/factory.ts'], STAMP), true)
+    assert.equal(isTrackedDirtyOutsideBuildStamp(['R  src/main/core/a.ts -> b.ts'], STAMP), true)
+    assert.equal(isTrackedDirtyOutsideBuildStamp(['MM src/main/core/factory.ts'], STAMP), true)
+  })
+
+  it('treats untracked files as dirty', () => {
+    assert.equal(isTrackedDirtyOutsideBuildStamp(['?? scripts/tmp.ts'], STAMP), true)
+  })
+
+  it('returns clean for an empty status', () => {
+    assert.equal(isTrackedDirtyOutsideBuildStamp([], STAMP), false)
+  })
+
+  it('matches the stamp path with any leading directory prefix', () => {
+    assert.equal(isTrackedDirtyOutsideBuildStamp([' M sparkle/src/shared/buildStamp.ts'], STAMP), false)
+  })
+})
 
 describe('normalizeCommit', () => {
   it('truncates to 7 chars and lowercases', () => {
