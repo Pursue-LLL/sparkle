@@ -19,6 +19,7 @@ import {
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { copyFile, mkdir, readdir, writeFile } from 'fs/promises'
 import { deepMerge } from '../utils/merge'
+import { logBuildDriftAtStartup } from './buildDriftCore'
 import vm from 'vm'
 import { existsSync, writeFileSync } from 'fs'
 import path from 'path'
@@ -140,6 +141,7 @@ export async function generateProfile(): Promise<void> {
 async function generateProfileImpl(): Promise<void> {
   const stepStartedAtMs = performance.now()
   await logGenerateProfileStep('begin', stepStartedAtMs)
+  await logBuildDriftAtStartup()
   const { current } = await getProfileConfig()
   const { diffWorkDir = false, controlDns = true, controlSniff = true } = await getAppConfig()
   const currentProfileConfig = await getProfile(current)
