@@ -1,5 +1,3 @@
-import { pathToFileURL } from 'node:url'
-
 const mockUrl = new URL('./electron-mock.mjs', import.meta.url).href
 const toolkitMockUrl = new URL('./electron-toolkit-mock.mjs', import.meta.url).href
 

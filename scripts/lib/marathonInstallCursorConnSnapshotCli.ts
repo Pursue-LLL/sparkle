@@ -43,7 +43,7 @@ async function writeSnapshot(caller: string, cursorConnArg: string): Promise<voi
 
 async function assertSnapshot(caller: string): Promise<void> {
   const path = getPreInstallCursorConnSnapshotPath()
-  let snapshot: PreInstallCursorConnSnapshot | null = null
+  let snapshot: PreInstallCursorConnSnapshot | null
   try {
     snapshot = parsePreInstallCursorConnSnapshot(JSON.parse(await readFile(path, 'utf8')))
   } catch {

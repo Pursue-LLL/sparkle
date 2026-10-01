@@ -314,7 +314,7 @@ async function executeConnectPathPulse(
     return lastCachedConnectPathPulse ?? buildConnectPathPulseFallback()
   }
   const rescueDelayOptions = { purpose: 'marathon_rescue' as const }
-  let admissionOutcome: 'SUCCESS' | 'INEFFECTIVE' | 'INCONCLUSIVE' = 'INCONCLUSIVE'
+  let admissionOutcome: 'SUCCESS' | 'INEFFECTIVE' | 'INCONCLUSIVE' | undefined
   try {
   const [api2directResult, api2Result, connectPathResult] = await Promise.all([
     mihomoProxyDelay(activeNode, API2DIRECT_PROBE_TARGET, rescueDelayOptions),
@@ -379,7 +379,7 @@ async function executeConnectPathPulse(
     admissionOutcome = 'INCONCLUSIVE'
     return lastCachedConnectPathPulse ?? buildConnectPathPulseFallback()
   } finally {
-    completeDialIntent(dialId, incidentGeneration, admissionOutcome)
+    completeDialIntent(dialId, incidentGeneration, admissionOutcome ?? 'INCONCLUSIVE')
   }
 }
 

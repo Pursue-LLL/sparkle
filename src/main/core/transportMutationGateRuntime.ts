@@ -34,7 +34,7 @@ export async function resolveTransportMutationSnapshot(input: {
     hy2ParentChainAgeMs = 0
   }
 
-  let staleRidCount = 0
+  let staleRidCount: number
   try {
     const { getMarathonTokenGapSnapshotForMutationGate } = await import('./mihomoQuicSilentStallRecovery')
     const tokenGap = getMarathonTokenGapSnapshotForMutationGate()

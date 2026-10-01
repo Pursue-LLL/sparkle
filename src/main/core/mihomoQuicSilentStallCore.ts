@@ -201,7 +201,7 @@ export function scanMihomoQuicSilentStalls(input: {
   }
 
   const observations: MihomoQuicSilentStallObservation[] = []
-  let frozenQuicCursorCount = countMarathonFrozenQuicCursorConnections(input)
+  const frozenQuicCursorCount = countMarathonFrozenQuicCursorConnections(input)
   let totalQuicCursorCount = 0
   let dominantLeaf = 'unknown'
   let maxFrozenStallMs = 0
