@@ -185,7 +185,7 @@ async function trimLogFileToSize(
   targetBytes: number
 ): Promise<void> {
   await closeWriteStream(target)
-  let content = ''
+  let content: string
   try {
     content = readFileSync(path, 'utf-8')
   } catch {

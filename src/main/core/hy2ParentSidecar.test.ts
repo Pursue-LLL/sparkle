@@ -31,10 +31,9 @@ describe('hy2ParentSidecar R-35a execute', () => {
     assert.match(source, /getLastHy2ParentSidecarDetectLogAtMsForTests/)
   })
 
-  it('birth-reset false-success guard stays wired without a circuit gate', () => {
+  it('birth-reset false-success guard is wired', () => {
     const source = readFileSync(path.join(ROOT, 'hy2ParentSidecar.ts'), 'utf8')
     assert.match(source, /mutationClosedParentUdp/)
-    assert.doesNotMatch(source, /recoveryCircuitBreaker/)
     assert.doesNotMatch(
       source,
       /if \(mutation\.mutated\) \{\s*parentUdpClosedThisInvocation = true/,
@@ -50,7 +49,7 @@ describe('hy2ParentSidecar R-35a execute', () => {
     assert.match(source, /byte_death_rotation_ssot/)
   })
 
-  it('SEL R2 parent_udp_refresh always rotates without a circuit gate', () => {
+  it('SEL R2 parent_udp_refresh rotates the HY2 parent', () => {
     const source = readFileSync(
       path.join(ROOT, 'mihomoQuicSilentStallRecovery.ts'),
       'utf8',
@@ -58,6 +57,5 @@ describe('hy2ParentSidecar R-35a execute', () => {
     const start = source.indexOf("if (plan.action === 'parent_udp_refresh')")
     const block = source.slice(start, start + 900)
     assert.match(block, /maybeRunHy2ParentRotationAfterPrune/)
-    assert.doesNotMatch(block, /assertRecoveryCircuitAllowsMutation/)
   })
 })

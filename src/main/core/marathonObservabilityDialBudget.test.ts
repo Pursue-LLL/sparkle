@@ -18,7 +18,9 @@ describe('marathonObservabilityDialBudgetQueueCore', () => {
       marathonContext,
       async () => {
         order.push('transport_start')
-        await new Promise((resolve) => setTimeout(resolve, 20))
+        await new Promise((resolve) => {
+          setTimeout(resolve, 20)
+        })
         order.push('transport_end')
         return 'transport'
       },
@@ -49,7 +51,9 @@ describe('marathonObservabilityDialBudgetQueueCore', () => {
         return true
       },
     )
-    await new Promise((resolve) => setTimeout(resolve, 5))
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5)
+    })
     const nudge = await runMarathonObservabilityDialBudget(
       'session_nudge',
       marathonContext,

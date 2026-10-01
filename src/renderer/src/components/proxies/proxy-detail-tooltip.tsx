@@ -211,7 +211,7 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
 
   const rawHistory = (proxy.history ?? []).slice(-8)
   const marathonFiltered = filterProxyDelayHistoryForMarathonDisplay(rawHistory)
-  let history: ProxyDelayHistoryEntry[] = []
+  let history: ProxyDelayHistoryEntry[]
   if (ledgerHistory.length > 0) {
     history = ledgerHistory
   } else {

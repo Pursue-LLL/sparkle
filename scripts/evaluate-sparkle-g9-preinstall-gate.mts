@@ -10,6 +10,7 @@ import {
   evaluateRemedialG9Upgrade,
   parseUpgradeIncidentRegistry,
   REMEDIAL_G9_INCIDENT_REGISTRY_RELATIVE,
+  type UpgradeIncidentRegistry,
 } from './upgradeSafeWindowCore'
 
 function pickLastMatching(text: string, prefix: string): string | null {
@@ -94,7 +95,7 @@ function ensureIncidentRegistry(): void {
   copyFileSync(defaultPath, registryPath)
 }
 
-function readIncidentRegistry() {
+function readIncidentRegistry(): UpgradeIncidentRegistry {
   ensureIncidentRegistry()
   const registryPath = join(homedir(), REMEDIAL_G9_INCIDENT_REGISTRY_RELATIVE)
   if (!existsSync(registryPath)) {

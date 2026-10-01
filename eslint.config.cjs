@@ -85,5 +85,13 @@ module.exports = [
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'error'
     }
+  },
+
+  {
+    // Plain-JS modules cannot carry TS return-type syntax; the rule is TS-only.
+    files: ['**/*.{js,mjs,cjs}'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off'
+    }
   }
 ]

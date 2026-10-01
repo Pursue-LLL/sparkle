@@ -25,13 +25,11 @@ export async function runMacOs26HeadlessBootstrap(): Promise<void> {
     return
   }
 
-  let apiReady = false
   try {
     const { runCoreReadinessPipeline } = await import('../core/coreReadinessGate')
     const { startPromise } = await runCoreReadinessPipeline('macos26-headless-bootstrap')
     await Promise.race([startPromise, delay(CORE_INIT_RACE_MS)])
-    apiReady = true
-    await appendAppLog(`[MacOs26Headless]: bootstrap complete api_ready=${apiReady ? 1 : 0}\n`)
+    await appendAppLog('[MacOs26Headless]: bootstrap complete api_ready=1\n')
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await appendAppLog(`[MacOs26Headless]: bootstrap failed: ${message}\n`)
