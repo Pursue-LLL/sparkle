@@ -114,6 +114,20 @@
 
 ---
 
+### BUG-2026-10-01-003 · 修复未进二进制被定时器静默回退（每 5 分钟必复发）· **CODE-DONE**
+
+| 字段 | 内容 |
+| --- | --- |
+| **症状** | BUG-002 的修复 19:24 落地，19:30 被覆盖回 32 节点 / 6 个 AnyTLS，间隔 6 分钟。日志 `[AutoSelectAnyTlsExclusion]: proxies_removed=12` —— 该标记只存在于已删除的旧代码。 |
+| **根因** | `~/Library/LaunchAgents/com.sparkle.profile-scheduler.plist` `StartInterval=300` → `~/.sparkle/sparkle-profile-scheduler.sh` → **硬编码执行 `/Applications/Sparkle.app/Contents/MacOS/Sparkle`**，完全绕开仓库。旧二进制跑 `generateProfile()` 按旧逻辑写回。**必然复发，非偶然。** 放大因素：buildStamp 只含构建时间戳不含 commit，app 旧于仓库时外部零信号。 |
+| **翻车入口全集** | `generateProfile()` 7 个调用点：`config/profile.ts:394`（★每 5 分钟定时订阅刷新）· `core/manager.ts:544`（core 重启）· `core/profileCheckRetry.ts:43`（校验失败重试）· `core/profileCacheRefreshCore.ts:24`（手动刷新）· `config/controledMihomo.ts:62`（controlled 变更）· `utils/ipc.ts:197`（设置保存）· `core/factory.ts:113`（定义）。任一触发即执行当前二进制内的逻辑。 |
+| **修复** | 构建漂移检测（R-52）：`write-build-stamp` 写入 `SPARKLE_GIT_COMMIT` / `SPARKLE_GIT_DIRTY`；`factory` 启动写 `[BuildDrift]` 日志；`pnpm run check:drift` 主动查询（退出码 1 = 漂移）。判定 SSOT 在 `buildDriftPureCore`，`scripts` 与 `src` 共用。 |
+| **判定语义** | `match` 一致 / `commit_mismatch` app 旧于仓库 / `app_dirty` 构建不可复现 / `app_unknown` 旧构建无 commit 事实 → 后三者均需 `pnpm run upgrade:mac`。**仓库侧 dirty 不算漂移**，commit 仍是权威。 |
+| **验证** | `buildDriftPureCore.test.ts` 10 例覆盖四类判定 + 规范化边界；`tsc node/web` 均 0；全量 **710 tests / 694 pass / 16 fail**，与 BUG-002 前基线 diff 为空（零新增失败）。`check:drift` 当前如实报 `drift=unknown`（旧构建无 commit 事实）+ 退出码 1。 |
+| **代码位置** | `buildDriftPureCore.ts` · `buildDriftCore.ts` · `scripts/check-build-drift.ts` · `scripts/write-build-stamp.ts` · `factory.ts` · `com.sparkle.profile-scheduler.plist` |
+
+---
+
 ### BUG-2026-09-15-007 · 选点抖动打断 AI 长流（Cursor/opencode/Codex/Antigravity 通病）· **CODE-DONE**
 
 | 字段 | 内容 |

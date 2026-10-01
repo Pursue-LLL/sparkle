@@ -172,9 +172,29 @@ tsx scripts/verify-byte-death-recovery-gate.mts --minutes 15   # post-upgrade：
 | 路径 | 职责 |
 |------|------|
 | `scripts/writeBuildStampCore.ts` | `YYYY.MMDD.HHMM` 格式 SSOT |
-| `scripts/write-build-stamp.ts` | 写入 `src/shared/buildStamp.ts`（`dev` / `build:*` / upgrade 前） |
-| `src/shared/buildStamp.ts` | 生成物：`SPARKLE_BUILD_STAMP` + `SPARKLE_SEMVER` |
+| `scripts/write-build-stamp.ts` | 写入 `src/shared/buildStamp.ts`（`dev` / `build:*` / upgrade 前），含 git commit 与 dirty |
+| `src/shared/buildStamp.ts` | 生成物：`SPARKLE_BUILD_STAMP` + `SPARKLE_SEMVER` + `SPARKLE_GIT_COMMIT` + `SPARKLE_GIT_DIRTY` |
 | `src/main/utils/ipc.ts` | `getBuildStamp` IPC |
 | `src/renderer/src/pages/proxies.tsx` | 代理组标题旁 Chip 展示 build stamp |
+
+### 构建漂移检测（R-52）
+
+`com.sparkle.profile-scheduler` LaunchAgent 每 300s 直接执行 `/Applications/Sparkle.app`
+的二进制（`--sparkle-profile-update-due`），绕开仓库执行 `generateProfile()`。源码改动
+若未进入二进制，运行时仍执行旧逻辑且外部无信号——AnyTLS 剔除即因此被静默回退
+（见 BUG-2026-10-01-002）。
+
+判定 SSOT 在 `buildDriftPureCore`，`scripts` 与 `src` 共用，避免逻辑分叉：
+
+| 组件 | 职责 |
+|------|------|
+| `src/main/core/buildDriftPureCore.ts` | 判定 SSOT：`detectBuildDrift` / `normalizeCommit` |
+| `src/main/core/buildDriftCore.ts` | 运行时入口：读仓库 git 事实，写 `[BuildDrift]` 日志（进程内仅一次） |
+| `src/main/core/factory.ts` | `generateProfileImpl` 首步调用 `logBuildDriftAtStartup` |
+| `scripts/check-build-drift.ts` | `pnpm run check:drift` 主动查询，退出码 1 = 漂移 |
+
+四种判定结果：`match`（一致）/ `commit_mismatch`（app 旧于仓库）/ `app_dirty`（构建时
+工作区不干净，构建不可复现）/ `app_unknown`（无 commit 事实的旧构建）。仓库侧 dirty
+**不算**漂移——commit 仍是权威标识，未提交改动本就不会进入 app。
 
 详见 [src/shared/_ARCH.md](../shared/_ARCH.md)。
