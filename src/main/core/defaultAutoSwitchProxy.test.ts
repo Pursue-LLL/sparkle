@@ -135,7 +135,7 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(sgGroup?.proxies, undefined)
   })
 
-  it('builds regional select groups from typed catalog excluding anytls while select groups keep all', () => {
+  it('builds regional url-test groups from typed catalog while select groups keep all', () => {
     const catalog = [
       { name: '🇸🇬 新加坡 01', type: 'anytls' },
       { name: '🇸🇬 新加坡 02', type: 'hysteria2' },
@@ -166,8 +166,8 @@ describe('defaultAutoSwitchProxy', () => {
     }[]
     const sgAuto = groups.find((group) => group.name === 'Sparkle-新加坡')
     assert.deepEqual(sgAuto?.use, ['test-profile'])
-    // Regional groups are url-test → AnyTLS exclusion (auto-select only) applies again.
-    assert.equal(sgAuto?.filter, '(?!^(🇸🇬 新加坡 01)$)(?:新加坡|(?i)\\bSG\\b|singapore)')
+    // Regional groups source members through `use`; their filter stays as authored.
+    assert.equal(sgAuto?.filter, '新加坡|(?i)\\bSG\\b|singapore')
     assert.equal(sgAuto?.proxies, undefined)
     const aiGroup = groups.find((group) => group.name === '🤖 AI')
     assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 01'), true)

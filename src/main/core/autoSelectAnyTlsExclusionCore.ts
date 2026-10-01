@@ -106,35 +106,6 @@ export function buildNonAnyTlsRegionalMembers(
   return members
 }
 
-function resolveRegionFromSparkleAutoGroupName(groupName: string): string | undefined {
-  const prefix = 'Sparkle-'
-  if (!groupName.startsWith(prefix)) {
-    return undefined
-  }
-  const region = groupName.slice(prefix.length).trim()
-  return region.length > 0 ? region : undefined
-}
-
-/** Augment a provider filter regex so named AnyTLS leaves are excluded (keeps `use` mode valid for `-t`). */
-export function appendExcludeProxyNamesToProviderFilter(
-  baseFilter: string,
-  excludeNames: readonly string[],
-): string {
-  const escaped = excludeNames
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0)
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  if (escaped.length === 0) {
-    return baseFilter.trim()
-  }
-  const excludePattern = escaped.join('|')
-  const trimmedBase = baseFilter.trim()
-  if (!trimmedBase) {
-    return `(?!^(${excludePattern})$).+`
-  }
-  return `(?!^(${excludePattern})$)(?:${trimmedBase})`
-}
-
 function filterProxyNamesExcludingAnyTls(
   proxyNames: string[],
   anyTlsNames: Set<string>,
@@ -153,7 +124,10 @@ function filterProxyNamesExcludingAnyTls(
 }
 
 /**
- * Remove AnyTLS leaves from url-test auto-select groups only.
+ * Remove AnyTLS leaves from url-test auto-select groups that list members inline.
+ * Groups sourcing members through `use` keep whatever their provider yields —
+ * `自动选择` gets AnyTLS-free members at sparkleFastProviderCore instead, and every
+ * other group intentionally keeps AnyTLS for manual switching.
  * Select groups (🤖 AI / 🚀 节点选择) keep full membership for manual switching.
  */
 export function excludeAnyTlsFromAutoSelectUrlTestGroups(
@@ -178,53 +152,23 @@ export function excludeAnyTlsFromAutoSelectUrlTestGroups(
     if (!isAutoSelectLatencyGroupName(group.name, group.type)) {
       continue
     }
-
-    if (group.proxies?.length) {
-      const { kept, removed } = filterProxyNamesExcludingAnyTls(group.proxies, anyTlsNames)
-      if (removed.length === 0) {
-        continue
-      }
-      for (const leaf of removed) {
-        removedLeaves.add(leaf)
-      }
-      proxiesRemoved += removed.length
-      if (kept.length === 0) {
-        groupsRemoved.push(group.name.trim())
-        continue
-      }
-      group.proxies = kept
-      groupsMutated += 1
+    if (!group.proxies?.length) {
       continue
     }
 
-    if (!group.use?.length) {
+    const { kept, removed } = filterProxyNamesExcludingAnyTls(group.proxies, anyTlsNames)
+    if (removed.length === 0) {
       continue
     }
-
-    const region = resolveRegionFromSparkleAutoGroupName(group.name)
-    const dropped = catalog
-      .filter((entry) => {
-        const name = entry.name.trim()
-        if (!isAnyTlsProxyEntry(entry)) {
-          return false
-        }
-        if (region !== undefined) {
-          return nodeMatchesRegion(name, region)
-        }
-        return true
-      })
-      .map((entry) => entry.name.trim())
-
-    if (dropped.length === 0) {
-      continue
-    }
-
-    for (const leaf of dropped) {
+    for (const leaf of removed) {
       removedLeaves.add(leaf)
     }
-    proxiesRemoved += dropped.length
-
-    group.filter = appendExcludeProxyNamesToProviderFilter(group.filter ?? '.*', dropped)
+    proxiesRemoved += removed.length
+    if (kept.length === 0) {
+      groupsRemoved.push(group.name.trim())
+      continue
+    }
+    group.proxies = kept
     groupsMutated += 1
   }
 
