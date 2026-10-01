@@ -69,9 +69,9 @@ describe('emergencyCoreRecoveryCore @phase1', () => {
     const admission = evaluateEmergencyCoreRecoveryAdmission({
       nowMs: deadlineMs + 1,
       request: {
-        reason: 'byte_death_circuit_open',
+        reason: 'proactive_hard_rotate_failed',
         leafId: 'KR-VPS-HY2',
-        evidenceReason: 'recovery_circuit_breaker_open',
+        evidenceReason: 'proactive_hard_rotate_api2_anchor',
         cursorConnectionCount: 10,
         requestedAtMs,
         deadlineMs,

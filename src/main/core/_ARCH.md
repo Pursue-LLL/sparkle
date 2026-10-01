@@ -39,7 +39,7 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `marathonSseCarrierPruneCore.ts` | **R-35b** marathon SSE carrier 45s stale-proof prune gate · `MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS` |
 | `marathonHy2OnlyCore.ts` / `marathonSSETruthCore.ts` | Marathon HY2-only 协议 SSOT · `marathonTruthActive` when conn≥12 |
 | `transportMutationGateCore.ts` / `transportMutationGateRuntime.ts` | MTIC-v2：赛中禁止 HY2→TLS 等 transport mutation |
-| `recoveryCircuitBreakerCore.ts` / `recoveryCircuitBreaker.ts` | **P1/P1.5** 连续 recovery 失败熔断 · 假成功守卫 · circuit open 时 restartCore 阶梯（defer 后重试） |
+| `perLeafRecoveryCircuitCore.ts` | Phase-1 per-leaf 失败隔离（3 次连续失败 → 该 leaf 该失败类型 open 3min）；**全局 RecoveryCircuitBreaker 已删除**——应用层探针抖动不得压过物理链路证据，恢复路径无条件直通 |
 | `aiTrafficIsolationCore.ts` | **W2** AI/Codex 组剔除 Marathon Cursor HY2 leaf（factory 注入） |
 | `collectiveDeathBugReportCore.ts` / `collectiveDeathBugReport.ts` / `collectiveDeathAlert.ts` | **BUG-2026-09-03-002** 集体死亡 GUI toast + 「复制 Bug 信息」IPC；**BUG-2026-09-15-001** 按日历日选最新 `app-*.log`（禁字典序）+ 30min 窗口对齐 + `[ProxyStackDeadlock]` 标记 |
 | `proxyStackDeadlockCore.ts` / `proxyStackDeadlockRuntime.ts` | **BUG-2026-09-15-001** emergency core restart 的 proxy-stack 死锁门禁；**longflow 证据契约** `LongflowEvidence = measured \| unknown`（禁止 `?? 0` 静默零填充）；`selectLeafProbeTargets` 在 controller 不可达时不伪造叶子失败 |
@@ -53,7 +53,6 @@ Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与
 | `profileSubscriptionDisplayCore.ts` | 订阅到期/更新时间展示 SSOT · **BUG-2026-09-03-003** `每日 HH:mm · 更新 X 前` |
 | `dataPlaneMutationTierCore.ts` | **BUG-2026-09-03-001** Tier-0/1/2 data-plane mutation SSOT（provider hot-reload · single conn close · sidecar · cold restart） |
 | `bug20260903ReplayCore.ts` | **BUG-2026-09-03-001** Sep2 84s stall + Aug31 blank subscription replay gate |
-| `bug20260831RecoveryCircuitReplayCore.ts` | **BUG-2026-08-31-001** 8/31 事故 replay gate（熔断 · 旁路 · AI 隔离） |
 | `marathonCarrierConnectionBindCore.ts` | marathon SSE carrier ↔ mihomo connection bind SSOT |
 | `recoveryHonestyCore.ts` | **R-34d** recovery success = max_gap 60s 内降 ≥50% |
 | `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |

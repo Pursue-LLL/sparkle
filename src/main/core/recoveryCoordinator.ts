@@ -6,7 +6,6 @@ import { appendAppLog } from '../utils/log'
 import { mihomoChangeProxy, mihomoGroups } from './mihomoApi'
 import { requestEmergencyCoreRecovery } from './emergencyCoreRecovery'
 import { unknownLongflowEvidence } from './proxyStackDeadlockCore'
-import { notifyRecoveryCircuitSuccess } from './recoveryCircuitBreaker'
 import {
   classifyLeafFailureReason,
   createInitialLeafRecoveryCircuitState,
@@ -162,7 +161,6 @@ export async function submitRecoveryCoordinatorEvent(input: {
         leafCircuits.set(circuitKey, failure.state)
         return { handled: false, reason: result.reason }
       }
-      await notifyRecoveryCircuitSuccess()
       leafCircuits.set(circuitKey, recordLeafRecoverySuccess(circuit))
       return { handled: true, reason: result.reason }
     }
@@ -191,7 +189,6 @@ export async function submitRecoveryCoordinatorEvent(input: {
           lastFailoverCompletedAtMs: nowMs,
         }
         await writeCursorDedicatedManualSelection(target)
-        await notifyRecoveryCircuitSuccess()
       }
       await appendAppLog(
         `[RecoveryCoordinator]: outcome=${changed ? 'executed' : 'failed'} action=failover_leaf leaf=${decision.action.leafId} target=${target} reason=${decision.action.reason} failover_dispatch_count=${policyState.failoverDispatchCount}\n`,

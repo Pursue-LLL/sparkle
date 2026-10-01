@@ -19,13 +19,6 @@ import { executeByteDeathParentMutation } from './hy2ParentByteDeathRecoveryExec
 import { resolveHy2ParentUdpOutboundConnectionId } from './hy2ParentCarrierIdentityCore'
 import { measuredLongflowEvidence } from './proxyStackDeadlockCore'
 import { countActiveInnerCriticalFlows } from './hy2ParentRotationCore'
-import {
-  assertRecoveryCircuitAllowsMutation,
-  notifyRecoveryCircuitFailure,
-  notifyRecoveryCircuitSuccess,
-  resetRecoveryCircuitBreakerForTests,
-} from './recoveryCircuitBreaker'
-import { formatRecoveryCircuitBreakerLogLine } from './recoveryCircuitBreakerCore'
 import type { MarathonSSETruthResult } from './marathonSSETruthCore'
 import type { TransportLongevityTruthSnapshot } from './transportLongevityTruthCore'
 import {
@@ -47,7 +40,6 @@ export interface Hy2ParentSidecarExecutionResult {
 export function resetHy2ParentSidecarStateForTests(): void {
   lastHy2ParentSidecarActionAtMs = 0
   sidecarObserveInFlight = false
-  resetRecoveryCircuitBreakerForTests()
 }
 
 function mutationClosedParentUdp(plan: { action: string }): boolean {
@@ -194,24 +186,6 @@ export async function runHy2ParentSidecarIfDue(input: {
       currentMaxByteStallMs: input.snapshot.maxByteStallMs,
     })
 
-    const circuitGate =
-      input.dialFailureClusterEscalation || input.proactiveHardRotate
-        ? { allowed: true, reason: 'escalation_bypass' }
-        : await assertRecoveryCircuitAllowsMutation({ nowMs })
-    if (!circuitGate.allowed) {
-      await appendSidecarLog(
-        formatRecoveryCircuitBreakerLogLine({
-          outcome: 'blocked',
-          reason: circuitGate.reason,
-        }),
-      )
-      return {
-        outcome: 'skipped',
-        action: 'none',
-        reason: circuitGate.reason,
-      }
-    }
-
     const marathonActive = input.marathonTruth.marathonTruthActive
     const marathonGlobalByteDeath = isMarathonGlobalByteDeath({
       marathonActive,
@@ -351,10 +325,6 @@ export async function runHy2ParentSidecarIfDue(input: {
         }),
       )
       if (!closed.ok) {
-        await notifyRecoveryCircuitFailure({
-          nowMs,
-          reason: closed.err ?? rotatePlan.reason,
-        })
         return {
           outcome: 'failed',
           action: 'close_udp_outbound',
@@ -380,8 +350,6 @@ export async function runHy2ParentSidecarIfDue(input: {
               : undefined,
             connectionId: rotatePlan.udpConnectionId,
           })
-        } else {
-          await notifyRecoveryCircuitSuccess()
         }
         return {
           outcome: 'executed',
@@ -453,17 +421,7 @@ export async function runHy2ParentSidecarIfDue(input: {
           const diagnosticOnly = blockReason.includes(
             'byte_death_udp_evidence_insufficient',
           )
-          if (!escalateCoreRestart && !diagnosticOnly) {
-            await notifyRecoveryCircuitFailure({
-              nowMs,
-              reason: blockReason,
-            })
-          }
           if (escalateCoreRestart) {
-            const { forceClearRecoveryCircuitForClusterRecovery } = await import(
-              './recoveryCircuitBreaker'
-            )
-            await forceClearRecoveryCircuitForClusterRecovery(nowMs, 0)
             const { requestEmergencyCoreRecovery } = await import('./emergencyCoreRecovery')
             const { BYTE_DEATH_UDP_ABSENT_REQUIRES_CORE_RESTART, STALE_SESSION_OVERRIDES_VITALITY_COUNTERPROOF } = await import(
               './hy2ParentByteDeathRecoveryCore'
@@ -612,14 +570,7 @@ export async function runHy2ParentSidecarIfDue(input: {
             connectionId: udpResolution.connectionId,
             anchorProbeOk: api2AnchorOk,
           })
-        } else {
-          await notifyRecoveryCircuitSuccess()
         }
-      } else if (resolvedOutcome === 'failed') {
-        await notifyRecoveryCircuitFailure({
-          nowMs,
-          reason: vitality.err ?? resolvedReason,
-        })
       }
       return {
         outcome: resolvedOutcome,

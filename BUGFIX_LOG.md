@@ -89,6 +89,18 @@
 
 ---
 
+### BUG-2026-10-01-001 · 删除全局 RecoveryCircuitBreaker（探针抖动压过物理证据 → 自愈被自己锁死）· **CODE-DONE**
+
+| 字段 | 内容 |
+| --- | --- |
+| **症状** | app log 实测 04:35:28→05:37:37 UTC 连续熔断 **735 条 blocked**，`consecutive_failures` 3→4→5→6→7→8→9 每轮精确 +600000ms；期间 `StallEscalationLadder` 的 `emergency_sidecar_dial` 全部 `outcome=skipped`，已卡死 86–90s 的 Cursor 连接无法自救。 |
+| **根因** | ① `recordRecoveryFailure` 只累加 `consecutiveFailures`、**冷却到期不复位** → 熔断 10 分钟到期后第一次失败立即再次熔断，熔断从未真正恢复；② 更根本的是 09-03 已定性：**"应用层单点探针抖动不得判定通道死亡"**，而熔断器正是在物理 QUIC/UDP 握手有效（`connectPathDelayMs=290`）时因探针超时开闸，即 BUGFIX_LOG 所说的"没病被治出病"。 |
+| **修复** | 彻底删除全局熔断器（6 文件 / -554 行）：`recoveryCircuitBreaker.ts` · `recoveryCircuitBreakerCore.ts` · 2 测试 · `bug20260831RecoveryCircuitReplayCore.ts`(+test)；5 处调用方改为直通——`hy2ParentSidecar` 去掉 gate 与 4 个 notify、`mihomoQuicSilentStallRecovery` 的 `parent_udp_refresh` 无条件 rotate、`recoveryByteDeathVerifier` 改由 `RecoveryCoordinator` 单点接收结果、`cursorDedicatedDialFailureClusterRuntime` 去强制清闸、`recoveryCoordinator` 去通知；连带清 `emergencyCoreRecoveryCore` 的 `byte_death_circuit_open` reason + `collectiveDeathBugReportCore` 的 marker/trigger、`verify-marathon-mutation-callers` allowlist、`verify-byte-death-recovery-gate` 的熔断窗口判据（改判"R2 未执行"）、`package.json` 测试清单。保留 `perLeafRecoveryCircuitCore`（per-leaf 隔离，非全局压制）。 |
+| **验证** | `tsc -p tsconfig.node/web` 均 0；改动文件 eslint 0；全量测试 **before 10 fail / after 9 fail，diff 仅少一条已删测试，零新增失败**；全仓 grep `recoveryCircuitBreaker` 仅剩 `_ARCH.md` 的删除说明与两处 `doesNotMatch` 回归断言。 |
+| **关联** | `recoveryCircuitBreaker*.ts`（已删）· `hy2ParentSidecar.ts` · `mihomoQuicSilentStallRecovery.ts` · `recoveryByteDeathVerifier.ts` · `recoveryCoordinator.ts` · `perLeafRecoveryCircuitCore.ts`（保留） |
+
+---
+
 ### BUG-2026-09-15-007 · 选点抖动打断 AI 长流（Cursor/opencode/Codex/Antigravity 通病）· **CODE-DONE**
 
 | 字段 | 内容 |
