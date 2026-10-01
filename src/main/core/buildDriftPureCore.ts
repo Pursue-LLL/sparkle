@@ -25,6 +25,29 @@ export function normalizeCommit(value: string | undefined | null): string {
 
 export type DriftReason = 'match' | 'commit_mismatch' | 'app_dirty' | 'app_unknown'
 
+/**
+ * 判定工作区是否脏，忽略构建期自动改写的 buildStamp。
+ *
+ * `write-build-stamp` 每次构建都刷新时间戳，该文件必然处于 modified 状态；
+ * 把它计入 dirty 会让所有正常构建都被判为「不可复现」，判定永久失真。
+ */
+export function isTrackedDirtyOutsideBuildStamp(
+  porcelainLines: readonly string[],
+  buildStampPath: string
+): boolean {
+  return porcelainLines.some((line) => {
+    const status = line.slice(0, 2)
+    const target = line.slice(3).trim()
+    if (status.includes('?')) {
+      return true
+    }
+    if (target !== buildStampPath && !target.endsWith('/' + buildStampPath)) {
+      return true
+    }
+    return false
+  })
+}
+
 export interface DriftResult {
   reason: DriftReason
   drifted: boolean

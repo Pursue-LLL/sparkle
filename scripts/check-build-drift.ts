@@ -11,6 +11,7 @@ import path from 'path'
 
 /** commit 规范化函数签名；由 buildDriftPureCore 经动态 import 注入，避免 ESM 具名导出限制。 */
 type Normalize = (value: string) => string
+type IsDirty = (cwd: string) => boolean
 
 /** 定位 app.asar：优先系统级安装（升级脚本的规范目标），回退到用户级。 */
 function resolveAppAsar(): string {
@@ -38,10 +39,10 @@ function run(args: string[], cwd?: string): string {
   }
 }
 
-function readRepoFacts(normalizeCommit: Normalize): { commit: string; dirty: boolean } {
+function readRepoFacts(normalizeCommit: Normalize, isDirtyOutside: IsDirty): { commit: string; dirty: boolean } {
   return {
     commit: normalizeCommit(run(['git', 'rev-parse', 'HEAD'], process.cwd())),
-    dirty: run(['git', 'status', '--porcelain'], process.cwd()).length > 0,
+    dirty: isDirtyOutside(process.cwd()),
   }
 }
 
@@ -69,10 +70,17 @@ function readAppFacts(normalizeCommit: Normalize): { commit: string; dirty: bool
 }
 
 async function main(): Promise<void> {
-  const { detectBuildDrift, normalizeCommit } = await import(
+  const { detectBuildDrift, normalizeCommit, isTrackedDirtyOutsideBuildStamp } = await import(
     '../src/main/core/buildDriftPureCore'
   )
-  const result = detectBuildDrift(readAppFacts(normalizeCommit), readRepoFacts(normalizeCommit))
+  const isDirtyOutside = (cwd: string): boolean =>
+    !isTrackedDirtyOutsideBuildStamp(
+      run(['git', 'status', '--porcelain', '--untracked-files=no'], cwd)
+        .split('\n')
+        .filter(Boolean),
+      'src/shared/buildStamp.ts'
+    )
+  const result = detectBuildDrift(readAppFacts(normalizeCommit), readRepoFacts(normalizeCommit, isDirtyOutside))
   console.log(`app_asar=${APP_ASAR}`)
   console.log(`[check-drift] ${result.summary}`)
   if (result.drifted) {
