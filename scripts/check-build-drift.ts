@@ -13,6 +13,12 @@ import path from 'path'
 type Normalize = (value: string) => string
 type IsDirty = (cwd: string) => boolean
 
+/** @electron/asar 为 CJS，动态 import 的类型推断不覆盖具名导出，此处显式约束。 */
+interface AsarApi {
+  listPackage(asarPath: string): string[]
+  extractFile(asarPath: string, filename: string): Buffer
+}
+
 /** 定位 app.asar：优先系统级安装（升级脚本的规范目标），回退到用户级。 */
 function resolveAppAsar(): string {
   if (process.env.SPARKLE_APP_ASAR) {
@@ -46,27 +52,33 @@ function readRepoFacts(normalizeCommit: Normalize, isDirtyOutside: IsDirty): { c
   }
 }
 
-/** app.asar 内烘焙的 commit 由构建期生成；此处从解包产物读取 buildStamp 事实。 */
-function readAppFacts(normalizeCommit: Normalize): { commit: string; dirty: boolean } | undefined {
+/**
+ * 读取已安装 app 内烘焙的 git 事实。
+ *
+ * 直接从 app.asar 的 buildStamp chunk 读取二进制内容——这是权威来源，
+ * 不依赖 app 是否已启动、是否写过 [BuildDrift] 日志。chunk 文件名带内容哈希，
+ * 需先 list 再按前缀定位。
+ */
+async function readAppFacts(
+  normalizeCommit: Normalize
+): Promise<{ commit: string; dirty: boolean } | undefined> {
+  const asar = (await import('@electron/asar')) as unknown as AsarApi
   if (!fs.existsSync(APP_ASAR)) {
     return undefined
   }
-  // buildStamp 事实同时写入 app 日志（[BuildDrift] 行）与 shared/buildStamp 模块。
-  // 打包后无法直接 import，这里读取同源日志判定，避免解包 100MB+ asar。
-  const logDir = path.join(os.homedir(), 'Library/Application Support/sparkle/logs')
-  const files = fs.existsSync(logDir) ? fs.readdirSync(logDir).filter((f) => f.startsWith('app-')) : []
-  files.sort()
-  for (const file of files.reverse().slice(0, 5)) {
-    const text = fs.readFileSync(path.join(logDir, file), 'utf8')
-    const match = text.match(/\[BuildDrift\]:\s*app_commit=(\S+)\s+app_dirty=(\d)/g)?.pop()
-    if (!match) {
-      continue
-    }
-    const commit = match.match(/app_commit=(\S+)/)?.[1] ?? ''
-    const dirty = match.match(/app_dirty=(\d)/)?.[1] === '1'
-    return { commit: normalizeCommit(commit), dirty }
+  const chunk = asar
+    .listPackage(APP_ASAR)
+    .find((entry) => /\/buildStamp-[^/]+\.js$/.test(entry))
+  if (!chunk) {
+    return undefined
   }
-  return undefined
+  const source = asar.extractFile(APP_ASAR, chunk.replace(/^\//, '')).toString('utf8')
+  const commit = source.match(/SPARKLE_GIT_COMMIT\s*=\s*"([^"]*)"/)?.[1] ?? ''
+  const dirty = /SPARKLE_GIT_DIRTY\s*=\s*true/.test(source)
+  if (commit.length === 0) {
+    return undefined
+  }
+  return { commit: normalizeCommit(commit), dirty }
 }
 
 async function main(): Promise<void> {
@@ -80,7 +92,10 @@ async function main(): Promise<void> {
         .filter(Boolean),
       'src/shared/buildStamp.ts'
     )
-  const result = detectBuildDrift(readAppFacts(normalizeCommit), readRepoFacts(normalizeCommit, isDirtyOutside))
+  const result = detectBuildDrift(
+    await readAppFacts(normalizeCommit),
+    readRepoFacts(normalizeCommit, isDirtyOutside)
+  )
   console.log(`app_asar=${APP_ASAR}`)
   console.log(`[check-drift] ${result.summary}`)
   if (result.drifted) {
