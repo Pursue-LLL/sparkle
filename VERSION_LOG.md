@@ -24,8 +24,22 @@
 4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁含 `emergency_core_restart_removed` + longflow 契约标记。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
 6. **保留的 fork 功能**：Cursor 专用组、地区自动组、定时更新、TUN、订阅刷新。
+7. **Antigravity 专用路由**（2026-10-02 起不得回退）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进 `🎯 Antigravity 专用` fallback 组（VPS provider 内 Reality 优先、HY2 冷备，固定地域出口），杜绝机场节点落地 IP 漂移触发 Google "User location is not supported" 400；组缺席时安全降级为原通用规则。
 
 **已知边界（物理层，非代码可修）**：运营商国际出口丢包/抖动仍会导致境外变慢与 Cursor 长流卡顿；但**不会再被 Sparkle 放大为集体断连**。
+
+---
+
+## 2026-10-02 · **@1.30.67 · BUG-2026-10-02-001 Antigravity 地域 400 根治（🎯 Antigravity 专用组 + 前置规则注入进代码）· CODE-DONE 待装包**
+
+| 字段 | 内容 |
+| --- | --- |
+| **版本** | repo **1.30.67**（**未装包**；唯一合法升级入口 `pnpm run agent:upgrade:mac`，会重启 app 需用户同意） |
+| **专用组** | `🎯 Antigravity 专用` = **fallback**：`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`（Reality 优先确定性、HY2 冷备、绝不 DIRECT），url `https://gemini.google.com`、interval 300、timeout 5000、lazy |
+| **前置规则** | rules 数组最前注入 3 条：`DOMAIN-KEYWORD,cloudcode-pa` + `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`（gemini CLI 未来同样受益；host 均纯 AI-API 端点零附带伤害） |
+| **守卫** | 无 profileId / 无 VPS leaf → 组不建 + 注入跳过（安全降级）；幂等；`SPARKLE_INJECTED_GROUP_NAMES` 双副本（`customProxyGroups.ts` + `profileGroupNormalize.ts`）防删 |
+| **门禁** | `pnpm run verify:agygeo`：读 active `work/config.yaml`，断言组（type/url/use/filter）+ 3 规则存在且行号先于通用 googleapis 规则 |
+| **验收** | tsc 0 · 改动文件 eslint 0 · 目标测试 **51/51**（新增 3+2 用例；修正 1 处 HEAD 既有陈旧断言）· **LIVE 待装包**：core 日志应现 `using 🎯 Antigravity 专用[KR-VPS-Reality]`，agy 重试 0 400 |
 
 ---
 

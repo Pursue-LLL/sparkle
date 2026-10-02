@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { CURSOR_DEDICATED_GROUP_NAME, CURSOR_DEDICATED_DIRECT_PROXY, LEGACY_CURSOR_DEDICATED_GROUP_NAME, prependCursorDedicatedDirectOption } from './cursorProxyGroup'
+import { CURSOR_DEDICATED_GROUP_NAME, CURSOR_DEDICATED_DIRECT_PROXY, LEGACY_CURSOR_DEDICATED_GROUP_NAME, ANTIGRAVITY_DEDICATED_GROUP_NAME, prependCursorDedicatedDirectOption } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME, ensureCustomProxyGroups, resolveFailoverProxyGroup } from './customProxyGroups'
 
 function groupNames(profile: MihomoConfig): string[] {
@@ -48,7 +48,8 @@ describe('customProxyGroups', () => {
     )
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
     assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY])
-    assert.equal(cursorGroup?.filter, '(?i)-VPS-HY2$')
+    // 与 marathonHy2OnlyCore 的 MARATHON_CURSOR_VPS_PROVIDER_FILTER 对齐（Reality 优先，HY2 次选）。
+    assert.equal(cursorGroup?.filter, '(?i)-VPS-(Reality|HY2)$')
     assert.ok(groupNames(profile).includes(HONG_KONG_FILTER_GROUP_NAME))
     assert.ok(groupNames(profile).includes('🚀 节点选择'))
     assert.equal(groupNames(profile)[0], CURSOR_DEDICATED_GROUP_NAME)
@@ -127,6 +128,42 @@ describe('customProxyGroups', () => {
     // HK 组按规则路由 x.com/Stripe，探针 = grok.com（挑能开 Grok 的活节点）。
     assert.equal(hkGroup?.url, 'https://grok.com')
     assert.equal(hkGroup?.filter, '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong')
+  })
+
+  it('builds Antigravity group as fallback over the VPS provider (Reality first, HY2 backup)', () => {
+    const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+
+    ensureCustomProxyGroups(profile, ['🇹🇼 台湾 02', 'KR-VPS-Reality', 'KR-VPS-HY2'], 'test-profile')
+
+    const agyGroup = (
+      (profile['proxy-groups'] as
+        { name: string; type?: string; url?: string; interval?: number; use?: string[]; filter?: string }[]) ?? []
+    ).find((group) => group.name === ANTIGRAVITY_DEDICATED_GROUP_NAME)
+    assert.equal(agyGroup?.type, 'fallback')
+    assert.equal(agyGroup?.url, 'https://gemini.google.com')
+    assert.equal(agyGroup?.interval, 300)
+    assert.deepEqual(agyGroup?.use, ['test-profile-vps'])
+    assert.equal(agyGroup?.filter, '(?i)-VPS-(Reality|HY2)$')
+    // fallback 禁止 DIRECT：CN 直连出口本身就是 400 地域错误的来源之一。
+    assert.ok(!((agyGroup as { proxies?: string[] })?.proxies ?? []).includes('DIRECT'))
+  })
+
+  it('skips Antigravity group without a profile id or VPS leaves (safe degrade)', () => {
+    const withoutProfileId = { 'proxy-groups': [] } as unknown as MihomoConfig
+    ensureCustomProxyGroups(withoutProfileId, ['KR-VPS-Reality', '🇹🇼 台湾 02'], undefined)
+    assert.ok(
+      !((withoutProfileId['proxy-groups'] as { name: string }[]) ?? []).some(
+        (group) => group.name === ANTIGRAVITY_DEDICATED_GROUP_NAME
+      )
+    )
+
+    const withoutVpsLeaves = { 'proxy-groups': [] } as unknown as MihomoConfig
+    ensureCustomProxyGroups(withoutVpsLeaves, ['🇹🇼 台湾 02', 'SG-01'], 'test-profile')
+    assert.ok(
+      !((withoutVpsLeaves['proxy-groups'] as { name: string }[]) ?? []).some(
+        (group) => group.name === ANTIGRAVITY_DEDICATED_GROUP_NAME
+      )
+    )
   })
 
   it('excludes auto-hop groups from Cursor group members', () => {
