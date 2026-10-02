@@ -43,6 +43,7 @@ import {
   type ProxyCatalogEntry,
 } from './autoSelectAnyTlsExclusionCore'
 import { injectHongKongTrafficRules } from './hongKongTrafficRuleInjection'
+import { injectAntigravityTrafficRules } from './antigravityRuleInjection'
 import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import { ensureVpsDirectBypass } from './vpsDirectBypass'
@@ -220,6 +221,8 @@ async function generateProfileImpl(): Promise<void> {
     await appendAppLog(formatAiTrafficIsolationLogLine(aiIsolation))
   }
   injectHongKongTrafficRules(profile)
+  injectAntigravityTrafficRules(profile)
+  await logGenerateProfileStep('antigravity_geo_rules', stepStartedAtMs)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
     cursorDedicatedGroupRenameNotified = true
     const detail =
