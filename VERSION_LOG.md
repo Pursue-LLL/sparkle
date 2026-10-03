@@ -24,7 +24,7 @@
 4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁含 `emergency_core_restart_removed` + longflow 契约标记。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
 6. **保留的 fork 功能**：Cursor 专用组、地区自动组、定时更新、TUN、订阅刷新。
-7. **Antigravity 专用路由**（2026-10-02 起不得回退）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进 `🎯 Antigravity 专用` fallback 组（VPS provider 内 Reality 优先、HY2 冷备，固定地域出口），杜绝机场节点落地 IP 漂移触发 Google "User location is not supported" 400；组缺席时安全降级为原通用规则。
+7. **Antigravity 专用路由**（2026-10-03 用户裁决版，不得回退）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `自动选择` fallback 组**（不新增专用组——用户明确要求复用现有组）；规则前置保证先于通用 googleapis 规则命中；`自动选择` 组缺席时注入跳过（安全降级）。技术边界（如实记录）：`自动选择` 成员为机场节点（出口 IP 池动态漂移），400 地域判定属应用层（gemini.google.com 探测感知不到 400），故 fallback 不会因 400 自动换节点——若 400 间歇复发，恢复路径=git 历史 `0186d00`（VPS 专用组方案，已验证 LIVE 无 400）。
 
 **已知边界（物理层，非代码可修）**：运营商国际出口丢包/抖动仍会导致境外变慢与 Cursor 长流卡顿；但**不会再被 Sparkle 放大为集体断连**。
 

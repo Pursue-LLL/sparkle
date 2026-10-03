@@ -1,9 +1,10 @@
 #!/usr/bin/env tsx
 /**
- * Post-deploy gate: the Antigravity (agy CLI) geo-routing fix must be live in the
- * active mihomo work config — dedicated VPS fallback group plus injected rules
- * ordered above the subscription's generic `DOMAIN-SUFFIX,googleapis.com` rule
- * (upstream 400 FAILED_PRECONDITION "User location is not supported").
+ * Post-deploy gate: the Antigravity (agy CLI) geo-routing rules must be live in
+ * the active mihomo work config — three injected rules ordered above the
+ * subscription's generic `DOMAIN-SUFFIX,googleapis.com` rule, landing in the
+ * existing 自动选择 fallback (upstream 400 FAILED_PRECONDITION
+ * "User location is not supported").
  * Usage: tsx scripts/verify-antigravity-geo-routing.mts [--config path]
  */
 import { existsSync, readFileSync } from 'node:fs'
@@ -18,7 +19,7 @@ const configPath =
     : (process.env.SPARKLE_WORK_CONFIG ??
       join(homedir(), 'Library/Application Support/sparkle/work/config.yaml'))
 
-const GROUP_NAME = '🎯 Antigravity 专用'
+const GROUP_NAME = '自动选择'
 const RULE_BASES = [
   'DOMAIN-KEYWORD,cloudcode-pa',
   'DOMAIN-SUFFIX,aicode.googleapis.com',
@@ -37,7 +38,7 @@ const failures: string[] = []
 
 const groupLineIdx = lines.findIndex((line) => line.trim() === `- name: ${GROUP_NAME}`)
 if (groupLineIdx < 0) {
-  failures.push(`dedicated group missing: ${GROUP_NAME}`)
+  failures.push(`target group missing: ${GROUP_NAME}`)
 } else {
   const groupBlock: string[] = []
   for (const line of lines.slice(groupLineIdx + 1)) {
@@ -50,9 +51,7 @@ if (groupLineIdx < 0) {
   const groupText = groupBlock.join('\n')
   for (const [label, needle] of [
     ['group type fallback', 'type: fallback'],
-    ['group probe gemini.google.com', 'url: https://gemini.google.com'],
-    ['group uses VPS provider', 'use:'],
-    ['group VPS leaf filter', 'filter: (?i)-VPS-(Reality|HY2)$']
+    ['group uses provider', 'use:']
   ] as const) {
     if (!groupText.includes(needle)) {
       failures.push(`${label} missing in ${GROUP_NAME} block`)
@@ -92,7 +91,7 @@ if (failures.length > 0) {
 }
 
 console.log('PASS: antigravity geo-routing sealed')
-console.log(`  group: ${GROUP_NAME} (fallback, VPS provider, Reality|HY2)`)
+console.log(`  target group: ${GROUP_NAME} (existing fallback)`)
 for (const [base, idx] of ruleIdxByBase) {
   console.log(`  rule line ${String(idx + 1).padStart(5)}: ${base},${GROUP_NAME}`)
 }

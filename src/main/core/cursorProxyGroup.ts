@@ -30,14 +30,6 @@ export const LEGACY_CURSOR_DEDICATED_GROUP_NAMES = [
 
 export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 
-/**
- * Antigravity (agy CLI / Gemini Code Assist) dedicated group — its upstream
- * `cloudcode-pa.googleapis.com` enforces per-region geo restrictions at the edge
- * (400 FAILED_PRECONDITION "User location is not supported for the API use."),
- * so it must exit via fixed-geo self-hosted VPS leaves, never dynamic airport leaves.
- */
-export const ANTIGRAVITY_DEDICATED_GROUP_NAME = '🎯 Antigravity 专用' as const
-
 export const GENERAL_PROXY_GROUP_NAME = '🚀 节点选择' as const
 
 /** Current Sparkle name after BUG-2026-08-29-002 rewrite of subscription ♻️ / 节点选择. */
@@ -62,8 +54,6 @@ export const DEFAULT_GENERAL_DELAY_TEST_URL = 'https://www.gstatic.com/generate_
 export const AUTO_SELECT_DELAY_TEST_URL = 'https://chatgpt.com' as const
 /** Hong Kong url-test group probes Grok reachability for Stripe/X/Grok traffic. */
 export const HONG_KONG_DELAY_TEST_URL = 'https://grok.com' as const
-/** Antigravity group probes the Google front (same probe the 自动选择 fallback runs in prod). */
-export const ANTIGRAVITY_DELAY_TEST_URL = 'https://gemini.google.com' as const
 
 const REGION_AUTO_SELECT_PREFIX = 'Sparkle-' as const
 
@@ -99,10 +89,6 @@ export function isCursorDedicatedGroupName(groupName: string): boolean {
   )
 }
 
-export function isAntigravityDedicatedGroupName(groupName: string): boolean {
-  return groupName === ANTIGRAVITY_DEDICATED_GROUP_NAME
-}
-
 export function resolveDelayTestUrl(options?: {
   groupName?: string
   groupTestUrl?: string
@@ -122,9 +108,6 @@ export function resolveDelayTestUrl(options?: {
   }
   if (options?.groupName && isHongKongFilterGroupName(options.groupName)) {
     return options.groupTestUrl || HONG_KONG_DELAY_TEST_URL
-  }
-  if (options?.groupName && isAntigravityDedicatedGroupName(options.groupName)) {
-    return options.groupTestUrl || ANTIGRAVITY_DELAY_TEST_URL
   }
   return options?.groupTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL
 }

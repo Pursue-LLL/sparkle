@@ -1,4 +1,4 @@
-import { ANTIGRAVITY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { AUTO_SELECT_GROUP_NAME } from './defaultAutoSwitchProxy'
 
 /**
  * Google Code Assist / Gemini API hosts whose edge enforces per-region geo
@@ -15,19 +15,18 @@ const ANTIGRAVITY_TRAFFIC_RULE_BASES = [
   'DOMAIN-SUFFIX,generativelanguage.googleapis.com'
 ] as const
 
-function hasAntigravityDedicatedGroup(profile: MihomoConfig): boolean {
+function hasAutoSelectGroup(profile: MihomoConfig): boolean {
   const groups = profile['proxy-groups'] as { name: string }[] | undefined
-  return groups?.some((group) => group.name === ANTIGRAVITY_DEDICATED_GROUP_NAME) ?? false
+  return groups?.some((group) => group.name === AUTO_SELECT_GROUP_NAME) ?? false
 }
 
 /**
  * Prepend Antigravity/Code-Assist rules so they beat the subscription's generic
- * `DOMAIN-SUFFIX,googleapis.com` rule. Airport leaves ride dynamic egress IPs
- * whose Google geo verdicts drift (intermittent 400s); the dedicated fallback
- * group exits via fixed-geo self-hosted VPS leaves instead.
+ * `DOMAIN-SUFFIX,googleapis.com` rule; traffic lands in the existing 自动选择
+ * fallback instead of the subscription's first-listed Google group.
  */
 export function injectAntigravityTrafficRules(profile: MihomoConfig): void {
-  if (!hasAntigravityDedicatedGroup(profile)) {
+  if (!hasAutoSelectGroup(profile)) {
     return
   }
 
@@ -36,7 +35,7 @@ export function injectAntigravityTrafficRules(profile: MihomoConfig): void {
   const prefix: string[] = []
 
   for (const ruleBase of ANTIGRAVITY_TRAFFIC_RULE_BASES) {
-    const rule = `${ruleBase},${ANTIGRAVITY_DEDICATED_GROUP_NAME}`
+    const rule = `${ruleBase},${AUTO_SELECT_GROUP_NAME}`
     if (!existingSet.has(rule)) {
       prefix.push(rule)
       existingSet.add(rule)

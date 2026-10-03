@@ -5,9 +5,7 @@ import {
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName,
   prependCursorDedicatedDirectOption,
-  HONG_KONG_DELAY_TEST_URL,
-  ANTIGRAVITY_DEDICATED_GROUP_NAME,
-  ANTIGRAVITY_DELAY_TEST_URL,
+  HONG_KONG_DELAY_TEST_URL
 } from './cursorProxyGroup'
 import {
   filterMarathonCursorEligibleVpsLeaves,
@@ -21,8 +19,7 @@ export const HONG_KONG_FILTER_GROUP_NAME = 'Sparkle-香港' as const
 const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
   CURSOR_DEDICATED_GROUP_NAME,
   ...LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
-  HONG_KONG_FILTER_GROUP_NAME,
-  ANTIGRAVITY_DEDICATED_GROUP_NAME
+  HONG_KONG_FILTER_GROUP_NAME
 ])
 
 /** mihomo provider filter — Hong Kong leaf nodes (provider mode). */
@@ -296,35 +293,6 @@ function buildHongKongGroupConfig(
 }
 
 /**
- * Antigravity (agy CLI) dedicated group — provider mode over self-hosted VPS leaves.
- * `fallback` keeps the deterministic Reality-first order (provider file order) with
- * HY2 as cold backup: no latency-driven hop flapping, and unlike a `select` group it
- * never stays pinned to a dead first member.
- */
-function buildAntigravityGroupConfig(
-  leafNames: string[],
-  profileId: string | undefined
-): ProxyGroupConfig | null {
-  if (!profileId) {
-    return null
-  }
-  const vpsLeaves = filterMarathonCursorEligibleVpsLeaves(leafNames.filter(matchesVpsNode))
-  if (vpsLeaves.length === 0) {
-    return null
-  }
-  return {
-    name: ANTIGRAVITY_DEDICATED_GROUP_NAME,
-    type: 'fallback',
-    url: ANTIGRAVITY_DELAY_TEST_URL,
-    interval: 300,
-    timeout: 5000,
-    lazy: true,
-    use: [resolveVpsProviderId(profileId)],
-    filter: MARATHON_CURSOR_VPS_PROVIDER_FILTER
-  }
-}
-
-/**
  * Inject / refresh Sparkle-owned Selector groups. Subscription groups are kept as-is.
  * With proxy-provider profiles, leaf nodes are resolved via use+filter (not raw proxies names).
  */
@@ -347,16 +315,12 @@ export function ensureCustomProxyGroups(
     profileId
   )
   const hkGroup = buildHongKongGroupConfig(leafProxyNames, profileId)
-  const antigravityGroup = buildAntigravityGroupConfig(leafProxyNames, profileId)
 
   if (cursorGroup) {
     injected.push(cursorGroup)
   }
   if (hkGroup) {
     injected.push(hkGroup)
-  }
-  if (antigravityGroup) {
-    injected.push(antigravityGroup)
   }
 
   subscriptionGroups = dropRedundantHongKongWrapperGroups(
