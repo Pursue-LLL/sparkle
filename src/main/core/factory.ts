@@ -221,8 +221,6 @@ async function generateProfileImpl(): Promise<void> {
     await appendAppLog(formatAiTrafficIsolationLogLine(aiIsolation))
   }
   injectHongKongTrafficRules(profile)
-  injectAntigravityTrafficRules(profile)
-  await logGenerateProfileStep('antigravity_geo_rules', stepStartedAtMs)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
     cursorDedicatedGroupRenameNotified = true
     const detail =
@@ -280,6 +278,11 @@ async function generateProfileImpl(): Promise<void> {
   ensureDnsFallbackIntegrity(profile)
   ensureTunStrictRoute(profile)
   await logGenerateProfileStep('integrity_patches', stepStartedAtMs)
+  // Antigravity/Code-Assist 规则注入放在所有组构建完成之后：
+  // guard 检查的目标组（自动选择）由 auto_switch_groups 及后续步骤确保存在，
+  // 早于此处注入会被 guard 误拦（时序 bug 已实测）。
+  injectAntigravityTrafficRules(profile)
+  await logGenerateProfileStep('antigravity_geo_rules', stepStartedAtMs)
 
   runtimeConfig = profile
   runtimeConfigStr = stringifyYaml(profile)
