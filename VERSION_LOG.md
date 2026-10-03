@@ -30,16 +30,16 @@
 
 ---
 
-## 2026-10-02 · **@1.30.67 · BUG-2026-10-02-001 Antigravity 地域 400 根治（🎯 Antigravity 专用组 + 前置规则注入进代码）· CODE-DONE 待装包**
+## 2026-10-02 · **生产基线 @1.30.67 INSTALLED · BUG-2026-10-02-001 Antigravity 地域 400 根治（🎯 Antigravity 专用组 + 前置规则注入进代码）· LIVE-VERIFIED 2026-10-03**
 
 | 字段 | 内容 |
 | --- | --- |
-| **版本** | repo **1.30.67**（**未装包**；唯一合法升级入口 `pnpm run agent:upgrade:mac`，会重启 app 需用户同意） |
+| **版本** | `/Applications/Sparkle.app` → **1.30.67**（installed=expected，装包入口 `pnpm run agent:upgrade:mac`；agent 场景需 `SPARKLE_UPGRADE_BREAK_GLASS=1` 跳过 safe-window idle 等待——agent 会话自身占活跃连接必然死锁） |
 | **专用组** | `🎯 Antigravity 专用` = **fallback**：`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`（Reality 优先确定性、HY2 冷备、绝不 DIRECT），url `https://gemini.google.com`、interval 300、timeout 5000、lazy |
 | **前置规则** | rules 数组最前注入 3 条：`DOMAIN-KEYWORD,cloudcode-pa` + `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`（gemini CLI 未来同样受益；host 均纯 AI-API 端点零附带伤害） |
 | **守卫** | 无 profileId / 无 VPS leaf → 组不建 + 注入跳过（安全降级）；幂等；`SPARKLE_INJECTED_GROUP_NAMES` 双副本（`customProxyGroups.ts` + `profileGroupNormalize.ts`）防删 |
-| **门禁** | `pnpm run verify:agygeo`：读 active `work/config.yaml`，断言组（type/url/use/filter）+ 3 规则存在且行号先于通用 googleapis 规则 |
-| **验收** | tsc 0 · 改动文件 eslint 0 · 目标测试 **51/51**（新增 3+2 用例；修正 1 处 HEAD 既有陈旧断言）· **LIVE 待装包**：core 日志应现 `using 🎯 Antigravity 专用[KR-VPS-Reality]`，agy 重试 0 400 |
+| **门禁** | `pnpm run verify:agygeo`：读 active `work/config.yaml`，断言组（type/url/use/filter）+ 3 规则存在且行号先于通用 googleapis 规则。**沙箱注意**：`preflight-sparkle-1280.sh` 以 `$HOME` 拼路径，非真实 HOME 会假性 FAIL，用 `HOME=<真实 home>` 跑 |
+| **验收** | tsc 0 · 改动文件 eslint 0 · 目标测试 **51/51**（新增 3+2 用例；修正 1 处 HEAD 既有陈旧断言）· **LIVE 验证（2026-10-03）**：`verify:agygeo` PASS（规则 594-596 < 通用 1433）；core 日志 `cloudcode-pa.googleapis.com` 与 `daily-cloudcode-pa.sandbox.googleapis.com` 均 `using 🎯 Antigravity 专用[KR-VPS-Reality]`、HTTP 404 无地域 400；`www.googleapis.com` 照旧走 `🔍 Google`；post-upgrade preflight `ALL PASS` |
 
 ---
 

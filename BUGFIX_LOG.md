@@ -89,7 +89,7 @@
 
 ---
 
-### BUG-2026-10-02-001 · agy/Antigravity 地域 400 复发（9-15 手补规则被配置再生成冲掉）· **CODE-DONE**
+### BUG-2026-10-02-001 · agy/Antigravity 地域 400 复发（9-15 手补规则被配置再生成冲掉）· **INSTALLED @1.30.67 / LIVE-VERIFIED**
 
 | 字段 | 内容 |
 | --- | --- |
@@ -97,7 +97,7 @@
 | **根因** | Google Code Assist 边缘按**出口 IP 地域**硬限制。`DOMAIN-SUFFIX,googleapis.com` 通用规则把 AI API 流量送进 `🔍 Google` fallback → sparkle-fast 机场节点（台湾优先级第一），机场落地 IP 漂移踩中受限地区出口即整连接 400。**2026-09-15 曾手补两条规则进 mihomo 运行时配置**（`work/config.yaml.bak-agygeo-20260915-185248`），但从未进仓库代码 → BUG-2026-10-01-003 的 5 分钟配置再生把手补规则静默冲掉（旧规则指向的 `🚀 节点选择` 组也已不存在）→ 09-29 起复发。 |
 | **修复** | 把手补规则升级为**代码能力**（配置再生后依然存在），仿 HK 注入模式（`hongKongTrafficRuleInjection.ts` + `customProxyGroups.ts`）：① 新组 `🎯 Antigravity 专用` = **fallback**（`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`，Reality 优先确定性、HY2 冷备，url `https://gemini.google.com`、interval 300、timeout 5000、lazy）——VPS 落地为固定地域（KR）非受限区，不受机场节点 IP 漂移影响；② 三条规则**前置注入** rules 数组最前（必然先于通用 googleapis 规则命中）：`DOMAIN-KEYWORD,cloudcode-pa`（一条盖全 3 个实测 host）+ `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`，gemini CLI 未来同样受益，host 均为纯 AI-API 端点零附带伤害。 |
 | **守卫** | 无 profileId 或无 VPS leaf → 组不建、注入跳过（安全降级到原通用规则）；注入幂等；组名加进 `customProxyGroups.ts` 与 `profileGroupNormalize.ts` 两处 `SPARKLE_INJECTED_GROUP_NAMES` 防 `removeNonSubscriptionProxyGroups` 删除。 |
-| **验证** | `tsc` 0；改动文件 eslint 0；目标测试 **51/51**（新增 `antigravityRuleInjection.test.ts` 3 用例 + `customProxyGroups.test.ts` 2 用例；连带修正一处 HEAD 既有陈旧断言 `(?i)-VPS-HY2$` → `(?i)-VPS-(Reality|HY2)$`）；部署门禁 `pnpm run verify:agygeo`（读 active `work/config.yaml`，断言组存在 type/url/use/filter + 三规则存在且行号先于通用 googleapis 规则）。**LIVE 验证待装包**：装包后 core 日志应出现 `using 🎯 Antigravity 专用[KR-VPS-Reality]`。 |
+| **验证** | `tsc` 0；改动文件 eslint 0；目标测试 **51/51**（新增 `antigravityRuleInjection.test.ts` 3 用例 + `customProxyGroups.test.ts` 2 用例；连带修正一处 HEAD 既有陈旧断言 `(?i)-VPS-HY2$` → `(?i)-VPS-(Reality|HY2)$`）；部署门禁 `pnpm run verify:agygeo`。**LIVE 已验（2026-10-03 装包 @1.30.67）**：`verify:agygeo` PASS（组+3 规则行 594-596 前置于通用 googleapis 规则 1433）；core 日志实测 `cloudcode-pa.googleapis.com` 与 `daily-cloudcode-pa.sandbox.googleapis.com` 均 `match DomainKeyword(cloudcode-pa) using 🎯 Antigravity 专用[KR-VPS-Reality]`，HTTP 404 正常响应（Google 边缘接受 KR 出口，无地域 400）；`www.googleapis.com` 照旧走 `🔍 Google`（零附带伤害）；post-upgrade preflight `ALL PASS`。注：装包门禁若在非真实 `$HOME` 沙箱跑会因 `preflight-sparkle-1280.sh:10` 的 `$HOME` 拼路径出现 `mihomo_close_api`/`connection_hygiene_off` 假性 FAIL，用 `HOME=<真实 home>` 重跑即 ALL PASS。 |
 | **代码位置** | `src/main/core/antigravityRuleInjection.ts`（新）· `customProxyGroups.ts`（`buildAntigravityGroupConfig`）· `cursorProxyGroup.ts`（组名/测速 URL 常量）· `factory.ts`（注入调用）· `profileGroupNormalize.ts`（防删名单）· `scripts/verify-antigravity-geo-routing.mts`（新门禁） |
 
 ---
