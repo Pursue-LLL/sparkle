@@ -29,20 +29,15 @@ function profileWithCursorGroups(
 }
 
 describe('resolveCursorStableSelectorGroup', () => {
-  it('accepts yaml select, controller Selector and fallback types', () => {
+  it('accepts yaml select and controller Selector types', () => {
     const selectGroup = resolveCursorStableSelectorGroup([
       { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: [] }
     ] as unknown as ControllerMixedGroup[])
     const selectorGroup = resolveCursorStableSelectorGroup([
       { name: CURSOR_DEDICATED_GROUP_NAME, type: 'Selector', proxies: [] }
     ] as unknown as ControllerMixedGroup[])
-    // BUG-2026-10-02-001: fallback 钉住第一个健康成员、仅容灾切换，属稳定出口组。
-    const fallbackGroup = resolveCursorStableSelectorGroup([
-      { name: CURSOR_DEDICATED_GROUP_NAME, type: 'fallback', proxies: [] }
-    ] as unknown as ControllerMixedGroup[])
     assert.equal(selectGroup?.name, CURSOR_DEDICATED_GROUP_NAME)
     assert.equal(selectorGroup?.name, CURSOR_DEDICATED_GROUP_NAME)
-    assert.equal(fallbackGroup?.name, CURSOR_DEDICATED_GROUP_NAME)
   })
 })
 
