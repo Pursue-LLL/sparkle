@@ -238,6 +238,32 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(cursorGroup?.proxies?.includes('Sparkle-新加坡'), false)
   })
 
+  it('never appends 自动选择 to a fallback 🎯 Cursor 专用 group (BUG-2026-10-02-001)', () => {
+    // 机场出口探测 gemini.google.com 主页 200 会偷住 fallback 顺位，但 Google API
+    // 对同一出口 IP 仍可 400 地域拒绝——fallback Cursor 组成员只允许 DIRECT + VPS 池。
+    const profile = {
+      'proxy-groups': [
+        {
+          name: CURSOR_DEDICATED_GROUP_NAME,
+          type: 'fallback',
+          proxies: [CURSOR_DEDICATED_DIRECT_PROXY],
+          use: ['test-profile-vps'],
+          filter: '(?i)-VPS-(HY2|Reality)$',
+        },
+        { name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] },
+      ],
+    } as unknown as MihomoConfig
+
+    ensureSelectGroupsDefaultToAutoSwitch(profile, 'test-profile', {
+      leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01', 'KR-VPS-Reality'],
+    })
+
+    const groups = profile['proxy-groups'] as { name: string; type?: string; proxies?: string[]; use?: string[] }[]
+    const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
+    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY])
+    assert.equal(cursorGroup?.proxies?.includes('自动选择'), false)
+  })
+
   it('appends 自动选择 to non-Cursor select groups and keeps Cursor DIRECT + VPS-only', () => {
     const profile = {
       'proxy-groups': [
