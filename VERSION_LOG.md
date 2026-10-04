@@ -24,7 +24,7 @@
 4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁含 `emergency_core_restart_removed` + longflow 契约标记。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
 6. **保留的 fork 功能**：Cursor 专用组、地区自动组、定时更新、TUN、订阅刷新。
-7. **Antigravity 专用路由**（2026-10-04 实测收敛版 @1.30.70，不得回退）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `🎯 Cursor 专用` fallback 组**（不新增组）；该组 = `fallback`（DIRECT 首位保公司网/手动直连语义 → KR-VPS-Reality → KR-VPS-HY2 冷备，url `https://gemini.google.com`、interval 300、timeout 5000、lazy）——**Google 按出口 IP 判地域**：机场跳跃节点（hysteria2 ports 15001-16000、hop 15s）落地 IP 池漂移会间歇踩中 geo 拒绝段（2026-10-04 实测：台湾 02 强制出口 12/12 全 200 的好 IP 窗口 vs 历史 4 次 400 全落台湾 02 窗口 = 抽签不稳），VPS 池为固定物理出口（实测 200 零漂移）。**fallback 型 Cursor 组严禁挂「自动选择」成员**（机场出口探测 gemini 主页 200 会偷住 fallback 顺位但 Google API 对同 IP 仍 400）。`🎯 Cursor 专用` 组缺席时注入跳过（安全降级）。mihomo 硬约束（实测 `mihomo -t` 报 `proxy not found`）：规则 target 不能直指 provider 节点，必须经组——故不借组无解。
+7. **Antigravity 专用路由**（2026-10-04 用户裁决版 @1.30.71）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `自动选择` fallback 组**（不新增组；`🎯 Cursor 专用` 归还 Cursor 原 select 语义，不再承载 agy）——用户裁决"agy 走自动选择，Cursor 专用是给 Cursor 用的"（KR VPS 不续费，固定物理出口架构失去地基）。**Google 按出口 IP 段判地域**（2026-10-04 机场 6 节点矩阵实测全 200：TW/JP/KR/SG/US/MO 出口 IP 均为 CF AS13335 共享段且节点内固定，hop 只换入站端口；`available-regions` 官方表含 TW/KR 但实际判定是 IP 段级、随会话/时段波动，同节点同日 400 与 200 并存）。`自动选择` 组缺席时注入跳过（安全降级）。mihomo 硬约束（实测 `mihomo -t` 报 `proxy not found`）：规则 target 不能直指 provider 节点，必须经组。**遇 400 时手动在 Sparkle 把 `自动选择` 切到其他节点**（矩阵实测其余节点当前均可用）。
 
 **已知边界（物理层，非代码可修）**：运营商国际出口丢包/抖动仍会导致境外变慢与 Cursor 长流卡顿；但**不会再被 Sparkle 放大为集体断连**。
 
