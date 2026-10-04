@@ -24,7 +24,7 @@
 4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁含 `emergency_core_restart_removed` + longflow 契约标记。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
 6. **保留的 fork 功能**：Cursor 专用组、地区自动组、定时更新、TUN、订阅刷新。
-7. **Antigravity 专用路由**（2026-10-03 用户裁决版，不得回退）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `自动选择` fallback 组**（不新增专用组——用户明确要求复用现有组）；规则前置保证先于通用 googleapis 规则命中；`自动选择` 组缺席时注入跳过（安全降级）。技术边界（如实记录）：`自动选择` 成员为机场节点（出口 IP 池动态漂移），400 地域判定属应用层（gemini.google.com 探测感知不到 400），故 fallback 不会因 400 自动换节点——若 400 间歇复发，恢复路径=git 历史 `0186d00`（VPS 专用组方案，已验证 LIVE 无 400）。
+7. **Antigravity 专用路由**（2026-10-04 实测收敛版 @1.30.70，不得回退）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `🎯 Cursor 专用` fallback 组**（不新增组）；该组 = `fallback`（DIRECT 首位保公司网/手动直连语义 → KR-VPS-Reality → KR-VPS-HY2 冷备，url `https://gemini.google.com`、interval 300、timeout 5000、lazy）——**Google 按出口 IP 判地域**：机场跳跃节点（hysteria2 ports 15001-16000、hop 15s）落地 IP 池漂移会间歇踩中 geo 拒绝段（2026-10-04 实测：台湾 02 强制出口 12/12 全 200 的好 IP 窗口 vs 历史 4 次 400 全落台湾 02 窗口 = 抽签不稳），VPS 池为固定物理出口（实测 200 零漂移）。**fallback 型 Cursor 组严禁挂「自动选择」成员**（机场出口探测 gemini 主页 200 会偷住 fallback 顺位但 Google API 对同 IP 仍 400）。`🎯 Cursor 专用` 组缺席时注入跳过（安全降级）。mihomo 硬约束（实测 `mihomo -t` 报 `proxy not found`）：规则 target 不能直指 provider 节点，必须经组——故不借组无解。
 
 **已知边界（物理层，非代码可修）**：运营商国际出口丢包/抖动仍会导致境外变慢与 Cursor 长流卡顿；但**不会再被 Sparkle 放大为集体断连**。
 

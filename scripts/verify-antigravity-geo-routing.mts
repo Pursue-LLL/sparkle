@@ -3,8 +3,9 @@
  * Post-deploy gate: the Antigravity (agy CLI) geo-routing rules must be live in
  * the active mihomo work config — three injected rules ordered above the
  * subscription's generic `DOMAIN-SUFFIX,googleapis.com` rule, landing in the
- * existing 自动选择 fallback (upstream 400 FAILED_PRECONDITION
- * "User location is not supported").
+ * 🎯 Cursor 专用 fallback over the KR VPS pool (upstream 400
+ * FAILED_PRECONDITION "User location is not supported" — airport hop nodes
+ * drift their exit IP into geo-rejected segments).
  * Usage: tsx scripts/verify-antigravity-geo-routing.mts [--config path]
  */
 import { existsSync, readFileSync } from 'node:fs'
@@ -19,7 +20,7 @@ const configPath =
     : (process.env.SPARKLE_WORK_CONFIG ??
       join(homedir(), 'Library/Application Support/sparkle/work/config.yaml'))
 
-const GROUP_NAME = '自动选择'
+const GROUP_NAME = '🎯 Cursor 专用'
 const RULE_BASES = [
   'DOMAIN-KEYWORD,cloudcode-pa',
   'DOMAIN-SUFFIX,aicode.googleapis.com',
@@ -51,7 +52,8 @@ if (groupLineIdx < 0) {
   const groupText = groupBlock.join('\n')
   for (const [label, needle] of [
     ['group type fallback', 'type: fallback'],
-    ['group uses provider', 'use:']
+    ['group uses provider', 'use:'],
+    ['DIRECT failover member present', '- DIRECT']
   ] as const) {
     if (!groupText.includes(needle)) {
       failures.push(`${label} missing in ${GROUP_NAME} block`)
@@ -91,7 +93,7 @@ if (failures.length > 0) {
 }
 
 console.log('PASS: antigravity geo-routing sealed')
-console.log(`  target group: ${GROUP_NAME} (existing fallback)`)
+console.log(`  target group: ${GROUP_NAME} (VPS fallback — fixed physical exit)`)
 for (const [base, idx] of ruleIdxByBase) {
   console.log(`  rule line ${String(idx + 1).padStart(5)}: ${base},${GROUP_NAME}`)
 }

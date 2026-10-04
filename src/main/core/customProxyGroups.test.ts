@@ -43,9 +43,15 @@ describe('customProxyGroups', () => {
     ensureCustomProxyGroups(profile, ['SG-01', 'KR-VPS-HY2', 'TW-01', 'HK-01'], 'test-profile')
 
     assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [CURSOR_DEDICATED_DIRECT_PROXY])
-    const cursorGroup = ((profile['proxy-groups'] as { name: string; use?: string[]; filter?: string; proxies?: string[] }[]) ?? []).find(
+    const cursorGroup = ((profile['proxy-groups'] as { name: string; use?: string[]; filter?: string; proxies?: string[]; type?: string; url?: string }[]) ?? []).find(
       (group) => group.name === CURSOR_DEDICATED_GROUP_NAME
     )
+    // BUG-2026-10-02-001: Cursor 专用组 = fallback（钉住第一个健康成员，仅容灾切换）。
+    assert.equal(cursorGroup?.type, 'fallback')
+    assert.equal(cursorGroup?.url, 'https://gemini.google.com')
+    assert.equal(cursorGroup?.interval, 300)
+    assert.equal(cursorGroup?.timeout, 5000)
+    assert.equal(cursorGroup?.lazy, true)
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
     assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY])
     // 与 marathonHy2OnlyCore 的 MARATHON_CURSOR_VPS_PROVIDER_FILTER 对齐（Reality 优先，HY2 次选）。
