@@ -1,11 +1,4 @@
-/**
- * Shared helpers for the Cursor dedicated group contract.
- *
- * Contract: Cursor traffic needs a stable exit (session IP stickiness), so the
- * dedicated group must NOT be a url-test/load-balance auto-hopper. `fallback`
- * is the one sanctioned auto type: it pins the first healthy member (fixed
- * exit) and only switches on probe failure — disaster failover, not drift.
- */
+/** Shared helpers: Cursor traffic must use fixed Selector nodes, never UrlTest auto-hop. */
 
 const AUTO_SWITCHING_GROUP_TYPES = new Set<MihomoProxyType>([
   'URLTest',
@@ -130,31 +123,18 @@ export function isCursorSelectorGroupType(groupType: MihomoProxyType | string | 
   return groupType === 'Selector' || groupType.toLowerCase() === 'select'
 }
 
-/**
- * Group types allowed for the Cursor dedicated group: manual select plus
- * fallback (pins first healthy member; switches only on probe failure).
- * Auto-hop url-test/load-balance/relay stay forbidden — exit IP drift.
- */
-export function isCursorDedicatedGroupType(
-  groupType: MihomoProxyType | string | undefined
-): boolean {
-  if (isCursorSelectorGroupType(groupType)) return true
-  return groupType?.toLowerCase() === 'fallback'
-}
-
-/** Stable-exit Cursor group — manual select or fallback (failover-only switching). */
 export function resolveCursorStableSelectorGroup(
   groups: ControllerMixedGroup[]
 ): ControllerMixedGroup | undefined {
   const canonical = groups.find(
     (group) =>
-      group.name === CURSOR_DEDICATED_GROUP_NAME && isCursorDedicatedGroupType(group.type)
+      group.name === CURSOR_DEDICATED_GROUP_NAME && isCursorSelectorGroupType(group.type)
   )
   if (canonical) {
     return canonical
   }
   return groups.find(
-    (group) => isCursorDedicatedGroupName(group.name) && isCursorDedicatedGroupType(group.type)
+    (group) => isCursorDedicatedGroupName(group.name) && isCursorSelectorGroupType(group.type)
   )
 }
 

@@ -389,14 +389,10 @@ export function appendRegionalAutoGroupsToCursorDedicated(
   }
 
   const hasAutoSelect = groups.some((group) => group.name === AUTO_SELECT_GROUP_NAME)
-  // BUG-2026-10-02-001: fallback 型 Cursor 组绝不能挂「自动选择」——机场出口探测
-  // gemini.google.com 主页 200 会偷住 fallback 顺位，但 Google API 对同一出口 IP
-  // 仍可 400 地域拒绝（实测间歇链）。成员只允许 DIRECT（兜底/手动）+ VPS 池。
-  const isFallbackCursorGroup = (cursorGroup.type ?? '').toLowerCase() === 'fallback'
 
   if (cursorGroup.use?.length) {
     cursorGroup.proxies = prependCursorDedicatedDirectOption(cursorGroup.proxies ?? [])
-    if (hasAutoSelect && !isFallbackCursorGroup) {
+    if (hasAutoSelect) {
       cursorGroup.proxies = appendAutoSelectToCursorDedicated(cursorGroup.proxies)
     }
     return
@@ -407,7 +403,7 @@ export function appendRegionalAutoGroupsToCursorDedicated(
     existing.filter((ref) => /vps/i.test(ref)),
   )
   cursorGroup.proxies = prependCursorDedicatedDirectOption(vpsLeaves)
-  if (hasAutoSelect && !isFallbackCursorGroup) {
+  if (hasAutoSelect) {
     cursorGroup.proxies = appendAutoSelectToCursorDedicated(cursorGroup.proxies)
   }
 }

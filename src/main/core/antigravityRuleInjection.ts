@@ -1,4 +1,4 @@
-import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { AUTO_SELECT_GROUP_NAME } from './defaultAutoSwitchProxy'
 
 /**
  * Google Code Assist / Gemini API hosts whose edge enforces per-region geo
@@ -15,21 +15,18 @@ const ANTIGRAVITY_TRAFFIC_RULE_BASES = [
   'DOMAIN-SUFFIX,generativelanguage.googleapis.com'
 ] as const
 
-function hasCursorDedicatedGroup(profile: MihomoConfig): boolean {
+function hasAutoSelectGroup(profile: MihomoConfig): boolean {
   const groups = profile['proxy-groups'] as { name: string }[] | undefined
-  return groups?.some((group) => group.name === CURSOR_DEDICATED_GROUP_NAME) ?? false
+  return groups?.some((group) => group.name === AUTO_SELECT_GROUP_NAME) ?? false
 }
 
 /**
  * Prepend Antigravity/Code-Assist rules so they beat the subscription's generic
- * `DOMAIN-SUFFIX,googleapis.com` rule. Target is 🎯 Cursor 专用 (fallback over
- * the KR VPS pool — fixed physical exit). Google judges the exit IP geo per
- * request; airport hop nodes drift their exit IP pool (ports 15001-16000,
- * hop-interval 15s) into geo-rejected segments — measured as intermittent 400s
- * on 台湾 02 windows — so 自动选择 must never be the target here.
+ * `DOMAIN-SUFFIX,googleapis.com` rule; traffic lands in the existing 自动选择
+ * fallback instead of the subscription's first-listed Google group.
  */
 export function injectAntigravityTrafficRules(profile: MihomoConfig): void {
-  if (!hasCursorDedicatedGroup(profile)) {
+  if (!hasAutoSelectGroup(profile)) {
     return
   }
 
@@ -38,7 +35,7 @@ export function injectAntigravityTrafficRules(profile: MihomoConfig): void {
   const prefix: string[] = []
 
   for (const ruleBase of ANTIGRAVITY_TRAFFIC_RULE_BASES) {
-    const rule = `${ruleBase},${CURSOR_DEDICATED_GROUP_NAME}`
+    const rule = `${ruleBase},${AUTO_SELECT_GROUP_NAME}`
     if (!existingSet.has(rule)) {
       prefix.push(rule)
       existingSet.add(rule)

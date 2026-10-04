@@ -4,15 +4,9 @@ import {
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName,
-  isCursorDedicatedGroupType,
   prependCursorDedicatedDirectOption,
   HONG_KONG_DELAY_TEST_URL
 } from './cursorProxyGroup'
-import {
-  AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
-  AUTO_SELECT_GEMINI_PROBE_URL,
-  DEFAULT_URL_TEST_INTERVAL
-} from './defaultAutoSwitchProxy'
 import {
   filterMarathonCursorEligibleVpsLeaves,
   MARATHON_CURSOR_VPS_PROVIDER_FILTER,
@@ -235,20 +229,6 @@ function collectCursorEligibleGroupNames(groups: ProxyGroupConfig[]): string[] {
     .map((group) => group.name)
 }
 
-/**
- * Cursor 专用组 fallback 基座。Google AI API 按出口 IP 判地域：机场跳跃节点
- * 的落地 IP 池随 hop 漂移，会间歇踩中 geo 拒绝段（实测 400 FAILED_PRECONDITION，
- * BUG-2026-10-02-001）；VPS 池是固定物理出口（实测 200 零漂移）。fallback 钉住
- * 第一个健康成员（DIRECT→KR-VPS-Reality→KR-VPS-HY2），仅在探测失败时容灾切换。
- */
-const CURSOR_GROUP_FALLBACK_BASE = {
-  type: 'fallback',
-  url: AUTO_SELECT_GEMINI_PROBE_URL,
-  interval: DEFAULT_URL_TEST_INTERVAL,
-  timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
-  lazy: true
-} as const
-
 function buildCursorGroupConfig(
   leafNames: string[],
   _groupNames: string[],
@@ -265,7 +245,7 @@ function buildCursorGroupConfig(
     }
     return {
       name: CURSOR_DEDICATED_GROUP_NAME,
-      ...CURSOR_GROUP_FALLBACK_BASE,
+      type: 'select',
       proxies: [CURSOR_DEDICATED_DIRECT_PROXY],
       use: [resolveVpsProviderId(profileId)],
       filter: MARATHON_CURSOR_VPS_PROVIDER_FILTER,
@@ -277,7 +257,7 @@ function buildCursorGroupConfig(
   }
   return {
     name: CURSOR_DEDICATED_GROUP_NAME,
-    ...CURSOR_GROUP_FALLBACK_BASE,
+    type: 'select',
     proxies: prependCursorDedicatedDirectOption(vpsNodes),
   }
 }
@@ -363,7 +343,7 @@ export function ensureCustomProxyGroups(
 }
 
 export function isCursorDedicatedFailoverGroup(group: ControllerMixedGroup): boolean {
-  return isCursorDedicatedGroupName(group.name) && isCursorDedicatedGroupType(group.type)
+  return isCursorDedicatedGroupName(group.name) && group.type === 'Selector'
 }
 
 export function resolveCursorDedicatedGroup(
