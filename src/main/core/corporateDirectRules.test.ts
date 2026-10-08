@@ -39,19 +39,31 @@ describe('corporateDirectRules', () => {
     assert.equal(rules[6], 'MATCH,PROXY')
   })
 
-  it('adds office nameserver policy for corporate intranet domains', async () => {
+  it('adds office nameserver policy for every corporate intranet domain', async () => {
     const profile = {
       dns: { enable: true, 'nameserver-policy': { '+.cursor.sh': ['tls://223.5.5.5'] } }
     } as unknown as MihomoConfig
+    const servers = ['dhcp://en0', '10.200.150.212', '10.200.150.211']
 
-    await ensureCorporateDnsPolicy(profile, {
-      servers: ['10.200.150.212', '10.200.150.211']
-    })
+    await ensureCorporateDnsPolicy(profile, { servers })
 
     const policy = (profile.dns as MihomoDNSConfig)['nameserver-policy'] as Record<string, string[]>
-    assert.deepEqual(policy['+.neibu.koolearn.com'], ['10.200.150.212', '10.200.150.211'])
-    assert.deepEqual(policy['+.koolearn.com'], ['10.200.150.212', '10.200.150.211'])
-    assert.deepEqual(policy['+.staff.neworiental.org'], ['10.200.150.212', '10.200.150.211'])
+    for (const suffix of [
+      '+.koolearn.com',
+      '+.neibu.koolearn.com',
+      '+.staff.neworiental.org',
+      '+.staff.xdf.cn'
+    ]) {
+      assert.deepEqual(policy[suffix], servers)
+    }
     assert.deepEqual(policy['+.cursor.sh'], ['tls://223.5.5.5'])
+  })
+
+  it('leaves the profile untouched when DNS is disabled', async () => {
+    const profile = { dns: { enable: false } } as unknown as MihomoConfig
+
+    await ensureCorporateDnsPolicy(profile, { servers: ['dhcp://en0'] })
+
+    assert.equal((profile.dns as MihomoDNSConfig)['nameserver-policy'], undefined)
   })
 })

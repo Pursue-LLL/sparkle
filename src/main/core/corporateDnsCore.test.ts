@@ -1,54 +1,42 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  CORPORATE_NAMESERVER_FALLBACK,
-  isPrivateIpv4DnsServer,
-  parseDhcpDnsServersFromIpconfig,
-  parsePrivateDnsServers,
-  resolveCorporateNameservers
+  buildCorporateNameservers,
+  CORPORATE_STATIC_NAMESERVERS,
+  parseDefaultInterface
 } from './corporateDnsCore'
 
+const STATIC = [...CORPORATE_STATIC_NAMESERVERS]
+
 describe('corporateDnsCore', () => {
-  it('detects RFC1918 DNS servers', () => {
-    assert.equal(isPrivateIpv4DnsServer('10.200.150.212'), true)
-    assert.equal(isPrivateIpv4DnsServer('172.25.66.1'), true)
-    assert.equal(isPrivateIpv4DnsServer('192.168.1.1'), true)
-    assert.equal(isPrivateIpv4DnsServer('223.5.5.5'), false)
-  })
-
-  it('parses originDNS private resolvers', () => {
-    assert.deepEqual(parsePrivateDnsServers('10.200.150.212 10.200.150.211 223.5.5.5'), [
-      '10.200.150.212',
-      '10.200.150.211'
-    ])
-    assert.deepEqual(parsePrivateDnsServers('Empty'), [])
-  })
-
-  it('parses DHCP domain_name_server block', () => {
+  it('parses the default interface from `route -n get default`', () => {
     const sample = `
-domain_name_server (ip_mult): {10.200.150.212, 10.200.150.211}
-domain_name (string): staff.neworiental.org
+   route to: default
+destination: default
+       mask: default
+    gateway: 10.203.80.1
+  interface: en0
+      flags: <UP,GATEWAY,DONE,STATIC,PRCLONING,GLOBAL>
 `
-    assert.deepEqual(parseDhcpDnsServersFromIpconfig(sample), [
-      '10.200.150.212',
-      '10.200.150.211'
-    ])
+    assert.equal(parseDefaultInterface(sample), 'en0')
+    assert.equal(parseDefaultInterface('route: writing to routing socket: not in table'), undefined)
   })
 
-  it('prefers originDNS over DHCP and fallback', () => {
-    assert.deepEqual(
-      resolveCorporateNameservers({
-        originDns: '10.203.1.1',
-        dhcpDns: ['10.200.150.212']
-      }),
-      ['10.203.1.1']
-    )
-    assert.deepEqual(
-      resolveCorporateNameservers({
-        dhcpDns: ['10.200.150.212', '10.200.150.211']
-      }),
-      ['10.200.150.212', '10.200.150.211']
-    )
-    assert.deepEqual(resolveCorporateNameservers({}), [...CORPORATE_NAMESERVER_FALLBACK])
+  it('follows the live DHCP lease of a physical default interface', () => {
+    assert.deepEqual(buildCorporateNameservers('en0'), ['dhcp://en0', ...STATIC])
+    assert.deepEqual(buildCorporateNameservers('en7'), ['dhcp://en7', ...STATIC])
+  })
+
+  it('falls back to static office resolvers when no physical interface is known', () => {
+    assert.deepEqual(buildCorporateNameservers(undefined), STATIC)
+    assert.deepEqual(buildCorporateNameservers('utun4'), STATIC)
+    assert.deepEqual(buildCorporateNameservers('bridge0'), STATIC)
+  })
+
+  it('never derives resolvers from arbitrary private addresses', () => {
+    for (const device of ['en0', 'utun4', undefined]) {
+      const resolvers = buildCorporateNameservers(device).filter((s) => !s.startsWith('dhcp://'))
+      assert.deepEqual(resolvers, STATIC)
+    }
   })
 })

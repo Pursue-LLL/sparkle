@@ -1,3 +1,6 @@
+import { readDefaultInterface } from './corporateDefaultInterface'
+import { buildCorporateNameservers } from './corporateDnsCore'
+
 const CORPORATE_DIRECT_RULES = [
   'DOMAIN,gitlab.staff.xdf.cn,DIRECT',
   'DOMAIN-SUFFIX,staff.xdf.cn,DIRECT',
@@ -45,19 +48,7 @@ function applyCorporateNameserverPolicy(profile: MihomoConfig, servers: readonly
   dns['nameserver-policy'] = existing
 }
 
-async function resolveCorporateNameserverList(): Promise<string[]> {
-  const { getAppConfig } = await import('../config')
-  const { originDNS } = await getAppConfig()
-  const { readDhcpPrivateDnsServers } = await import('./corporateDhcpDns')
-  const { resolveCorporateNameservers } = await import('./corporateDnsCore')
-
-  return resolveCorporateNameservers({
-    originDns: originDNS,
-    dhcpDns: await readDhcpPrivateDnsServers()
-  })
-}
-
-/** Route corporate domains through office resolvers (originDNS → DHCP → fallback). */
+/** Route corporate domains through the live DHCP resolver of the default interface, plus static office resolvers. */
 export async function ensureCorporateDnsPolicy(
   profile: MihomoConfig,
   options?: { servers?: readonly string[] }
@@ -66,6 +57,6 @@ export async function ensureCorporateDnsPolicy(
     return
   }
 
-  const servers = options?.servers ?? (await resolveCorporateNameserverList())
+  const servers = options?.servers ?? buildCorporateNameservers(await readDefaultInterface())
   applyCorporateNameserverPolicy(profile, servers)
 }
