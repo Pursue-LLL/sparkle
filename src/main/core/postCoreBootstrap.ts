@@ -191,6 +191,18 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
         )
       }
 
+      try {
+        const { refreshSparkleFastLatencyOrder, startSparkleFastLatencyOrderLoop } = await import(
+          './sparkleFastLatencyOrder'
+        )
+        await refreshSparkleFastLatencyOrder(true)
+        startSparkleFastLatencyOrderLoop()
+      } catch (error) {
+        await appendAppLog(
+          `[SparkleFastOrder]: failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        )
+      }
+
       const { platform, release } = currentPlatformRelease()
       if (shouldSkipMacOs26GuiPostCoreObservabilityStack(platform, release)) {
         await appendAppLog(

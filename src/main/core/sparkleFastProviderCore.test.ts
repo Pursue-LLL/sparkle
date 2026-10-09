@@ -73,4 +73,25 @@ describe('sparkleFastProviderCore', () => {
     })
     assert.deepEqual(proxies, [])
   })
+
+  it('sorts each region segment by latency, keeping region order and placing unsampled nodes last', () => {
+    const delays = new Map([
+      ['🇯🇵 日本 03', 90],
+      ['🇯🇵 日本 02', 40],
+      ['🇹🇼 台湾 03', 30],
+    ])
+    const ordered = orderProxiesByRegionPriority([...NODES], ['日本', '台湾'], delays)
+    assert.deepEqual(
+      ordered.map((proxy) => proxy.name),
+      ['🇯🇵 日本 02', '🇯🇵 日本 03', '🇹🇼 台湾 03', '🇹🇼 台湾 02', 'KR-VPS-Reality'],
+    )
+  })
+
+  it('keeps source order inside a segment when no node has delay data', () => {
+    const ordered = orderProxiesByRegionPriority([...NODES], ['日本'], new Map())
+    assert.deepEqual(
+      ordered.slice(0, 2).map((proxy) => proxy.name),
+      ['🇯🇵 日本 02', '🇯🇵 日本 03'],
+    )
+  })
 })

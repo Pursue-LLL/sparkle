@@ -1,4 +1,4 @@
-export const DEFAULT_REGION_PRIORITY = ['日本', '台湾', '韩国', '新加坡', '美国'] as const
+export const DEFAULT_REGION_PRIORITY = ['台湾', '日本', '韩国', '新加坡', '美国'] as const
 
 /** `自动选择` 的额外国家白名单（五个优先地区之外）；香港不含任何关键词 → 天然排除。 */
 const EXTRA_COUNTRY_PATTERNS: readonly string[] = [

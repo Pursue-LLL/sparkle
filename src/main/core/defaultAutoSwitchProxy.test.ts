@@ -12,8 +12,8 @@ import {
 
 /** 默认地区优先级生成的 5 个地区组；香港由专用组单独管理，不进入 Cursor 专用。 */
 const REGIONAL_GROUPS_WITHOUT_HONG_KONG = [
-  'Sparkle-日本',
   'Sparkle-台湾',
+  'Sparkle-日本',
   'Sparkle-韩国',
   'Sparkle-新加坡',
   'Sparkle-美国',
@@ -95,7 +95,7 @@ describe('defaultAutoSwitchProxy', () => {
     assert.deepEqual(autoSelect?.use, ['sparkle-fast'])
   })
 
-  it('rewrites subscription 自动选择 into flat fallback proxy list (JP before TW)', () => {
+  it('rewrites subscription 自动选择 into flat fallback proxy list (TW before JP)', () => {
     const profile = {
       'proxy-groups': [
         { name: '自动选择', type: 'url-test', proxies: ['SG-01', 'JP-01', 'TW-01'] },
@@ -110,7 +110,7 @@ describe('defaultAutoSwitchProxy', () => {
     const groups = profile['proxy-groups'] as { name: string; type?: string; proxies?: string[]; use?: string[] }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
     assert.equal(autoSelect?.type, 'fallback')
-    assert.deepEqual(autoSelect?.proxies, ['JP-01', 'TW-01', 'KR-01', 'SG-01', 'US-01'])
+    assert.deepEqual(autoSelect?.proxies, ['TW-01', 'JP-01', 'KR-01', 'SG-01', 'US-01'])
     assert.deepEqual(
       groups.find((group) => group.name === 'Sparkle-新加坡')?.proxies,
       ['SG-01']

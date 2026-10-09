@@ -10,7 +10,7 @@ import {
 
 describe('regionPriority', () => {
   it('defaults to JP → TW → KR → SG → US (实测日本节点最稳)', () => {
-    assert.deepEqual(DEFAULT_REGION_PRIORITY, ['日本', '台湾', '韩国', '新加坡', '美国'])
+    assert.deepEqual(DEFAULT_REGION_PRIORITY, ['台湾', '日本', '韩国', '新加坡', '美国'])
   })
 
   it('matches commercial node naming patterns', () => {
