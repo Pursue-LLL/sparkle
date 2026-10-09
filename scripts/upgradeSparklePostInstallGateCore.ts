@@ -14,6 +14,9 @@ export const MACOS26_HEADLESS_COMPLETE_RE = /\[MacOs26Headless\]: bootstrap comp
 
 export const API2_PROBE_PLANE_ON_RE = /\[Api2ProbePlane\]:.*ON/
 
+export const MACOS26_GUI_OBSERVABILITY_SKIPPED_RE =
+  /\[PostCoreBootstrap\]: macOS 26 GUI — observability stack skipped/
+
 function linesSinceExclusive(logText: string, sinceLineExclusive: number): string[] {
   if (sinceLineExclusive < 0) {
     return []
@@ -57,12 +60,13 @@ export function countPostCoreBootstrapNotReachableSinceLine(
   ).length
 }
 
-export function hasApi2ProbePlaneOnSinceLine(
+/** Probe plane is running, or deliberately not started on the macOS 26 GUI path. */
+export function hasApi2ProbePlaneSettledSinceLine(
   logText: string,
   sinceLineExclusive: number,
 ): boolean {
-  return linesSinceExclusive(logText, sinceLineExclusive).some((line) =>
-    API2_PROBE_PLANE_ON_RE.test(line),
+  return linesSinceExclusive(logText, sinceLineExclusive).some(
+    (line) => API2_PROBE_PLANE_ON_RE.test(line) || MACOS26_GUI_OBSERVABILITY_SKIPPED_RE.test(line),
   )
 }
 

@@ -138,6 +138,11 @@ fi
 
 log "Build OK ($BUILT_VER). Installing..."
 
+# Build keeps the caller's HOME (toolchain lookup); install gates must read the real user home.
+# shellcheck source=lib/login-home.sh
+source "$ROOT/scripts/lib/login-home.sh"
+sparkle_pin_login_home
+
 SPARKLE_LOG_DIR="$HOME/Library/Application Support/sparkle/logs"
 APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
 BUG014_GATE_SINCE_LINE=0
@@ -161,7 +166,12 @@ VER="$(defaults read /Applications/Sparkle.app/Contents/Info.plist CFBundleShort
 [[ "$VER" == "$EXPECTED_VER" ]] || fail "installed version=$VER expected=$EXPECTED_VER"
 
 MACOS_PRODUCT_MAJOR="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
-if [[ "${MACOS_PRODUCT_MAJOR:-0}" -ge 26 ]]; then
+# Headless bootstrap is the macOS 26 default; macos26ForceGui keeps the GUI process (and PostCoreBootstrap) alive.
+MACOS26_FORCE_GUI=false
+if grep -Eq '^macos26ForceGui:[[:space:]]*true[[:space:]]*$' "$HOME/Library/Application Support/sparkle/config.yaml" 2>/dev/null; then
+  MACOS26_FORCE_GUI=true
+fi
+if [[ "${MACOS_PRODUCT_MAJOR:-0}" -ge 26 && "$MACOS26_FORCE_GUI" != true ]]; then
   log "Post-install: macOS 26 headless path (GUI may exit after bootstrap)"
   headless_ok=0
   for _ in $(seq 1 30); do
@@ -231,7 +241,7 @@ if [[ -n "$APP_LOG" ]]; then
             import { readFileSync } from 'node:fs';
             import {
               countPostCoreBootstrapFailuresSinceLine,
-              hasApi2ProbePlaneOnSinceLine,
+              hasApi2ProbePlaneSettledSinceLine,
               hasMihomoApiReadySinceLine,
             } from './scripts/upgradeSparklePostInstallGateCore.ts';
             const text = readFileSync(process.argv[1], 'utf8');
@@ -240,7 +250,7 @@ if [[ -n "$APP_LOG" ]]; then
               process.stdout.write('fail');
               process.exit(0);
             }
-            if (hasMihomoApiReadySinceLine(text, since) && hasApi2ProbePlaneOnSinceLine(text, since)) {
+            if (hasMihomoApiReadySinceLine(text, since) && hasApi2ProbePlaneSettledSinceLine(text, since)) {
               process.stdout.write('ok');
               process.exit(0);
             }
