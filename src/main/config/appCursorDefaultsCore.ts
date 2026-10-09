@@ -6,16 +6,8 @@ export function migrateLegacyCursorDefaults(config: AppConfig): {
   const result = { ...config }
   let migrated = false
 
-  if (result.autoProxySwitch === undefined) {
-    result.autoProxySwitch = true
-    migrated = true
-  }
   if (result.autoCloseConnection === true) {
     result.autoCloseConnection = false
-    migrated = true
-  }
-  if (result.proxyHealthCheckInterval === 120) {
-    result.proxyHealthCheckInterval = 60
     migrated = true
   }
   if (result.cursorBidiOptimize === undefined) {

@@ -1,5 +1,5 @@
 // [INPUT] marathonQuiesceCore · factory · mihomoApi · appendAppLog
-// [OUTPUT] syncMarathonQuiesceIfNeeded · isMarathonQuiesceProxyHealthPaused · getMarathonQuiesceSnapshot
+// [OUTPUT] syncMarathonQuiesceIfNeeded · getMarathonQuiesceSnapshot
 // [POS] P9 + P10-2：conn≥12 quiesce ON/OFF；runtime yaml 持久化 health-check.enable，禁止 mihomo reload。
 
 import { getProfileConfig } from '../config'
@@ -33,10 +33,6 @@ export function getMarathonQuiesceSnapshot(): {
     active: isMarathonQuiesceActive(quiesceState),
     cursorConnectionCount: lastObservedCursorConn,
   }
-}
-
-export function isMarathonQuiesceProxyHealthPaused(): boolean {
-  return isMarathonQuiesceActive(quiesceState)
 }
 
 async function applyMarathonQuiesceHealthCheckPatch(

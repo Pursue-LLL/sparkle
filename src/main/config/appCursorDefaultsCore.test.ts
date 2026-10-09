@@ -6,9 +6,7 @@ import { migrateLegacyCursorDefaults } from './appCursorDefaultsCore'
 function baseConfig(): AppConfig {
   return {
     sysProxy: { enable: false, mode: 'manual' },
-    autoProxySwitch: true,
     autoCloseConnection: false,
-    proxyHealthCheckInterval: 60,
     cursorBidiOptimize: true,
     cursorSysProxyLock: false,
     cursorProxyAppPathPrefixes: []
@@ -80,17 +78,15 @@ describe('migrateLegacyCursorDefaults', () => {
     assert.equal(migrated, false)
   })
 
-  it('migrates legacy autoCloseConnection and proxyHealthCheckInterval', () => {
+  it('migrates legacy autoCloseConnection', () => {
     const input = {
       ...baseConfig(),
-      autoCloseConnection: true,
-      proxyHealthCheckInterval: 120
+      autoCloseConnection: true
     } as AppConfig
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)
 
     assert.equal(config.autoCloseConnection, false)
-    assert.equal(config.proxyHealthCheckInterval, 60)
     assert.equal(migrated, true)
   })
 })
