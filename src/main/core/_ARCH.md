@@ -20,7 +20,6 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `mihomoProviderDelayCore.ts` / `mihomoGroupMembersCore.ts` | provider leaf delay 历史取最近成功样本 · 组成员解析 |
 | `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
 | `coreReadinessGate.ts` / `coreReadinessGateCore.ts` | 冷启动 Readiness Contract：sidecar → profile 检查 → startCore → API → 数据面探测 |
-| `coreReadyTimestamp.ts` | 叶子模块：`markCoreReadyAtMs` / `safeGetLastCoreReadyAtMs`；`manager.ts` 须 **namespace import** |
 | `coreLifecycle.ts` / `coreLifecycleCore.ts` | core 就绪后 fake-ip flush（cold / manual restart 后卫生） |
 | `networkStartupGraceCore.ts` | 内核就绪后重网络探测的启动宽限（45s） |
 

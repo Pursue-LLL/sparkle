@@ -5,21 +5,16 @@ import {
   validateSparkleMainAsarBundle,
 } from './upgradeSparkleAsarGateCore'
 
-const VALID_BUNDLE = 'appendAppLog .markCoreReadyAtMs( [CoreReadiness]: runCoreReadinessPipeline'
+const VALID_BUNDLE = 'appendAppLog [CoreReadiness]: runCoreReadinessPipeline'
 
 describe('upgradeSparkleAsarGateCore', () => {
-  it('accepts a bundle with linked markCoreReadyAtMs call and readiness gate', () => {
+  it('accepts a bundle with the readiness gate', () => {
     assert.deepEqual(validateSparkleMainAsarBundle(VALID_BUNDLE), { ok: true })
     assert.doesNotThrow(() => assertSparkleMainAsarBundle(VALID_BUNDLE))
   })
 
-  it('rejects bare markCoreReadyAtMs() without chunk prefix (BUG-2026-07-23-004 regression)', () => {
-    const result = validateSparkleMainAsarBundle('require_log.appendAppLog("x"); markCoreReadyAtMs();')
-    assert.deepEqual(result, { ok: false, reason: 'missing_mark_core_ready_call' })
-  })
-
   it('rejects stale bundle missing appendAppLog', () => {
-    const result = validateSparkleMainAsarBundle('.markCoreReadyAtMs( [CoreReadiness]:')
+    const result = validateSparkleMainAsarBundle('[CoreReadiness]:')
     assert.deepEqual(result, { ok: false, reason: 'stale_bundle' })
   })
 
@@ -29,8 +24,8 @@ describe('upgradeSparkleAsarGateCore', () => {
   })
 
   it('rejects bundle missing Core Readiness gate', () => {
-    const result = validateSparkleMainAsarBundle('appendAppLog .markCoreReadyAtMs(')
+    const result = validateSparkleMainAsarBundle('appendAppLog')
     assert.deepEqual(result, { ok: false, reason: 'missing_core_readiness_gate' })
-    assert.throws(() => assertSparkleMainAsarBundle('appendAppLog .markCoreReadyAtMs('), /Core Readiness/)
+    assert.throws(() => assertSparkleMainAsarBundle('appendAppLog'), /Core Readiness/)
   })
 })

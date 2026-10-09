@@ -62,7 +62,6 @@ import {
   stopNetworkDetection as stopNetworkDetectionController
 } from './network'
 import { checkProfileWithRetry } from './profileCheckRetry'
-import * as coreReadyTimestamp from './coreReadyTimestamp'
 import { createCoreHookWaiter, createCoreStartupHook } from './startupHook'
 import { runPostCoreReadyLifecycle, setPendingCoreReadyReason } from './coreLifecycle'
 import {
@@ -272,12 +271,6 @@ async function startMihomoApiStreamsWithGrace(timeoutMs = 10_000): Promise<void>
   }
 }
 
-export {
-  getLastCoreReadyAtMs,
-  markCoreReadyAtMs,
-  safeGetLastCoreReadyAtMs
-} from './coreReadyTimestamp'
-
 async function completeCoreInitialization(logLevel?: LogLevel): Promise<void> {
   const tasks: Promise<unknown>[] = [
     delay(100).then(async () => {
@@ -293,7 +286,6 @@ async function completeCoreInitialization(logLevel?: LogLevel): Promise<void> {
 
   await Promise.all(tasks)
   setMihomoLogSource('ws')
-  coreReadyTimestamp.markCoreReadyAtMs()
   void runPostCoreReadyLifecycle()
   void delay(5_000).then(() => verifyTunAfterCoreReady())
 }
