@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
   countPostCoreBootstrapNotReachableSinceLine,
-  hasApi2ProbePlaneOnSinceLine,
+  hasApi2ProbePlaneSettledSinceLine,
   hasMihomoApiReadySinceLine,
 } from './upgradeSparklePostInstallGateCore'
 
@@ -29,17 +29,17 @@ function latestAppLogPath(): string | null {
 
 function readPostInstallState(sinceLine: number): {
   mihomoApiReady: boolean
-  api2ProbePlaneOn: boolean
+  api2ProbePlaneSettled: boolean
   notReachableCount: number
 } {
   const appLog = latestAppLogPath()
   if (!appLog) {
-    return { mihomoApiReady: false, api2ProbePlaneOn: false, notReachableCount: 0 }
+    return { mihomoApiReady: false, api2ProbePlaneSettled: false, notReachableCount: 0 }
   }
   const text = readFileSync(appLog, 'utf8')
   return {
     mihomoApiReady: hasMihomoApiReadySinceLine(text, sinceLine),
-    api2ProbePlaneOn: hasApi2ProbePlaneOnSinceLine(text, sinceLine),
+    api2ProbePlaneSettled: hasApi2ProbePlaneSettledSinceLine(text, sinceLine),
     notReachableCount: countPostCoreBootstrapNotReachableSinceLine(text, sinceLine),
   }
 }
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
   const deadlineMs = Date.now() + waitSec * 1000
   while (Date.now() < deadlineMs) {
     const state = readPostInstallState(sinceLine)
-    if (state.mihomoApiReady && state.api2ProbePlaneOn) {
+    if (state.mihomoApiReady && state.api2ProbePlaneSettled) {
       console.error('[upgrade-post-install-recovery] ok=1 mihomo_api_ready=1 api2_probe=1')
       return
     }
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
 
   const finalState = readPostInstallState(sinceLine)
   console.error(
-    `[upgrade-post-install-recovery] ok=0 mihomo_api_ready=${finalState.mihomoApiReady ? 1 : 0} api2_probe=${finalState.api2ProbePlaneOn ? 1 : 0}`,
+    `[upgrade-post-install-recovery] ok=0 mihomo_api_ready=${finalState.mihomoApiReady ? 1 : 0} api2_probe=${finalState.api2ProbePlaneSettled ? 1 : 0}`,
   )
   process.exit(1)
 }

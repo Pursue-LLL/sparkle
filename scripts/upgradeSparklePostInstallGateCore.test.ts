@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import {
   countBug014RescueFailuresSinceLine,
   countPostCoreBootstrapFailuresSinceLine,
-  hasApi2ProbePlaneOnSinceLine,
+  hasApi2ProbePlaneSettledSinceLine,
   hasMacOs26HeadlessBootstrapCompleteSinceLine,
   isMacOsProductVersion26OrNewer,
 } from './upgradeSparklePostInstallGateCore'
@@ -29,7 +29,18 @@ describe('upgradeSparklePostInstallGateCore', () => {
       '[Api2ProbePlane]: ON — active transport probe',
     ].join('\n')
     assert.equal(countPostCoreBootstrapFailuresSinceLine(log, 1), 0)
-    assert.equal(hasApi2ProbePlaneOnSinceLine(log, 1), true)
+    assert.equal(hasApi2ProbePlaneSettledSinceLine(log, 1), true)
+  })
+
+  it('treats macOS 26 GUI observability skip as probe plane settled', () => {
+    const log = [
+      '[Api2ProbePlane]: ON — before install',
+      'install marker',
+      '[PostCoreBootstrap]: mihomo API ready',
+      '[PostCoreBootstrap]: macOS 26 GUI — observability stack skipped (Electron V8 SIGTRAP mitigation)',
+    ].join('\n')
+    assert.equal(hasApi2ProbePlaneSettledSinceLine(log, 1), true)
+    assert.equal(hasApi2ProbePlaneSettledSinceLine(log.split('\n').slice(0, 3).join('\n'), 1), false)
   })
 
   it('detects post-install PostCoreBootstrap failed since offset', () => {

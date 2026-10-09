@@ -9,6 +9,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/login-home.sh
+source "$ROOT/scripts/lib/login-home.sh"
+sparkle_pin_login_home
 SRC="${SPARKLE_INSTALL_SRC:-$ROOT/dist/mac-arm64/Sparkle.app}"
 DEST="/Applications/Sparkle.app"
 USER_COPY="${HOME}/Applications/Sparkle.app"
