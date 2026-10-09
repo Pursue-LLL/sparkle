@@ -71,7 +71,8 @@ async function alignAutoSelectToFirst(orderedFirst: string | undefined): Promise
 }
 
 /**
- * @param force 启动阶段为 true：无条件采用延迟序并对齐首选；周期复查为 false：需通过迟滞判定。
+ * @param force 启动阶段为 true：无条件采用延迟序；周期复查为 false：需通过迟滞判定。
+ * 采用新序后总是把 `自动选择` 对齐到新首选（fallback 在当前选中节点存活时不会自行换到更快的节点）。
  * @returns 是否重排并通知了 mihomo。
  */
 export async function refreshSparkleFastLatencyOrder(force: boolean): Promise<boolean> {
@@ -107,9 +108,7 @@ export async function refreshSparkleFastLatencyOrder(force: boolean): Promise<bo
 
   await writeFile(filePath, stringifyYaml({ proxies: ordered }), 'utf8')
   await mihomoUpdateProxyProviders(FAST_NODE_PROVIDER_ID)
-  if (force) {
-    await alignAutoSelectToFirst(nextFirst)
-  }
+  await alignAutoSelectToFirst(nextFirst)
   await appendAppLog(
     `[SparkleFastOrder]: reordered by latency nodes=${ordered.length} sampled=${delays.size} first=${nextFirst}\n`
   )
