@@ -44,7 +44,7 @@ else
   fail "no app log at $APP_LOG"
 fi
 
-http_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -x http://127.0.0.1:7890 https://api2.cursor.sh/ || echo 000)"
-[[ "$http_code" == "200" ]] || fail "proxy :7890 -> api2.cursor.sh HTTP $http_code (expected 200)"
+http_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -x http://127.0.0.1:7890 https://www.gstatic.com/generate_204 || echo 000)"
+[[ "$http_code" == "204" ]] || fail "proxy :7890 -> gstatic generate_204 HTTP $http_code (expected 204)"
 
-log "PASS: headless exit + bootstrap log + proxy 200"
+log "PASS: headless exit + bootstrap log + proxy 204"

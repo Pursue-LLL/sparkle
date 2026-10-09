@@ -71,13 +71,5 @@ async function flushFakeIpCacheWithRetry(reason: CoreReadyReason): Promise<boole
 export async function runPostCoreReadyLifecycle(): Promise<{ fakeIpFlushOk: boolean }> {
   const reason = consumePendingCoreReadyReason()
   const fakeIpFlushOk = await flushFakeIpCacheWithRetry(reason)
-  try {
-    // BUG-2026-09-15-014: the failover monitor was only reachable through renderer IPC
-    // (`src/main/utils/ipc.ts`), so on macOS 26 (GUI exits to background) the
-    // Cursor-dedicated group never failed over. Drive it from the main process too.
-
-  } catch {
-    // best-effort: 自动选择 keeps its previous provider file on any failure
-  }
   return { fakeIpFlushOk }
 }
