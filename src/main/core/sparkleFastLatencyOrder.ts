@@ -14,9 +14,9 @@ import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { readApi2ProbeLedgerSince } from './api2ProbeLedgerCore'
 import { AUTO_SELECT_GROUP_NAME, AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
 import {
+  getAxios,
   mihomoChangeProxy,
   mihomoGroups,
-  mihomoProviderHealthcheckDeduped,
   mihomoProxyProviders,
   mihomoUpdateProxyProviders
 } from './mihomoApi'
@@ -121,7 +121,14 @@ export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
     return
   }
   try {
-    await mihomoProviderHealthcheckDeduped(FAST_NODE_PROVIDER_ID)
+    // sparkle-fast 节点多，默认 15s axios 超时会在探测完成前断开。
+    const instance = await getAxios()
+    await instance.get(`/providers/proxies/${encodeURIComponent(FAST_NODE_PROVIDER_ID)}/healthcheck`, {
+      timeout: 120_000
+    })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2_000)
+    })
   } catch (error) {
     await appendAppLog(
       `[SparkleFastOrder]: healthcheck failed: ${error instanceof Error ? error.message : String(error)}\n`,
