@@ -73,6 +73,10 @@ export async function mihomoUnfixedProxy(group: string): Promise<ControllerProxi
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('mihomoUnfixedProxy', group))
 }
 
+export async function getProbeWarmupActive(): Promise<boolean> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getProbeWarmupActive'))
+}
+
 export async function mihomoUpgradeGeo(): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('mihomoUpgradeGeo'))
 }

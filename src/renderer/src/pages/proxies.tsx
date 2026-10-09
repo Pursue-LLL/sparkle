@@ -1,4 +1,4 @@
-import { Button, Card, CardBody, Chip } from '@heroui/react'
+import { Button, Card, CardBody, Chip, Spinner, Tooltip } from '@heroui/react'
 import { buildStamp } from '@renderer/utils/init'
 import { Avatar } from '@heroui-v3/react'
 import BasePage from '@renderer/components/base/base-page'
@@ -18,6 +18,7 @@ import ProxySettingDrawer from '@renderer/components/proxies/proxy-setting-drawe
 import { IoIosArrowBack } from 'react-icons/io'
 import { MdDoubleArrow, MdOutlineSpeed, MdTune } from 'react-icons/md'
 import { useGroups } from '@renderer/hooks/use-groups'
+import { useProbeWarmup } from '@renderer/hooks/use-probe-warmup'
 import CollapseInput from '@renderer/components/base/collapse-input'
 import { includesIgnoreCase } from '@renderer/utils/includes'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
@@ -197,6 +198,7 @@ const Proxies: React.FC = () => {
   const { controledMihomoConfig } = useControledMihomoConfig()
   const { mode = 'rule' } = controledMihomoConfig || {}
   const { groups = [], mutate } = useGroups()
+  const probeWarmingUp = useProbeWarmup()
   const { appConfig } = useAppConfig()
   const {
     proxyDisplayLayout = 'double',
@@ -745,18 +747,33 @@ const Proxies: React.FC = () => {
         </span>
       }
       header={
-        <Button
-          size="sm"
-          isIconOnly
-          variant="light"
-          className="app-nodrag"
-          onPress={() => {
-            setIsSettingDrawerOpen(true)
-            setSettingDrawerReopenSignal((signal) => signal + 1)
-          }}
-        >
-          <MdTune className="text-lg" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {probeWarmingUp ? (
+            <Tooltip content="内核刚启动，节点延迟正在批量测速（约 1~2 分钟）。期间不显示超时，可正常切换节点。">
+              <Chip
+                size="sm"
+                variant="flat"
+                color="warning"
+                className="app-nodrag"
+                startContent={<Spinner size="sm" color="warning" className="scale-75" />}
+              >
+                测速预热中
+              </Chip>
+            </Tooltip>
+          ) : null}
+          <Button
+            size="sm"
+            isIconOnly
+            variant="light"
+            className="app-nodrag"
+            onPress={() => {
+              setIsSettingDrawerOpen(true)
+              setSettingDrawerReopenSignal((signal) => signal + 1)
+            }}
+          >
+            <MdTune className="text-lg" />
+          </Button>
+        </div>
       }
     >
       {isSettingDrawerOpen && (
