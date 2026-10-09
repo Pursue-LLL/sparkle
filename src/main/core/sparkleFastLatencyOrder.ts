@@ -2,6 +2,7 @@
 // [OUTPUT] bootstrapSparkleFastLatencyOrder · refreshSparkleFastLatencyOrder · startSparkleFastLatencyOrderLoop
 // [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变），并让 mihomo 重读 provider。
 // 生成配置时先用 ledger 延迟写 sparkle-fast，避免冷启动在「未测延迟」时盲选订阅顺序第一个。
+// 不固定（pin）`自动选择`：fallback 本就取文件序里第一个存活节点，固定反而会盖过文件序并写入 store-selected。
 // 启动时先 healthcheck 再重排；周期复查仅当新首选明显更快才换文件序。
 // fallback 仍只在当前节点挂掉时切换，不因延迟抖动来回切。
 
@@ -15,9 +16,8 @@ import { readApi2ProbeLedgerSince } from './api2ProbeLedgerCore'
 import { AUTO_SELECT_GROUP_NAME, AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
 import {
   getAxios,
-  mihomoChangeProxy,
-  mihomoGroups,
   mihomoProxyProviders,
+  mihomoUnfixedProxy,
   mihomoUpdateProxyProviders
 } from './mihomoApi'
 import {
@@ -58,21 +58,14 @@ async function resolveSparkleFastDelayMap(
   return loadSparkleFastLedgerDelayMap()
 }
 
-async function alignAutoSelectToFirst(orderedFirst: string | undefined): Promise<void> {
-  if (!orderedFirst) {
-    return
-  }
-  const groups = await mihomoGroups()
-  const autoSelect = groups?.find((group) => group.name === AUTO_SELECT_GROUP_NAME)
-  if (autoSelect?.now === orderedFirst) {
-    return
-  }
-  await mihomoChangeProxy(AUTO_SELECT_GROUP_NAME, orderedFirst)
+/** 清除 `自动选择` 的固定节点，让 fallback 回到「文件序第一个存活节点」。 */
+async function releaseAutoSelectPin(): Promise<void> {
+  await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
 }
 
 /**
  * @param force 启动阶段为 true：无条件采用延迟序；周期复查为 false：需通过迟滞判定。
- * 采用新序后总是把 `自动选择` 对齐到新首选（fallback 在当前选中节点存活时不会自行换到更快的节点）。
+ * 采用新序后解除 `自动选择` 的固定，由 fallback 直接取新序第一个存活节点。
  * @returns 是否重排并通知了 mihomo。
  */
 export async function refreshSparkleFastLatencyOrder(force: boolean): Promise<boolean> {
@@ -95,7 +88,7 @@ export async function refreshSparkleFastLatencyOrder(force: boolean): Promise<bo
   const nextFirst = String(ordered[0]?.name ?? '')
   if (hasSameNodeOrder(current, ordered)) {
     if (force) {
-      await alignAutoSelectToFirst(nextFirst)
+      await releaseAutoSelectPin()
     }
     return false
   }
@@ -108,7 +101,7 @@ export async function refreshSparkleFastLatencyOrder(force: boolean): Promise<bo
 
   await writeFile(filePath, stringifyYaml({ proxies: ordered }), 'utf8')
   await mihomoUpdateProxyProviders(FAST_NODE_PROVIDER_ID)
-  await alignAutoSelectToFirst(nextFirst)
+  await releaseAutoSelectPin()
   await appendAppLog(
     `[SparkleFastOrder]: reordered by latency nodes=${ordered.length} sampled=${delays.size} first=${nextFirst}\n`
   )
