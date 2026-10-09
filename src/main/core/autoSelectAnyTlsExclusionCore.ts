@@ -1,5 +1,5 @@
 // [INPUT] Mihomo proxy catalog (name+type) · url-test auto-select groups
-// [OUTPUT] excludeAnyTlsFromAutoSelectUrlTestGroups · buildNonAnyTlsRegionalMembers
+// [OUTPUT] excludeAnyTlsFromAutoSelectUrlTestGroups · proxyCatalogHasTypes
 // [POS] Auto-select url-test must skip AnyTLS (SSE/long-stream); manual select keeps all leaves.
 
 import {
@@ -7,7 +7,6 @@ import {
   isHongKongFilterGroupName,
   isSparkleAutoSelectSubGroup,
 } from './cursorProxyGroup'
-import { nodeMatchesRegion } from './regionPriority'
 
 export interface ProxyCatalogEntry {
   name: string
@@ -87,25 +86,6 @@ export function isAutoSelectUrlTestGroupName(groupName: string, groupType?: stri
   return (LEGACY_SUBSCRIPTION_AUTO_SELECT_NAMES as readonly string[]).includes(groupName)
 }
 
-export function buildNonAnyTlsRegionalMembers(
-  region: string,
-  catalog: ProxyCatalogEntry[],
-): string[] {
-  const seen = new Set<string>()
-  const members: string[] = []
-  for (const entry of catalog) {
-    const name = entry.name.trim()
-    if (!name || isAnyTlsProxyEntry(entry) || !nodeMatchesRegion(name, region)) {
-      continue
-    }
-    if (!seen.has(name)) {
-      seen.add(name)
-      members.push(name)
-    }
-  }
-  return members
-}
-
 function filterProxyNamesExcludingAnyTls(
   proxyNames: string[],
   anyTlsNames: Set<string>,
@@ -126,8 +106,9 @@ function filterProxyNamesExcludingAnyTls(
 /**
  * Remove AnyTLS leaves from url-test auto-select groups that list members inline.
  * Groups sourcing members through `use` keep whatever their provider yields —
- * `自动选择` gets AnyTLS-free members at sparkleFastProviderCore instead, and every
- * other group intentionally keeps AnyTLS for manual switching.
+ * the Sparkle-* region groups exclude AnyTLS through `exclude-type` instead
+ * (regionalAutoSelectGroupsCore), and every other group intentionally keeps AnyTLS
+ * for manual switching.
  * Select groups (🤖 AI / 🚀 节点选择) keep full membership for manual switching.
  */
 export function excludeAnyTlsFromAutoSelectUrlTestGroups(

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  buildNonAnyTlsRegionalMembers,
   excludeAnyTlsFromAutoSelectUrlTestGroups,
   isAnyTlsProxyType,
   isAutoSelectUrlTestGroupName,
@@ -26,11 +25,6 @@ describe('autoSelectAnyTlsExclusionCore', () => {
     assert.equal(isAutoSelectUrlTestGroupName('自动选择', 'url-test'), true)
     assert.equal(isAutoSelectUrlTestGroupName('🤖 AI', 'select'), false)
     assert.equal(isAutoSelectUrlTestGroupName('Sparkle-新加坡', 'select'), false)
-  })
-
-  it('builds regional members without anytls', () => {
-    assert.deepEqual(buildNonAnyTlsRegionalMembers('新加坡', [...CATALOG]), ['🇸🇬 新加坡 02'])
-    assert.deepEqual(buildNonAnyTlsRegionalMembers('日本', [...CATALOG]), ['🇯🇵 日本 02'])
   })
 
   it('strips anytls from url-test proxy lists but not select groups', () => {

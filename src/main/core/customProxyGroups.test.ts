@@ -55,12 +55,18 @@ describe('customProxyGroups', () => {
     assert.equal(groupNames(profile)[0], CURSOR_DEDICATED_GROUP_NAME)
   })
 
-  it('skips Cursor group when there are no VPS nodes and no subscription groups', () => {
+  it('keeps Cursor group without VPS provider when there are no VPS nodes', () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
     ensureCustomProxyGroups(profile, ['SG-01', 'JP-02'], 'test-profile')
 
-    assert.ok(!groupNames(profile).includes(CURSOR_DEDICATED_GROUP_NAME))
+    const cursorGroup = ((profile['proxy-groups'] as { name: string; use?: string[]; filter?: string }[]) ?? []).find(
+      (group) => group.name === CURSOR_DEDICATED_GROUP_NAME
+    )
+    assert.ok(cursorGroup)
+    assert.equal(cursorGroup.use, undefined)
+    assert.equal(cursorGroup.filter, undefined)
+    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [CURSOR_DEDICATED_DIRECT_PROXY])
     assert.ok(groupNames(profile).includes(HONG_KONG_FILTER_GROUP_NAME))
   })
 

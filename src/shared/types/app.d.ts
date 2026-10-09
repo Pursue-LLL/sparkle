@@ -192,6 +192,17 @@ interface ProfileConfig {
   items: ProfileItem[]
 }
 
+/**
+ * 合并订阅：节点来自 sources 中匹配 regions 的节点，策略组与规则取自 base。
+ * dedicatedRegions 的节点同样保留，但被挡在 base 的普通策略组之外，只供 Sparkle 专用组（如 Sparkle-香港）按名称过滤使用。
+ */
+interface MergeProfileSpec {
+  base: string
+  sources: string[]
+  regions: string[]
+  dedicatedRegions: string[]
+}
+
 interface ProfileItem {
   id: string
   type: 'remote' | 'local'
@@ -200,6 +211,7 @@ interface ProfileItem {
   fingerprint?: string // remote
   ua?: string // remote
   file?: string // local
+  merge?: MergeProfileSpec // local：由其他订阅派生，来源订阅更新时自动重建
   verify?: boolean // remote
   interval?: number
   updateTime?: string
