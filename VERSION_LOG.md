@@ -19,11 +19,18 @@
 - **铁律**：`proxies` 里只能引用组名，不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）；`sparkle-fast` 文件必须随每次配置生成重写。
 1. **不会因卡顿整核重启**：`restartCoreEmergency`/bridge/oscillation/smoke 已从代码删除；emergency 只决策+记录 `emergency_core_restart_removed`。
 2. **选点防抖**：地区组 url-test `interval:300` + `tolerance:2000` + `lazy:true`；`自动选择` fallback 同为 `interval:300`、`timeout:5000`、`lazy:true`（`defaultAutoSwitchProxy.ts`）。**应用层不自动切换 `自动选择`**：`proxyHealthMonitor.ts` 已于 2026-09-29（`febdc08`）删除，其配置项（`autoProxySwitch` / `proxyHealthCheckInterval` / `proxyTimeoutThreshold` / `proxySwitchMaxTargetDelayMs` / `autoSelectMaxNodeDelayMs`）与 `isMarathonQuiesceProxyHealthPaused`、`proxy_health_monitor` 拨号类别已一并清理；`自动选择` 的切换只来自 mihomo fallback 与上方 `自动选择` 条目里的 30 分钟延迟序复查。`proxySwitchPriority`（默认 台湾→日本→韩国→新加坡→美国）仍决定 `sparkle-fast` 与地区组的地区顺序。
-3. **恢复证据契约**：`LongflowEvidence=measured|unknown`（禁止 `?? 0`）；探针在 controller 不可达时不伪造 `leaf:fail`；集体死亡报告按日历日选日志 + 30min 窗口。
-4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁含 `emergency_core_restart_removed` + longflow 契约标记。
+3. **无应用层长流干预**：Marathon / quiesce / keepalive / 探针平面 / 恢复编排 / 质量基准全部移除（见下方 2026-10-09 条目）；Sparkle 不再按 Cursor 流量做运行时干预。
+4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁只校验 `markCoreReadyAtMs` 链接、`[CoreReadiness]` 门控与无 PCRE 内联 flag 的非法正则；装后门禁只要求日志出现 `[PostCoreBootstrap]: mihomo API ready`。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
 6. **保留的 fork 功能**：Cursor 专用组、地区自动组、定时更新、TUN、订阅刷新。
 7. **Antigravity 专用路由**（2026-10-04 用户裁决版 @1.30.71）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `自动选择` fallback 组**（不新增组；`🎯 Cursor 专用` 归还 Cursor 原 select 语义，不再承载 agy）——用户裁决"agy 走自动选择，Cursor 专用是给 Cursor 用的"（KR VPS 不续费，固定物理出口架构失去地基）。**Google 按出口 IP 段判地域**（2026-10-04 机场 6 节点矩阵实测全 200：TW/JP/KR/SG/US/MO 出口 IP 均为 CF AS13335 共享段且节点内固定，hop 只换入站端口；`available-regions` 官方表含 TW/KR 但实际判定是 IP 段级、随会话/时段波动，同节点同日 400 与 200 并存）。`自动选择` 组缺席时注入跳过（安全降级）。mihomo 硬约束（实测 `mihomo -t` 报 `proxy not found`）：规则 target 不能直指 provider 节点，必须经组。**遇 400 时手动在 Sparkle 把 `自动选择` 切到其他节点**（矩阵实测其余节点当前均可用）。
+
+**2026-10-09 移除 Cursor 长流子系统（待装包验证）**
+- **保留**：`🎯 Cursor 专用` 组（成员、仅手动选择、默认节点）+ Cursor 路由 / DNS 规则（`cursorBidiOptimize`、`cursorProxyAppPathPrefixes`）。
+- **移除**：Marathon 保护（quiesce / 数据面变更守卫 / core 重启守卫 / 协议契约）、api2 探针平面与 ledger、QUIC/HY2 恢复编排、节点质量基准与 24h 报告、断网定责探测、Cursor 网络异常通知、`cursorNetworkOptimize`（TUN/keepalive 强写、`cursorSysProxyLock` 系统代理锁）、`autoCloseConnection` 强制关闭迁移、相关 UI 与配置项（`networkAlert*` / `commercialNodeBenchmark*` / `cursorConnectionHygieneEnabled` / `cursorSysProxyLock`）。
+- **脚本**：删除 marathon / G9 / p10 / triage / byte-death 脚本与门禁；`upgrade-sparkle-local.sh` / `install-sparkle-local.sh` / `agent-sparkle-upgrade.sh` 去掉 Marathon PRE-gate 与 Safe Window；就绪探测目标改为 `https://www.gstatic.com/generate_204`。
+- **延迟序**：`sparkle-fast` 的延迟来源由 ledger 改为自有快照 `sparkle-fast-delays.json`（实测优先，实测为空时回落快照）。
+- **回滚点**：tag `backup-before-cursor-removal`。
 
 **已知边界（物理层，非代码可修）**：运营商国际出口丢包/抖动仍会导致境外变慢与 Cursor 长流卡顿；但**不会再被 Sparkle 放大为集体断连**。
 

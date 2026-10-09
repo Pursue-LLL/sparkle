@@ -12,9 +12,6 @@ export const TIER0_FAKE_IP_FILTER = [
   'cursor.sh'
 ] as const
 
-/** Legacy alias — use TIER0_FAKE_IP_FILTER. */
-export const CURSOR_FAKE_IP_FILTER = TIER0_FAKE_IP_FILTER
-
 /** Tier 0 Direct — GeoSite/cn and Direct-intent hosts must receive real IPs (not 198.18.x). */
 export const TIER0_DIRECT_CN_SUFFIXES = [
   '+.cn',
@@ -280,9 +277,4 @@ export function ensureFakeIpRoutingIntegrity(profile: MihomoConfig): {
     removedFakeIpCidrRules,
     fakeIpFilterCount: dns['fake-ip-filter']?.length ?? 0
   }
-}
-
-/** Controlled mihomo.yaml patch — Tier 0 only (no subscription rules at this layer). */
-export function buildControlledFakeIpFilter(existing: string[] | undefined): string[] {
-  return buildTieredFakeIpFilter({ existing, includeTier1: false })
 }

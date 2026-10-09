@@ -1,4 +1,4 @@
-/** Current Marathon daily-driver bundle on this machine (Cursor 3.x). */
+/** Cursor 3.x daily-driver bundle. */
 export const CURSOR_3_APP_PATH_PREFIX = '/Applications/Cursor-3.app' as const
 
 /** Stock Cursor daily driver. */
@@ -19,23 +19,5 @@ export const CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES: readonly string[] = [
 /** Path-scoped rules → 🚀 节点选择 / 自动选择 (stock Cursor daily driver). */
 export const CURSOR_NODE_SELECT_APP_PATH_PREFIXES = [CURSOR_MAIN_APP_PATH_PREFIX] as const
 
-/** Path-scoped rules → DIRECT. Empty when Marathon Cursor also uses Cursor 专用. */
+/** Path-scoped rules → DIRECT. Empty because every Cursor bundle uses Cursor 专用. */
 export const CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES = [] as const
-
-/** Bundles counted as Cursor for marathon conn / hygiene. */
-export const MARATHON_CURSOR_APP_PATH_PREFIXES = [
-  CURSOR_3_APP_PATH_PREFIX,
-  CURSOR_2_APP_PATH_PREFIX,
-] as const
-
-/** Substrings matched against mihomo connection metadata.processPath. */
-export const CURSOR_APP_BUNDLE_PATH_MARKERS = [
-  '/Cursor.app/',
-  '/Cursor-3.app/',
-  '/Cursor-2.app/',
-] as const
-
-export function isCursorAppBundleProcessPath(processPath: string): boolean {
-  const path = processPath.trim()
-  return CURSOR_APP_BUNDLE_PATH_MARKERS.some((marker) => path.includes(marker))
-}

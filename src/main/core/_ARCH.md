@@ -1,172 +1,104 @@
 # src/main/core — 模块架构
 
-Electron 主进程核心：mihomo 控制、Cursor 网络优化、节点探测与稳定性监控。
+Electron 主进程核心：mihomo 控制、订阅与配置生成、自动选择延迟序、Cursor 专用组与路由规则。
 
 用户可感知网络僵死 / TUN 恢复缺陷台账：[BUGFIX_LOG.md](../../BUGFIX_LOG.md)（例：BUG-2026-07-09-001 mihomo 出站池僵死）。
 
+Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择、默认节点）与 Cursor 路由 / DNS 规则。长流稳定性类逻辑（keepalive、quiesce、探针平面、恢复编排、质量基准等）已全部移除，Sparkle 不再按 Cursor 流量做任何运行时干预。
+
 ## 文件清单
 
-| 文件                                                                    | 职责                                                                                                                                                                  |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api2ProbePlane.ts`                                                     | 单一 bootstrap：active 60s + VPS L4 SSH 300s → api2-probe-ledger.jsonl                                                                                                |
-| `vpsL4ProbeCore.ts` / `vpsL4Probe.ts`                                   | VPS SSH curl（**jp-vps**，`ProxyCommand=none` + 公网 HostName 回退）→ ledger scope=vps                                                                             |
-| `canonicalVpsNodeSnapshotCore.ts`                                       | 从 provider history 采集 **JP 四 leaf** snapshot（CTHC events）                                                                                                       |
-| `networkTriangulationDiagnosticCore.ts`                                 | 定责探测：KR/JP Reality（KR 可选）+ active Cursor 节点 + marketplace                                                                                                  |
-| `api2ProbeLedgerCore.ts`                                                | api2 探针统一 ledger 读写（scope=active/vps/marathon）；**readRecentSessionNudgeAnchorsForNode**（P9n）；**readLatencyTruthSummaryForNode**（P13 Phase 2） |
-| `latencyTruthFromLedgerCore.ts`                                         | **P13 Phase 2** VPS 本体 vs Mac 全路径 P50 SSOT（scope=vps ssh_curl vs scope=active transport_pair） |
-| `vpsCanonicalNodes.ts`                                                  | **SSOT** JP-VPS 四 leaf：Reality / TLS / HY2 / TUIC · KR 已退役（2026-07-24） |
-| `nodeQualityScore.ts`                                                   | 纯函数：Probe/Session 分层评分、badge 门槛常量                                                                                                                        |
-| `nodeProbeStats.ts`                                                     | ledger vps 样本聚合 → DerivedStats                                                                                                                                    |
-| `commercialNodeBenchmark.ts`                                            | 24h VPS 报告（ledger scope=vps SSH + active）、UI snapshot IPC                                                                                                        |
-| `networkStabilityMonitor.ts`                                            | 当前节点 short probe、TUN 恢复（委托 CTHC）；**P9 `shouldDeferProbeForCursorLoadUnderMarathonQuiesce` + `syncMarathonQuiesceIfNeeded`**；非 probe 事件 jsonl         |
-| `cursorTransportHealthCore.ts`                                          | 纯函数：挂死检测、Agent-stability-first 恢复决策、**R-07 `decideTransportRecoveryExecution`**（L0–L3 marathon guard） |
-| `connectPartitionDetectCore.ts` / `connectPartitionReader.ts`           | Connect mass-PING · **G11/P19** `resolveConnectPartitionWindowMs`（conn≥12 → **15s** · conn≥200 → **60s** · 低 conn 8s）· `[ConnectPartitionWindow]` 日志 · **P18** dedupe · `partitionBlindSpotCore` · `partitionLatchCore` |
-| `connectPingStormCore.ts`                                               | **P16** ultra-conn：Diagnostic ingest 合成 · synthetic partition · latency_delta rescue streak · ultra_conn 观测                                                      |
-| `cursorLogDiscoveryCore.ts` / `cursorStructuredTransportIngestCore.ts` / `cursorStructuredTailCacheCore.ts` | **P17/P18** log roots SSOT · Structured tail 热读 + mtime/size cache · merge 输入 |
-| `transportObservabilityMergeCore.ts` / `partitionBlindSpotCore.ts`     | **P18** hot+jsonl dedupe · jsonl=0∧structured≥2 blind_spot 告警 |
-| `agentTransportFailureWriterCore.ts` / `agentTransportFailureSync.ts`   | Sparkle 写 `~/.sparkle/agent-transport-failures.jsonl`（Cursor renderer/exthost/**Structured NAL** 同步 + proxyNode 回填）；**P27b** server-eof → `natStaleSuspectObserver` |
-| `natStaleSuspectObserverCore.ts` / `natStaleSuspectObserver.ts`         | **P27b** token_gap≥180s + api2 绿 + server-eof → `[NatStaleSuspect]` + jsonl `nat_stale_suspect`（observe-only，无 recovery） |
-| `hy2TunnelVitalityCore.ts` / `hy2TunnelVitality.ts`                       | **P27/R-33** HY2 隧道活性：常规 parent age≥30min · **stall recovery bypass**；日志 `[Hy2TunnelVitality]` / `[MihomoQuicStallRecovery]` |
-| `mihomoQuicSilentStallCore.ts` / `mihomoQuicSilentStallObserver.ts` / `mihomoQuicSilentStallRecovery*.ts` | **R-17/R-34** QUIC byte-frozen 检测 + frozen surgical prune + parent rotation |
-| `transportLongevityTruthCore.ts` / `transportLongevityTruth.ts` | **R-34a** 三龄 SSOT（HTTP parent · HY2 outbound session · byte stall） |
-| `frozenSurgicalPruneCore.ts` | **R-34c** 五门 AND frozen connection prune（替代 marathon_block_close） |
-| `hy2ParentRotationCore.ts` | **R-34b** prune 后 aged HY2 UDP session 安全 refresh |
-| `hy2ParentSidecarCore.ts` / `hy2ParentSidecar.ts` | **R-35a / Plane B** proactive 4h parent sidecar dial + emergency UDP close+redial |
-| `carrierQuiesceRefreshCore.ts` | **R-41 Phase B** `isMarathonGlobalByteDeath` · active_inner bypass · R2 `parent_udp_refresh` gate |
-| `parentLifecycleCore.ts` | **Plane B** parent lifecycle phase SSOT（young / refresh_due / byte_frozen / emergency） |
-| `stallEscalationLadderCore.ts` | **R-41** vitality 无效后逐级 escalation（sidecar → parent_udp_refresh → rotation）；byte-death 期间 bypass cooldown |
-| `marathonParentRecoveryStallProofCore.ts` | marathon inner recovery stall proof · bypass token_gap when carrier bytes dead |
-| `marathonSseCarrierPruneCore.ts` | **R-35b** marathon SSE carrier 45s stale-proof prune gate · `MARATHON_SSE_CARRIER_ABSOLUTE_STALL_MS` |
-| `marathonHy2OnlyCore.ts` / `marathonSSETruthCore.ts` | Marathon HY2-only 协议 SSOT · `marathonTruthActive` when conn≥12 |
-| `transportMutationGateCore.ts` / `transportMutationGateRuntime.ts` | MTIC-v2：赛中禁止 HY2→TLS 等 transport mutation |
-| `perLeafRecoveryCircuitCore.ts` | per-leaf 失败隔离 SSOT（`${leafId}::${failureClass}` 维度 3 次连续失败 → open 3min）；恢复路径不受全局熔断约束 |
-| `aiTrafficIsolationCore.ts` | **W2** AI/Codex 组剔除 Marathon Cursor HY2 leaf（factory 注入） |
-| `collectiveDeathBugReportCore.ts` / `collectiveDeathBugReport.ts` / `collectiveDeathAlert.ts` | **BUG-2026-09-03-002** 集体死亡 GUI toast + 「复制 Bug 信息」IPC；**BUG-2026-09-15-001** 按日历日选最新 `app-*.log`（禁字典序）+ 30min 窗口对齐 + `[ProxyStackDeadlock]` 标记 |
-| `proxyStackDeadlockCore.ts` / `proxyStackDeadlockRuntime.ts` | **BUG-2026-09-15-001** emergency core restart 的 proxy-stack 死锁门禁；**longflow 证据契约** `LongflowEvidence = measured \| unknown`（禁止 `?? 0` 静默零填充）；`selectLeafProbeTargets` 在 controller 不可达时不伪造叶子失败 |
-| `emergencyCoreRecovery.ts` / `emergencyCoreRecoveryCore.ts` | **BUG-2026-09-15-004** 紧急升级**只决策+记录、不停内核**（`emergency_core_restart_removed`）：整核 `stop+start` 会断所有 App，已从代码中移除；卡顿交由非破坏性恢复（vitality/sidecar/leaf） |
-| `profileConfigRecoveryCore.ts` / `profileConfigRecoveryPureCore.ts` | **BUG-2026-09-03-003** 空/损坏 `profile.yaml` 从 `.bak` + 磁盘 profiles 恢复 · 禁止 persist 空配置 |
-| `recoveryFailoverGovernanceCore.ts` | **BUG-004/006** vitality 反证 · failback 判定 · **Reality 上 suppress HY2 absent** |
-| `recoveryCursorDedicatedFailback.ts` | **BUG-004/006** Reality→HY2 failback · mihomo live · **marathon 门控 hy2_vitality_failback** |
-| `hy2ParentSidecarCore.ts` | **BUG-005/006** `resolveEffectiveTransportLongevityAges` SSOT · sidecar dial plan |
-| `cursorDedicatedDialFailureClusterCore.ts` / `cursorDedicatedDialFailureClusterRuntime.ts` | **BUG-2026-09-03-005** Cursor专用 dial 失败集群检测 → bypass cooldown sidecar |
-| `profileCacheRefreshCore.ts` / `profileCacheRefreshPureCore.ts` | **BUG-2026-09-03-003** 无 URL 时从磁盘 cache reload provider · 缺失 URL 双语错误 |
-| `profileSubscriptionDisplayCore.ts` | 订阅到期/更新时间展示 SSOT · **BUG-2026-09-03-003** `每日 HH:mm · 更新 X 前` |
-| `dataPlaneMutationTierCore.ts` | **BUG-2026-09-03-001** Tier-0/1/2 data-plane mutation SSOT（provider hot-reload · single conn close · sidecar · cold restart） |
-| `bug20260903ReplayCore.ts` | **BUG-2026-09-03-001** Sep2 84s stall + Aug31 blank subscription replay gate |
-| `marathonCarrierConnectionBindCore.ts` | marathon SSE carrier ↔ mihomo connection bind SSOT |
-| `recoveryHonestyCore.ts` | **R-34d** recovery success = max_gap 60s 内降 ≥50% |
-| `hysteria2QuicStability.ts`                                               | 出站 HY2 `udp-timeout=3600s` · `heartbeat-interval=30s`（与 VPS sing-box 对称） |
-| `marathonDialToleranceCore.ts` / `marathonDialTolerance.ts` / `marathonDialToleranceIdleApplyCore.ts` | VPS leaf **bootstrap dial-timeout=45s**（provider 生成 SSOT）· 空闲 backfill · 赛中零 data-plane mutation · P20b IDLE gate 保留供历史测试 |
-| `latencyTruthGateCore.ts` / `latencyTruthGate.ts` | **P20a** `[LatencyTruth]` dual-track log · triage `SPARKLE_LATENCY_TAX` |
-| `marathonQuiesceCore.ts` / `marathonQuiesce.ts` | P9 Marathon 静默：conn≥12 暂停 observability dial；**R-24** quiesce ON/OFF 仅持久化 runtime yaml 的 provider `health-check.enable`，**不 reload mihomo**（P10-2，日志 `data_plane_action=yaml_persist_only reload=0`） |
-| `marathonCoreRestartGuardCore.ts` / `marathonCoreRestartGuard.ts` | **P10** 马拉松 core cold restart guard：`cursor_conn>0` / quiesce / recent lifecycle 时 block `stopCore`/`restartCore`/`startCore`（Layer-0 BUG-2026-08-29-001 R3）；写 `~/.sparkle/marathon-core-restart-guard.json`；install/upgrade PRE-gate；**CLI/headless/reload/second-instance 共用 SSOT**；blocked 日志 5min 节流 |
-| `coreLifecycleBlockedLogThrottleCore.ts` | Phase 1S：`core_cold_restart_blocked` 5min 汇总节流（blocked≠失败） |
-| `mihomoDataPlaneLoadCore.ts` / `mihomoDataPlaneLoadState.ts` | Phase 1S：mihomo 活跃连接≥48 视为 data-plane busy；probe 并发降为 1；profile-update-cli 提前 defer |
-| `startCoreMutationGuardCore.ts` | **Layer-0** startCore mutation intent SSOT（elevated child / protected footprint / service restart） |
-| `deferredProfileUpdateDueCore.ts` / `deferredProfileUpdateDue.ts` | conn→0 后补跑被 defer 的 profile subscription refresh |
-| `appConfigMihomoReloadGuardCore.ts` | **P10-2** hot reload defer **delegate** `shouldBlockMarathonCoreColdRestart`（conn>0 即 defer，不再单独 >=12 阈值） |
-| `cursorHy2MarathonKeepaliveCore.ts` / `cursorHy2MarathonKeepalive.ts`   | **MTCP/P13/P19** Rescue vs Warmth facade · delegates to `marathonRescueDialExecutor` / `marathonWarmthDialExecutor` · **无 mtdo re-entrancy guard** |
-| `marathonSessionDialExecutorCore.ts` / `marathonRescueDialExecutor.ts` / `marathonWarmthDialExecutor.ts` | **P19** shared HY2 session dial + in-flight guard · rescue bypass P12 budget · warmth uses P12 budget |
-| `cursorDedicatedNodeResolver.ts`                                        | Active Cursor dedicated leaf resolver (breaks executor↔keepalive circular import) |
-| `cursorStreamTokenGapCore.ts` / `cursorStreamTokenGapReader.ts`        | Marathon token 静默检测（≥20s 无 meaningful SSE → hung_scan 触发 token_gap rescue）；**P14c** `generation-ended-without-turnEnded` sudden-death rescue（gap<30s · duration≥30min）；**P14d** txReqId+originalRequestId alias；**冷 resume 32s 零首 token** |
-| `cursorConnectStreamKeepaliveCore.ts` | **P8+P14a** Connect-path 三探针纯函数 SSOT · partition 检测 · 15s gap 阈值；**执行统一由 MTDO** `marathonTransportDialOrchestrator.ts` |
-| `coreReadyTimestamp.ts`                                                 | 叶子模块：`markCoreReadyAtMs` / `safeGetLastCoreReadyAtMs`（CTHC startup grace）；`manager.ts` 须 **namespace import** |
-| `serviceCoreProviderParityCore.ts` | **Service 模式** disk/runtime `proxy-providers` 与 live mihomo 不一致时触发 `/core/restart`（marathon guard 可 defer → **Tier-0** `mihomoUpdateProxyProviders` hot-reload；**disk fallback** when in-memory runtime empty） |
-| `cursorCriticalTransportCore.ts`                                        | critical Cursor transport host SSOT（CTHC + Hygiene 共享）                                                                                                            |
-| `cursorTransportHealth.ts`                                              | CTHC 执行器：30s 挂死扫描；**L0–L3 marathon hard-disable**（conn≥12/quiesce）；**§22 MTDO** `runMarathonTransportDialCycle` @ hung_scan |
-| `cursorSegmentHandoffCore.ts` / `cursorSegmentHandoff.ts`                 | **P22a/b** ~85min 段轮换 detect @ hung_scan · marathon-segments cache merge · QUIC stall early handoff · **Sparkle detect-only**；Guard patch-315 **observe-only**（无 execute） |
-| `maxStepsRateObserverCore.ts` / `maxStepsRateObserver.ts` | **P28** rolling100 max-steps 达成率 · `[MaxStepsRate]` @ hung_scan 5min · `~/.sparkle/max-steps-rate-snapshot.jsonl`（observe-only） |
-| `physicalNetworkStartFromLedgerCore.ts` | **P10-5** parse/project network_started + terminal → physical cohort |
-| `streamLifecycleJournal.ts` | **P10-1** durable append-only lifecycle journal · MTDO projection sync |
-| `physicalMaxStepsRateCore.ts` | **P10-5** physical networkStartId rolling100 SLO · invalid until network_started coverage=100% |
-| `streamLifecycleTruthCore.ts` | **P10-1** stream lifecycle reducer ABSENT→ACTIVE→TERMINAL（irreversible） |
-| `streamLifecycleProjectionCore.ts` | **P10-1** segment/ledger → lifecycle projection · MTDO stale RID filter |
-| `dialAdmissionArbiterCore.ts` | **P10-2** non-production dial admission pure core（production bypass · passive no-dial · single in-flight · INEFFECTIVE closes generation） |
-| `dialAdmissionArbiter.ts` | **P10-2** runtime module state · wired into `marathonRescueDialExecutor` → `executeHy2SessionDialWithGuard` |
-| `validatedLedgerTerminalCore.ts` / `validatedLedgerTerminalIngest.ts` / `validatedLedgerTerminalProjectionCore.ts` | **G8** ledger ingest → MaxStepsRate merge (G8a) + jsonl projection (G8b) |
-| `quicStallSsotCore.ts` / `quicStallSsot.ts`                               | **P22b** `~/.sparkle/quic-stall-ssot.json` atom — Sparkle writer · patch-315 reader SSOT |
-| `marathonSegmentCache.ts`                                                 | **P22b** append-only `marathon-segments.v1.jsonl` — immune to renderer log rotation |
-| `marathonStreamRegistryCore.ts` / `marathonTransportDialReader.ts`       | §22 active RID registry · pendingTool 门控 |
-| `marathonTransportDialOrchestratorCore.ts` / `marathonTransportDialOrchestrator.ts` | §22 MTDO · **P15/P16/R-24**：独立 60s pulse · rescue bundle 分流 breach · `MarathonContentionBudget` deny |
-| `marathonContentionBudgetCore.ts` | **R-23/R-24** green 基线 observability cap · `buildMarathonContentionBreachKinds` definitive breach SSOT |
-| `tokenGapRescueIneffectiveCore.ts` | **R-18** token_gap rescue executed but max_gap persists + short path green → `[TokenGapRescueIneffective]` |
-| `connectPartitionRescueIneffectiveCore.ts` | **R-31** connect_partition rescue executed but mass PING persists + short path green → `[ConnectPartitionRescueIneffective]` |
-| `marathonProtocolContractCore.ts` / `marathonProtocolContract.ts` | **R-30/R-32** cold-start TLS gate · auto mid-marathon block · **manual operator exempt** · hand-picked suboptimal skips gate |
-| `latencyDeltaGateCore.ts`                                               | §22 Mac 全路径 vs VPS 本体 P50 delta 告警（defer warmth only） |
-| `mihomoProbeCoordinator.ts`                                             | 全局 mihomo delay 槽（busy 时 max 1 / 否则 2）与商业 batch 并发 cap                                                                                                                    |
-| `marathonObservabilityDialBudgetCore.ts` / `marathonObservabilityDialBudgetQueueCore.ts` / `marathonObservabilityDialBudget.ts` | **P12** conn≥12/quiesce observability dial 单槽串行（QueueCore 无 Electron 依赖） |
-| `providerDelayHistoryFromLedgerCore.ts`                                 | **P11** mihomo history 空时从 api2-probe-ledger 回填 tooltip 柱图（transport_pair/session_nudge）；`buildNodeDelayMapFromLedgerRows` 取每节点最近 8 次成功样本中位数供 `sparkle-fast` 排序                                                                  |
-| `sparkleFastProviderCore.ts`                                            | `自动选择` 的 `sparkle-fast` provider 文件生成（纯函数）：按 `proxySwitchPriority` 地区分段平铺，剔除 AnyTLS/香港，传入 `delayMs` 时段内按延迟升序（无样本垫段尾）；BUG-2026-10-09-001 |
-| `sparkleFastLatencyOrderCore.ts` / `sparkleFastLatencyOrder.ts`         | 延迟序运行时：Core 把 provider 探测历史折算成「节点→延迟」并做迟滞判定（≥50ms 且 ≥30% 才换首选）；运行时在内核就绪后重排并解除 `自动选择` 固定，每 30 分钟复查（不固定、不盖过 fallback 语义）；写盘前先判 Marathon（`evaluateMarathonProviderMutationBlock` + quiesce），命中则顺延 |
-| `mihomoControllerReadyCore.ts`                                          | controller 就绪探测 `GET /version`（service 模式走签名请求）；独立成模块以避免 rolldown 把 `mihomoApi` 动态 import 错绑到 `index.js`（会导致 `runPostCoreBootstrap` 永不执行） |
-| `managedVpsDelayTest.ts` / `vpsDelayTestPolicyCore.ts`                    | VPS UI 测速 defer 策略；**P11** `explicitUserRequest` bypass conn defer + 15s cooldown                                                                              |
-| `cursorRuleInjection.ts`                                                | 全量 Cursor PROCESS-NAME + DOMAIN → 🎯 Cursor 专用；可选 path-scoped AND 规则                                                                                         |
-| `cursorNetworkOptimize.ts`                                              | Cursor DNS/TUN/keepalive 优化                                                                                                                                         |
-| `fakeIpRoutingIntegrity.ts`                                             | fake-ip 路由一致性：Tier0 Cursor · **Tier0 Direct** · Tier1 Proxy · sniffer 完整性                                                                                  |
-| `coreLifecycleCore.ts` / `coreLifecycle.ts`                             | **CoreLifecycle SSOT** — post core-ready fake-ip flush（cold/emergency/manual restart 后卫生）                                                                      |
-| `defaultAutoSwitchProxy.ts` | 自动选择相关组生成：`自动选择` = `type:fallback`（`use:[sparkle-fast]`，Gemini 探测 `interval:300` / `timeout:5000` / `lazy:true`）；`Sparkle-<地区>` = 仅手动选择的 `type:url-test`（**`interval:300` + `tolerance:2000`（迟滞）+ `lazy:true`**，BUG-2026-09-15-007，消除 60s 无迟滞抖动导致 AI 长流断连），不被 `自动选择` 引用 |
-| `mihomoApi.ts`                                                          | mihomo REST 封装（delay 经 mihomoProbeCoordinator gate **除 marathon_rescue** BUG-015；Resource not found → provider leaf BUG-012/014；L2 fake-ip flush BUG-013） |
-| `mihomoProxyDelayCore.ts`                                               | **BUG-012/014/015** isMihomoApiResourceNotFoundError · resolveProviderNameForLeaf · isMarathonRescueDelayPurpose · shouldBypassMihomoDelayProbeSlot |
-| `cursorDedicatedDefault.ts`                                             | 启动恢复手选；无手选时默认 **`JP-VPS-TLS`**（trusted standard TLS）；Reality/HY2/TUIC 标 suboptimal，禁止自动回落 |
-| `providerHealthCheckCore.ts`                                            | 商用 provider health-check URL（generate_204）                                                                                                                        |
-| `vpsProviderSplitCore.ts`                                               | VPS/commercial partition；`{profileId}-vps` provider；api2 health-check                                                                                               |
-| `mihomoProviderDelayCore.ts` / `providerDelayHistoryDisplayCore.ts`            | provider leaf delay 历史：取最近成功样本；**P9n** 柱图剔除 session_nudge（ledger SSOT）                                                                               |
-| `factory.ts`                                                            | runtime config 生成；**`patchRuntimeProxyProviderHealthCheckEnable`**（P9 health-check 热 patch）                                                                       |
-| `../utils/formatUnknownErrorForLog.ts`                                  | mihomo catch 值 JSON 序列化（nudge/keepalive failed 路径；**≥1.26.61**）                                                                                              |
+### mihomo 控制与启动
 
-## 节点质量数据流
+| 文件 | 职责 |
+| ---- | ---- |
+| `manager.ts` | core 进程 start / stop / restart；service 模式走签名 API；`startCore` 在 `generateProfile` 与 `checkProfileWithRetry` 之后才停旧核 |
+| `mihomoApi.ts` | mihomo REST 封装；delay 经 `mihomoProbeCoordinator` 并发槽；`Resource not found` → provider leaf 回退（BUG-012/014）；`mihomoChangeProxy` 对 Cursor 专用组仅放行 `manual` / `bootstrap` |
+| `mihomoControllerReadyCore.ts` | controller 就绪探测 `GET /version`（service 模式走签名请求）；独立成模块以避免 rolldown 把 `mihomoApi` 动态 import 错绑到 `index.js`（会导致 `runPostCoreBootstrap` 永不执行） |
+| `mihomoProbeCoordinator.ts` | 全局 mihomo delay 并发槽（最多 2，等待上限 30s） |
+| `mihomoProxyDelayCore.ts` | `isMihomoApiResourceNotFoundError` · `resolveProviderNameForLeaf` · `MihomoDelayPurpose` |
+| `mihomoProviderDelayCore.ts` / `mihomoGroupMembersCore.ts` | provider leaf delay 历史取最近成功样本 · 组成员解析 |
+| `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
+| `coreReadinessGate.ts` / `coreReadinessGateCore.ts` | 冷启动 Readiness Contract：sidecar → profile 检查 → startCore → API → 数据面探测 |
+| `coreReadyTimestamp.ts` | 叶子模块：`markCoreReadyAtMs` / `safeGetLastCoreReadyAtMs`；`manager.ts` 须 **namespace import** |
+| `coreLifecycle.ts` / `coreLifecycleCore.ts` | core 就绪后 fake-ip flush（cold / manual restart 后卫生） |
+| `networkStartupGraceCore.ts` | 内核就绪后重网络探测的启动宽限（45s） |
+
+### 配置生成与订阅
+
+| 文件 | 职责 |
+| ---- | ---- |
+| `factory.ts` | runtime config 生成（provider 拆分、分组、规则、DNS、sniffer）；首步调用 `logBuildDriftAtStartup` |
+| `provider.ts` / `providerConfigCore.ts` / `vpsProviderSplitCore.ts` | 订阅节点 → provider 文件；VPS 与商用节点拆成 `{profileId}-vps` 与商用 provider；`applyVlessVisionMuxGuard` |
+| `mergeProfileCore.ts` | 合并订阅：按地区白名单取多个订阅节点并集，策略组与规则沿用 base 订阅 |
+| `profileUpdater.ts` / `profileUpdaterCore.ts` / `profileUpdateDueCli.ts` | 订阅定时更新；`--sparkle-profile-update-due` CLI 入口 |
+| `profileConfigRecoveryCore.ts` / `profileConfigRecoveryPureCore.ts` | BUG-2026-09-03-003 空/损坏 `profile.yaml` 从 `.bak` + 磁盘 profiles 恢复 · 禁止 persist 空配置 |
+| `profileCacheRefreshCore.ts` / `profileCacheRefreshPureCore.ts` | 无 URL 时从磁盘 cache reload provider · 缺失 URL 双语错误 |
+| `profileSubscriptionDisplayCore.ts` | 订阅到期 / 更新时间展示 SSOT |
+| `serviceCoreProviderParityCore.ts` | service 模式 disk / runtime `proxy-providers` 与 live mihomo 不一致时触发 `/core/restart`，优先 `mihomoUpdateProxyProviders` 热重载 |
+
+### 自动选择与地区组
+
+| 文件 | 职责 |
+| ---- | ---- |
+| `sparkleFastProviderCore.ts` | `自动选择` 的 `sparkle-fast` provider 文件生成（纯函数）：按 `proxySwitchPriority` 地区分段平铺，剔除 AnyTLS / 香港，传入 `delayMs` 时段内按延迟升序（无样本垫段尾）；BUG-2026-10-09-001 |
+| `sparkleFastLatencyOrderCore.ts` / `sparkleFastLatencyOrder.ts` | 延迟序运行时：Core 把 provider 探测历史折算成「节点→延迟」并做迟滞判定（≥50ms 且 ≥30% 才换首选）；运行时在内核就绪后重排并解除 `自动选择` 固定，每 30 分钟复查；实测结果落盘 `sparkle-fast-delays.json`，订阅刷新重建 provider 时用作排序依据 |
+| `defaultAutoSwitchProxy.ts` | `自动选择` = `type:fallback`（`use:[sparkle-fast]`，Gemini 探测 `interval:300` / `timeout:5000` / `lazy:true`）；`Sparkle-<地区>` = 仅手动选择的 `type:url-test`（`interval:300` + `tolerance:2000` + `lazy:true`，BUG-2026-09-15-007），不被 `自动选择` 引用 |
+| `regionalAutoSelectGroupsCore.ts` / `regionalUrlTestWarmup.ts` / `regionalUrlTestWarmupCore.ts` | `Sparkle-<地区>` 组构建（排除 AnyTLS，无可用节点的地区不建组）与启动预热 |
+| `autoSelectAnyTlsExclusionCore.ts` | url-test 自动选择组剔除 AnyTLS |
+| `regionPriority.ts` | 地区优先级（台湾 → 日本 → 韩国 → 新加坡 → 美国） |
+| `customProxyGroups.ts` / `profileGroupNormalize.ts` | 自定义组（Cursor 专用、香港过滤）注入与订阅主选择组归一 |
+
+### Cursor 专用组与规则
+
+| 文件 | 职责 |
+| ---- | ---- |
+| `cursorProxyGroup.ts` | Cursor 专用组名 / 成员过滤（`CURSOR_VPS_PROVIDER_FILTER`、`filterCursorEligibleVpsLeaves`）/ selector 解析 |
+| `cursorDedicatedDefault.ts` | 启动恢复手选；无手选时默认节点 `CURSOR_DEFAULT_VPS_NODE` |
+| `cursorDedicatedSelectionCore.ts` | 手选节点持久化（`writeCursorDedicatedManualSelection`） |
+| `cursorDedicatedManualOnlyCore.ts` | Cursor 专用组仅允许手动 / 启动恢复切换，自动来源一律拒绝 |
+| `cursorRuleInjection.ts` | Cursor DOMAIN / PROCESS-NAME 规则 → 🎯 Cursor 专用；可选 path-scoped AND 规则（`cursorBidiOptimize` 控制开关） |
+| `cursorAppBundlePathsCore.ts` / `cursorPathPrefixProfileReloadCore.ts` | Cursor .app 路径前缀 SSOT · 前缀变更触发 profile 重生成 |
+| `fakeIpRoutingIntegrity.ts` | fake-ip 路由一致性：Tier0 Cursor · Tier0 Direct · Tier1 Proxy · sniffer 完整性 |
+
+### 网络与 DNS
+
+| 文件 | 职责 |
+| ---- | ---- |
+| `network.ts` / `networkPublicDnsCore.ts` | 网卡与系统 DNS 管理；TUN 启动时设公共 DNS |
+| `dnsFallbackIntegrity.ts` | DNS fallback 完整性 |
+| `corporateDnsCore.ts` / `corporateDirectRules.ts` / `corporateDefaultInterface.ts` | 公司内网 DNS / 直连规则 / 默认网卡 |
+| `tunStartupGuard.ts` / `tunStartupGuardCore.ts` | 识别 TUN adapter 监听成功 / 权限错误日志 |
+| `vpsDirectBypass.ts` | VPS 服务器 IP 直连规则与 TUN / sniffer 排除 |
+| `hongKongTrafficRuleInjection.ts` / `antigravityRuleInjection.ts` | 香港流量规则 · Antigravity 地区路由规则 |
+
+## 启动数据流
 
 ```
-api2ProbePlane (PostCoreBootstrap 单一入口)
-  → networkStabilityMonitor (60s active transport_pair)
-  → vpsL4Probe (300s SSH L4 curl → scope=vps)
-  → ~/.sparkle/api2-probe-ledger.jsonl
-      scope=active → Guard API探针列 / 代理裁决
-      scope=vps    → SSH L4 **JP**（method=ssh_curl）+ nodeProbeStats
-
-cursorTransportHealth (hung_scan 30s / hung≥12min / keep-newest-6 / transport_recovery)
-  → network-stability-events.jsonl + vps_node_snapshots（CTHC 单点：latest-success delay，≠ UI 测速记录 history[-8]）
+startCore (manager.ts)
+  → generateProfile (factory.ts) → checkProfileWithRetry → mihomo up
+  → runPostCoreBootstrap (postCoreBootstrap.ts)
+       ├ sparkle-fast 延迟序 bootstrap + 30min 复查
+       ├ initProfileUpdater
+       ├ applyCursorDedicatedVpsSelection（恢复手选 / 默认节点）
+       └ NETWORK_MONITOR_STARTUP_GRACE_MS 后 warmupRegionalUrlTestGroups
 ```
-
-## Transport 观测数据流（P16–P18 · P28）
-
-```
-agentTransportFailureSync → ~/.sparkle/agent-transport-failures.jsonl
-  ↑ connectPingStormCore（Diagnostic defer×2 + VpsL4 ok → synthetic partition）
-cursorStructuredTransportIngestCore ← Cursor/logs Structured tail（P17）
-  → transportObservabilityMergeCore（P18 dedupe）
-  → connectPartitionReader.readConnectPartitionSignalAsync
-  → marathonTransportDialOrchestrator
-       ├ connect_partition / latency_delta_rescue（P16b · delta≥15s + 短 HTTP 绿）
-       └ UltraConnObservability @ conn>500（P16c 节流日志）
-
-marathon-segments.v1.jsonl + agent-transport-failures.jsonl
-  → maxStepsRateObserver @ hung_scan（P28 · rolling100 max-steps rate · observe-only）
-  → ~/.sparkle/max-steps-rate-snapshot.jsonl
-```
-
-## Badge 规则
-
-- VPS combined 第一 **且** 通过 gate：success≥95%、slow>500ms≤15%、jitter≤150ms
-- 未通过 gate → 无 UI badge（`markersByNode` 为空）；需 `commercialNodeBenchmarkEnabled=true`（默认 true）
-- 节点 hover 详情弹窗由 `showProxyDetailTooltip` 控制（默认 true）；见 [proxies/_ARCH.md](../../renderer/src/components/proxies/_ARCH.md)
 
 ## App 配置路径
 
 | 路径 | 内容 |
 |------|------|
-| `~/Library/Application Support/sparkle/config.yaml` | UI 与行为开关（含上述 opt-in） |
-| `~/.sparkle/api2-probe-ledger.jsonl` | 探针 ledger（与 app 配置目录分离） |
+| `~/Library/Application Support/sparkle/config.yaml` | UI 与行为开关 |
+| `~/Library/Application Support/sparkle/sparkle-fast-delays.json` | `sparkle-fast` 延迟快照 |
 
 修改 `config.yaml` 后须完全退出并重启 Sparkle 方生效（主进程内存缓存）。
 
 ## 测试
 
 ```bash
-pnpm run test:node-quality   # 含 carrierQuiesceRefreshCore · stallEscalationLadder · marathonParentRecoveryStallProof 等
-pnpm run agent:upgrade:mac         # Agent SSOT：build(if needed) + install + post gate
+pnpm run test:node-quality
+pnpm run agent:upgrade:mac   # Agent SSOT：build(if needed) + install + post gate
 pnpm run upgrade:mac         # 本地装 /Applications + PostCoreBootstrap 门控（网络失败：SKIP_PREPARE=1）
-tsx scripts/verify-byte-death-recovery-gate.mts --minutes 15   # post-upgrade：byte-death 期间 R2 必须执行或 quiesce bypass
 ```
 
 ## 构建标识（UI）

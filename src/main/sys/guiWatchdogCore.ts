@@ -12,7 +12,7 @@ export interface GuiCrashLedgerEntry {
   restart_count_window: number
 }
 
-export function sparkleStateDir(homeDir: string): string {
+function sparkleStateDir(homeDir: string): string {
   return path.join(homeDir, '.sparkle')
 }
 

@@ -33,7 +33,7 @@ const logfmtFieldPattern = /([A-Za-z0-9_.-]+)=("(?:\\.|[^"\\])*"|[^\s]+)/g
 const logStreamHighWaterMark = 256 * 1024
 const logTrimLowWatermarkRatio = 0.7
 
-export function resolveLogPath(target: LogTarget): string {
+function resolveLogPath(target: LogTarget): string {
   switch (target) {
     case 'app':
       return appLogPath()

@@ -365,7 +365,6 @@ tail -20 /var/log/sing-box/sing-box.log  # 无持续 auth failed
 | 代理列表 KR/JP Reality 延迟 | 非全红；Reality 可用即使 UI delay 偶发 0 |
 | 选 KR-VPS-Reality → 访问 `https://api2.cursor.sh` | 通 |
 | Cursor 专用组当前节点 | `KR-VPS-Reality`（或已知例外） |
-| 高级 → 网络三角诊断 | marketplace 通 + api2 通 → 路径正常 |
 
 #### C. SSH
 
@@ -398,7 +397,7 @@ Mac 无法上网 / Cursor api2 失败
 ├─ Sparkle 未开 TUN / Core 未运行 → 重启 Sparkle
 ├─ 仅 Cursor 失败，其他正常
 │   ├─ 专用组是否 HY2/TUIC → 切 KR-VPS-Reality
-│   └─ 三角诊断：marketplace OK、KR+JP api2 均失败 → 公司网到 VPS 路径问题（VPS 可能仍存活）
+│   └─ 切到另一台 VPS 仍失败 → 公司网到 VPS 路径问题（VPS 可能仍存活）
 ├─ 全部 VPS 节点 UI 超时
 │   ├─ Reality 实际可用 → 已知 provider delay UI 误报，以 api2 实测为准
 │   └─ Reality 也不通 → SSH 上 VPS 查 sing-box / UFW / 云厂商防火墙
@@ -424,5 +423,4 @@ Mac 无法上网 / Cursor api2 失败
 | [VPS-INFRA.md](./VPS-INFRA.md) | 规格、UFW、restart 规范、安全加固历史 |
 | `BUGFIX_LOG.md` | Sparkle ↔ VPS 历史故障与修复 |
 | `scripts/vps-deploy/` | 安装、迁移、审计脚本 |
-| `networkTriangulationDiagnosticCore.ts` | Mac 侧三角诊断逻辑 |
 | `customProxyGroups.ts` | Cursor 专用组注入与 VPS filter |
