@@ -48,7 +48,7 @@ describe('customProxyGroups', () => {
     )
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
     assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY])
-    // 与 marathonHy2OnlyCore 的 MARATHON_CURSOR_VPS_PROVIDER_FILTER 对齐（Reality 优先，HY2 次选）。
+    // 与 cursorProxyGroup 的 CURSOR_VPS_PROVIDER_FILTER 对齐（Reality 优先，HY2 次选）。
     assert.equal(cursorGroup?.filter, '(?i)-VPS-(Reality|HY2)$')
     assert.ok(groupNames(profile).includes(HONG_KONG_FILTER_GROUP_NAME))
     assert.ok(groupNames(profile).includes('🚀 节点选择'))
