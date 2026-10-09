@@ -7,7 +7,7 @@ describe('shouldReloadProfileForAppConfigPatch', () => {
     assert.equal(shouldReloadProfileForAppConfigPatch({ cursorProxyAppPathPrefixes: [] }), true)
   })
 
-  it('returns true when cursorProxyAppPathPrefixes has marathon target path', () => {
+  it('returns true when cursorProxyAppPathPrefixes has a Cursor bundle path', () => {
     assert.equal(
       shouldReloadProfileForAppConfigPatch({
         cursorProxyAppPathPrefixes: ['/Applications/Cursor-3.1.15.app']
