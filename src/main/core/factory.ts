@@ -249,12 +249,20 @@ async function generateProfileImpl(): Promise<void> {
     const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } = await import(
       './sparkleFastProviderCore'
     )
+    const { loadSparkleFastLedgerDelayMap } = await import('./sparkleFastLatencyOrder')
+    let ledgerDelayMs: Awaited<ReturnType<typeof loadSparkleFastLedgerDelayMap>> | undefined
+    try {
+      ledgerDelayMs = await loadSparkleFastLedgerDelayMap()
+    } catch {
+      ledgerDelayMs = undefined
+    }
     await writeFileSync(
       path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME),
       stringifyYaml(
         buildSparkleFastProviderDocument({
           proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
-          regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority)
+          regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
+          delayMs: ledgerDelayMs?.size ? ledgerDelayMs : undefined
         })
       ),
       'utf8'
