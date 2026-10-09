@@ -252,7 +252,7 @@ function runBackgroundInitTask(name: string, task: Promise<void>): void {
 }
 
 function startBackgroundInit(appConfig: AppConfig): void {
-  const { networkDetection = false } = appConfig
+  const { networkDetection = false, sysProxy, onlyActiveDevice = false } = appConfig
 
   runBackgroundInitTask('substore frontend', startSubStoreFrontendServer())
   runBackgroundInitTask('substore backend', startSubStoreBackendServer())
@@ -265,14 +265,11 @@ function startBackgroundInit(appConfig: AppConfig): void {
   runBackgroundInitTask(
     'sysproxy restore',
     (async (): Promise<void> => {
-      // Re-read config: bootstrapCursorNetworkDefaults may disable sysProxy before this runs.
-      const fresh = await getAppConfig()
-      const enable = fresh.sysProxy?.enable ?? false
-      const activeOnly = fresh.onlyActiveDevice ?? false
+      const enable = sysProxy?.enable ?? false
       if (enable) {
         await startPacServer()
       }
-      await triggerSysProxy(enable, activeOnly)
+      await triggerSysProxy(enable, onlyActiveDevice)
     })()
   )
 }
