@@ -19,15 +19,22 @@ export async function waitForMihomoControllerReady(
   maxWaitMs: number = MIHOMO_API_READY_MAX_WAIT_MS
 ): Promise<boolean> {
   const deadline = Date.now() + maxWaitMs
+  let lastError: unknown
   while (Date.now() < deadline) {
     try {
       const { mihomoVersion } = await import('./mihomoApi')
       await mihomoVersion()
       return true
-    } catch {
+    } catch (error) {
+      lastError = error
       await delay(API_RETRY_INTERVAL_MS)
     }
   }
+  const detail =
+    lastError instanceof Error
+      ? `${lastError.name}: ${lastError.message}`
+      : JSON.stringify(lastError) ?? String(lastError)
+  await appendAppLog(`[PostCoreBootstrap]: controller probe last_error=${detail.slice(0, 400)}\n`)
   return false
 }
 
