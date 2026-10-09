@@ -20,7 +20,7 @@ const REGIONAL_GROUPS_WITHOUT_HONG_KONG = [
 ]
 
 describe('defaultAutoSwitchProxy', () => {
-  it('builds 自动选择 as a fallback chain over sticky regional url-test groups', () => {
+  it('builds 自动选择 as sticky url-test over sparkle-fast flat nodes (not regional groups)', () => {
     const profile = {
       'proxy-groups': [
         { name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] },
@@ -35,14 +35,16 @@ describe('defaultAutoSwitchProxy', () => {
     const groups = profile['proxy-groups'] as {
       name: string
       type?: string
+      tolerance?: number
       use?: string[]
       filter?: string
       proxies?: string[]
     }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    assert.equal(autoSelect?.type, 'fallback')
-    assert.deepEqual(autoSelect?.proxies, REGIONAL_GROUPS_WITHOUT_HONG_KONG)
-    assert.equal(autoSelect?.use, undefined)
+    assert.equal(autoSelect?.type, 'url-test')
+    assert.equal(autoSelect?.tolerance, 2000)
+    assert.deepEqual(autoSelect?.use, ['sparkle-fast'])
+    assert.equal(autoSelect?.proxies, undefined)
     const sgGroup = groups.find((group) => group.name === 'Sparkle-新加坡')
     assert.equal(sgGroup?.type, 'url-test')
     assert.deepEqual(sgGroup?.use, ['test-profile'])
@@ -71,6 +73,7 @@ describe('defaultAutoSwitchProxy', () => {
       tolerance?: number
       timeout?: number
       lazy?: boolean
+      use?: string[]
       'exclude-type'?: string
     }[]
     const regionalGroups = groups.filter((group) => group.name.startsWith('Sparkle-'))
@@ -85,12 +88,14 @@ describe('defaultAutoSwitchProxy', () => {
     }
 
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    assert.equal(autoSelect?.type, 'fallback')
+    assert.equal(autoSelect?.type, 'url-test')
     assert.equal(autoSelect?.url, 'https://gemini.google.com')
     assert.equal(autoSelect?.timeout, 5000)
+    assert.equal(autoSelect?.tolerance, 2000)
+    assert.deepEqual(autoSelect?.use, ['sparkle-fast'])
   })
 
-  it('rewrites subscription 自动选择 into a fallback chain over static regional groups', () => {
+  it('rewrites subscription 自动选择 into flat url-test proxy list (JP before TW)', () => {
     const profile = {
       'proxy-groups': [
         { name: '自动选择', type: 'url-test', proxies: ['SG-01', 'JP-01', 'TW-01'] },
@@ -104,9 +109,8 @@ describe('defaultAutoSwitchProxy', () => {
 
     const groups = profile['proxy-groups'] as { name: string; type?: string; proxies?: string[]; use?: string[] }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    // No provider id → fallback over the regional groups (priority order).
-    assert.equal(autoSelect?.type, 'fallback')
-    assert.deepEqual(autoSelect?.proxies, REGIONAL_GROUPS_WITHOUT_HONG_KONG)
+    assert.equal(autoSelect?.type, 'url-test')
+    assert.deepEqual(autoSelect?.proxies, ['JP-01', 'TW-01', 'KR-01', 'SG-01', 'US-01'])
     assert.deepEqual(
       groups.find((group) => group.name === 'Sparkle-新加坡')?.proxies,
       ['SG-01']
@@ -176,7 +180,8 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(sgAuto?.proxies, undefined)
     // 日本 only has AnyTLS / hysteria2 nodes, so it gets no group and stays out of the chain.
     assert.equal(groups.some((group) => group.name === 'Sparkle-日本'), false)
-    assert.deepEqual(groups.find((group) => group.name === '自动选择')?.proxies, ['Sparkle-新加坡'])
+    assert.deepEqual(groups.find((group) => group.name === '自动选择')?.use, ['sparkle-fast'])
+    assert.equal(groups.find((group) => group.name === '自动选择')?.proxies, undefined)
     const aiGroup = groups.find((group) => group.name === '🤖 AI')
     assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 01'), true)
     assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 02'), true)
@@ -207,7 +212,7 @@ describe('defaultAutoSwitchProxy', () => {
         { name: 'Sparkle-香港', type: 'url-test', use: ['p'] },
         { name: 'Sparkle-台湾', type: 'url-test', use: ['p'] },
         { name: 'Sparkle-日本', type: 'url-test', use: ['p'] },
-        { name: '自动选择', type: 'fallback', proxies: ['Sparkle-台湾', 'Sparkle-日本'] },
+        { name: '自动选择', type: 'url-test', use: ['sparkle-fast'] },
       ],
     } as unknown as MihomoConfig
 
@@ -267,8 +272,8 @@ describe('defaultAutoSwitchProxy', () => {
     const groups = profile['proxy-groups'] as { name: string; type?: string; proxies?: string[]; use?: string[] }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
     const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
-    assert.equal(autoSelect?.type, 'fallback')
-    assert.deepEqual(autoSelect?.proxies, REGIONAL_GROUPS_WITHOUT_HONG_KONG)
+    assert.equal(autoSelect?.type, 'url-test')
+    assert.deepEqual(autoSelect?.use, ['sparkle-fast'])
     assert.equal(cursorGroup?.proxies?.at(-1), '自动选择')
     assert.deepEqual(cursorGroup?.proxies?.slice(1, -1), REGIONAL_GROUPS_WITHOUT_HONG_KONG)
     assert.equal(cursorGroup?.proxies?.some((name) => name.includes('香港')), false)

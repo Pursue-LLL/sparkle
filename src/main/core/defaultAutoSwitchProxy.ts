@@ -22,6 +22,10 @@ import {
   type ProxyCatalogEntry,
 } from './autoSelectAnyTlsExclusionCore'
 import { buildRegionalUrlTestGroup } from './regionalAutoSelectGroupsCore'
+import {
+  FAST_NODE_PROVIDER_ID,
+  listFlatAutoSelectProxyNames
+} from './sparkleFastProviderCore'
 
 export interface MihomoAutoSwitchApi {
   mihomoGroups: () => Promise<ControllerMixedGroup[]>
@@ -169,8 +173,7 @@ function resolveAutoSelectLeafNames(
 }
 
 /**
- * 自动选择 = fallback 地区链（按地区优先级用第一个可用地区，当前地区探测失败才降级），
- * 每个地区是粘性 url-test 组：地区内当前节点没失效就不换，掉线后也不会因恢复而回切。
+ * Sparkle-* 地区组仅供手动选路；`自动选择` = 平铺节点 + url-test（挂了才换，tolerance 防抖）。
  * 不把 🎯 Cursor 专用 嵌进 自动选择：Cursor 专用已包含 自动选择，反向嵌套会成环。
  */
 function ensureRegionPriorityAutoSelect(
@@ -180,26 +183,45 @@ function ensureRegionPriorityAutoSelect(
   leafProxyNames: string[] | undefined,
   leafProxyCatalog: ProxyCatalogEntry[] | undefined
 ): void {
+  const leafNames = resolveAutoSelectLeafNames(groups, leafProxyNames)
+  const catalogProxies =
+    leafProxyCatalog?.map((entry) => ({
+      name: entry.name,
+      type: entry.type
+    })) ?? []
+  const nameOnlyProxies = (leafNames ?? []).map((name) => ({ name }))
+
   const source = {
     profileId,
-    leafNames: resolveAutoSelectLeafNames(groups, leafProxyNames),
+    leafNames,
     catalog: leafProxyCatalog
   }
   const regionalGroups = regionPriority.flatMap(
     (region) => buildRegionalUrlTestGroup(region, source, AUTO_SELECT_PROBE) ?? []
   )
-  if (regionalGroups.length === 0) {
-    return
-  }
 
   const autoSelectGroup: ProxyGroupConfig = {
     name: AUTO_SELECT_GROUP_NAME,
-    type: 'fallback',
+    type: 'url-test',
     url: AUTO_SELECT_PROBE.url,
     interval: AUTO_SELECT_PROBE.interval,
+    tolerance: AUTO_SELECT_PROBE.tolerance,
     timeout: AUTO_SELECT_PROBE.timeout,
-    lazy: true,
-    proxies: regionalGroups.map((group) => group.name)
+    lazy: true
+  }
+  if (profileId) {
+    autoSelectGroup.use = [FAST_NODE_PROVIDER_ID]
+  } else {
+    const flatNames = listFlatAutoSelectProxyNames(
+      catalogProxies.length > 0 ? catalogProxies : nameOnlyProxies,
+      [...regionPriority]
+    )
+    if (flatNames.length === 0 && regionalGroups.length === 0) {
+      return
+    }
+    if (flatNames.length > 0) {
+      autoSelectGroup.proxies = flatNames
+    }
   }
 
   const withoutAutoSelect = groups.filter(

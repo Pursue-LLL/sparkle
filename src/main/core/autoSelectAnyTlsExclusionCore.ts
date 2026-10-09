@@ -106,9 +106,8 @@ function filterProxyNamesExcludingAnyTls(
 /**
  * Remove AnyTLS leaves from url-test auto-select groups that list members inline.
  * Groups sourcing members through `use` keep whatever their provider yields —
- * the Sparkle-* region groups exclude AnyTLS through `exclude-type` instead
- * (regionalAutoSelectGroupsCore), and every other group intentionally keeps AnyTLS
- * for manual switching.
+ * `自动选择` sources AnyTLS-free members from sparkleFastProviderCore instead,
+ * and Sparkle-* manual region groups use `exclude-type` (regionalAutoSelectGroupsCore).
  * Select groups (🤖 AI / 🚀 节点选择) keep full membership for manual switching.
  */
 export function excludeAnyTlsFromAutoSelectUrlTestGroups(

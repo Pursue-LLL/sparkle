@@ -5,6 +5,9 @@ import {
   resolveVpsProviderId,
   rewriteVpsFilteredGroupsToDedicatedProvider
 } from './vpsProviderSplitCore'
+import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS } from './defaultAutoSwitchProxy'
+
 export interface ProviderHealthCheckOverride {
   enable: boolean
   url?: string
@@ -52,6 +55,17 @@ export function buildBaseConfigWithProviders(
       enable: commercialHealthCheck.enable,
       url: healthCheck?.url || commercialHealthCheck.url,
       interval: commercialHealthCheck.interval
+    }
+  }
+
+  baseConfig['proxy-providers'][FAST_NODE_PROVIDER_ID] = {
+    type: 'file',
+    path: resolveProviderPath(FAST_NODE_PROVIDER_ID),
+    'health-check': {
+      enable: commercialHealthCheck.enable,
+      url: healthCheck?.url || commercialHealthCheck.url,
+      interval: commercialHealthCheck.interval,
+      timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS
     }
   }
 
