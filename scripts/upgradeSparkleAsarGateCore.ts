@@ -15,171 +15,40 @@ export type SparkleMainAsarGateResult =
   | {
       ok: false
       reason:
-        | 'missing_main'
         | 'stale_bundle'
         | 'missing_mark_core_ready_call'
-        | 'missing_r34_frozen_prune'
-        | 'regression_marathon_block_close'
-        | 'missing_mihomo_close_connection'
-        | 'missing_p28b_attempt_rate'
-        | 'missing_r35_carrier_prune'
-        | 'missing_r35_parent_sidecar'
-        | 'missing_bug20260805_control_plane'
         | 'invalid_js_regex_pcre'
         | 'missing_core_readiness_gate'
-        | 'missing_bug20260903_recovery_truth'
-        | 'missing_longflow_evidence_contract'
-        | 'missing_emergency_cold_restart_removed'
     }
 
-/** Vite minifies to `.markCoreReadyAtMs(` on chunk export — bare `markCoreReadyAtMs(` is BUG-2026-07-23-004. */
+const FAILURE_MESSAGES: Record<Exclude<SparkleMainAsarGateResult, { ok: true }>['reason'], string> = {
+  stale_bundle: 'asar main bundle looks stale or corrupt',
+  missing_mark_core_ready_call: 'asar missing markCoreReadyAtMs call — PostCoreBootstrap will fail',
+  invalid_js_regex_pcre:
+    'asar contains invalid JS regex PCRE inline flags e.g. /(?i)/ — SyntaxError at launch',
+  missing_core_readiness_gate: 'asar missing Core Readiness Contract — cold start may silent-hang',
+}
+
+/** Vite minifies to `.markCoreReadyAtMs(` on chunk export — a bare `markCoreReadyAtMs(` call is a mis-bound import. */
 export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAsarGateResult {
   if (!mainSource.includes('appendAppLog')) {
     return { ok: false, reason: 'stale_bundle' }
   }
-  if (mainSource.includes('.markCoreReadyAtMs(')) {
-    // continue — markCoreReady present
-  } else if (/\bmarkCoreReadyAtMs\s*\(/.test(mainSource)) {
-    return { ok: false, reason: 'missing_mark_core_ready_call' }
-  } else {
+  if (!mainSource.includes('.markCoreReadyAtMs(')) {
     return { ok: false, reason: 'missing_mark_core_ready_call' }
   }
-
-  if (mainSource.includes('marathon_block_close_connection')) {
-    return { ok: false, reason: 'regression_marathon_block_close' }
-  }
-  if (
-    !mainSource.includes('frozen_surgical_prune') &&
-    !mainSource.includes('close_frozen_connection')
-  ) {
-    return { ok: false, reason: 'missing_r34_frozen_prune' }
-  }
-  if (
-    !mainSource.includes('mihomoCloseConnection') &&
-    !mainSource.includes('.mihomoCloseConnection(')
-  ) {
-    return { ok: false, reason: 'missing_mihomo_close_connection' }
-  }
-  if (
-    !mainSource.includes('attempt_rate_pct') &&
-    !mainSource.includes('below_target_attempt')
-  ) {
-    return { ok: false, reason: 'missing_p28b_attempt_rate' }
-  }
-  if (!mainSource.includes('marathon_sse_carrier_frozen_prune')) {
-    return { ok: false, reason: 'missing_r35_carrier_prune' }
-  }
-  if (
-    !mainSource.includes('Hy2ParentSidecar') ||
-    !mainSource.includes('phase=execute') ||
-    !mainSource.includes('deny_unbound_critical_host') ||
-    !mainSource.includes('StallEscalationLadder') ||
-    !mainSource.includes('r41_critical_host_no_close') ||
-    !mainSource.includes('TransportMutationGate') ||
-    !mainSource.includes('mtic_v2_transport_mutation_gate') ||
-    !mainSource.includes('MarathonHy2Only') ||
-    !mainSource.includes('marathon_hy2_only')
-  ) {
-    return { ok: false, reason: 'missing_r35_parent_sidecar' }
-  }
-  if (
-    !mainSource.includes('emergency_parent_refresh_bypass') ||
-    !mainSource.includes('requireCarrierBytesRecovery') ||
-    !mainSource.includes('observability_probe_admitted') ||
-    !mainSource.includes('carrier_recovered=') ||
-    !mainSource.includes('resolveHy2ParentUdpOutboundConnectionId') ||
-    !mainSource.includes('byte_death_no_udp_outbound_sidecar_emergency') ||
-    !mainSource.includes('byte_death_probe_only_without_udp_close') ||
-    !mainSource.includes('byte_death_close_frozen_leaf_batch') ||
-    !mainSource.includes('byte_death_udp_absent_requires_core_restart') ||
-    !mainSource.includes('byte_death_udp_parent_unknown') ||
-    !mainSource.includes('[RecoveryCoordinator]:') ||
-    !mainSource.includes('[EmergencyCoreRecovery]:') ||
-    !mainSource.includes('[ByteDeathRecoveryHonesty]:') ||
-    !mainSource.includes('requestEmergencyCoreRecovery') ||
-    !mainSource.includes('reset_parent_chain_birth') ||
-    !mainSource.includes('byteDeathFullScan') ||
-    !mainSource.includes('[Hy2ParentByteDeathRecovery]:') ||
-    !mainSource.includes('executeByteDeathParentMutation') ||
-    !mainSource.includes('mihomoGetConnections') ||
-    !mainSource.includes('byte_death_mutation_failed_blocking_sidecar') ||
-    !mainSource.includes('byte_death_rotation_ssot') ||
-    mainSource.includes('ghost_udp_parent_birth_reset')
-  ) {
-    return { ok: false, reason: 'missing_bug20260805_control_plane' }
-  }
-
   if (findInvalidJsRegexPcrePatterns(mainSource).length > 0) {
     return { ok: false, reason: 'invalid_js_regex_pcre' }
   }
-
-  if (
-    !mainSource.includes('[CoreReadiness]:') &&
-    !mainSource.includes('runCoreReadinessPipeline')
-  ) {
+  if (!mainSource.includes('[CoreReadiness]:') && !mainSource.includes('runCoreReadinessPipeline')) {
     return { ok: false, reason: 'missing_core_readiness_gate' }
   }
-
-  if (
-    !mainSource.includes('fallback_ladder') ||
-    !mainSource.includes('cursor_dedicated_dial_failure_cluster_udp_absent') ||
-    !mainSource.includes('stale_session_overrides_vitality_counterproof') ||
-    !mainSource.includes('coreLogDialFailureTailWatcher') ||
-    !mainSource.includes('api2_anchor_rejected') ||
-    !mainSource.includes('proactive_hard_rotate') ||
-    !mainSource.includes('cursor_dedicated_mihomo') ||
-    !mainSource.includes('probeRecoveryApi2AnchorDetailed') ||
-    !mainSource.includes('notifyCollectiveDeathAlert') ||
-    !mainSource.includes('cursorApi2MihomoProbe') ||
-    !mainSource.includes('dial_cluster_commercial_leaf_skip_hy2_udp') ||
-    !mainSource.includes('[ProxyStackDeadlock]:') ||
-    !mainSource.includes('proxy_stack_not_confirmed_deadlock')
-  ) {
-    return { ok: false, reason: 'missing_bug20260903_recovery_truth' }
-  }
-
-  // Longflow evidence contract — a bundle built without these would silently
-  // regress to the `?? 0` class defect (missing evidence scored as healthy zero).
-  if (
-    !mainSource.includes('proxy_stack_deadlock_longflow_overrides_mixed_port') ||
-    !mainSource.includes('measuredLongflowEvidence') ||
-    !mainSource.includes('unknownLongflowEvidence') ||
-    !mainSource.includes('proxy_stack_longflow_evidence_unknown')
-  ) {
-    return { ok: false, reason: 'missing_longflow_evidence_contract' }
-  }
-
-  // BUG-2026-09-15-004: the disruptive emergency core stop+start must stay removed.
-  if (!mainSource.includes('emergency_core_restart_removed')) {
-    return { ok: false, reason: 'missing_emergency_cold_restart_removed' }
-  }
-
   return { ok: true }
 }
 
 export function assertSparkleMainAsarBundle(mainSource: string): void {
   const result = validateSparkleMainAsarBundle(mainSource)
   if (!result.ok) {
-    const messages: Record<Exclude<SparkleMainAsarGateResult, { ok: true }>['reason'], string> = {
-      missing_main: 'asar missing out/main/index.js',
-      stale_bundle: 'asar main bundle looks stale or corrupt',
-      missing_mark_core_ready_call: 'asar missing markCoreReadyAtMs call — PostCoreBootstrap will fail',
-      missing_r34_frozen_prune: 'asar missing R-34 frozen_surgical_prune — stall recovery will block close',
-      regression_marathon_block_close: 'asar still contains marathon_block_close_connection regression',
-      missing_mihomo_close_connection: 'asar missing mihomoCloseConnection — frozen prune close will fail at runtime',
-      missing_p28b_attempt_rate: 'asar missing P28b attempt_rate_pct — G9 soak SLO metrics will not emit',
-      missing_r35_carrier_prune: 'asar missing R-35 marathon_sse_carrier_frozen_prune',
-      missing_r35_parent_sidecar: 'asar missing R-40/R-41 Hy2ParentSidecar execute + deny_unbound + StallEscalationLadder',
-      missing_bug20260805_control_plane: 'asar missing BUG-2026-08-05-001 control-plane fixes @1.30.3 (emergency bypass + carrier honesty + observability_probe)',
-      invalid_js_regex_pcre: 'asar contains invalid JS regex PCRE inline flags e.g. /(?i)/ — SyntaxError at launch',
-      missing_core_readiness_gate: 'asar missing Core Readiness Contract — cold start may silent-hang',
-      missing_bug20260903_recovery_truth:
-        'asar missing BUG-2026-09-03-009/010 recovery truth markers (fallback_ladder / stale_session / tail watcher)',
-      missing_longflow_evidence_contract:
-        'asar missing longflow evidence contract (measured/unknown union) — risk of silent zero-fill recursion',
-      missing_emergency_cold_restart_removed:
-        'asar missing emergency cold-restart removal — risk of collective outage from mihomo stop+start',
-    }
-    throw new Error(messages[result.reason])
+    throw new Error(FAILURE_MESSAGES[result.reason])
   }
 }

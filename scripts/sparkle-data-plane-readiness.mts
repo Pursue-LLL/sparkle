@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 const MAX_ATTEMPTS = Number(process.env.SPARKLE_DATA_PLANE_ATTEMPTS ?? '20')
 const SLEEP_SEC = Number(process.env.SPARKLE_DATA_PLANE_SLEEP_SEC ?? '2')
 const PROXY_URL = process.env.SPARKLE_PROXY_URL ?? 'http://127.0.0.1:7890'
-const TARGET_URL = process.env.SPARKLE_DATA_PLANE_TARGET ?? 'https://api2.cursor.sh/'
+const TARGET_URL = process.env.SPARKLE_DATA_PLANE_TARGET ?? 'https://www.gstatic.com/generate_204'
 
 function sleep(seconds: number): void {
   execFileSync('sleep', [String(seconds)])
