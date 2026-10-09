@@ -8,7 +8,7 @@ const ProbeWarmupChip: React.FC = () => {
   if (!warmingUp) return null
 
   return (
-    <Tooltip content="内核刚启动，节点延迟正在批量测速（约 1~2 分钟）。期间不显示超时，可正常切换节点。">
+    <Tooltip content="内核刚启动，节点延迟正在测速并复测（约 2~4 分钟）。期间不显示超时，可正常切换节点。">
       <Chip
         size="sm"
         variant="flat"

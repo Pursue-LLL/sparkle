@@ -3,7 +3,7 @@
 // [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变），并让 mihomo 重读 provider。
 // 每轮实测延迟落盘为快照；生成配置重写 sparkle-fast 时读取快照，避免订阅刷新后退回「未测延迟」的订阅顺序。
 // 不固定（pin）`自动选择`：fallback 本就取文件序里第一个存活节点，固定反而会盖过文件序并写入 store-selected。
-// 启动时先 healthcheck 再重排；周期复查仅当新首选明显更快才换文件序。
+// 启动时先低并发逐点拨测再重排；周期复查仅当新首选明显更快才换文件序。
 // fallback 仍只在当前节点挂掉时切换，不因延迟抖动来回切。
 
 import { readFile, writeFile } from 'fs/promises'
@@ -13,12 +13,8 @@ import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { AUTO_SELECT_GROUP_NAME, AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
-import {
-  getAxios,
-  mihomoProxyProviders,
-  mihomoUnfixedProxy,
-  mihomoUpdateProxyProviders
-} from './mihomoApi'
+import { mihomoProxyProviders, mihomoUnfixedProxy, mihomoUpdateProxyProviders } from './mihomoApi'
+import { probeProviderLeavesGently } from './providerLeafProbe'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import {
   collectNodeDelays,
@@ -120,17 +116,11 @@ export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
     return
   }
   try {
-    // sparkle-fast 节点多，默认 15s axios 超时会在探测完成前断开。
-    const instance = await getAxios()
-    await instance.get(`/providers/proxies/${encodeURIComponent(FAST_NODE_PROVIDER_ID)}/healthcheck`, {
-      timeout: 120_000
-    })
-    await new Promise((resolve) => {
-      setTimeout(resolve, 2_000)
-    })
+    // 逐点低并发拨测：整个 provider 同时体检会把正常节点测成超时，进而被排到段尾。
+    await probeProviderLeavesGently(FAST_NODE_PROVIDER_ID)
   } catch (error) {
     await appendAppLog(
-      `[SparkleFastOrder]: healthcheck failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      `[SparkleFastOrder]: probe failed: ${error instanceof Error ? error.message : String(error)}\n`,
     )
   }
   await applyLatencyOrder(true)

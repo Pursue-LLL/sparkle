@@ -2,17 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   isMihomoApiResourceNotFoundError,
-  isUserExplicitDelayPurpose,
   resolveProviderNameForLeaf,
 } from './mihomoProxyDelayCore'
 
 describe('mihomoProxyDelayCore', () => {
-  it('isUserExplicitDelayPurpose identifies managed UI delay', () => {
-    assert.equal(isUserExplicitDelayPurpose('user_explicit'), true)
-    assert.equal(isUserExplicitDelayPurpose('default'), false)
-    assert.equal(isUserExplicitDelayPurpose(undefined), false)
-  })
-
   it('detects mihomo REST Resource not found reject payload', () => {
     assert.equal(isMihomoApiResourceNotFoundError({ message: 'Resource not found' }), true)
     assert.equal(isMihomoApiResourceNotFoundError(new Error('Resource not found')), true)

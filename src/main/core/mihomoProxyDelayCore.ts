@@ -1,12 +1,6 @@
 // [INPUT] none
-// [OUTPUT] isMihomoApiResourceNotFoundError · resolveProviderNameForLeaf · isUserExplicitDelayPurpose
-// [POS] mihomo /proxies/{leaf}/delay Resource not found → provider leaf refresh path.
-
-export type MihomoDelayPurpose = 'default' | 'user_explicit'
-
-export function isUserExplicitDelayPurpose(purpose: MihomoDelayPurpose | undefined): boolean {
-  return purpose === 'user_explicit'
-}
+// [OUTPUT] isMihomoApiResourceNotFoundError · resolveProviderNameForLeaf
+// [POS] mihomo /proxies/{leaf}/delay Resource not found → 改走 provider 单点拨测端点。
 
 export function isMihomoApiResourceNotFoundError(error: unknown): boolean {
   if (typeof error === 'object' && error !== null && 'message' in error) {

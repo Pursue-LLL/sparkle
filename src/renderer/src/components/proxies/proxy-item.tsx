@@ -4,11 +4,12 @@ import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FaMapPin } from 'react-icons/fa6'
 import {
+  formatFlakyDelayTooltip,
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
-  latestProxyDelayHistoryEntry,
   PROXY_DELAY_AGE_TICK_MS,
 } from '@renderer/utils/proxy-delay-sample-age'
+import { effectiveProxyDelay, judgeProxyDelay } from '@sparkle-core/proxyDelayVerdictCore'
 import { mihomoUnfixedProxy } from '@renderer/utils/ipc'
 import { useProbeWarmup } from '@renderer/hooks/use-probe-warmup'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
@@ -31,7 +32,8 @@ const isGroup = (
   return 'now' in proxy && typeof (proxy as ControllerGroupDetail).now === 'string'
 }
 
-function delayColor(delay: number): 'primary' | 'success' | 'warning' | 'danger' {
+function delayColor(delay: number, flaky: boolean): 'primary' | 'success' | 'warning' | 'danger' {
+  if (flaky) return 'warning'
   if (delay === -1) return 'primary'
   if (delay === 0) return 'danger'
   if (delay < 500) return 'success'
@@ -50,6 +52,8 @@ interface ProxyDelayControlProps {
   loading: boolean
   /** 预热窗口内没有可信样本（未测或超时）：显示 loading 而不是「测试」/「超时」。 */
   warmingUp: boolean
+  /** 最近一次失败但此前刚成功过：沿用上次成功的延迟并提示，不显示「超时」。 */
+  flaky: boolean
   onDelay: () => void
   buttonClassName: string
   textClassName?: string
@@ -60,6 +64,7 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   sampleTime,
   loading,
   warmingUp,
+  flaky,
   onDelay,
   buttonClassName,
   textClassName = 'text-xs',
@@ -76,20 +81,23 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
     return () => clearInterval(timer)
   }, [delay])
 
-  const ageLabel = useMemo(
-    () => (delay === -1 ? undefined : formatProxyDelaySampleAge(sampleTime, ageNowMs, 'zh')),
-    [ageNowMs, delay, sampleTime]
-  )
+  const ageLabel = useMemo(() => {
+    if (flaky) return '最近失败'
+    return delay === -1 ? undefined : formatProxyDelaySampleAge(sampleTime, ageNowMs, 'zh')
+  }, [ageNowMs, delay, flaky, sampleTime])
   const tooltip = useMemo(
-    () => formatProxyDelayTooltip(delay, sampleTime, ageNowMs, 'zh'),
-    [ageNowMs, delay, sampleTime]
+    () =>
+      flaky
+        ? formatFlakyDelayTooltip(delay, sampleTime, ageNowMs)
+        : formatProxyDelayTooltip(delay, sampleTime, ageNowMs, 'zh'),
+    [ageNowMs, delay, flaky, sampleTime]
   )
 
   const button = (
     <Button
       isIconOnly
       isLoading={loading || (warmingUp && delay <= 0)}
-      color={delayColor(delay)}
+      color={delayColor(delay, flaky)}
       onPress={onDelay}
       variant="light"
       className={buttonClassName}
@@ -144,9 +152,10 @@ const ProxyItem: React.FC<Props> = (props) => {
   const shouldShowGroupSelectedProxy =
     showGroupSelectedProxy && isGroup(proxy) && Boolean(proxy.now)
 
-  const latestDelay = isGroup(proxy) ? undefined : latestProxyDelayHistoryEntry(proxy.history)
-  const delay = latestDelay?.delay ?? -1
-  const delaySampleTime = latestDelay?.time
+  const verdict = judgeProxyDelay(isGroup(proxy) ? undefined : proxy.history)
+  const delay = effectiveProxyDelay(verdict)
+  const delaySampleTime = verdict.kind === 'untested' ? undefined : verdict.sampledAt
+  const flaky = verdict.kind === 'flaky'
 
   const [loading, setLoading] = useState(false)
   const warmingUp = useProbeWarmup()
@@ -327,6 +336,7 @@ const ProxyItem: React.FC<Props> = (props) => {
                     sampleTime={delaySampleTime}
                     loading={loading}
                     warmingUp={warmingUp}
+                    flaky={flaky}
                     onDelay={onDelay}
                     buttonClassName="h-8 w-8 min-w-8 p-0 text-xs"
                   />
@@ -370,6 +380,7 @@ const ProxyItem: React.FC<Props> = (props) => {
                       sampleTime={delaySampleTime}
                       loading={loading}
                       warmingUp={warmingUp}
+                      flaky={flaky}
                       onDelay={onDelay}
                       buttonClassName="h-full w-8 min-w-8 p-0 text-sm"
                       textClassName="text-sm"

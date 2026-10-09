@@ -72,3 +72,14 @@ export function formatProxyDelayTooltip(
         : `${delay} ms`
   return locale === 'zh' ? `测试于 ${age} · ${delayLabel}` : `Tested ${age} · ${delayLabel}`
 }
+
+/** 「波动」状态的提示：最近一次失败，但此前刚成功过，不能据此判定节点已死。 */
+export function formatFlakyDelayTooltip(
+  lastSuccessDelay: number,
+  lastSuccessAtIso: string | undefined,
+  nowMs: number = Date.now()
+): string {
+  const age = formatProxyDelaySampleAge(lastSuccessAtIso, nowMs, 'zh')
+  const lastSuccess = age ? `${age}成功 ${lastSuccessDelay}ms` : `上次成功 ${lastSuccessDelay}ms`
+  return `最近一次测速失败（可能是偶发抖动），${lastSuccess}`
+}

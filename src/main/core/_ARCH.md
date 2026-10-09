@@ -13,11 +13,13 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | 文件 | 职责 |
 | ---- | ---- |
 | `manager.ts` | core 进程 start / stop / restart；service 模式走签名 API；`startCore` 在 `generateProfile` 与 `checkProfileWithRetry` 之后才停旧核 |
-| `mihomoApi.ts` | mihomo REST 封装；delay 经 `mihomoProbeCoordinator` 并发槽；`Resource not found` → provider leaf 回退（BUG-012/014）；`mihomoChangeProxy` 对 Cursor 专用组仅放行 `manual` / `bootstrap` |
+| `mihomoApi.ts` | mihomo REST 封装；delay 经 `mihomoProbeCoordinator` 并发槽；provider 叶子节点（不在 `/proxies`）经 `mihomoProviderLeafDelay` 单点拨测，不触发 provider 级体检/重载；`mihomoChangeProxy` 对 Cursor 专用组仅放行 `manual` / `bootstrap` |
 | `mihomoControllerReadyCore.ts` | controller 就绪探测 `GET /version`（service 模式走签名请求）；独立成模块以避免 rolldown 把 `mihomoApi` 动态 import 错绑到 `index.js`（会导致 `runPostCoreBootstrap` 永不执行） |
 | `mihomoProbeCoordinator.ts` | 全局 mihomo delay 并发槽（最多 2，等待上限 30s） |
 | `mihomoProxyDelayCore.ts` | `isMihomoApiResourceNotFoundError` · `resolveProviderNameForLeaf` · `MihomoDelayPurpose` |
-| `mihomoProviderDelayCore.ts` / `mihomoGroupMembersCore.ts` | provider leaf delay 历史取最近成功样本 · 组成员解析 |
+| `mihomoProviderDelayCore.ts` / `mihomoGroupMembersCore.ts` | 托盘取最近成功样本 · 组成员解析 |
+| `proxyDelayVerdictCore.ts` | 延迟展示的单一判定规则（ok / flaky / failed / untested）：连续失败 ≥3 次才判超时；渲染进程经 `@sparkle-core` 引用 |
+| `providerLeafProbeCore.ts` / `providerLeafProbe.ts` | 冷启动低并发（4）逐点拨测：`sparkle-fast` 启动探测 + 地区组预热后复测「超时/未测」节点（总时长上限 150s），取代 provider 级并发体检 |
 | `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
 | `coreReadinessGate.ts` / `coreReadinessGateCore.ts` | 冷启动 Readiness Contract：sidecar → profile 检查 → startCore → API → 数据面探测 |
 | `coreLifecycle.ts` / `coreLifecycleCore.ts` | core 就绪后 fake-ip flush（cold / manual restart 后卫生） |
