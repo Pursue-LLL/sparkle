@@ -13,7 +13,7 @@
 | 装包 | `/Applications/Sparkle.app`，GUI + mihomo + TUN(39 路由) + `:7890` HTTP 200 |
 
 **能力/行为基线（后续不得回退）**
-- `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 日本→台湾→韩国→新加坡→美国→其他国家，香港与 AnyTLS 排除；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点，当前节点探测失败才降级，恢复后升回。
+- `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 台湾→日本→韩国→新加坡→美国→其他国家，地区内按 Gemini 探测延迟升序；香港与 AnyTLS 排除；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点，当前节点探测失败才降级，恢复后升回。**`自动选择` 不得被固定（pin）**：内核就绪后按实测延迟重排文件序并解除固定（`sparkleFastLatencyOrder.ts`），之后每 30 分钟复查，新首选须比当前首选快 ≥50ms 且 ≥30% 才换（BUG-2026-10-09-001）。
 - 探测：`gemini.google.com`（用户主用服务），interval 300s，timeout 5000ms，lazy=true（组空闲时跳过定时探测）；预热也用组自身探测目标。
 - 地区组 `Sparkle-<地区>`（日本/台湾/韩国/新加坡/美国）= url-test（tolerance 2000，`exclude-type: anytls`），仅供手动选择，**不被 `自动选择` 引用**；没有可用节点的地区不建组（空组会被 mihomo 变成直连型 `COMPATIBLE`）。香港为专用组。
 - **铁律**：`proxies` 里只能引用组名，不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）；`sparkle-fast` 文件必须随每次配置生成重写。

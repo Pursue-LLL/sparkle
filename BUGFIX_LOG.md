@@ -89,7 +89,20 @@
 
 ---
 
-### BUG-2026-10-09-001 · `自动选择` 频繁切节点：fallback 无迟滞 + 不稳节点排在最前 · **CODE-DONE / 待安装验收**
+### BUG-2026-10-09-002 · 装包后门禁在 Agent 沙箱 / macOS 26 强制 GUI 下恒误报 FAIL · **FIXED（门禁逻辑已验证 · 全脚本端到端未重跑）**
+
+| 字段 | 内容 |
+| --- | --- |
+| **症状** | `upgrade-sparkle-local.sh` 末尾报 `FAIL: macOS 26 headless bootstrap not logged — check `（后面的日志路径为空），`EXIT=1`；安装本身成功（版本、进程、`:7890` 均正常）。 |
+| **根因** | ① Agent shell 的 `$HOME` 是 `/Users/yululiu/.cursor-latest`，Sparkle 实际在 `/Users/yululiu` 下写日志/配置/护栏状态；脚本与 `.mts` 用 `$HOME` / `os.homedir()` 拼路径，找不到日志目录（`APP_LOG` 为空）。同一错位还使 `install-sparkle-local.sh` 的 cursor 路径前缀「保留/恢复」读错配置而空转，`marathon-core-restart-guard.sh:6` 读错 `~/.sparkle/marathon-core-restart-guard.json`（该脚本注明状态文件缺失时退回 mihomo `/connections` 兜底）。② 用户配置 `macos26ForceGui: true`（`config.yaml:94`）→ app 走 GUI，不会产生 `[MacOs26Headless]: bootstrap complete`；门禁在 macOS ≥ 26 一律走 headless 分支。③ GUI 路径下 macOS 26 有意跳过 observability stack（`postCoreBootstrap.ts:214-218` 记 `macOS 26 GUI — observability stack skipped`），不会出现 `Api2ProbePlane ... ON`，原门禁等该行必超时。 |
+| **修复** | ① 新增 `scripts/lib/login-home.sh`（`sparkle_pin_login_home`：按 passwd 记录把 `HOME` 固定为登录用户真实主目录，目录不存在则不动）；`upgrade-sparkle-local.sh` 在构建完成后调用（构建仍用原 `HOME`，避免工具链找不到），`install-sparkle-local.sh` 开头调用。子进程（`.mts`、`preflight-sparkle-1280.sh`）继承。② headless 分支仅在 macOS ≥ 26 **且** `macos26ForceGui` ≠ true 时启用，否则走 GUI 就绪门禁。③ 新增 `hasApi2ProbePlaneSettledSinceLine`（`Api2ProbePlane ON` 或上述「有意跳过」均算就绪），取代 `hasApi2ProbePlaneOnSinceLine`，用于 `upgrade-sparkle-local.sh` 与 `upgrade-sparkle-post-install-recovery.mts`。 |
+| **验证** | `bash -n` 三个脚本通过；`upgradeSparklePostInstallGateCore.test.ts` 6/6（新增「GUI 跳过算就绪」用例）；eslint 无告警；用 2026-10-09 15:22 装包后的真实 app 日志按新逻辑评估：走 GUI 分支，`failed=0 apiReady=true probeSettled=true`；`HOME` 固定实测 `.cursor-latest` → `/Users/yululiu`，传入不存在的 `HOME` 也被纠正。 |
+| **未验证** | 全脚本端到端未重跑。GUI 分支后续的 close smoke、45 秒 BUG-014 观察、`preflight-sparkle-1280.sh`（`:9-11` 用 `$HOME` 拼路径，作为子进程会继承固定后的 `HOME`，应同时消除 BUG-2026-10-02-001「验证」栏记载的沙箱 `HOME` 假性 FAIL）均未实跑。 |
+| **关联** | `scripts/lib/login-home.sh` · `scripts/upgrade-sparkle-local.sh` · `scripts/install-sparkle-local.sh` · `scripts/upgradeSparklePostInstallGateCore.ts` · `scripts/upgrade-sparkle-post-install-recovery.mts` · 提交 `a380be8` |
+
+---
+
+### BUG-2026-10-09-001 · `自动选择` 频繁切节点：fallback 无迟滞 + 不稳节点排在最前 · **INSTALLED（2026-10-09 15:22）/ 切换次数指标验收中**
 
 | 字段 | 内容 |
 | --- | --- |
@@ -97,10 +110,13 @@
 | **根因** | 切换发生在 mihomo 内核：`fallback` 取第一个存活成员，单次探测失败即降级、恢复后立刻回切（无迟滞）；旧 `sparkle-fast` 扁平文件把所有节点按地区排序，hy2（出口 IP 随端口跳跃漂移）与同地区 trojan 混排，网络劣化窗口里探测失败被放大成频繁来回切。Sparkle 应用层无自动切换（app 日志无对应记录）。 |
 | **A/B 实测（同时段并行探测）** | 劣化窗口：旧方案成功率 75% / 12 次切换；hy2 优先 53% / 18 次；粘性 url-test 80% / 6 次。中等窗口：91% vs 93%，切换 4 vs 3。平稳窗口：各方案均 100%。结论依赖网络时段，且存在本地/运营商出口共模劣化，软件侧无法消除。 |
 | **修复** | `自动选择` 保持原生 `fallback`，成员为平铺的 `sparkle-fast` 文件（按 `proxySwitchPriority`，默认台湾→日本→韩国→新加坡→美国；地区内按 Gemini 探测延迟升序，内核就绪后重排一次，之后每 30 分钟复查且新首选须快 ≥50ms 且 ≥30% 才换；剔除 AnyTLS 与香港，hy2 在正常位置）；`Sparkle-<地区>` 五个组改为仅手动选择的 url-test（`tolerance 2000`、Gemini 探测、`exclude-type: anytls`），不再被 `自动选择` 引用；没有可用节点的地区不建组；预热改用组自身探测目标；默认地区优先级台湾第一。 |
-| **验证** | `tsx --test` 目标用例全过（含 `sparkleFastProviderCore`、`regionalAutoSelectGroupsCore`、`defaultAutoSwitchProxy`、预热）；`tsc` node/web 通过；eslint 无告警。`test:node-quality` 剩余 15 个失败（marathon / VPS / hy2 相关）在 `git archive HEAD` 干净导出上同样 15 个失败，与本次改动无关。 |
-| **不能保证的** | 切换不会降到零：每个节点的探测失败仍会让当前选择移动，mihomo 的失败触发即时健康检查仍在；运营商级劣化无法靠软件修复；Google 对出口 IP 的地域判定无法离线验证；fallback 在高优先级节点恢复后会立即切回（无迟滞），这是旧版频繁切换的来源之一，本方案未消除；AnyTLS 不进入 `自动选择`（仍可手动选）。 |
+| **运行时重排（`sparkleFastLatencyOrder.ts`）** | 内核就绪后 `refreshSparkleFastLatencyOrder(true)`：延迟取 provider 的 Gemini 探测历史（最近 5 次成功样本中位数），缺失时用 api2-probe-ledger 补；没有任何样本则先对 `sparkle-fast` 做 provider healthcheck（超时 120 秒，62 节点实测约 32 秒；默认 axios 15 秒会在探测完成前断开）再重排。重排 = 写 `sparkle-fast-proxies.yaml` → `PUT /providers/proxies/sparkle-fast` → `DELETE /proxies/自动选择` 解除固定。**不固定（pin）`自动选择`**：fallback 本就取文件序第一个存活节点，固定会盖过文件序并写入 `store-selected` 的 cache.db。之后每 30 分钟复查（`setInterval` + `unref`），仅当新首选比当前首选快 ≥50ms 且 ≥30% 才换；当前首选无样本则必换。冷启动配置生成时若 ledger 有样本则直接按延迟序写文件（商业节点 ledger 通常无样本，故主要靠上面的启动重排）。 |
+| **前置缺陷（已修）** | 重排最初从未执行：`postCoreBootstrap` 里 `await import('./mihomoApi')` 被 rolldown 错绑到 `index.js`（`mihomoVersion is not a function`），controller 就绪探测恒失败 → `DATA_PLANE_NOT_READY` → `runPostCoreBootstrap` 永不执行。改为 `mihomoControllerReadyCore.ts`（service 模式用签名请求探 `/version`），探测超时记 `controller probe last_error=`。ESLint 规则禁止 core 模块动态 import `mihomoApi`。 |
+| **安装后实测（2026-10-09 15:22 装包）** | app 日志 15:24:40 `mihomo API ready` → `SparkleFastOrder: skipped, no probe samples yet` → healthcheck 约 36 秒完成（无超时报错）→ 15:25:16 `reordered by latency nodes=62 sampled=44 first=🇨🇳 台湾 I0 | AI、动态IP | 2x`。实时 `GET /proxies/自动选择`：`type=Fallback`、`now=台湾 I0`、`fixed=''`。**并发探测影响**：同一节点单独测 vs 全量 provider healthcheck 期间测（各 5 次，仅一轮）：台湾 I0 中位数 77→82ms、日本 I0 429→248ms，未见变差；单独测时也出现 667/722ms 离群值，说明波动来自节点网络而非并发（样本小，非结论）。 |
+| **验证** | `tsx --test` 目标用例全过（含 `sparkleFastProviderCore`、`sparkleFastLatencyOrderCore`、`regionalAutoSelectGroupsCore`、`defaultAutoSwitchProxy`、预热）；`tsc` node/web 通过；eslint 无告警。`test:node-quality` 剩余 15 个失败（marathon / VPS / hy2 相关）在 `git archive HEAD` 干净导出上同样 15 个失败，与本次改动无关。 |
+| **不能保证的** | 切换不会降到零：每个节点的探测失败仍会让当前选择移动，mihomo 的失败触发即时健康检查仍在；运营商级劣化无法靠软件修复；Google 对出口 IP 的地域判定无法离线验证；fallback 在高优先级节点恢复后会立即切回（无迟滞），这是旧版频繁切换的来源之一，本方案未消除；AnyTLS 不进入 `自动选择`（仍可手动选）；单节点延迟本身波动大（实测同一节点 70–700ms），「最低」只是近期中位数最低，不保证瞬时最低；更新 provider 会清空节点历史样本，重排后需等下一轮探测才有新数据；`nodeMatchesRegion` 以名称头部判地区，`🇯🇵 泰国 B1IEPL | 日本隧道` 会被归入日本（未修）。 |
 | **验收指标** | `自动选择` 叶子节点日均翻转次数（基线 17 次/天）；`proxy_logs.db` 中 agy 地域 400 次数；日本节点出口占比。 |
-| **关联** | `src/main/core/regionalAutoSelectGroupsCore.ts` · `src/main/core/defaultAutoSwitchProxy.ts` · `src/main/core/regionPriority.ts` · `src/main/core/regionalUrlTestWarmupCore.ts` |
+| **关联** | `src/main/core/regionalAutoSelectGroupsCore.ts` · `src/main/core/defaultAutoSwitchProxy.ts` · `src/main/core/regionPriority.ts` · `src/main/core/regionalUrlTestWarmupCore.ts` · `src/main/core/sparkleFastProviderCore.ts` · `src/main/core/sparkleFastLatencyOrder.ts` · `src/main/core/sparkleFastLatencyOrderCore.ts` · `src/main/core/mihomoControllerReadyCore.ts` · `src/main/core/postCoreBootstrap.ts` |
 
 ---
 
@@ -2817,7 +2833,7 @@ pnpm run agent:upgrade:mac
 bash scripts/install-sparkle-local.sh
 ```
 
-**upgrade:mac 流程**：`electron-vite build` → **`rm -rf dist/mac-arm64`**（防 stale `Electron.app` 签名竞态，BUG-005）→ `electron-builder --mac dir`（`mac.identity: "-"` + `afterSign` deepSignMac · 失败自动 clean+重试 1 次）→ **`verify-sparkle-main-asar.mts`**（SSOT：`upgradeSparkleAsarGateCore.ts`）→ `install-sparkle-local.sh` → **Marathon 就绪门控**：mihomo socket + **`Api2ProbePlane ON`**（90s 内）+ 禁止 `PostCoreBootstrap.*failed` → Finder 启动。
+**upgrade:mac 流程**：`electron-vite build` → **`rm -rf dist/mac-arm64`**（防 stale `Electron.app` 签名竞态，BUG-005）→ `electron-builder --mac dir`（`mac.identity: "-"` + `afterSign` deepSignMac · 失败自动 clean+重试 1 次）→ **`verify-sparkle-main-asar.mts`**（SSOT：`upgradeSparkleAsarGateCore.ts`）→ `install-sparkle-local.sh` → **Marathon 就绪门控**：mihomo socket + **`Api2ProbePlane ON`**（90s 内；macOS 26 GUI 路径下 app 有意跳过 observability stack，日志 `macOS 26 GUI — observability stack skipped` 同样算就绪）+ 禁止 `PostCoreBootstrap.*failed` → Finder 启动。macOS ≥ 26 且未设 `macos26ForceGui` 时改走 headless 分支（检查 `[MacOs26Headless]: bootstrap complete` + `:7890`）。构建后脚本会把 `HOME` 固定为登录用户真实主目录（`scripts/lib/login-home.sh`），Agent 沙箱里 `HOME` 被改写也不会读错日志目录（BUG-2026-10-09-002）。
 
 **Marathon 就绪门控（SSOT · 零额外 userMessage）**：
 
