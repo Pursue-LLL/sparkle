@@ -19,6 +19,7 @@ import { IoIosArrowBack } from 'react-icons/io'
 import { MdDoubleArrow, MdOutlineSpeed, MdTune } from 'react-icons/md'
 import { useGroups } from '@renderer/hooks/use-groups'
 import ProbeWarmupChip from '@renderer/components/proxies/probe-warmup-chip'
+import { effectiveProxyDelay, judgeProxyDelay } from '@sparkle-core/proxyDelayVerdictCore'
 import CollapseInput from '@renderer/components/base/collapse-input'
 import { includesIgnoreCase } from '@renderer/utils/includes'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
@@ -36,7 +37,7 @@ type ProxyLike = ControllerProxiesDetail | ControllerGroupDetail
 const EMPTY_PROXIES: ProxyLike[] = []
 
 function getProxyDelay(proxy: ProxyLike): number {
-  return proxy.history.length > 0 ? proxy.history[proxy.history.length - 1].delay : -1
+  return effectiveProxyDelay(judgeProxyDelay(proxy.history))
 }
 
 /** 延迟升序：有延迟的在前，未测试居中，超时（0）垫底。 */
@@ -427,7 +428,7 @@ const Proxies: React.FC = () => {
                 await mihomoGroupDelay(proxy.name, testUrl)
                 return
               }
-              await mihomoProxyDelay(proxy.name, testUrl, { purpose: 'user_explicit' })
+              await mihomoProxyDelay(proxy.name, testUrl)
             } catch {
               // ignore per-node failures; group batch continues
             }

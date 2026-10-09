@@ -17,6 +17,7 @@
 | 文件 | 职责 |
 |------|------|
 | `proxy-item.tsx` | 节点卡片；测速按钮；条件绑定 hover/touch → 详情弹窗 |
+| `proxy-item.tsx` 延迟显示 | 经 `@sparkle-core/proxyDelayVerdictCore` 判定：最近一次失败但此前刚成功（连续失败 <3 次）显示上次延迟 + 「最近失败」，不显示「超时」 |
 | `probe-warmup-chip.tsx` | 页头「测速预热中」提示；状态来自 `@renderer/hooks/use-probe-warmup`，窗口内 `proxy-item.tsx` 对无可信样本的节点显示 loading 而非「测试」/「超时」 |
 | `proxy-detail-tooltip.tsx` | Portal 浮层：mihomo `history` 测速柱图与样本年龄 |
 | `proxy-setting-drawer.tsx` | 代理页设置抽屉（含上述 Switch） |

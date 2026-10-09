@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-10-09 测速结论可信化（待装包验证）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 代理页大片「超时」。实测 32 个「超时」节点低并发重测：10 个其实可用（误报）、9 个仅 Gemini 不通、13 个真挂 |
+| 根因 | 单点测速对 provider 叶子节点会触发**整个 provider 的体检/重载**（`refreshProviderLeafBeforeDelay` · `mihomoProxyDelayFromProvider`），组测速时每个节点都来一次；且 `pickLatestSuccessfulProviderDelay` 会把多分钟前的成功当作本次结果；界面只看最后一条样本 |
+| 修复 | ① 叶子节点改走 provider 单点端点 `mihomoProviderLeafDelay`，删除 provider 级体检/重载/缓存路径与 `purpose` 参数；② `sparkle-fast` 启动探测与超时节点复测改为低并发（4）逐点拨测；③ 展示判定收敛为 `proxyDelayVerdictCore`：连续失败 ≥3 次才显示超时，否则显示上次成功 + 「最近失败」 |
+| 未解决 | 「仅 Gemini 不通、通用访问可用」的节点仍按 Gemini 探测显示超时 |
+
 ## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-09 **15:22 CST**
 
 | 项 | 值 |

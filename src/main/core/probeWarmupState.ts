@@ -7,8 +7,8 @@ import { createProbeWarmupState } from './probeWarmupCore'
 
 export const PROBE_WARMUP_CHANGED_CHANNEL = 'probeWarmupChanged'
 
-/** 覆盖 45s 启动宽限 + sparkle-fast 全量健康检查（最长 120s）+ 地区组预热，并留足余量。 */
-const PROBE_WARMUP_MAX_MS = 5 * 60 * 1000
+/** 覆盖 sparkle-fast 逐点拨测 + 45s 启动宽限 + 地区组预热 + 超时节点复测（上限 150s），并留足余量。 */
+const PROBE_WARMUP_MAX_MS = 8 * 60 * 1000
 
 const state = createProbeWarmupState((active) => {
   mainWindow?.webContents.send(PROBE_WARMUP_CHANGED_CHANNEL, active)

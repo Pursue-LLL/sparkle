@@ -12,19 +12,10 @@ import { createSignedServiceAxios, getServiceAuthHeaders } from '../service/api'
 import { DEFAULT_GENERAL_DELAY_TEST_URL } from './cursorProxyGroup'
 import { withMihomoDelayProbeSlot } from './mihomoProbeCoordinator'
 import {
-  pickFreshSuccessfulProviderDelay,
-  pickLatestSuccessfulProviderDelay
-} from './mihomoProviderDelayCore'
-import {
   buildProviderProxyLookup,
   resolveGroupMemberProxies
 } from './mihomoGroupMembersCore'
-import {
-  isMihomoApiResourceNotFoundError,
-  isUserExplicitDelayPurpose,
-  resolveProviderNameForLeaf,
-  type MihomoDelayPurpose,
-} from './mihomoProxyDelayCore'
+import { isMihomoApiResourceNotFoundError, resolveProviderNameForLeaf } from './mihomoProxyDelayCore'
 
 export type MihomoChangeProxySource = 'auto' | 'manual' | 'bootstrap'
 
@@ -243,29 +234,6 @@ export const mihomoUpdateProxyProviders = async (name: string): Promise<void> =>
   return await instance.put(`/providers/proxies/${encodeURIComponent(name)}`)
 }
 
-const PROVIDER_HEALTHCHECK_SETTLE_MS = 2000
-const providerHealthcheckInflight = new Map<string, Promise<void>>()
-
-async function mihomoProviderHealthcheck(providerName: string): Promise<void> {
-  const instance = await getAxios()
-  await instance.get(`/providers/proxies/${encodeURIComponent(providerName)}/healthcheck`)
-  await new Promise((resolve) => {
-    setTimeout(resolve, PROVIDER_HEALTHCHECK_SETTLE_MS)
-  })
-}
-
-export async function mihomoProviderHealthcheckDeduped(providerName: string): Promise<void> {
-  const inflight = providerHealthcheckInflight.get(providerName)
-  if (inflight) {
-    return inflight
-  }
-  const run = mihomoProviderHealthcheck(providerName).finally(() => {
-    providerHealthcheckInflight.delete(providerName)
-  })
-  providerHealthcheckInflight.set(providerName, run)
-  return run
-}
-
 export const mihomoRuleProviders = async (): Promise<ControllerRuleProviders> => {
   const instance = await getAxios()
   return await instance.get('/providers/rules')
@@ -327,80 +295,10 @@ export const mihomoUnfixedProxy = async (group: string): Promise<ControllerProxi
   return await instance.delete(`/proxies/${encodeURIComponent(group)}`)
 }
 
-async function refreshProviderLeafBeforeDelay(
-  providerName: string,
-  options: MihomoDelayOptions | undefined,
-): Promise<void> {
-  const refreshWithHealthcheck = isUserExplicitDelayPurpose(options?.purpose)
-  if (refreshWithHealthcheck) {
-    try {
-      await mihomoProviderHealthcheckDeduped(providerName)
-      return
-    } catch {
-      // Fall through to provider update + second healthcheck attempt.
-    }
-  }
-
-  try {
-    await mihomoUpdateProxyProviders(providerName)
-  } catch {
-    // Best-effort re-register provider leaves in /proxies before delay dial.
-  }
-
-  if (refreshWithHealthcheck) {
-    try {
-      await mihomoProviderHealthcheckDeduped(providerName)
-    } catch {
-      // User explicit dial may still succeed via cached provider history.
-    }
-  }
-}
-
-async function mihomoProxyDelayFromProvider(proxy: string): Promise<ControllerProxiesDelay> {
-  const providers = await mihomoProxyProviders()
-  const providerName = resolveProviderNameForLeaf(providers, proxy)
-  if (!providerName) {
-    return { delay: 0, message: `provider leaf not found: ${proxy}` }
-  }
-  const proxyDetail = providers.providers[providerName]?.proxies?.find(
-    (item) => item.name === proxy,
-  )
-
-  const cached = pickFreshSuccessfulProviderDelay(proxyDetail?.history ?? [])
-  if (cached) {
-    return { delay: cached.delay }
-  }
-
-  try {
-    await mihomoProviderHealthcheckDeduped(providerName)
-  } catch {
-    try {
-      await mihomoUpdateProxyProviders(providerName)
-    } catch {
-      // Fall back to cached provider history when healthcheck fails.
-    }
-  }
-
-  const refreshed = await mihomoProxyProviders()
-  const refreshedProxy = refreshed.providers[providerName]?.proxies?.find(
-    (item) => item.name === proxy
-  )
-  const history = refreshedProxy?.history ?? []
-  const latestSuccessful = pickLatestSuccessfulProviderDelay(history)
-  if (latestSuccessful) {
-    return { delay: latestSuccessful.delay }
-  }
-  return { delay: 0, message: `no provider delay history for ${proxy}` }
-}
-
 const DEFAULT_DELAY_TEST_TIMEOUT_MS = 10000
-
-export type { MihomoDelayPurpose }
 
 export interface MihomoDelayOptions {
   timeoutMs?: number
-  /** user_explicit：UI 手动测速，先刷新 provider 叶子节点再拨测。 */
-  purpose?: MihomoDelayPurpose
 }
 
 async function resolveDelayTestTimeoutMs(
@@ -416,43 +314,22 @@ async function resolveDelayTestTimeoutMs(
   return DEFAULT_DELAY_TEST_TIMEOUT_MS
 }
 
-async function mihomoProxyDelayViaProviderLeaf(
+/**
+ * provider 叶子节点不在 `/proxies` 里，只能走 provider 的单点端点。
+ * 只拨测这一个节点：不触发整个 provider 的体检，也不重载 provider（二者都会清空/污染其余节点的样本）。
+ * 拨测失败时 mihomo 返回错误，原样抛给调用方。
+ */
+export async function mihomoProviderLeafDelay(
+  providerName: string,
   proxy: string,
-  url: string | undefined,
-  options: MihomoDelayOptions | undefined,
+  url: string,
+  timeoutMs: number
 ): Promise<ControllerProxiesDelay> {
-  const providers = await mihomoProxyProviders()
-  const providerName = resolveProviderNameForLeaf(providers, proxy)
-  if (!providerName) {
-    return { delay: 0, message: `provider leaf not found: ${proxy}` }
-  }
-
-  await refreshProviderLeafBeforeDelay(providerName, options)
-
-  const appConfig = await getAppConfig()
-  const { delayTestUrl, delayTestTimeout } = appConfig
-  const timeoutMs = await resolveDelayTestTimeoutMs(delayTestTimeout, options?.timeoutMs)
   const instance = await getAxios()
-  try {
-    return await instance.get(`/proxies/${encodeURIComponent(proxy)}/delay`, {
-      params: {
-        url: url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL,
-        timeout: timeoutMs,
-      },
-    })
-  } catch (retryError) {
-    if (!isMihomoApiResourceNotFoundError(retryError)) {
-      throw retryError
-    }
-    const providerDelay = await mihomoProxyDelayFromProvider(proxy)
-    if (providerDelay.delay !== undefined && providerDelay.delay > 0) {
-      return providerDelay
-    }
-    if (providerDelay.message) {
-      return providerDelay
-    }
-    throw retryError
-  }
+  return await instance.get(
+    `/providers/proxies/${encodeURIComponent(providerName)}/${encodeURIComponent(proxy)}/healthcheck`,
+    { params: { url, timeout: timeoutMs } }
+  )
 }
 
 async function mihomoProxyDelayUnchecked(
@@ -460,27 +337,25 @@ async function mihomoProxyDelayUnchecked(
   url?: string,
   options?: MihomoDelayOptions
 ): Promise<ControllerProxiesDelay> {
-  const appConfig = await getAppConfig()
-  const { delayTestUrl, delayTestTimeout } = appConfig
+  const { delayTestUrl, delayTestTimeout } = await getAppConfig()
   const timeoutMs = await resolveDelayTestTimeoutMs(delayTestTimeout, options?.timeoutMs)
+  const probeUrl = url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL
   const instance = await getAxios()
   try {
     return await instance.get(`/proxies/${encodeURIComponent(proxy)}/delay`, {
-      params: {
-        url: url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL,
-        timeout: timeoutMs
-      }
+      params: { url: probeUrl, timeout: timeoutMs }
     })
   } catch (error) {
     const proxies = await mihomoProxies()
-    const shouldTryProviderLeaf =
-      isMihomoApiResourceNotFoundError(error) || !proxies.proxies[proxy]
-    if (!shouldTryProviderLeaf) {
+    if (!isMihomoApiResourceNotFoundError(error) && proxies.proxies[proxy]) {
       throw error
     }
-    return mihomoProxyDelayViaProviderLeaf(proxy, url, options)
+    const providerName = resolveProviderNameForLeaf(await mihomoProxyProviders(), proxy)
+    if (!providerName) {
+      throw error
+    }
+    return await mihomoProviderLeafDelay(providerName, proxy, probeUrl, timeoutMs)
   }
-
 }
 
 export const mihomoProxyDelay = async (
