@@ -5,12 +5,12 @@
 
 ---
 
-## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-09-15 **17:18 CST**
+## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-09 **15:22 CST**
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.30.66** · CDHash **`22f57130e2bf3da23edf0b2e287b4dd342d2a7cf`**（2026-09-17 每日订阅更新热落地重编） |
-| 装包 | `/Applications/Sparkle.app`，GUI + mihomo + TUN(39 路由) + `:7890` HTTP 200 |
+| 版本 | **1.30.71** · CDHash **`075fbb0c850be2bbb3a341d5aa09f109fb9ab8f9`**（构建自 `9df932e`：`自动选择` 台湾优先 + 延迟序运行时重排 + controller 探针修复） |
+| 装包 | `/Applications/Sparkle.app`，GUI + mihomo + `:7890` 可用；实测 `自动选择` = `Fallback`、`now=台湾 I0`、`fixed=''`（未固定） |
 
 **能力/行为基线（后续不得回退）**
 - `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 台湾→日本→韩国→新加坡→美国→其他国家，地区内按 Gemini 探测延迟升序；香港与 AnyTLS 排除；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点，当前节点探测失败才降级，恢复后升回。**`自动选择` 不得被固定（pin）**：内核就绪后按实测延迟重排文件序并解除固定（`sparkleFastLatencyOrder.ts`），之后每 30 分钟复查，新首选须比当前首选快 ≥50ms 且 ≥30% 才换（BUG-2026-10-09-001）。
@@ -18,7 +18,7 @@
 - 地区组 `Sparkle-<地区>`（日本/台湾/韩国/新加坡/美国）= url-test（tolerance 2000，`exclude-type: anytls`），仅供手动选择，**不被 `自动选择` 引用**；没有可用节点的地区不建组（空组会被 mihomo 变成直连型 `COMPATIBLE`）。香港为专用组。
 - **铁律**：`proxies` 里只能引用组名，不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）；`sparkle-fast` 文件必须随每次配置生成重写。
 1. **不会因卡顿整核重启**：`restartCoreEmergency`/bridge/oscillation/smoke 已从代码删除；emergency 只决策+记录 `emergency_core_restart_removed`。
-2. **选点防抖**：url-test 组 `interval:300` + `tolerance:2000` + `lazy:true`；failover 触发 `proxyTimeoutThreshold=2000`、目标 `proxySwitchMaxTargetDelayMs=500`、顺序 新加坡→台湾→日本→韩国→美国、每 300s 复测；**`自动选择` = `select`（可手动选），成员 = 5 区域组 + `use:[商业 provider, VPS provider]`（全部节点）；`proxyHealthMonitor` 受管 Cursor 专用 + 自动选择**。
+2. **选点防抖**：地区组 url-test `interval:300` + `tolerance:2000` + `lazy:true`；`自动选择` fallback 同为 `interval:300`、`timeout:5000`、`lazy:true`（`defaultAutoSwitchProxy.ts`）。**应用层不自动切换 `自动选择`**：`proxyHealthMonitor.ts` 已于 2026-09-29（`febdc08`）删除，配置项 `autoProxySwitch` / `proxyHealthCheckInterval` / `proxyTimeoutThreshold` / `proxySwitchMaxTargetDelayMs` 目前无消费方（仅类型、默认值与迁移代码残留）；`自动选择` 的切换只来自 mihomo fallback 与上方 `自动选择` 条目里的 30 分钟延迟序复查。`proxySwitchPriority`（默认 台湾→日本→韩国→新加坡→美国）仍决定 `sparkle-fast` 与地区组的地区顺序。
 3. **恢复证据契约**：`LongflowEvidence=measured|unknown`（禁止 `?? 0`）；探针在 controller 不可达时不伪造 `leaf:fail`；集体死亡报告按日历日选日志 + 30min 窗口。
 4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁含 `emergency_core_restart_removed` + longflow 契约标记。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
@@ -29,10 +29,11 @@
 
 ---
 
-## 2026-10-02 · **生产基线 @1.30.67 INSTALLED · BUG-2026-10-02-001 Antigravity 地域 400 根治（🎯 Antigravity 专用组 + 前置规则注入进代码）· LIVE-VERIFIED 2026-10-03**
+## 2026-10-02 · **生产基线 @1.30.67 INSTALLED · BUG-2026-10-02-001 Antigravity 地域 400 根治（🎯 Antigravity 专用组 + 前置规则注入进代码）· LIVE-VERIFIED 2026-10-03 · 专用组部分已被取代**
 
 | 字段 | 内容 |
 | --- | --- |
+| **当前状态** | 本条的「专用组」「专用组守卫」已不在代码中：专用组于 2026-10-03 删除（`97d328f`），三条前置规则现指向 `自动选择` fallback（`antigravityRuleInjection.ts:38`），`verify:agygeo` 改为断言 `自动选择`（`scripts/verify-antigravity-geo-routing.mts`）。以顶部「当前最佳基线」第 7 条为准；以下行保留为当时记录。 |
 | **版本** | `/Applications/Sparkle.app` → **1.30.67**（installed=expected，装包入口 `pnpm run agent:upgrade:mac`；agent 场景需 `SPARKLE_UPGRADE_BREAK_GLASS=1` 跳过 safe-window idle 等待——agent 会话自身占活跃连接必然死锁） |
 | **专用组** | `🎯 Antigravity 专用` = **fallback**：`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`（Reality 优先确定性、HY2 冷备、绝不 DIRECT），url `https://gemini.google.com`、interval 300、timeout 5000、lazy |
 | **前置规则** | rules 数组最前注入 3 条：`DOMAIN-KEYWORD,cloudcode-pa` + `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`（gemini CLI 未来同样受益；host 均纯 AI-API 端点零附带伤害） |
@@ -42,7 +43,7 @@
 
 ---
 
-## 2026-09-15 后续8 · **生产基线 @1.30.66 INSTALLED d493adb4** · BUG-007 选点防抖（tolerance 2000/interval 300/lazy + failover 2000/500 + 区域顺序）· 全量 707 项 0 新增失败 · **当前最佳生产基线**
+## 2026-09-15 后续8 · **生产基线 @1.30.66 INSTALLED d493adb4** · BUG-007 选点防抖（tolerance 2000/interval 300/lazy + failover 2000/500 + 区域顺序）· 全量 707 项 0 新增失败 · 已被顶部基线取代（failover 监控 `proxyHealthMonitor.ts` 已于 2026-09-29 删除，区域顺序现为 台湾→日本→韩国→新加坡→美国）
 
 | 字段 | 内容 |
 | --- | --- |
@@ -54,7 +55,7 @@
 
 ---
 
-## 2026-09-15 后续6 · **生产基线 @1.30.66 INSTALLED 781195f1** · BUG-2026-09-15-004/005/006 删除整核冷重启 + 修复 DistFreshness 元凶 + 去文档泄漏 · 单测 707 项 0 新增失败 · **当前最佳生产基线**
+## 2026-09-15 后续6 · **生产基线 @1.30.66 INSTALLED 781195f1** · BUG-2026-09-15-004/005/006 删除整核冷重启 + 修复 DistFreshness 元凶 + 去文档泄漏 · 单测 707 项 0 新增失败 · 已被顶部基线取代
 
 | 字段 | 内容 |
 | --- | --- |

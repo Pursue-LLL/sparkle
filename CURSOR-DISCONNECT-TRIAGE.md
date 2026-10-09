@@ -37,7 +37,7 @@
 | `MarathonDialTolerance` | Cursor 连接 ≥12 时 VPS Reality/HY2 leaf **dial timeout 5s→45s**（热更新 provider，不切节点、不关连接） |
 | `transport_pair + api2geo` | ledger 同时探 `api2.cursor.sh` + `api2geo.cursor.sh`；api2 绿但 api2geo 红 → `transport_partition_stale`（**只观测，不 failover**） |
 | `session_transport_nudge` | HY2 且 cursor_conn≥12 时每 **40s** api2+api2geo 短探针（**保活，非 failover**） |
-| **P9 Marathon Quiesce** | conn≥12：`health-check.enable=false` 热 patch + mihomo reload + 暂停 `proxyHealthMonitor`（**quiesce 全周期含 hysteresis**）+ UI 过滤 delay=0 + **Marathon 静默** badge（**R-24 @1.26.99**） |
+| **P9 Marathon Quiesce** | conn≥12：仅持久化 runtime yaml 的 provider `health-check.enable=false`（**不 reload mihomo**，P10-2）+ UI 过滤 delay=0 + **Marathon 静默** badge（**R-24 @1.26.99**） |
 | **R-24 Contention Budget** | green 基线 ≤1 triple-pulse/5min · rescue bundle pulse deny 用 cached · `[MarathonContentionBudget] outcome=deny`（**1.26.99+**） |
 | **P9 Phase 2 Dial Plane** | `shouldAllowObservabilityDial` · block `/healthcheck` API @ quiesce · probe_cycle defer · warmup/marketplace skip · Tray last-successful · nudge → ledger · **柱图剔除 nudge**（**1.26.56+**） |
 | **P10 MarathonCoreRestartGuard** | quiesce active 或 conn≥12：**block core cold shutdown** + install/upgrade PRE-gate · `[CoreLifecycle]` reason log · override `SPARKLE_FORCE_CORE_RESTART=1`（**1.26.58+**） |
@@ -487,7 +487,7 @@ for px in d.get('providers',{}).get(pid,{}).get('proxies',[]):
 | 红字「超时」 | **0** | health-check **失败**（手动测速默认 timeout 5s；provider 失败亦记 0） |
 | Sparkle badge / 评分 | — | `CURSOR_PROBE_SLOW_MS=500`（`nodeQualityScore.ts`），**评分门槛**，不是 mihomo 超时 |
 
-**v1.26.53+ Marathon Quiesce（P9 Phase 1）：** conn≥12 时 Sparkle **暂停** provider scheduled health-check + `proxyHealthMonitor`；UI tooltip **隐藏** `delay=0` 红柱并显示 **Marathon 静默** badge。
+**v1.26.53+ Marathon Quiesce（P9 Phase 1）：** conn≥12 时 Sparkle **暂停** provider scheduled health-check（仅持久化 runtime yaml，不 reload mihomo）；UI tooltip **隐藏** `delay=0` 红柱并显示 **Marathon 静默** badge。
 
 **v1.26.55+ Dial Plane（P9 Phase 2）：** quiesce active 期间（**含 conn 已降至 &lt;12 的 60s exit hysteresis**）block `/healthcheck` API cache-miss · defer probe_cycle / warmup / marketplace · Tray 读 **last successful** delay · nudge RTT 写 **ledger**（`scope=active` `kind=session_nudge`），**不**改变生产 nudge 仍走 `mihomoProxyDelay`。
 

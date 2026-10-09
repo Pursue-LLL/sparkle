@@ -139,10 +139,11 @@
 
 ---
 
-### BUG-2026-10-02-001 · agy/Antigravity 地域 400 复发（9-15 手补规则被配置再生成冲掉）· **INSTALLED @1.30.67 / LIVE-VERIFIED**
+### BUG-2026-10-02-001 · agy/Antigravity 地域 400 复发（9-15 手补规则被配置再生成冲掉）· **INSTALLED @1.30.67 / LIVE-VERIFIED · 专用组部分已被取代**
 
 | 字段 | 内容 |
 | --- | --- |
+| **当前状态** | 下文「🎯 Antigravity 专用」组已于 2026-10-03 删除（`97d328f`），三条前置规则现指向 `自动选择` fallback（`antigravityRuleInjection.ts:38`），`verify:agygeo` 改为断言 `自动选择`。以 `VERSION_LOG.md` 当前基线第 7 条为准；下文保留为当时记录。 |
 | **症状** | `agy` CLI 报 400 `User location is not supported for the API use.`（FAILED_PRECONDITION / UPSTREAM_ERROR）。proxy_logs.db（`~/.antigravity_tools/`）20:44 两条 400，上游 `cloudcode-pa.googleapis.com/v1internal`；core 日志同刻 `daily-cloudcode-pa.sandbox.googleapis.com:443 ... using 🔍 Google[🇹🇼 台湾 02]`，10-02 全天 173/183 条 googleapis 连接走台湾 02（hyster2 端口跳跃机场节点，落地 IP 动态漂移）；同刻两个账号同报 400 → 纯出口 IP 地域判定，非账号封禁。 |
 | **根因** | Google Code Assist 边缘按**出口 IP 地域**硬限制。`DOMAIN-SUFFIX,googleapis.com` 通用规则把 AI API 流量送进 `🔍 Google` fallback → sparkle-fast 机场节点（台湾优先级第一），机场落地 IP 漂移踩中受限地区出口即整连接 400。**2026-09-15 曾手补两条规则进 mihomo 运行时配置**（`work/config.yaml.bak-agygeo-20260915-185248`），但从未进仓库代码 → BUG-2026-10-01-003 的 5 分钟配置再生把手补规则静默冲掉（旧规则指向的 `🚀 节点选择` 组也已不存在）→ 09-29 起复发。 |
 | **修复** | 把手补规则升级为**代码能力**（配置再生后依然存在），仿 HK 注入模式（`hongKongTrafficRuleInjection.ts` + `customProxyGroups.ts`）：① 新组 `🎯 Antigravity 专用` = **fallback**（`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`，Reality 优先确定性、HY2 冷备，url `https://gemini.google.com`、interval 300、timeout 5000、lazy）——VPS 落地为固定地域（KR）非受限区，不受机场节点 IP 漂移影响；② 三条规则**前置注入** rules 数组最前（必然先于通用 googleapis 规则命中）：`DOMAIN-KEYWORD,cloudcode-pa`（一条盖全 3 个实测 host）+ `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`，gemini CLI 未来同样受益，host 均为纯 AI-API 端点零附带伤害。 |
