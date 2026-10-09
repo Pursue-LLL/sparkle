@@ -71,15 +71,6 @@ import {
   stopNetworkDetection
 } from '../core/manager'
 import {
-  restartCommercialNodeBenchmark,
-  stopCommercialNodeBenchmark,
-  startCommercialNodeBenchmark,
-  generateCommercialNodeReport,
-  getCommercialNodeReportPath,
-  getCommercialNodeStabilityMarkers
-} from '../core/commercialNodeBenchmark'
-import { readRecentSessionNudgeAnchorsForNode, readProviderDelayHistoryFromLedger, readLatencyTruthSummaryForNode } from '../core/api2ProbeLedgerCore'
-import {
   checkCorePermission,
   manualGrantCorePermition,
   revokeCorePermission
@@ -174,24 +165,6 @@ async function patchAppConfigWithServiceSync(patch: Partial<AppConfig>): Promise
 
   if (shouldReloadProfileForAppConfigPatch(patch)) {
     try {
-      const { readMarathonCoreRestartGuardSnapshot } = await import('../core/marathonCoreRestartGuard')
-      const { getMarathonQuiesceSnapshot } = await import('../core/marathonQuiesce')
-      const { shouldDeferAppConfigMihomoReload } = await import('../core/appConfigMihomoReloadGuardCore')
-      const guardSnapshot = await readMarathonCoreRestartGuardSnapshot()
-      const quiesceSnapshot = getMarathonQuiesceSnapshot()
-      const deferReload = shouldDeferAppConfigMihomoReload({
-        quiesceActive: quiesceSnapshot.active,
-        cursorConnectionCount: guardSnapshot.cursorConnectionCount,
-        recentActiveLifecycleStreamCount: guardSnapshot.recentActiveLifecycleStreamCount,
-      })
-      if (deferReload) {
-        void appendAppLog(
-          `[AppConfig]: defer mihomo profile reload quiesce=${quiesceSnapshot.active ? '1' : '0'}` +
-            ` cursor_conn=${guardSnapshot.cursorConnectionCount}` +
-            ` recent_active_lifecycle=${guardSnapshot.recentActiveLifecycleStreamCount}\n`,
-        )
-        return nextConfig
-      }
       const { generateProfile } = await import('../core/factory')
       const { reloadMihomoConfigFromDisk } = await import('../core/mihomoApi')
       await generateProfile()
@@ -282,26 +255,6 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('mihomoGroupDelay', (_e, group, url, options) =>
     ipcErrorWrapper(mihomoGroupDelay)(group, url, options)
   )
-  ipcMain.handle('runManagedVpsDelayTests', (_e, proxyNames, testUrl, options) =>
-    ipcErrorWrapper(async () => {
-      const { runManagedVpsDelayTests } = await import('../core/managedVpsDelayTest')
-      return runManagedVpsDelayTests(proxyNames, testUrl, options)
-    })()
-  )
-  ipcMain.handle('runManagedVpsDelayTestSingle', (_e, proxyName, testUrl, options) =>
-    ipcErrorWrapper(async () => {
-      const { runManagedVpsDelayTestSingle } = await import('../core/managedVpsDelayTest')
-      return runManagedVpsDelayTestSingle(proxyName, testUrl, options)
-    })()
-  )
-  ipcMain.handle('runNetworkTriangulationDiagnostic', () =>
-    ipcErrorWrapper(async () => {
-      const { runNetworkTriangulationDiagnostic } = await import(
-        '../core/networkTriangulationDiagnostic'
-      )
-      return runNetworkTriangulationDiagnostic()
-    })()
-  )
   ipcMain.handle('mihomoRulesDisable', (_e, rules) => ipcErrorWrapper(mihomoRulesDisable)(rules))
   ipcMain.handle('patchMihomoConfig', (_e, patch) => ipcErrorWrapper(patchMihomoConfig)(patch))
   ipcMain.handle('restartMihomoLogs', ipcErrorWrapper(restartMihomoLogs))
@@ -391,13 +344,6 @@ export function registerIpcMainHandlers(): void {
     buildStamp: SPARKLE_BUILD_STAMP,
     semver: SPARKLE_SEMVER || app.getVersion(),
   }))
-  ipcMain.handle(
-    'getCollectiveDeathBugReport',
-    ipcErrorWrapper(async () => {
-      const { getLatestCollectiveDeathBugReportText } = await import('../core/collectiveDeathBugReport')
-      return getLatestCollectiveDeathBugReportText()
-    }),
-  )
   ipcMain.handle('platform', () => process.platform)
   ipcMain.handle('openUWPTool', ipcErrorWrapper(openUWPTool))
   ipcMain.handle('setupFirewall', ipcErrorWrapper(setupFirewall))
@@ -478,29 +424,6 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('quitWithoutCore', ipcErrorWrapper(quitWithoutCore))
   ipcMain.handle('startNetworkDetection', ipcErrorWrapper(startNetworkDetection))
   ipcMain.handle('stopNetworkDetection', ipcErrorWrapper(stopNetworkDetection))
-  ipcMain.handle('startCommercialNodeBenchmark', () => startCommercialNodeBenchmark())
-  ipcMain.handle('stopCommercialNodeBenchmark', () => stopCommercialNodeBenchmark())
-  ipcMain.handle('restartCommercialNodeBenchmark', () => restartCommercialNodeBenchmark())
-  ipcMain.handle('generateCommercialNodeReport', () => generateCommercialNodeReport({ notify: true }))
-  ipcMain.handle('getCommercialNodeReportPath', async () => getCommercialNodeReportPath())
-  ipcMain.handle('getCommercialNodeStabilityMarkers', async () =>
-    getCommercialNodeStabilityMarkers()
-  )
-  ipcMain.handle(
-    'getRecentSessionNudgeAnchorsForNode',
-    (_event, nodeName: string, lookbackMs?: number) =>
-      ipcErrorWrapper(readRecentSessionNudgeAnchorsForNode)(nodeName, lookbackMs),
-  )
-  ipcMain.handle(
-    'getProviderDelayHistoryFromLedger',
-    (_event, nodeName: string, lookbackMs?: number) =>
-      ipcErrorWrapper(readProviderDelayHistoryFromLedger)(nodeName, lookbackMs),
-  )
-  ipcMain.handle(
-    'getLatencyTruthSummaryForNode',
-    (_event, nodeName: string, lookbackMs?: number) =>
-      ipcErrorWrapper(readLatencyTruthSummaryForNode)(nodeName, lookbackMs),
-  )
   ipcMain.handle('quitApp', () => app.quit())
   ipcMain.handle('notDialogQuit', () => {
     setNotQuitDialog()

@@ -24,7 +24,7 @@ import { shouldForceDisableGpu, shouldUseMacOs26HeadlessBootstrap, wantsMacOs26F
 import { persistMacOs26ForceGuiIfRequested } from './sys/macos26ForceGuiPreferenceCore'
 import { runMacOs26HeadlessBootstrap } from './sys/macos26HeadlessBootstrap'
 import { PROFILE_UPDATE_DUE_ARG } from './core/profileUpdaterCore'
-import { runGuardedDueProfileUpdatesSecondInstance, runProfileUpdateDueCli } from './core/profileUpdateDueCli'
+import { runProfileUpdateDueCli } from './core/profileUpdateDueCli'
 import os from 'os'
 import { handleDeepLink } from './resolve/deepLink'
 import { initAppQuitLifecycle } from './resolve/appLifecycle'
@@ -129,10 +129,8 @@ if (!gotTheLock) {
     )
     if (commandline.includes(PROFILE_UPDATE_DUE_ARG)) {
       try {
-        const updatedCount = await runGuardedDueProfileUpdatesSecondInstance()
-        if (updatedCount === null) {
-          return
-        }
+        const { runDueProfileUpdates } = await import('./core/profileUpdater')
+        const updatedCount = await runDueProfileUpdates('cli')
         await appendAppLog(`[ProfileUpdaterCli]: second-instance updated_count=${updatedCount}\n`)
       } catch (error) {
         await appendAppLog(

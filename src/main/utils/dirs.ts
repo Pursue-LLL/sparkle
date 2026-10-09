@@ -5,9 +5,6 @@ import { app } from 'electron'
 import path from 'path'
 import { execSync } from 'child_process'
 import { getAppConfigSync } from '../config/app'
-import { readMihomoApiSocketOverride } from '../core/mihomoApiSocketOverrideCore'
-import { checkCorePermissionPathSync } from '../core/permission-check'
-
 export const homeDir = app.getPath('home')
 
 export function isPortable(): boolean {
@@ -78,23 +75,11 @@ export function mihomoIpcPath(): string {
   if (process.platform === 'win32') {
     return '\\\\.\\pipe\\Sparkle\\mihomo'
   }
-  const overridePath = readMihomoApiSocketOverride()
-  if (overridePath) {
-    return overridePath
-  }
   const { core = 'mihomo' } = getAppConfigSync()
   if (core === 'system') {
     return '/tmp/sparkle-mihomo-external.sock'
   }
-  const primarySock = '/tmp/sparkle-mihomo-api.sock'
-  if (checkCorePermissionPathSync(mihomoCorePath(core))) {
-    return primarySock
-  }
-  // noperm.sock is never provisioned by Sparkle — always probe primary to avoid CTHC ENOENT blind.
-  if (existsSync(primarySock)) {
-    return primarySock
-  }
-  return primarySock
+  return '/tmp/sparkle-mihomo-api.sock'
 }
 
 export function serviceIpcPath(): string {

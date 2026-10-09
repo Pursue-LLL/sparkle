@@ -2,10 +2,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   DEFAULT_DELAY_TEST_CONCURRENCY,
-  isVpsCursorLeafNode,
-  normalizeDelayTestConcurrency,
-  resolveDelayTestConcurrencyForProxies,
-  VPS_DELAY_TEST_CONCURRENCY
+  MAX_DELAY_TEST_CONCURRENCY,
+  MIN_DELAY_TEST_CONCURRENCY,
+  normalizeDelayTestConcurrency
 } from './delay-test'
 
 describe('delay-test concurrency', () => {
@@ -14,23 +13,9 @@ describe('delay-test concurrency', () => {
     assert.equal(DEFAULT_DELAY_TEST_CONCURRENCY, 3)
   })
 
-  it('detects VPS cursor leaf nodes', () => {
-    assert.equal(isVpsCursorLeafNode('KR-VPS-HY2'), true)
-    assert.equal(isVpsCursorLeafNode('KR-VPS-Reality'), true)
-    assert.equal(isVpsCursorLeafNode('新加坡-01'), false)
-  })
-
-  it('serializes VPS leaf batch delay tests', () => {
-    assert.equal(
-      resolveDelayTestConcurrencyForProxies(
-        ['KR-VPS-HY2', 'KR-VPS-TUIC', 'KR-VPS-TLS'],
-        50
-      ),
-      VPS_DELAY_TEST_CONCURRENCY
-    )
-    assert.equal(
-      resolveDelayTestConcurrencyForProxies(['新加坡-01', '日本-02'], 50),
-      50
-    )
+  it('clamps to the supported range', () => {
+    assert.equal(normalizeDelayTestConcurrency(0), MIN_DELAY_TEST_CONCURRENCY)
+    assert.equal(normalizeDelayTestConcurrency(9999), MAX_DELAY_TEST_CONCURRENCY)
+    assert.equal(normalizeDelayTestConcurrency(7.9), 7)
   })
 })

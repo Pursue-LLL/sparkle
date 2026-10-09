@@ -8,7 +8,6 @@ function baseConfig(): AppConfig {
     sysProxy: { enable: false, mode: 'manual' },
     autoCloseConnection: false,
     cursorBidiOptimize: true,
-    cursorSysProxyLock: false,
     cursorProxyAppPathPrefixes: []
   } as unknown as AppConfig
 }
@@ -29,8 +28,7 @@ describe('migrateLegacyCursorDefaults', () => {
   it('defaults missing cursorProxyAppPathPrefixes to empty', () => {
     const input = {
       sysProxy: { enable: false, mode: 'manual' },
-      cursorBidiOptimize: true,
-      cursorSysProxyLock: false
+      cursorBidiOptimize: true
     } as AppConfig
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)

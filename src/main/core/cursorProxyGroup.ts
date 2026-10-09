@@ -30,6 +30,16 @@ export const LEGACY_CURSOR_DEDICATED_GROUP_NAMES = [
 
 export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 
+/** Cursor 专用组 provider 模式的 VPS 过滤器：只收 Reality / HY2 叶子。 */
+export const CURSOR_VPS_PROVIDER_FILTER = '(?i)-VPS-(Reality|HY2)$'
+
+const CURSOR_EXCLUDED_VPS_LEAF_RE = /-VPS-TLS$/i
+
+/** Cursor 专用组不收录 TLS canary（:18443）VPS 叶子。 */
+export function filterCursorEligibleVpsLeaves(leaves: readonly string[]): string[] {
+  return leaves.filter((name) => !CURSOR_EXCLUDED_VPS_LEAF_RE.test(name.trim()))
+}
+
 export const GENERAL_PROXY_GROUP_NAME = '🚀 节点选择' as const
 
 /** Current Sparkle name after BUG-2026-08-29-002 rewrite of subscription ♻️ / 节点选择. */

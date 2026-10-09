@@ -1,19 +1,17 @@
-// [INPUT] mihomo provider 探测历史 · api2-probe-ledger · sparkle-fast-proxies.yaml · proxySwitchPriority
-// [OUTPUT] bootstrapSparkleFastLatencyOrder · startSparkleFastLatencyOrderLoop
+// [INPUT] mihomo provider 探测历史 · sparkle-fast-proxies.yaml · sparkle-fast-delays.json · proxySwitchPriority
+// [OUTPUT] bootstrapSparkleFastLatencyOrder · loadSparkleFastDelaySnapshot · startSparkleFastLatencyOrderLoop
 // [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变），并让 mihomo 重读 provider。
-// 生成配置时先用 ledger 延迟写 sparkle-fast，避免冷启动在「未测延迟」时盲选订阅顺序第一个。
+// 每轮实测延迟落盘为快照；生成配置重写 sparkle-fast 时读取快照，避免订阅刷新后退回「未测延迟」的订阅顺序。
 // 不固定（pin）`自动选择`：fallback 本就取文件序里第一个存活节点，固定反而会盖过文件序并写入 store-selected。
 // 启动时先 healthcheck 再重排；周期复查仅当新首选明显更快才换文件序。
 // fallback 仍只在当前节点挂掉时切换，不因延迟抖动来回切。
-// Marathon（Cursor 长流进行中）期间不碰数据面：重排会改文件序并让 fallback 换节点，故顺延到下一轮。
 
 import { readFile, writeFile } from 'fs/promises'
 import path from 'path'
 import { getAppConfig } from '../config'
-import { profilesDir } from '../utils/dirs'
+import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
-import { readApi2ProbeLedgerSince } from './api2ProbeLedgerCore'
 import { AUTO_SELECT_GROUP_NAME, AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
 import {
   getAxios,
@@ -21,15 +19,10 @@ import {
   mihomoUnfixedProxy,
   mihomoUpdateProxyProviders
 } from './mihomoApi'
-import {
-  buildNodeDelayMapFromLedgerRows,
-  LEDGER_PROVIDER_DELAY_HISTORY_LOOKBACK_MS
-} from './providerDelayHistoryFromLedgerCore'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import {
   collectNodeDelays,
   hasSameNodeOrder,
-  mergeNodeDelayMaps,
   shouldAdoptLatencyOrder
 } from './sparkleFastLatencyOrderCore'
 import {
@@ -43,42 +36,32 @@ type ProxyRecord = Record<string, unknown>
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 
-export async function loadSparkleFastLedgerDelayMap(): Promise<NodeDelayMap> {
-  const sinceMs = Date.now() - LEDGER_PROVIDER_DELAY_HISTORY_LOOKBACK_MS
-  const rows = await readApi2ProbeLedgerSince(sinceMs, 'active')
-  return buildNodeDelayMapFromLedgerRows(rows)
+const DELAY_SNAPSHOT_FILENAME = 'sparkle-fast-delays.json'
+
+function delaySnapshotPath(): string {
+  return path.join(dataDir(), DELAY_SNAPSHOT_FILENAME)
 }
 
+/** 读取上一轮实测延迟快照；缺失或损坏时视为尚无样本。 */
+export async function loadSparkleFastDelaySnapshot(): Promise<NodeDelayMap> {
+  try {
+    const raw = JSON.parse(await readFile(delaySnapshotPath(), 'utf8')) as Record<string, number>
+    return new Map(Object.entries(raw).filter(([, delay]) => Number.isFinite(delay) && delay > 0))
+  } catch {
+    return new Map()
+  }
+}
+
+/** provider 有实测样本时以其为准并写入快照；样本被清空（如 provider 刚重载）时退回快照。 */
 async function resolveSparkleFastDelayMap(
   providerProxies: Parameters<typeof collectNodeDelays>[0]
 ): Promise<NodeDelayMap> {
-  const fromProvider = collectNodeDelays(providerProxies, AUTO_SELECT_GEMINI_PROBE_URL)
-  if (fromProvider.size > 0) {
-    return mergeNodeDelayMaps(fromProvider, await loadSparkleFastLedgerDelayMap())
+  const measured = collectNodeDelays(providerProxies, AUTO_SELECT_GEMINI_PROBE_URL)
+  if (measured.size === 0) {
+    return loadSparkleFastDelaySnapshot()
   }
-  return loadSparkleFastLedgerDelayMap()
-}
-
-/** 启动时因 Marathon 顺延了首次重排；下一轮复查改走完整启动流程。 */
-let startupOrderPending = false
-
-/**
- * Marathon 真值（Cursor SSE 活跃）或静默期内返回 true，与 provider 更新同一判据。
- * 重排会让 fallback 换节点，且 mihomo 可能自行重读被改写的 provider 文件，必须先于写盘判断。
- */
-async function deferWhileMarathon(stage: 'bootstrap' | 'recheck'): Promise<boolean> {
-  const { evaluateMarathonProviderMutationBlock } = await import('./marathonDataPlaneMutationGuard')
-  const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
-  const mutation = await evaluateMarathonProviderMutationBlock(undefined)
-  const quiesceActive = getMarathonQuiesceSnapshot().active
-  if (!mutation.blocked && !quiesceActive) {
-    return false
-  }
-  await appendAppLog(
-    `[SparkleFastOrder]: deferred stage=${stage} marathon_truth=${mutation.marathonTruthActive ? 1 : 0}` +
-      ` quiesce=${quiesceActive ? 1 : 0} cursor_conn=${mutation.cursorConnectionCount}\n`
-  )
-  return true
+  await writeFile(delaySnapshotPath(), JSON.stringify(Object.fromEntries(measured)), 'utf8')
+  return measured
 }
 
 /** 清除 `自动选择` 的固定节点，让 fallback 回到「文件序第一个存活节点」。 */
@@ -133,11 +116,6 @@ async function applyLatencyOrder(force: boolean): Promise<boolean> {
 
 /** API 就绪后立即探测并重排，避免 fallback 长时间停在订阅顺序第一个。 */
 export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
-  if (await deferWhileMarathon('bootstrap')) {
-    startupOrderPending = true
-    return
-  }
-  startupOrderPending = false
   if (await applyLatencyOrder(true)) {
     return
   }
@@ -159,13 +137,6 @@ export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
 }
 
 async function recheckSparkleFastLatencyOrder(): Promise<void> {
-  if (startupOrderPending) {
-    await bootstrapSparkleFastLatencyOrder()
-    return
-  }
-  if (await deferWhileMarathon('recheck')) {
-    return
-  }
   await applyLatencyOrder(false)
 }
 

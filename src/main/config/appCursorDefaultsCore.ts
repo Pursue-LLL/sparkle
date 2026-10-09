@@ -1,4 +1,4 @@
-/** Upgrade legacy Sparkle defaults to Cursor-optimized stability settings. */
+/** Seed Cursor rule defaults on configs created before the Cursor group existed. */
 export function migrateLegacyCursorDefaults(config: AppConfig): {
   config: AppConfig
   migrated: boolean
@@ -6,10 +6,6 @@ export function migrateLegacyCursorDefaults(config: AppConfig): {
   const result = { ...config }
   let migrated = false
 
-  if (result.autoCloseConnection === true) {
-    result.autoCloseConnection = false
-    migrated = true
-  }
   if (result.cursorBidiOptimize === undefined) {
     result.cursorBidiOptimize = true
     migrated = true
@@ -23,9 +19,6 @@ export function migrateLegacyCursorDefaults(config: AppConfig): {
   if (prefixes.length > 0) {
     result.cursorProxyAppPathPrefixes = []
     migrated = true
-  }
-  if (result.cursorSysProxyLock === undefined && result.cursorBidiOptimize !== false) {
-    result.cursorSysProxyLock = false
   }
 
   return { config: result, migrated }

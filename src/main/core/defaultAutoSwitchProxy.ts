@@ -9,11 +9,9 @@ import {
   isSparkleAutoSelectSubGroup,
   isHongKongFilterGroupName,
   isSparkleRegionalAutoSelectGroup,
+  filterCursorEligibleVpsLeaves,
   prependCursorDedicatedDirectOption,
 } from './cursorProxyGroup'
-import {
-  filterMarathonCursorEligibleVpsLeaves,
-} from './marathonHy2OnlyCore'
 import { DEFAULT_REGION_PRIORITY, resolveEffectiveRegionPriority } from './regionPriority'
 import type { MihomoChangeProxyOptions } from './mihomoApi'
 import {
@@ -343,7 +341,7 @@ export function appendRegionalAutoGroupsToCursorDedicated(profile: MihomoConfig)
   // provider 模式下 VPS 节点由 use 提供，proxies 里只会有 DIRECT；静态模式则只留合格的 VPS 叶子。
   const nodeMembers = cursorGroup.use?.length
     ? existing
-    : filterMarathonCursorEligibleVpsLeaves(existing.filter((ref) => /vps/i.test(ref)))
+    : filterCursorEligibleVpsLeaves(existing.filter((ref) => /vps/i.test(ref)))
   const regionalSet = new Set(regionalRefs)
   const baseMembers = prependCursorDedicatedDirectOption(nodeMembers).filter(
     (name) => name !== AUTO_SELECT_GROUP_NAME && !regionalSet.has(name)

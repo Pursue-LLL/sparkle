@@ -1,17 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  filterProxyDelayHistoryForMarathonDisplay,
-  excludeSessionNudgeSamplesFromProviderHistory,
-  formatProxyDelayAgeLabel,
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
   latestProxyDelayHistoryEntry,
-  latestSuccessfulProxyDelayHistoryEntry,
-  shouldShowMarathonQuiesceDelayBadge,
 } from './proxy-delay-sample-age'
 
-describe('proxyDelaySampleAgeCore', () => {
+describe('proxyDelaySampleAge', () => {
   it('returns latest history entry', () => {
     const latest = latestProxyDelayHistoryEntry([
       { time: '2026-07-01T08:00:00.000Z', delay: 900 },
@@ -21,122 +16,29 @@ describe('proxyDelaySampleAgeCore', () => {
     assert.equal(latest?.time, '2026-07-01T09:00:00.000Z')
   })
 
-  it('skips trailing timeout samples for list display', () => {
-    const latest = latestSuccessfulProxyDelayHistoryEntry([
-      { time: '2026-07-01T08:00:00.000Z', delay: 446 },
-      { time: '2026-07-01T09:00:00.000Z', delay: 0 }
-    ])
-    assert.equal(latest?.delay, 446)
-    assert.equal(latest?.time, '2026-07-01T08:00:00.000Z')
-  })
-
-  it('returns undefined when entire history failed without successful sample', () => {
-    const latest = latestSuccessfulProxyDelayHistoryEntry([
-      { time: '2026-07-01T09:00:00.000Z', delay: 0 }
-    ])
-    assert.equal(latest, undefined)
+  it('returns undefined for empty history', () => {
+    assert.equal(latestProxyDelayHistoryEntry([]), undefined)
+    assert.equal(latestProxyDelayHistoryEntry(undefined), undefined)
   })
 
   it('formats relative age buckets', () => {
     const now = Date.parse('2026-07-01T10:05:30.000Z')
-    assert.equal(
-      formatProxyDelaySampleAge('2026-07-01T10:05:00.000Z', now, 'zh'),
-      '30秒前'
-    )
-    assert.equal(
-      formatProxyDelaySampleAge('2026-07-01T09:50:00.000Z', now, 'zh'),
-      '15分前'
-    )
-    assert.equal(
-      formatProxyDelaySampleAge('2026-07-01T08:05:30.000Z', now, 'en'),
-      '2h ago'
-    )
+    assert.equal(formatProxyDelaySampleAge('2026-07-01T10:05:00.000Z', now, 'zh'), '30秒前')
+    assert.equal(formatProxyDelaySampleAge('2026-07-01T09:50:00.000Z', now, 'zh'), '15分前')
+    assert.equal(formatProxyDelaySampleAge('2026-07-01T08:05:30.000Z', now, 'en'), '2h ago')
   })
 
-  it('builds mac full path tooltip with ledger sample age', () => {
+  it('builds delay tooltip with sample age', () => {
     const now = Date.parse('2026-07-01T10:05:30.000Z')
-    const tip = formatProxyDelayTooltip(
-      277,
-      '2026-07-01T09:50:00.000Z',
-      now,
-      'zh',
-      { source: 'mac_full_path' },
-    )
-    assert.match(tip ?? '', /Mac 全路径 24h P50 · 末次采样 15分前 · 277ms/)
-  })
-
-  it('formats age label with P50 vs last probe prefix', () => {
-    const now = Date.parse('2026-07-01T10:05:30.000Z')
-    assert.equal(
-      formatProxyDelayAgeLabel('p50', '2026-07-01T09:50:00.000Z', now, 'zh'),
-      'P50·15分前',
-    )
-    assert.equal(
-      formatProxyDelayAgeLabel('last_probe', '2026-07-01T10:05:00.000Z', now, 'zh'),
-      '实测·30秒前',
-    )
-    assert.equal(formatProxyDelayAgeLabel('p50', undefined, now, 'zh'), 'P50·时间未知')
-  })
-
-  it('builds vps body tooltip with ledger sample age when udp probe timed out', () => {
-    const now = Date.parse('2026-07-01T10:05:30.000Z')
-    const tip = formatProxyDelayTooltip(
-      510,
-      '2026-07-01T09:50:00.000Z',
-      now,
-      'zh',
-      { source: 'vps_body_ssh', mihomoProbeTimedOut: true },
-    )
-    assert.match(tip ?? '', /VPS SSH 本体 ~510ms · 采样于 15分前 · UDP 探针超时/)
-  })
-
-  it('builds delay tooltip with stale sample hint', () => {
-    const now = Date.parse('2026-07-01T10:05:30.000Z')
-    const tip = formatProxyDelayTooltip(
-      1137,
-      '2026-07-01T09:50:00.000Z',
-      now,
-      'zh'
-    )
+    const tip = formatProxyDelayTooltip(1137, '2026-07-01T09:50:00.000Z', now, 'zh')
     assert.match(tip ?? '', /测试于 15分前 · 1137ms/)
   })
 
   it('marks timeout without timestamp gracefully', () => {
-    const tip = formatProxyDelayTooltip(0, undefined, Date.now(), 'zh')
-    assert.equal(tip, '延迟测试超时')
+    assert.equal(formatProxyDelayTooltip(0, undefined, Date.now(), 'zh'), '延迟测试超时')
   })
 
-  it('filters marathon timeout bars when successful samples exist', () => {
-    const history = [
-      { time: 'a', delay: 420 },
-      { time: 'b', delay: 0 },
-    ]
-    assert.deepEqual(
-      filterProxyDelayHistoryForMarathonDisplay(history).map((entry) => entry.delay),
-      [420],
-    )
-    assert.equal(shouldShowMarathonQuiesceDelayBadge(history), true)
-  })
-
-  it('excludes session nudge spikes from bar chart history', () => {
-    const history = [
-      { time: '2026-07-23T07:58:00.000Z', delay: 303 },
-      { time: '2026-07-23T08:00:00.500Z', delay: 511 },
-    ]
-    const filtered = excludeSessionNudgeSamplesFromProviderHistory(history, [
-      { sampledAtMs: Date.parse('2026-07-23T08:00:00.000Z'), delayMs: 511 },
-    ])
-    assert.deepEqual(
-      filtered.map((entry) => entry.delay),
-      [303],
-    )
-  })
-
-  it('keeps baseline nudge bars below spike threshold', () => {
-    const history = [{ time: '2026-07-23T08:00:00.500Z', delay: 303 }]
-    const filtered = excludeSessionNudgeSamplesFromProviderHistory(history, [
-      { sampledAtMs: Date.parse('2026-07-23T08:00:00.000Z'), delayMs: 303 },
-    ])
-    assert.deepEqual(filtered, history)
+  it('has no tooltip for untested nodes', () => {
+    assert.equal(formatProxyDelayTooltip(-1, undefined, Date.now(), 'zh'), undefined)
   })
 })

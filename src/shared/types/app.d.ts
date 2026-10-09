@@ -5,7 +5,6 @@ interface AppVersion {
 
 type AppNotificationMode = 'system' | 'toast'
 type AppNotificationVariant = 'default' | 'accent' | 'success' | 'warning' | 'danger'
-type AppNotificationActionKind = 'copy-bug-report'
 
 interface AppNotificationPayload {
   id?: string
@@ -15,7 +14,6 @@ interface AppNotificationPayload {
   url?: string
   variant?: AppNotificationVariant
   forceToast?: boolean
-  actionKind?: AppNotificationActionKind
 }
 
 interface ISysProxyConfig {
@@ -106,31 +104,7 @@ interface AppConfig {
   cursorBidiOptimize?: boolean
   /** Optional macOS Cursor .app bundle path prefixes for path-scoped rules; empty = all Cursor traffic → 🎯 Cursor 专用. */
   cursorProxyAppPathPrefixes?: string[]
-  /** When true, block re-enabling system HTTP proxy (breaks Cursor Agent bidi). */
-  cursorSysProxyLock?: boolean
-  /** Prune idle duplicate Cursor mihomo sockets during marathon (preserves active SSE). */
-  cursorConnectionHygieneEnabled?: boolean
   proxySwitchPriority?: string[]
-  /** Notify when Cursor proxy delay/latency exceeds thresholds. */
-  networkAlertEnabled?: boolean
-  networkAlertDelayThresholdMs?: number
-  networkAlertProbeLatencyThresholdMs?: number
-  networkAlertConsecutiveHits?: number
-  networkAlertCooldownMs?: number
-  /** Probe commercial subscription nodes every N seconds; 24h rolling report. */
-  commercialNodeBenchmarkEnabled?: boolean
-  commercialNodeBenchmarkReportIntervalSec?: number
-  commercialNodeBenchmarkNotifyOnReport?: boolean
-  /** Directory for cursor-node-quality-report.md (default: ~/.sparkle). */
-  commercialNodeBenchmarkReportDir?: string
-  /** @deprecated Legacy — periodic VPS batch probe removed. */
-  commercialNodeBenchmarkIntervalSec?: number
-  /** @deprecated Legacy — periodic VPS batch probe removed. */
-  commercialNodeBenchmarkConcurrency?: number
-  /** @deprecated Legacy — periodic VPS batch probe removed. */
-  commercialNodeBenchmarkRegions?: string[]
-  /** @deprecated Legacy — periodic VPS batch probe removed. */
-  commercialNodeBenchmarkIncludeVps?: boolean
   /** macOS 26+: keep Electron GUI open (default is headless bootstrap + exit). */
   macos26ForceGui?: boolean
   silentStart: boolean
@@ -247,47 +221,4 @@ interface SubStoreSub {
   displayName?: string
   icon?: string
   tag?: string[]
-}
-
-interface LatencyTruthSummary {
-  vpsBodyP50: number | null
-  vpsBodySamples: number
-  vpsBodyLastTs: string | null
-  macFullPathP50: number | null
-  macFullPathSamples: number
-  macFullPathLastTs: string | null
-}
-
-interface CommercialNodeStabilityEntry {
-  node: string
-  kind: 'vps' | 'commercial'
-  region: string
-  rank: number
-  combinedScore: number
-  stabilityScore: number
-  probeScore: number
-  sessionScore: number
-  sessionScore24h: number
-  sessionScore2h: number | null
-  sessionScoreSource: '2h' | '24h'
-  sessionObservations2h: number
-  p50: number
-  successRate: number
-  slow500Rate: number
-  jitter: number
-  eligibleForBadge: boolean
-  badgeBlockReason?: string
-  cursorStability: 'excellent' | 'good' | 'watch' | 'risk' | 'unknown'
-  cursorStabilityLabel: string
-  cursorStabilityHint: string
-  transportFailures: number
-}
-
-interface CommercialNodeStabilitySnapshot {
-  updatedAt: string
-  enabled: boolean
-  minSamples: number
-  topStable: CommercialNodeStabilityEntry[]
-  markersByNode: Record<string, CommercialNodeStabilityEntry>
-  scoresByNode: Record<string, CommercialNodeStabilityEntry>
 }

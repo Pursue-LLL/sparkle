@@ -1,16 +1,14 @@
 import {
   CURSOR_DEDICATED_GROUP_NAME,
   CURSOR_DEDICATED_DIRECT_PROXY,
+  CURSOR_VPS_PROVIDER_FILTER,
+  filterCursorEligibleVpsLeaves,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName,
   prependCursorDedicatedDirectOption,
   HONG_KONG_DELAY_TEST_URL
 } from './cursorProxyGroup'
-import {
-  filterMarathonCursorEligibleVpsLeaves,
-  MARATHON_CURSOR_VPS_PROVIDER_FILTER,
-} from './marathonHy2OnlyCore'
 import { resolveVpsProviderId } from './vpsProviderSplitCore'
 
 /** Sparkle-injected HK filter group — members rebuilt on every generateProfile(). */
@@ -235,7 +233,7 @@ function buildCursorGroupConfig(
   _groups: ProxyGroupConfig[],
   profileId: string | undefined
 ): ProxyGroupConfig {
-  const vpsNodes = filterMarathonCursorEligibleVpsLeaves(
+  const vpsNodes = filterCursorEligibleVpsLeaves(
     [...new Set(leafNames.filter(matchesVpsNode))],
   ).sort((a, b) => a.localeCompare(b, 'zh-CN'))
 
@@ -248,7 +246,7 @@ function buildCursorGroupConfig(
     }
     if (vpsNodes.length > 0) {
       group.use = [resolveVpsProviderId(profileId)]
-      group.filter = MARATHON_CURSOR_VPS_PROVIDER_FILTER
+      group.filter = CURSOR_VPS_PROVIDER_FILTER
     }
     return group
   }

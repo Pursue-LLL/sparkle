@@ -83,11 +83,3 @@ export function formatDelayTestUrlDisplay(url: string): string {
 export function isCursorSelectorGroupName(groupName: string): boolean {
   return isCursorDedicatedGroupName(groupName)
 }
-
-export function cursorProxySwitchConfirmDescription(
-  groupName: string,
-  fromProxy: string,
-  toProxy: string
-): string {
-  return `「${groupName}」将从「${fromProxy}」切换到「${toProxy}」。运行中的 Cursor Agent 长连接会断开，可能触发额外计次。确认切换？`
-}

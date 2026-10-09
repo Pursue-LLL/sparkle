@@ -105,37 +105,6 @@ export async function mihomoGroupDelay(
   )
 }
 
-export async function runManagedVpsDelayTests(
-  proxyNames: string[],
-  testUrl?: string,
-  options?: ManagedVpsDelayTestOptions
-): Promise<ManagedVpsDelayTestResult> {
-  return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke('runManagedVpsDelayTests', proxyNames, testUrl, options)
-  )
-}
-
-export async function runManagedVpsDelayTestSingle(
-  proxyName: string,
-  testUrl?: string,
-  options?: ManagedVpsDelayTestOptions
-): Promise<ControllerProxiesDelay> {
-  return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke(
-      'runManagedVpsDelayTestSingle',
-      proxyName,
-      testUrl,
-      options
-    )
-  )
-}
-
-export async function runNetworkTriangulationDiagnostic(): Promise<NetworkTriangulationReport> {
-  return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke('runNetworkTriangulationDiagnostic')
-  )
-}
-
 export async function mihomoRulesDisable(rules: Record<string, boolean>): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('mihomoRulesDisable', rules))
 }
@@ -643,81 +612,6 @@ export async function startNetworkDetection(): Promise<void> {
 
 export async function stopNetworkDetection(): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('stopNetworkDetection'))
-}
-
-
-
-
-
-
-
-export async function startCommercialNodeBenchmark(): Promise<void> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('startCommercialNodeBenchmark'))
-}
-
-export async function stopCommercialNodeBenchmark(): Promise<void> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('stopCommercialNodeBenchmark'))
-}
-
-export async function restartCommercialNodeBenchmark(): Promise<void> {
-  return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke('restartCommercialNodeBenchmark')
-  )
-}
-
-export async function generateCommercialNodeReport(): Promise<string> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('generateCommercialNodeReport'))
-}
-
-export async function getCommercialNodeReportPath(): Promise<string> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getCommercialNodeReportPath'))
-}
-
-export async function getCommercialNodeStabilityMarkers(): Promise<CommercialNodeStabilitySnapshot> {
-  return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke('getCommercialNodeStabilityMarkers')
-  )
-}
-
-import type { SessionNudgeDelayAnchor, ProxyDelayHistoryEntry } from '@renderer/utils/proxy-delay-sample-age'
-
-export async function getRecentSessionNudgeAnchorsForNode(
-  nodeName: string,
-  lookbackMs?: number,
-): Promise<SessionNudgeDelayAnchor[]> {
-  return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke(
-      'getRecentSessionNudgeAnchorsForNode',
-      nodeName,
-      lookbackMs,
-    ),
-  )
-}
-
-export async function getProviderDelayHistoryFromLedger(
-  nodeName: string,
-  lookbackMs?: number,
-): Promise<ProxyDelayHistoryEntry[]> {
-  return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke(
-      'getProviderDelayHistoryFromLedger',
-      nodeName,
-      lookbackMs,
-    ),
-  )
-}
-
-export async function getLatencyTruthSummaryForNode(
-  nodeName: string,
-  lookbackMs?: number,
-): Promise<LatencyTruthSummary> {
-  return ipcErrorWrapper(
-    await window.electron.ipcRenderer.invoke(
-      'getLatencyTruthSummaryForNode',
-      nodeName,
-      lookbackMs,
-    ),
-  )
 }
 
 let applyThemeRunning = false

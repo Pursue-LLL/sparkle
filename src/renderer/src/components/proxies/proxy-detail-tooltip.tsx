@@ -1,15 +1,5 @@
 import { Chip, Separator, Surface } from '@heroui-v3/react'
-import {
-  filterProxyDelayHistoryForMarathonDisplay,
-  excludeSessionNudgeSamplesFromProviderHistory,
-  formatProxyDelaySampleAge,
-  resolveVpsLeafEffectiveAlive,
-  resolveVpsLeafProxyDelayDisplay,
-  shouldShowMarathonQuiesceDelayBadge,
-  type SessionNudgeDelayAnchor,
-  type ProxyDelayHistoryEntry,
-} from '@renderer/utils/proxy-delay-sample-age'
-import { getProviderDelayHistoryFromLedger, getRecentSessionNudgeAnchorsForNode, getLatencyTruthSummaryForNode } from '@renderer/utils/ipc'
+import { latestProxyDelayHistoryEntry } from '@renderer/utils/proxy-delay-sample-age'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -17,7 +7,6 @@ interface Props {
   proxy: ControllerProxiesDetail | ControllerGroupDetail
   anchorEl: HTMLElement | null
   visible: boolean
-  benchmarkScore?: CommercialNodeStabilityEntry
 }
 
 const TOOLTIP_WIDTH = 248
@@ -59,103 +48,10 @@ function getDelaySvgColor(delay: number): string {
   return 'var(--color-warning)'
 }
 
-function getCursorStabilityChipColor(
-  level: CommercialNodeStabilityEntry['cursorStability']
-): DelayColor {
-  switch (level) {
-    case 'excellent':
-    case 'good':
-      return 'success'
-    case 'watch':
-      return 'warning'
-    case 'risk':
-      return 'danger'
-    default:
-      return 'default'
-  }
-}
-
-function formatSignedScore(value: number): string {
-  if (value > 0) return `+${value.toFixed(1)}`
-  return value.toFixed(1)
-}
-
-function formatLatencyP50(value: number | null | undefined, samples: number): string {
-  if (value === null || value === undefined || samples <= 0) {
-    return '—'
-  }
-  return `${Math.round(value)}ms (${samples})`
-}
-
-function formatLatencyP50WithLastSample(
-  p50: number | null | undefined,
-  samples: number,
-  lastTs: string | null | undefined,
-): string {
-  const base = formatLatencyP50(p50, samples)
-  if (!lastTs?.trim()) {
-    return base
-  }
-  const age = formatProxyDelaySampleAge(lastTs)
-  if (!age) {
-    return base
-  }
-  return `${base} · 末采样 ${age}`
-}
-
-const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchmarkScore }) => {
+const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
   const [pos, setPos] = useState<{ top: number; left: number; side: 'left' | 'right' } | null>(null)
   const [finalTop, setFinalTop] = useState<number | null>(null)
-  const [nudgeAnchors, setNudgeAnchors] = useState<SessionNudgeDelayAnchor[]>([])
-  const [ledgerHistory, setLedgerHistory] = useState<ProxyDelayHistoryEntry[]>([])
-  const [latencyTruth, setLatencyTruth] = useState<LatencyTruthSummary | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!visible || isGroupProxy(proxy)) {
-      setNudgeAnchors([])
-      setLedgerHistory([])
-      setLatencyTruth(null)
-      return
-    }
-    let cancelled = false
-    void getRecentSessionNudgeAnchorsForNode(proxy.name)
-      .then((anchors) => {
-        if (!cancelled) {
-          setNudgeAnchors(anchors)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setNudgeAnchors([])
-        }
-      })
-    void getProviderDelayHistoryFromLedger(proxy.name)
-      .then((history) => {
-        if (!cancelled) {
-          setLedgerHistory(history)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLedgerHistory([])
-        }
-      })
-    void getLatencyTruthSummaryForNode(proxy.name)
-      .then((summary) => {
-        if (!cancelled) {
-          setLatencyTruth(summary)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLatencyTruth(null)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [visible, proxy.name])
 
   useEffect(() => {
     if (!anchorEl || !visible) {
@@ -177,7 +73,7 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
     const h = panelRef.current.offsetHeight
     const clamped = Math.min(pos.top, vh - h - 8)
     setFinalTop(Math.max(8, clamped))
-  }, [pos, anchorEl, benchmarkScore])
+  }, [pos, anchorEl])
 
   if (!visible || !pos || !anchorEl) return null
 
@@ -190,38 +86,9 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
   const tooltipH = panelRef.current?.offsetHeight ?? 120
   const arrowTop = Math.max(10, Math.min(anchorMidRelative - 6, tooltipH - 22))
 
-  const delayDisplay = isGroupProxy(proxy)
-    ? null
-    : resolveVpsLeafProxyDelayDisplay(proxy.history, latencyTruth)
-  const delay = delayDisplay?.delayMs ?? -1
-  const effectiveAlive = isGroupProxy(proxy)
-    ? true
-    : resolveVpsLeafEffectiveAlive(
-        proxy.alive,
-        latencyTruth,
-        delayDisplay?.mihomoProbeTimedOut === true,
-      )
-  const aliveStatusHint =
-    !isGroupProxy(proxy) &&
-    proxy.alive === false &&
-    effectiveAlive &&
-    delayDisplay?.source === 'vps_body_ssh'
-      ? 'UDP探针离线·VPS在线'
-      : undefined
-
-  const rawHistory = (proxy.history ?? []).slice(-8)
-  const marathonFiltered = filterProxyDelayHistoryForMarathonDisplay(rawHistory)
-  let history: ProxyDelayHistoryEntry[]
-  if (ledgerHistory.length > 0) {
-    history = ledgerHistory
-  } else {
-    history = excludeSessionNudgeSamplesFromProviderHistory(marathonFiltered, nudgeAnchors)
-    if (history.length === 0 && delayDisplay && delayDisplay.delayMs > 0) {
-      history = [{ time: delayDisplay.sampleTime ?? '', delay: delayDisplay.delayMs }]
-    }
-  }
-  const historyFromLedger = ledgerHistory.length > 0 && history === ledgerHistory
-  const showMarathonBadge = shouldShowMarathonQuiesceDelayBadge(rawHistory)
+  const history = (proxy.history ?? []).slice(-8)
+  const delay = isGroupProxy(proxy) ? -1 : (latestProxyDelayHistoryEntry(history)?.delay ?? -1)
+  const effectiveAlive = isGroupProxy(proxy) ? true : proxy.alive
   const validDelays = history.filter((h) => h.delay > 0).map((h) => h.delay)
   const maxDelay = validDelays.length > 0 ? Math.max(...validDelays) : 500
 
@@ -232,8 +99,6 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
 
   const arrowBorderColor = 'var(--color-separator)'
   const arrowFillColor = 'var(--color-surface-secondary)'
-
-  const hasSessionObs = benchmarkScore && benchmarkScore.transportFailures > 0
 
   return createPortal(
     <div
@@ -289,114 +154,12 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
           <span className="text-xs font-semibold flag-emoji truncate flex-1 leading-snug">
             {proxy.name}
           </span>
-          <div className="flex flex-col items-end gap-0.5 shrink-0">
-            <Chip color={getDelayChipColor(delay)} variant="soft" size="sm">
-              {getDelayText(delay)}
-            </Chip>
-            <span className="text-[9px] text-muted leading-none">Mac 路径</span>
-          </div>
+          <Chip color={getDelayChipColor(delay)} variant="soft" size="sm" className="shrink-0">
+            {getDelayText(delay)}
+          </Chip>
         </div>
 
         <Separator variant="tertiary" />
-
-        {benchmarkScore && (
-          <>
-            <div className="px-3 pt-2 pb-1.5">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-[10px] text-muted">Cursor Agent 稳定性</span>
-                <Chip
-                  color={getCursorStabilityChipColor(benchmarkScore.cursorStability)}
-                  variant="soft"
-                  size="sm"
-                  className="h-4 min-h-4 px-1 text-[10px]"
-                >
-                  {benchmarkScore.cursorStabilityLabel}
-                </Chip>
-              </div>
-              <p className="text-[10px] text-muted/80 leading-snug mb-1.5">
-                {benchmarkScore.cursorStabilityHint}
-              </p>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
-                <span className="text-muted">Agent 断连</span>
-                <span
-                  className={`justify-self-end ${benchmarkScore.transportFailures > 0 ? 'text-warning' : ''}`}
-                >
-                  {benchmarkScore.transportFailures > 0
-                    ? `${benchmarkScore.transportFailures} 次 RST`
-                    : '0'}
-                </span>
-                <span className="text-muted">session 分</span>
-                <span className="justify-self-end">
-                  {hasSessionObs || benchmarkScore.sessionScoreSource === '2h'
-                    ? `${formatSignedScore(benchmarkScore.sessionScore)} (${benchmarkScore.sessionScoreSource})`
-                    : '—'}
-                </span>
-                {benchmarkScore.sessionScoreSource === '2h' &&
-                  benchmarkScore.sessionScore24h !== benchmarkScore.sessionScore && (
-                    <>
-                      <span className="text-muted">session 24h</span>
-                      <span className="justify-self-end text-muted/80">
-                        {formatSignedScore(benchmarkScore.sessionScore24h)}
-                      </span>
-                    </>
-                  )}
-                <span className="text-muted">combined</span>
-                <span className="justify-self-end font-medium">
-                  {benchmarkScore.combinedScore.toFixed(1)}
-                </span>
-              </div>
-              {!benchmarkScore.eligibleForBadge && benchmarkScore.badgeBlockReason && (
-                <p className="text-[10px] text-warning/90 mt-1 leading-snug">
-                  未达推荐门槛：{benchmarkScore.badgeBlockReason}
-                </p>
-              )}
-            </div>
-            <Separator variant="tertiary" />
-            <div className="px-3 pt-2 pb-1.5">
-              <span className="text-[10px] text-muted block mb-1">延迟双轨 (24h ledger)</span>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] mb-1.5">
-                <span className="text-muted">VPS 本体 P50</span>
-                <span className="justify-self-end">
-                  {formatLatencyP50WithLastSample(
-                    latencyTruth?.vpsBodyP50,
-                    latencyTruth?.vpsBodySamples ?? 0,
-                    latencyTruth?.vpsBodyLastTs,
-                  )}
-                </span>
-                <span className="text-muted">Mac 全路径 P50</span>
-                <span className="justify-self-end">
-                  {formatLatencyP50WithLastSample(
-                    latencyTruth?.macFullPathP50,
-                    latencyTruth?.macFullPathSamples ?? 0,
-                    latencyTruth?.macFullPathLastTs,
-                  )}
-                </span>
-              </div>
-              <span className="text-[10px] text-muted block mb-1">VPS 本体 badge (ssh_curl · scope=vps)</span>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
-                <span className="text-muted">P50</span>
-                <span className="justify-self-end">{Math.round(benchmarkScore.p50)}ms</span>
-                <span className="text-muted">&gt;500ms</span>
-                <span className="justify-self-end">
-                  {(benchmarkScore.slow500Rate * 100).toFixed(1)}%
-                </span>
-                <span className="text-muted">jitter</span>
-                <span
-                  className={`justify-self-end ${benchmarkScore.jitter > 150 ? 'text-warning' : ''}`}
-                >
-                  {Math.round(benchmarkScore.jitter)}ms
-                </span>
-                <span className="text-muted">成功率</span>
-                <span className="justify-self-end">
-                  {(benchmarkScore.successRate * 100).toFixed(1)}%
-                </span>
-                <span className="text-muted">probe 分</span>
-                <span className="justify-self-end">{benchmarkScore.probeScore.toFixed(1)}</span>
-              </div>
-            </div>
-            <Separator variant="tertiary" />
-          </>
-        )}
 
         <div className="px-3 py-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
           <span className="text-[10px] text-muted">类型</span>
@@ -410,9 +173,8 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
             color={effectiveAlive ? 'success' : 'danger'}
             variant="soft"
             size="sm"
-            title={aliveStatusHint}
           >
-            {effectiveAlive ? (aliveStatusHint ?? '在线') : '离线'}
+            {effectiveAlive ? '在线' : '离线'}
           </Chip>
 
           {proxy.udp !== undefined && (
@@ -522,14 +284,7 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
         <Separator variant="tertiary" />
         <div className="px-3 pt-2 pb-2.5">
           <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-[10px] text-muted">
-              {historyFromLedger ? 'Mac 全路径 (transport_pair · scope=active)' : '测速记录（mihomo）'}
-            </span>
-            {showMarathonBadge && (
-              <Chip color="warning" variant="soft" size="sm" className="h-4 min-h-4 px-1 text-[10px]">
-                Marathon 静默
-              </Chip>
-            )}
+            <span className="text-[10px] text-muted">测速记录（mihomo）</span>
           </div>
           {history.length > 0 ? (
             <svg width={SPARK_W} height={CHART_H}>
@@ -570,10 +325,6 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible, benchma
                 )
               })}
             </svg>
-          ) : showMarathonBadge && delay > 0 ? (
-            <span className="text-[10px] text-muted/50">
-              Marathon 静默 · scheduled 测速暂停
-            </span>
           ) : (
             <span className="text-[10px] text-muted/50">暂无记录</span>
           )}

@@ -63,30 +63,25 @@ function validateProxies(proxies: unknown[]): boolean {
   })
 }
 
-import { applyHysteria2ProxiesQuicStability } from './hysteria2QuicStability'
 import {
   applyVlessVisionMuxGuard,
   summarizeVlessVisionMuxGuard
 } from './vlessVisionMuxGuardCore'
-import { ensureVpsCursorLeafBootstrapDialTimeout } from './marathonDialToleranceCore'
 import { partitionLeafProxies, resolveVpsProviderId } from './vpsProviderSplitCore'
 import { buildBaseConfigWithProviders } from './providerConfigCore'
 import { appendAppLog } from '../utils/log'
 
 export { resolveVpsProviderId, partitionLeafProxies } from './vpsProviderSplitCore'
 
-/**
- * 从订阅配置中提取 proxies，并对 Hysteria 2 节点注入 QUIC/TUN 稳定性参数
- */
+/** 从订阅配置中提取 proxies，并拆分为商业节点与自建 VPS 节点。 */
 export function extractProxies(config: MihomoConfig): unknown[] {
   const proxies = config.proxies || []
-  const stabilized = applyVlessVisionMuxGuard(applyHysteria2ProxiesQuicStability(proxies))
+  const stabilized = applyVlessVisionMuxGuard(proxies)
   const { commercial, vps } = partitionLeafProxies(stabilized)
   if (vps.length === 0) {
     return commercial
   }
-  const vpsWithDialTimeout = ensureVpsCursorLeafBootstrapDialTimeout(vps)
-  return [...commercial, ...vpsWithDialTimeout.proxies]
+  return [...commercial, ...vps]
 }
 
 async function logVlessVisionMuxGuard(proxies: unknown[]): Promise<void> {

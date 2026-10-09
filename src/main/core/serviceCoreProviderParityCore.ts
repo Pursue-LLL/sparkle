@@ -55,7 +55,3 @@ export function shouldRestartServiceCoreForProviderParity(
 export function formatProviderParityMismatchLog(expectedProviderIds: string[], runningProviderIds: string[]): string {
   return `expected=[${[...expectedProviderIds].sort().join(',')}] running=[${[...runningProviderIds].sort().join(',')}]`
 }
-
-export function formatProviderHotReloadLog(expectedProviderIds: readonly string[], reason: string): string {
-  return `tier0_hot_reload expected=[${[...expectedProviderIds].sort().join(',')}] reason=${reason}`
-}

@@ -35,10 +35,6 @@ import {
 } from './profileGroupNormalize'
 import { ensureCustomProxyGroups } from './customProxyGroups'
 import {
-  excludeMarathonHy2FromAiProxyGroups,
-  formatAiTrafficIsolationLogLine,
-} from './aiTrafficIsolationCore'
-import {
   formatAutoSelectAnyTlsExclusionLogLine,
   type ProxyCatalogEntry,
 } from './autoSelectAnyTlsExclusionCore'
@@ -51,7 +47,6 @@ import { injectCursorDomainRules } from './cursorRuleInjection'
 import { ensureCorporateDirectRules, ensureCorporateDnsPolicy } from './corporateDirectRules'
 import { ensureFakeIpRoutingIntegrity } from './fakeIpRoutingIntegrity'
 import { ensureDnsFallbackIntegrity, ensureTunStrictRoute } from './dnsFallbackIntegrity'
-import { applyHysteria2ProxiesQuicStability } from './hysteria2QuicStability'
 import { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } from './vlessVisionMuxGuardCore'
 import { showNotification } from '../utils/notification'
 import {
@@ -182,9 +177,7 @@ async function generateProfileImpl(): Promise<void> {
   }
 
   if (profile.proxies && Array.isArray(profile.proxies)) {
-    const guarded = applyVlessVisionMuxGuard(
-      applyHysteria2ProxiesQuicStability(profile.proxies as unknown[])
-    )
+    const guarded = applyVlessVisionMuxGuard(profile.proxies as unknown[])
     ;(profile as MihomoConfig).proxies = guarded as MihomoConfig['proxies']
     const muxSummary = summarizeVlessVisionMuxGuard(guarded)
     if (muxSummary.visionNodeCount > 0) {
@@ -215,11 +208,6 @@ async function generateProfileImpl(): Promise<void> {
     .filter((entry): entry is ProxyCatalogEntry => entry !== null)
   const providerProfileId = current && current !== 'default' ? current : undefined
   const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
-  const aiGroups = (profile['proxy-groups'] as { name: string; proxies?: string[] }[] | undefined) ?? []
-  const aiIsolation = excludeMarathonHy2FromAiProxyGroups(aiGroups)
-  if (aiIsolation.groupsMutated > 0) {
-    await appendAppLog(formatAiTrafficIsolationLogLine(aiIsolation))
-  }
   injectHongKongTrafficRules(profile)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
     cursorDedicatedGroupRenameNotified = true
@@ -249,20 +237,15 @@ async function generateProfileImpl(): Promise<void> {
     const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } = await import(
       './sparkleFastProviderCore'
     )
-    const { loadSparkleFastLedgerDelayMap } = await import('./sparkleFastLatencyOrder')
-    let ledgerDelayMs: Awaited<ReturnType<typeof loadSparkleFastLedgerDelayMap>> | undefined
-    try {
-      ledgerDelayMs = await loadSparkleFastLedgerDelayMap()
-    } catch {
-      ledgerDelayMs = undefined
-    }
+    const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
+    const delaySnapshot = await loadSparkleFastDelaySnapshot()
     await writeFileSync(
       path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME),
       stringifyYaml(
         buildSparkleFastProviderDocument({
           proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
           regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
-          delayMs: ledgerDelayMs?.size ? ledgerDelayMs : undefined
+          delayMs: delaySnapshot.size ? delaySnapshot : undefined
         })
       ),
       'utf8'
@@ -679,51 +662,4 @@ export async function getOverrideProfileStr(): Promise<string> {
 
 export async function getRuntimeConfig(): Promise<MihomoConfig> {
   return runtimeConfig
-}
-
-interface ProxyProviderHealthCheckConfig {
-  enable?: boolean
-  url?: string
-  interval?: number
-  lazy?: boolean
-}
-
-/** Hot-patch proxy-provider health-check.enable in runtime yaml (Marathon quiesce). */
-export async function patchRuntimeProxyProviderHealthCheckEnable(
-  profileId: string,
-  enable: boolean,
-  diffWorkDir: boolean,
-): Promise<boolean> {
-  if (!runtimeConfig?.['proxy-providers']) {
-    return false
-  }
-
-  const { resolveVpsProviderId } = await import('./provider')
-  const providerIds = [profileId, resolveVpsProviderId(profileId)]
-  const providers = runtimeConfig['proxy-providers'] as Record<
-    string,
-    { 'health-check'?: ProxyProviderHealthCheckConfig }
-  >
-
-  let changed = false
-  for (const providerId of providerIds) {
-    const provider = providers[providerId]
-    const healthCheck = provider?.['health-check']
-    if (!healthCheck || healthCheck.enable === enable) {
-      continue
-    }
-    healthCheck.enable = enable
-    changed = true
-  }
-
-  if (!changed) {
-    return false
-  }
-
-  runtimeConfigStr = stringifyYaml(runtimeConfig)
-  await writeFile(
-    diffWorkDir ? mihomoWorkConfigPath(profileId) : mihomoWorkConfigPath('work'),
-    runtimeConfigStr,
-  )
-  return true
 }
