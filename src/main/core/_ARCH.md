@@ -21,6 +21,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
 | `coreReadinessGate.ts` / `coreReadinessGateCore.ts` | 冷启动 Readiness Contract：sidecar → profile 检查 → startCore → API → 数据面探测 |
 | `coreLifecycle.ts` / `coreLifecycleCore.ts` | core 就绪后 fake-ip flush（cold / manual restart 后卫生） |
+| `probeWarmupCore.ts` / `probeWarmupState.ts` | 内核启动后批量测速窗口标志（`postCoreBootstrap` 开始/结束，5 分钟兜底）；经 `probeWarmupChanged` 事件与 `getProbeWarmupActive` IPC 推给代理页，窗口内无可信样本的节点显示 loading |
 | `networkStartupGraceCore.ts` | 内核就绪后重网络探测的启动宽限（45s） |
 
 ### 配置生成与订阅

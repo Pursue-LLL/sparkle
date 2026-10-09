@@ -17,6 +17,7 @@
 | 文件 | 职责 |
 |------|------|
 | `proxy-item.tsx` | 节点卡片；测速按钮；条件绑定 hover/touch → 详情弹窗 |
+| `probe-warmup-chip.tsx` | 页头「测速预热中」提示；状态来自 `@renderer/hooks/use-probe-warmup`，窗口内 `proxy-item.tsx` 对无可信样本的节点显示 loading 而非「测试」/「超时」 |
 | `proxy-detail-tooltip.tsx` | Portal 浮层：mihomo `history` 测速柱图与样本年龄 |
 | `proxy-setting-drawer.tsx` | 代理页设置抽屉（含上述 Switch） |
 
