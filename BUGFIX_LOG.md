@@ -96,10 +96,10 @@
 | **症状** | `自动选择` 叶子节点切换：2026-10-08 全天 17 次，2026-10-09 25 分钟内 13 次；agy 偶发 Google 地域 400。 |
 | **根因** | 切换发生在 mihomo 内核：`fallback` 取第一个存活成员，单次探测失败即降级、恢复后立刻回切（无迟滞）；旧 `sparkle-fast` 扁平文件把所有节点按地区排序，hy2（出口 IP 随端口跳跃漂移）与同地区 trojan 混排，网络劣化窗口里探测失败被放大成频繁来回切。Sparkle 应用层无自动切换（app 日志无对应记录）。 |
 | **A/B 实测（同时段并行探测）** | 劣化窗口：旧方案成功率 75% / 12 次切换；hy2 优先 53% / 18 次；粘性 url-test 80% / 6 次。中等窗口：91% vs 93%，切换 4 vs 3。平稳窗口：各方案均 100%。结论依赖网络时段，且存在本地/运营商出口共模劣化，软件侧无法消除。 |
-| **修复** | `自动选择` = `fallback`，成员为地区组 `Sparkle-<地区>`（日本→台湾→韩国→新加坡→美国，即 `proxySwitchPriority`）；每个地区组是粘性 `url-test`（`tolerance 2000`、探测 `https://gemini.google.com`、`timeout 5000`、`interval 300`、`lazy`），成员取自订阅 provider 并 `exclude-type: hysteria2\|anytls`，所以地区内当前节点未失效且未被快 2000ms 以上就不换；没有可用节点的地区不建组（mihomo 会把空组变成直连型 `COMPATIBLE`，混进 fallback 会绕过代理）；预热改用组自身探测目标；移除 `sparkle-fast` provider 及其文件生成；默认地区优先级改为日本第一。 |
-| **验证** | `tsx --test` 目标用例全过（`regionalAutoSelectGroupsCore` 7、`defaultAutoSwitchProxy` 16、预热 2 等）；`tsc` node/web 通过；eslint 无告警。`test:node-quality` 剩余 15 个失败（marathon / VPS / hy2 相关）在 `git archive HEAD` 干净导出上同样 15 个失败，与本次改动无关。 |
-| **不能保证的** | 切换不会降到零：每个节点的探测失败仍会让当前选择移动，mihomo 的失败触发即时健康检查仍在；运营商级劣化无法靠软件修复；Google 对出口 IP 的地域判定无法离线验证；越南/菲律宾/马来西亚等地区节点不再进入 `自动选择`（仍可手动选）；hy2 / AnyTLS 不再被自动选中（仍可手动选）。 |
-| **验收指标** | `自动选择` 叶子节点日均翻转次数（基线 17 次/天）；`proxy_logs.db` 中 agy 地域 400 次数；hy2 连接占比应为 0。 |
+| **修复** | `自动选择` 保持原生 `fallback`，成员为平铺的 `sparkle-fast` 文件（按 `proxySwitchPriority`，默认日本→台湾→韩国→新加坡→美国；剔除 AnyTLS 与香港，hy2 在正常位置）；`Sparkle-<地区>` 五个组改为仅手动选择的 url-test（`tolerance 2000`、Gemini 探测、`exclude-type: anytls`），不再被 `自动选择` 引用；没有可用节点的地区不建组；预热改用组自身探测目标；默认地区优先级日本第一。 |
+| **验证** | `tsx --test` 目标用例全过（含 `sparkleFastProviderCore`、`regionalAutoSelectGroupsCore`、`defaultAutoSwitchProxy`、预热）；`tsc` node/web 通过；eslint 无告警。`test:node-quality` 剩余 15 个失败（marathon / VPS / hy2 相关）在 `git archive HEAD` 干净导出上同样 15 个失败，与本次改动无关。 |
+| **不能保证的** | 切换不会降到零：每个节点的探测失败仍会让当前选择移动，mihomo 的失败触发即时健康检查仍在；运营商级劣化无法靠软件修复；Google 对出口 IP 的地域判定无法离线验证；fallback 在高优先级节点恢复后会立即切回（无迟滞），这是旧版频繁切换的来源之一，本方案未消除；AnyTLS 不进入 `自动选择`（仍可手动选）。 |
+| **验收指标** | `自动选择` 叶子节点日均翻转次数（基线 17 次/天）；`proxy_logs.db` 中 agy 地域 400 次数；日本节点出口占比。 |
 | **关联** | `src/main/core/regionalAutoSelectGroupsCore.ts` · `src/main/core/defaultAutoSwitchProxy.ts` · `src/main/core/regionPriority.ts` · `src/main/core/regionalUrlTestWarmupCore.ts` |
 
 ---

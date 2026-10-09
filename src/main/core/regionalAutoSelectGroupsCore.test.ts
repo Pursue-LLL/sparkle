@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  AUTO_SELECT_EXCLUDED_NODE_TYPES,
   buildRegionalAutoSelectGroupName,
   buildRegionalUrlTestGroup,
   type RegionalGroupProbe
@@ -19,22 +18,16 @@ const CATALOG = [
   { name: '🇸🇬 新加坡 02', type: 'hysteria2' },
   { name: '🇸🇬 新加坡 03', type: 'trojan' },
   { name: '🇸🇬 新加坡 03', type: 'trojan' },
-  { name: '🇯🇵 日本 01', type: 'Hysteria2' },
-  { name: '🇯🇵 日本 02', type: 'anytls' }
+  { name: '🇯🇵 日本 01', type: 'AnyTLS' }
 ]
 
 describe('regionalAutoSelectGroupsCore', () => {
-  it('excludes hysteria2 and anytls from automatic selection', () => {
-    assert.deepEqual([...AUTO_SELECT_EXCLUDED_NODE_TYPES], ['hysteria2', 'anytls'])
+  it('names groups with the Sparkle- prefix', () => {
     assert.equal(buildRegionalAutoSelectGroupName('日本'), 'Sparkle-日本')
   })
 
-  it('builds a sticky url-test group over the subscription provider', () => {
-    const group = buildRegionalUrlTestGroup(
-      '新加坡',
-      { profileId: 'p1', catalog: CATALOG },
-      PROBE
-    )
+  it('builds a url-test group over the subscription provider excluding anytls', () => {
+    const group = buildRegionalUrlTestGroup('新加坡', { profileId: 'p1', catalog: CATALOG }, PROBE)
 
     assert.deepEqual(group, {
       name: 'Sparkle-新加坡',
@@ -43,11 +36,11 @@ describe('regionalAutoSelectGroupsCore', () => {
       lazy: true,
       use: ['p1'],
       filter: '新加坡|(?i)\\bSG\\b|singapore',
-      'exclude-type': 'hysteria2|anytls'
+      'exclude-type': 'anytls'
     })
   })
 
-  it('returns null for a region whose nodes are all excluded types (case-insensitive)', () => {
+  it('returns null for a region whose nodes are all anytls (case-insensitive)', () => {
     assert.equal(buildRegionalUrlTestGroup('日本', { profileId: 'p1', catalog: CATALOG }, PROBE), null)
     assert.equal(buildRegionalUrlTestGroup('日本', { catalog: CATALOG }, PROBE), null)
   })
@@ -64,9 +57,9 @@ describe('regionalAutoSelectGroupsCore', () => {
     assert.deepEqual(group?.use, ['p1'])
   })
 
-  it('lists deduplicated eligible nodes inline without a profile', () => {
+  it('lists deduplicated nodes inline without a profile, keeping hysteria2', () => {
     const fromCatalog = buildRegionalUrlTestGroup('新加坡', { catalog: CATALOG }, PROBE)
-    assert.deepEqual(fromCatalog?.proxies, ['🇸🇬 新加坡 03'])
+    assert.deepEqual(fromCatalog?.proxies, ['🇸🇬 新加坡 02', '🇸🇬 新加坡 03'])
     assert.equal(fromCatalog?.use, undefined)
 
     const fromNames = buildRegionalUrlTestGroup('日本', { leafNames: ['SG-01', 'JP-01'] }, PROBE)
