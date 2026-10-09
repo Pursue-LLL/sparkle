@@ -89,6 +89,40 @@
 
 ---
 
+### BUG-2026-10-09-001 · `自动选择` 频繁切节点：fallback 无迟滞 + 不稳节点排在最前 · **CODE-DONE / 待安装验收**
+
+| 字段 | 内容 |
+| --- | --- |
+| **症状** | `自动选择` 叶子节点切换：2026-10-08 全天 17 次，2026-10-09 25 分钟内 13 次；agy 偶发 Google 地域 400。 |
+| **根因** | 切换发生在 mihomo 内核：`fallback` 取第一个存活成员，单次探测失败即降级、恢复后立刻回切（无迟滞）；旧 `sparkle-fast` 扁平文件把所有节点按地区排序，hy2（出口 IP 随端口跳跃漂移）与同地区 trojan 混排，网络劣化窗口里探测失败被放大成频繁来回切。Sparkle 应用层无自动切换（app 日志无对应记录）。 |
+| **A/B 实测（同时段并行探测）** | 劣化窗口：旧方案成功率 75% / 12 次切换；hy2 优先 53% / 18 次；粘性 url-test 80% / 6 次。中等窗口：91% vs 93%，切换 4 vs 3。平稳窗口：各方案均 100%。结论依赖网络时段，且存在本地/运营商出口共模劣化，软件侧无法消除。 |
+| **修复** | `自动选择` = `fallback`，成员为地区组 `Sparkle-<地区>`（日本→台湾→韩国→新加坡→美国，即 `proxySwitchPriority`）；每个地区组是粘性 `url-test`（`tolerance 2000`、探测 `https://gemini.google.com`、`timeout 5000`、`interval 300`、`lazy`），成员取自订阅 provider 并 `exclude-type: hysteria2\|anytls`，所以地区内当前节点未失效且未被快 2000ms 以上就不换；没有可用节点的地区不建组（mihomo 会把空组变成直连型 `COMPATIBLE`，混进 fallback 会绕过代理）；预热改用组自身探测目标；移除 `sparkle-fast` provider 及其文件生成；默认地区优先级改为日本第一。 |
+| **验证** | `tsx --test` 目标用例全过（`regionalAutoSelectGroupsCore` 7、`defaultAutoSwitchProxy` 16、预热 2 等）；`tsc` node/web 通过；eslint 无告警。`test:node-quality` 剩余 15 个失败（marathon / VPS / hy2 相关）在 `git archive HEAD` 干净导出上同样 15 个失败，与本次改动无关。 |
+| **不能保证的** | 切换不会降到零：每个节点的探测失败仍会让当前选择移动，mihomo 的失败触发即时健康检查仍在；运营商级劣化无法靠软件修复；Google 对出口 IP 的地域判定无法离线验证；越南/菲律宾/马来西亚等地区节点不再进入 `自动选择`（仍可手动选）；hy2 / AnyTLS 不再被自动选中（仍可手动选）。 |
+| **验收指标** | `自动选择` 叶子节点日均翻转次数（基线 17 次/天）；`proxy_logs.db` 中 agy 地域 400 次数；hy2 连接占比应为 0。 |
+| **关联** | `src/main/core/regionalAutoSelectGroupsCore.ts` · `src/main/core/defaultAutoSwitchProxy.ts` · `src/main/core/regionPriority.ts` · `src/main/core/regionalUrlTestWarmupCore.ts` |
+
+---
+
+### BUG-2026-10-08-001 · Cursor-3「Reconnecting」反复出现：mihomo v1.19.30 内置 sing-tun v0.4.22 的 system 栈 NAT 端口分配缺陷 · **INSTALLED（核心 v1.19.32）/ 验收未完成**
+
+| 字段 | 内容 |
+| --- | --- |
+| **症状** | Cursor-3（自定义 HTTP2 传输 + `http.proxySupport: off`，只能经 TUN 出网）会话持续显示「重连 Reconnecting...」；换节点无效；点「刷新核心」后短暂恢复但会复发。Sparkle 的连接数/字节/握手类指标全部正常。 |
+| **根因（代码机制已证实 · 内存级证据未取得）** | 安装的核心为官方原版 mihomo v1.19.30（`go version -m` 显示 sing-tun v0.4.22）。TUN 为 `stack: system`（darwin 下由 `cursorNetworkOptimize.ts:98` 强制）。system 栈 TCP 路径由 `TCPNat` 把客户端流映射到 `198.18.0.2:natPort`，`natPort` 是 10000–65535 上回绕的 `uint16` 计数器。v0.4.22 `Lookup()` 不检查端口占用 → 回绕后覆盖 `portMap[X]`，旧 key 仍留在 `addrMap`；`checkTimeout()` 只遍历 `portMap`，孤儿 key 永不回收。之后同一 key 的新 SYN 复用 X，`LookupBack(X)` 返回 nil → `processIPv4TCP` 报 "session not found" 静默丢弃 SYN-ACK：客户端停在 SYN_SENT，内核停在 SYN_RCVD。NAT 超时等于 `udp-timeout`（Sparkle 设为 3600s），死表项滞留 1–2 小时；Cursor 重试风暴加速计数器回绕。`core-2026-10-6.log`：6.7 小时内 57,120 条 TUN 流，计数器已回绕。上游修复：sing-tun `5c6a065`（#21，`allocatePortLocked`），含于 sing-tun v0.4.24、mihomo v1.19.31（pin v0.4.24）与 v1.19.32（pin v0.4.27，2026-09-30 发布）。**未取得**：root 权限下的内存级孤儿表项计数；该项由下面的「同端口恢复」实测作证伪判据。 |
+| **为何此前反复修不好** | ① 修错层：历史修复都在应用层（探针/看门狗/门控），故障在数据面核心，应用层改不了；② 无黑盒探针：现有检测看连接数/字节/握手，无按 (源端口, 目标) 主动验证新建连接的探针，核心半瘫时指标全正常；③ 自愈被自己拦：`marathonCoreRestartGuardCore.ts` 在 `cursorConnectionCount>0` 时一律 `blocked:true`，先于 `forceOverride` 判断，`restartCore`（`manager.ts` 约 1227 行）静默 defer，故障态下恰好重启不了（app 日志 `app-2026-10-8.log` 561-562 行有拦截记录）；④ 升级流水线无单实例锁（见下）。 |
+| **修复** | 仅升级核心二进制，Sparkle 业务/功能代码零改动：`extra/sidecar/mihomo` 由 v1.19.30 换为官方 v1.19.32（`extra/` 被 git 忽略，不入库）。升级脚本在该文件存在时设 `SKIP_PREPARE=1` 跳过下载；文件缺失时 `scripts/prepare.ts:66` 取 GitHub `releases/latest`（当前 ≥ v1.19.32，不会再拿到旧版）。`extra/sidecar/mihomo-alpha`（alpha-68ec4fa，同为 sing-tun v0.4.22）未替换：当前 `core: mihomo`，该文件未被使用；**若将来切到 alpha 核心，必须先确认其 sing-tun ≥ v0.4.24**。 |
+| **验证（实测）** | 打包产物 `dist/mac-arm64/Sparkle.app/Contents/Resources/sidecar/mihomo -v` = `v1.19.32`，`codesign --verify --deep --strict` 通过，Stage-A/Stage-B 打包门控 OK；用真实运行配置 `mihomo -t`：新旧核心均 `test is successful`（需 `SAFE_PATHS` 与 `profiles` 软链，否则两者同样因 provider 路径报错，与版本无关）。已安装：`/Applications/Sparkle.app/.../sidecar/mihomo` 与 dist 内 sidecar sha256 一致（前 16 位 `d2e9975ee64060ef`），root 核心 PID 59319 于 14:33:27 起运行 v1.19.32。**同端口新建连接实测**（Cursor-3 自带 Node 运行时，`localPort` 58100–58139 → 52.21.130.202:443）：第 1 轮 **40/40 成功**（第 2 轮因 TIME_WAIT 全部 EADDRINUSE，无效，不计入）。 |
+| **验收采样（2026-10-08 14:55–15:25，核心 PID 59319 运行 22–52 分钟，只读）** | api2 三个 IP（52.21.130.202 / 34.225.159.174 / 3.92.129.183）每 15 秒各新建一条 TCP:443 连接，随机源端口，3 秒超时：**360/360 成功（每 IP 120/120）**，持续 29.8 分钟，零超时（原始数据 `/tmp/accept_samples.jsonl`，探针 `/tmp/accept_sampler.js`）。Cursor-3 日志（`Cursor-3-data/logs/20261008T143828`，14:38 起约 47 分钟）「Retry exhausted」共 6 条，约 0.13 次/分钟，<5 次/分钟；此前会话日志单文件即 2200+ 条（如 `20261008T064224/.../Cursor Structured Logs.3.log` 2262 条）。**探针局限**：连接耗时仅 1–27ms，因为 system 栈由本机内核监听器接受 SYN，探针测的是 TUN 数据面 NAT 路径（正是本缺陷所在层），**不代表上游可达性**。 |
+| **安装后门控 FAIL 归因** | `AGENT_UPGRADE_RESULT: version=1.30.71 byte_death_gate=FAIL marathon_data_plane_soak=FAIL preflight=true`（`/tmp/sparkle-upgrade-20261008-143015.log`）。① `BYTE_DEATH_RECOVERY_GATE`：15 分钟窗口内列出的所有事件时间戳 ≤ 06:30:45Z（14:30:45 本地），早于新核心启动（14:33:27 本地 = 06:33:27Z）；`max_byte_stall_ms=4754221`、`sidecar_dial failures 136` 均为旧核心时段数据，窗口未对齐核心重启点。② `verify-marathon-data-plane-soak-gate`：`FAIL: no defer events in soak window — run ProfileUpdaterCli while Cursor active`，判据是「窗口内必须出现 defer 事件」，与核心健康无关。两项 FAIL 均不能证明新核心有问题，但这两个门控本身在「换核心」场景下会误报，**属门控设计缺陷，尚未修改**。 |
+| **未完成（如实记录）** | ① 采样仅 30 分钟、单一客户端、三个目标；原缺陷约 6.7 小时才回绕一轮计数器（57,120 流 / 55,536 端口），**30 分钟无法覆盖一轮回绕**，需核心持续运行 ≥12 小时再复测同一采样，才能对「回绕后不再卡死」下结论；② 稳固化方案未实施；③ 40/40 与 360/360 都不能单独证明根因已消除。 |
+| **流程缺陷（本次暴露）** | 2026-10-08 14:03–14:33 至少 4 条升级流水线并发运行（日志 `/tmp/sparkle-upgrade-20261008-{140326,142035,142217,143015}.log`）。其中 14:03 一条被另一条的 `electron-vite build` 重写 `out/` 后首次 `electron-builder` 报 `ENOENT out/main/agentTransportFailureSync-*.js`，随后进程消失；14:20 一条在安全窗口等待中途消失。**无单实例锁**导致互相踩 `out/`、`dist/mac-arm64` 与 sidecar；本条目的 sidecar 替换也发生在其中一条打包期间。 |
+| **待批准的稳固化方案（尚未实施）** | ① 启动断言：mihomo 内置 sing-tun < v0.4.24 拒绝启用 `stack: system` TUN；② 新建连接黑盒探针（按 (端口, 目标) 经 TUN 主动建连，失败即告警）；③ 重启保护改为「证据确凿（探针连续失败）时允许恢复」，不再无条件被 `cursorConnectionCount` 拦截；④ 升级脚本加单实例锁（`agent-sparkle-upgrade.sh` / `upgrade-sparkle-local.sh`）；⑤ 复核 `udp-timeout 3600` 与 system 栈 NAT 超时的耦合。不改业务与功能逻辑。 |
+| **回滚** | 旧 App：`dist/rollback/Sparkle-1.30.71.app`（`codesign --verify` 通过）；旧核心：`dist/rollback/mihomo-v1.19.30`。`dist/` 被 git 忽略；回滚按本文「Sparkle 本地安装」整包 `rm -rf` + `ditto`，不得覆盖安装。 |
+| **关联** | `src/main/core/cursorNetworkOptimize.ts:98` · `src/main/core/marathonCoreRestartGuardCore.ts` · `src/main/core/manager.ts`（`restartCore`）· `scripts/prepare.ts` · `scripts/agent-sparkle-upgrade.sh` · `scripts/upgrade-sparkle-local.sh` · `scripts/upgradeSafeWindowWaitCli.mts` |
+
+---
+
 ### BUG-2026-10-02-001 · agy/Antigravity 地域 400 复发（9-15 手补规则被配置再生成冲掉）· **INSTALLED @1.30.67 / LIVE-VERIFIED**
 
 | 字段 | 内容 |
@@ -2826,6 +2860,7 @@ bash scripts/install-sparkle-local.sh
 | 定责读 triage 证据包 + A 时刻三源 | 用 B 时刻探针否定 A 时刻断连 |
 | **马拉松中禁止 `upgrade-sparkle-local.sh` / install**（conn≥12 或 quiesce ON 时脚本 FAIL） | 马拉松进行中 install Sparkle（会 kill mihomo → Connect ECONNRESET） |
 | 紧急 override 仅 `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1` | 无 override 强杀 core |
+| 启动升级前先 `pgrep -fl 'agent-sparkle-upgrade\|upgrade-sparkle-local\|electron-builder'` 确认**无**其他升级在跑（脚本暂无单实例锁，见 BUG-2026-10-08-001） | 并发起第二条升级 / 构建期间替换 `extra/` 内文件（会重写 `out/` 导致对方 `ENOENT`、互踩 `dist/mac-arm64`） |
 
 **本地-only 升级口诀（无 Apple Developer · R-27）**：
 

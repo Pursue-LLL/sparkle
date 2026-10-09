@@ -1,5 +1,4 @@
 import {
-  AUTO_SELECT_DELAY_TEST_URL,
   CURSOR_DEDICATED_GROUP_NAME,
   DEFAULT_GENERAL_DELAY_TEST_URL,
   GEMINI_REACHABILITY_PROBE_URL,
@@ -15,21 +14,14 @@ import {
 import {
   filterMarathonCursorEligibleVpsLeaves,
 } from './marathonHy2OnlyCore'
-import {
-  buildRegionProviderFilter,
-  DEFAULT_REGION_PRIORITY,
-  nodeMatchesRegion,
-  resolveEffectiveRegionPriority
-} from './regionPriority'
-import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { DEFAULT_REGION_PRIORITY, resolveEffectiveRegionPriority } from './regionPriority'
 import type { MihomoChangeProxyOptions } from './mihomoApi'
 import {
-  buildNonAnyTlsRegionalMembers,
   excludeAnyTlsFromAutoSelectUrlTestGroups,
-  proxyCatalogHasTypes,
   type AutoSelectAnyTlsExclusionResult,
   type ProxyCatalogEntry,
 } from './autoSelectAnyTlsExclusionCore'
+import { buildRegionalUrlTestGroup } from './regionalAutoSelectGroupsCore'
 
 export interface MihomoAutoSwitchApi {
   mihomoGroups: () => Promise<ControllerMixedGroup[]>
@@ -53,6 +45,7 @@ interface ProxyGroupConfig {
   interval?: number
   tolerance?: number
   timeout?: number
+  'exclude-type'?: string
   'max-failed-times'?: number
   lazy?: boolean
 }
@@ -66,14 +59,21 @@ export interface EnsureAutoSwitchOptions {
 export const AUTO_SELECT_GROUP_NAME = '自动选择' as const
 
 /** 自动选择 探测目标：用户主用 Gemini——探测即验证目标站可达（SSOT: cursorProxyGroup）。 */
-export const AUTO_SELECT_GEMINI_PROBE_URL = GEMINI_REACHABILITY_PROBE_URL as const
+export const AUTO_SELECT_GEMINI_PROBE_URL = GEMINI_REACHABILITY_PROBE_URL
 /** 全 HTTPS 握手探测的合理余量（2000 会误杀可用节点）。 */
 export const AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS = 5000
 
+export const DEFAULT_URL_TEST_INTERVAL = 300
+/** url-test 仅在新节点比当前节点快出该值以上才切换，避免延迟抖动引起来回切。 */
+export const DEFAULT_URL_TEST_TOLERANCE_MS = 2000
 
-/** `自动选择` 的 provider filter：只命中国家/地区节点（香港与占位节点不命中）。 */
-export { buildAutoSelectCountryFilter } from './regionPriority'
-const REGION_AUTO_SELECT_PREFIX = 'Sparkle-' as const
+/** 自动选择 与其地区组共用的探测口径：Gemini 可达性，每 5 分钟一次，5 秒超时。 */
+const AUTO_SELECT_PROBE = {
+  url: AUTO_SELECT_GEMINI_PROBE_URL,
+  interval: DEFAULT_URL_TEST_INTERVAL,
+  tolerance: DEFAULT_URL_TEST_TOLERANCE_MS,
+  timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS
+} as const
 
 /** Subscription url-test auto-select — replaced by Sparkle {@link AUTO_SELECT_GROUP_NAME}. */
 const LEGACY_SUBSCRIPTION_AUTO_SELECT_NAMES = ['♻️ 自动选择'] as const
@@ -156,62 +156,6 @@ function appendAutoSwitchRefs(proxies: string[], refs: string[]): string[] {
   return merged
 }
 
-function buildRegionalAutoSelectGroupName(region: string): string {
-  return `${REGION_AUTO_SELECT_PREFIX}${region}`
-}
-
-function buildRegionalUrlTestGroup(
-  region: string,
-  profileId: string | undefined,
-  leafNames: string[] | undefined,
-  leafProxyCatalog: ProxyCatalogEntry[] | undefined
-): ProxyGroupConfig | null {
-  // 地区组 = url-test：组内自动选延迟最低；当前节点失效才切换（tolerance 防抖）；
-  // url-test 同样支持手动固定。
-  const base = {
-    type: 'url-test',
-    url: DEFAULT_GENERAL_DELAY_TEST_URL,
-    interval: DEFAULT_URL_TEST_INTERVAL,
-    tolerance: DEFAULT_URL_TEST_TOLERANCE_MS,
-    timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
-    lazy: true
-  } as const
-  if (profileId) {
-    const filter = buildRegionProviderFilter(region)
-    if (filter) {
-      return {
-        name: buildRegionalAutoSelectGroupName(region),
-        ...base,
-        use: [profileId],
-        filter
-      }
-    }
-  }
-
-  if (leafProxyCatalog?.length && proxyCatalogHasTypes(leafProxyCatalog)) {
-    const nonAnyTlsMembers = buildNonAnyTlsRegionalMembers(region, leafProxyCatalog)
-    if (nonAnyTlsMembers.length === 0) {
-      return null
-    }
-    return {
-      name: buildRegionalAutoSelectGroupName(region),
-      ...base,
-      proxies: nonAnyTlsMembers,
-    }
-  }
-
-  const members = (leafNames ?? []).filter((name) => nodeMatchesRegion(name, region))
-  if (members.length > 0) {
-    return {
-      name: buildRegionalAutoSelectGroupName(region),
-      ...base,
-      proxies: members
-    }
-  }
-
-  return null
-}
-
 function resolveAutoSelectLeafNames(
   groups: ProxyGroupConfig[],
   leafProxyNames: string[] | undefined
@@ -225,8 +169,9 @@ function resolveAutoSelectLeafNames(
 }
 
 /**
- * Rewrite 自动选择 as a fallback chain over regional url-test sub-groups (新加坡优先).
- * Each Sparkle-* regional group is a manual select over that region (AnyTLS excluded).
+ * 自动选择 = fallback 地区链（按地区优先级用第一个可用地区，当前地区探测失败才降级），
+ * 每个地区是粘性 url-test 组：地区内当前节点没失效就不换，掉线后也不会因恢复而回切。
+ * 不把 🎯 Cursor 专用 嵌进 自动选择：Cursor 专用已包含 自动选择，反向嵌套会成环。
  */
 function ensureRegionPriorityAutoSelect(
   groups: ProxyGroupConfig[],
@@ -235,47 +180,26 @@ function ensureRegionPriorityAutoSelect(
   leafProxyNames: string[] | undefined,
   leafProxyCatalog: ProxyCatalogEntry[] | undefined
 ): void {
-  const leafNames = resolveAutoSelectLeafNames(groups, leafProxyNames)
-
-  const regionalGroups: ProxyGroupConfig[] = []
-  const fallbackRefs: string[] = []
-
-  for (const region of regionPriority) {
-    const regional = buildRegionalUrlTestGroup(
-      region,
-      profileId,
-      leafNames,
-      leafProxyCatalog
-    )
-    if (regional) {
-      regionalGroups.push(regional)
-      fallbackRefs.push(regional.name)
-    }
+  const source = {
+    profileId,
+    leafNames: resolveAutoSelectLeafNames(groups, leafProxyNames),
+    catalog: leafProxyCatalog
   }
-
-  // Do not nest 🎯 Cursor 专用 inside 自动选择 — Cursor Dedicated already nests 自动选择
-  // (切啥就走啥). Nesting both ways creates a select-group cycle.
-
-  if (fallbackRefs.length === 0) {
+  const regionalGroups = regionPriority.flatMap(
+    (region) => buildRegionalUrlTestGroup(region, source, AUTO_SELECT_PROBE) ?? []
+  )
+  if (regionalGroups.length === 0) {
     return
   }
 
-  // 自动选择 = 原生 fallback（按顺序用第一个可用节点，当前失效才降级）：
-  // - 探测目标 = Gemini：选中的链路就是实测能正常打开 Gemini 的
-  // - interval 300：每 5 分钟检查一次；timeout 5000：全 HTTPS 握手余量
-  // - 成员 = sparkle-fast（按地区优先级排序的扁平节点文件，见 sparkleFastProviderCore）
   const autoSelectGroup: ProxyGroupConfig = {
     name: AUTO_SELECT_GROUP_NAME,
     type: 'fallback',
-    url: AUTO_SELECT_GEMINI_PROBE_URL,
-    interval: DEFAULT_URL_TEST_INTERVAL,
-    timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
+    url: AUTO_SELECT_PROBE.url,
+    interval: AUTO_SELECT_PROBE.interval,
+    timeout: AUTO_SELECT_PROBE.timeout,
     lazy: true,
-  }
-  if (profileId) {
-    autoSelectGroup.use = [FAST_NODE_PROVIDER_ID]
-  } else {
-    autoSelectGroup.proxies = fallbackRefs
+    proxies: regionalGroups.map((group) => group.name)
   }
 
   const withoutAutoSelect = groups.filter(
@@ -373,44 +297,42 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
     group.proxies = appendAutoSwitchRefs(existing, autoSwitchRefs)
   }
 
-  appendRegionalAutoGroupsToCursorDedicated(profile, regionPriority)
+  appendRegionalAutoGroupsToCursorDedicated(profile)
   return anyTlsExclusion
 }
 
-/** Cursor 专用组：DIRECT + VPS + 自动选择（可手动点选；程序不自动 change_proxy）。 */
-export function appendRegionalAutoGroupsToCursorDedicated(
-  profile: MihomoConfig,
-  _regionPriority: readonly string[]
-): void {
+/**
+ * Cursor 专用组：DIRECT + 自建 VPS 节点 + 各地区 Sparkle 自动组（不含香港）+ 自动选择。
+ * 可手动点选；程序不自动 change_proxy。重复调用结果不变。
+ */
+export function appendRegionalAutoGroupsToCursorDedicated(profile: MihomoConfig): void {
   const groups = (profile['proxy-groups'] as ProxyGroupConfig[] | undefined) ?? []
   const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
   if (!cursorGroup) {
     return
   }
 
+  // 地区组沿用 groups 中的顺序，即地区优先级顺序。
+  const regionalRefs = groups
+    .filter((group) => isSparkleRegionalAutoSelectGroup(group.name))
+    .map((group) => group.name)
   const hasAutoSelect = groups.some((group) => group.name === AUTO_SELECT_GROUP_NAME)
 
-  if (cursorGroup.use?.length) {
-    cursorGroup.proxies = prependCursorDedicatedDirectOption(cursorGroup.proxies ?? [])
-    if (hasAutoSelect) {
-      cursorGroup.proxies = appendAutoSelectToCursorDedicated(cursorGroup.proxies)
-    }
-    return
-  }
-
   const existing = cursorGroup.proxies ?? []
-  const vpsLeaves = filterMarathonCursorEligibleVpsLeaves(
-    existing.filter((ref) => /vps/i.test(ref)),
+  // provider 模式下 VPS 节点由 use 提供，proxies 里只会有 DIRECT；静态模式则只留合格的 VPS 叶子。
+  const nodeMembers = cursorGroup.use?.length
+    ? existing
+    : filterMarathonCursorEligibleVpsLeaves(existing.filter((ref) => /vps/i.test(ref)))
+  const regionalSet = new Set(regionalRefs)
+  const baseMembers = prependCursorDedicatedDirectOption(nodeMembers).filter(
+    (name) => name !== AUTO_SELECT_GROUP_NAME && !regionalSet.has(name)
   )
-  cursorGroup.proxies = prependCursorDedicatedDirectOption(vpsLeaves)
-  if (hasAutoSelect) {
-    cursorGroup.proxies = appendAutoSelectToCursorDedicated(cursorGroup.proxies)
-  }
-}
 
-function appendAutoSelectToCursorDedicated(members: readonly string[]): string[] {
-  const withoutAuto = members.filter((name) => name !== AUTO_SELECT_GROUP_NAME)
-  return [...withoutAuto, AUTO_SELECT_GROUP_NAME]
+  cursorGroup.proxies = [
+    ...baseMembers,
+    ...regionalRefs,
+    ...(hasAutoSelect ? [AUTO_SELECT_GROUP_NAME] : [])
+  ]
 }
 
 export function resolvePreferredAutoSwitchProxy(
@@ -460,19 +382,6 @@ export async function applyDefaultAutoSwitchSelections(
   return 0
 }
 
-export const DEFAULT_URL_TEST_INTERVAL = 300
-/**
- * BUG-2026-09-15-007: hysteresis aligned to the operator rule "switch only when
- * the current node is >2000ms (or unavailable)". mihomo url-test only re-selects
- * when another node beats the current by more than this, so the absolute 2000ms
- * trigger stays owned by the native url-test group (timeout: 5000).
- */
-export const DEFAULT_URL_TEST_TOLERANCE_MS = 2000
-
-/** `自动选择` 判定"不可用"的探测超时：超过它才允许切换到下一个节点。 */
-export const AUTO_SELECT_UNHEALTHY_TIMEOUT_MS = 2000
-
-
 export function buildUrlTestGroupDefaults(): {
   type: 'url-test'
   url: string
@@ -488,21 +397,3 @@ export function buildUrlTestGroupDefaults(): {
     lazy: true
   }
 }
-
-/** Sparkle-* regional groups: only nodes that can reach ChatGPT are eligible. */
-export function buildRegionalAutoSelectUrlTestDefaults(): {
-  type: 'url-test'
-  url: string
-  interval: number
-  tolerance: number
-  lazy: boolean
-} {
-  return {
-    type: 'url-test',
-    url: AUTO_SELECT_DELAY_TEST_URL,
-    interval: DEFAULT_URL_TEST_INTERVAL,
-    tolerance: DEFAULT_URL_TEST_TOLERANCE_MS,
-    lazy: true
-  }
-}
-

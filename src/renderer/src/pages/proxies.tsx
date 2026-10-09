@@ -53,14 +53,18 @@ function getProxyDelay(proxy: ProxyLike): number {
   return proxy.history.length > 0 ? proxy.history[proxy.history.length - 1].delay : -1
 }
 
+/** 延迟升序：有延迟的在前，未测试居中，超时（0）垫底。 */
+function delayRank(delay: number): number {
+  if (delay > 0) return 0
+  return delay === -1 ? 1 : 2
+}
+
 function compareProxyDelay(a: ProxyLike, b: ProxyLike): number {
   const delayA = getProxyDelay(a)
   const delayB = getProxyDelay(b)
-  if (delayA === -1) return -1
-  if (delayB === -1) return 1
-  if (delayA === 0) return 1
-  if (delayB === 0) return -1
-  return delayA - delayB
+  const rankA = delayRank(delayA)
+  const rankB = delayRank(delayB)
+  return rankA === rankB ? (rankA === 0 ? delayA - delayB : 0) : rankA - rankB
 }
 
 interface GroupHeaderProps {
@@ -214,7 +218,7 @@ const Proxies: React.FC = () => {
     groupDisplayLayout = 'double',
     showGroupSelectedProxy = false,
     showProxyDetailTooltip = true,
-    proxyDisplayOrder = 'default',
+    proxyDisplayOrder = 'delay',
     autoCloseConnection = false,
     closeMode = 'all',
     proxyCols = 'auto',

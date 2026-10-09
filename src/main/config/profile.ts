@@ -20,6 +20,7 @@ import { deepMerge } from '../utils/merge'
 import { getUserAgent } from '../utils/userAgent'
 import { execWithElevation } from '../utils/elevation'
 import { deleteProvider } from '../core/provider'
+import { findDependentMergeItems } from '../core/mergeProfileCore'
 import { normalizeSubscriptionExpireTimestamp } from '../core/profileSubscriptionDisplayCore'
 import {
   isBlankProfileConfigRaw,
@@ -133,6 +134,13 @@ export async function addProfileItem(item: Partial<ProfileItem>): Promise<void> 
 
 export async function removeProfileItem(id: string): Promise<void> {
   const config = await getProfileConfig()
+  // 来源被删后合并订阅无法再重建，只会悄悄停在旧节点上，因此直接拒绝删除。
+  const referencedBy = findDependentMergeItems(config.items, id)
+  if (referencedBy.length > 0) {
+    throw new Error(
+      `订阅正被合并订阅引用：${referencedBy.map((item) => item.name).join('、')}，请先删除合并订阅`
+    )
+  }
   config.items = config.items?.filter((item) => item.id !== id)
   let shouldRestart = false
   if (config.current === id) {
@@ -171,6 +179,7 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
     url: item.url,
     fingerprint: item.fingerprint,
     ua: item.ua,
+    merge: item.merge,
     verify: item.verify ?? false,
     autoUpdate: item.autoUpdate ?? true,
     disableRemoteInterval: item.disableRemoteInterval ?? false,
@@ -336,7 +345,9 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
       break
     }
     case 'local': {
-      const data = item.file || ''
+      const data = item.merge
+        ? await (await import('./mergeProfile')).buildMergeProfileYaml(item.merge)
+        : item.file || ''
       await setProfileStr(id, data)
       break
     }
@@ -364,6 +375,13 @@ export async function getProfileParseStr(id: string | undefined): Promise<string
 }
 
 export async function setProfileStr(id: string, content: string): Promise<void> {
+  await applyProfileStr(id, content)
+  const { rebuildDependentMergeProfiles } = await import('./mergeProfile')
+  await rebuildDependentMergeProfiles(id)
+}
+
+/** 写入订阅文件并在其为当前订阅时热重载；不触发合并订阅重建（合并订阅自身的写入走这里）。 */
+export async function applyProfileStr(id: string, content: string): Promise<void> {
   const { current } = await getProfileConfig()
   await writeFile(profilePath(id), content, 'utf-8')
 

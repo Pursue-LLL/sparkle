@@ -13,11 +13,11 @@
 | 装包 | `/Applications/Sparkle.app`，GUI + mihomo + TUN(39 路由) + `:7890` HTTP 200 |
 
 **能力/行为基线（后续不得回退）**
-- `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按地区优先级排序写入：台湾→日本→韩国→新加坡→美国→其他非优先国家，香港排除；纯排序，零探测机器）。fallback 语义 = 按顺序用第一个可用节点：台湾可用就只用台湾，当前节点 gemini 探测失败（>5s）自动降到下一个可用节点，恢复自动升回。
-- 探测：`gemini.google.com`（用户主用服务），interval 300s，timeout 5000ms，lazy=true（组空闲时跳过定时探测）。
-- 手动：fallback 支持手动固定，所选节点失效自动让位。
-- 地区组（Sparkle-台湾/日本/韩国/新加坡/美国/香港）= 手动 select，永不自动切换，与该链完全分离。
-- **铁律**：`proxies` 里不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）；provider 文件必须随每次配置生成重写。
+- `自动选择` = mihomo 原生 **fallback**：成员 = 地区组 `Sparkle-<地区>`，顺序 = `proxySwitchPriority`（默认 日本→台湾→韩国→新加坡→美国，香港排除）。fallback 语义 = 按顺序用第一个可用地区：日本可用就只用日本，该地区探测失败才降到下一个地区，恢复后升回。
+- 地区组 = **粘性 url-test**：`tolerance 2000`，成员取自订阅 provider（`use`+`filter`）并 `exclude-type: hysteria2|anytls`；地区内当前节点未失效且未被快 2000ms 以上就不换。没有可用节点的地区不建组（空组会被 mihomo 变成直连型 `COMPATIBLE`）。
+- 探测：`gemini.google.com`（用户主用服务），interval 300s，timeout 5000ms，lazy=true（组空闲时跳过定时探测）；预热也用组自身探测目标。
+- 手动：`自动选择` 与地区组均可手动固定；hy2 / AnyTLS 不进自动池，只能手动选。香港为专用组，不进 `自动选择`。
+- **铁律**：`proxies` 里只能引用组名，不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）。
 1. **不会因卡顿整核重启**：`restartCoreEmergency`/bridge/oscillation/smoke 已从代码删除；emergency 只决策+记录 `emergency_core_restart_removed`。
 2. **选点防抖**：url-test 组 `interval:300` + `tolerance:2000` + `lazy:true`；failover 触发 `proxyTimeoutThreshold=2000`、目标 `proxySwitchMaxTargetDelayMs=500`、顺序 新加坡→台湾→日本→韩国→美国、每 300s 复测；**`自动选择` = `select`（可手动选），成员 = 5 区域组 + `use:[商业 provider, VPS provider]`（全部节点）；`proxyHealthMonitor` 受管 Cursor 专用 + 自动选择**。
 3. **恢复证据契约**：`LongflowEvidence=measured|unknown`（禁止 `?? 0`）；探针在 controller 不可达时不伪造 `leaf:fail`；集体死亡报告按日历日选日志 + 30min 窗口。

@@ -234,27 +234,25 @@ function buildCursorGroupConfig(
   _groupNames: string[],
   _groups: ProxyGroupConfig[],
   profileId: string | undefined
-): ProxyGroupConfig | null {
+): ProxyGroupConfig {
   const vpsNodes = filterMarathonCursorEligibleVpsLeaves(
     [...new Set(leafNames.filter(matchesVpsNode))],
   ).sort((a, b) => a.localeCompare(b, 'zh-CN'))
 
+  // 没有自建节点时组依然存在：成员由地区组 / 自动选择补齐，而不是整组消失导致规则悬空。
   if (profileId) {
-    if (vpsNodes.length === 0) {
-      return null
-    }
-    return {
+    const group: ProxyGroupConfig = {
       name: CURSOR_DEDICATED_GROUP_NAME,
       type: 'select',
       proxies: [CURSOR_DEDICATED_DIRECT_PROXY],
-      use: [resolveVpsProviderId(profileId)],
-      filter: MARATHON_CURSOR_VPS_PROVIDER_FILTER,
     }
+    if (vpsNodes.length > 0) {
+      group.use = [resolveVpsProviderId(profileId)]
+      group.filter = MARATHON_CURSOR_VPS_PROVIDER_FILTER
+    }
+    return group
   }
 
-  if (vpsNodes.length === 0) {
-    return null
-  }
   return {
     name: CURSOR_DEDICATED_GROUP_NAME,
     type: 'select',
@@ -307,18 +305,11 @@ export function ensureCustomProxyGroups(
   )
   const subscriptionGroupNames = collectCursorEligibleGroupNames(existingGroups)
 
-  const injected: ProxyGroupConfig[] = []
-  const cursorGroup = buildCursorGroupConfig(
-    leafProxyNames,
-    subscriptionGroupNames,
-    existingGroups,
-    profileId
-  )
+  const injected: ProxyGroupConfig[] = [
+    buildCursorGroupConfig(leafProxyNames, subscriptionGroupNames, existingGroups, profileId)
+  ]
   const hkGroup = buildHongKongGroupConfig(leafProxyNames, profileId)
 
-  if (cursorGroup) {
-    injected.push(cursorGroup)
-  }
   if (hkGroup) {
     injected.push(hkGroup)
   }
@@ -328,13 +319,6 @@ export function ensureCustomProxyGroups(
     profile,
     hkGroup !== null
   )
-
-  if (injected.length === 0) {
-    profile['proxy-groups'] = subscriptionGroups as MihomoConfig['proxy-groups']
-    const legacyGroupMigrated = migrateLegacyCursorDedicatedGroupReferences(profile)
-    rewriteBroadCursorDedicatedRules(profile)
-    return legacyGroupMigrated
-  }
 
   profile['proxy-groups'] = [...injected, ...subscriptionGroups] as MihomoConfig['proxy-groups']
   const legacyGroupMigrated = migrateLegacyCursorDedicatedGroupReferences(profile)

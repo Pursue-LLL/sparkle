@@ -12,6 +12,7 @@ import {
 import BasePage from '@renderer/components/base/base-page'
 import ProfileItem from '@renderer/components/profiles/profile-item'
 import EditInfoModal from '@renderer/components/profiles/edit-info-modal'
+import MergeProfileModal from '@renderer/components/profiles/merge-profile-modal'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { getFilePath, readTextFile, subStoreCollections, subStoreSubs } from '@renderer/utils/ipc'
@@ -55,6 +56,7 @@ const Profiles: React.FC = () => {
   const [switching, setSwitching] = useState(false)
   const [fileOver, setFileOver] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showMergeModal, setShowMergeModal] = useState(false)
   const [isSettingDrawerOpen, setIsSettingDrawerOpen] = useState(false)
   const [settingDrawerReopenSignal, setSettingDrawerReopenSignal] = useState(0)
   const [editingItem, setEditingItem] = useState<ProfileItem | null>(null)
@@ -272,6 +274,13 @@ const Profiles: React.FC = () => {
           }}
         />
       )}
+      {showMergeModal && (
+        <MergeProfileModal
+          candidates={itemsArray.filter((item) => !item.merge)}
+          onSubmit={addProfileItem}
+          onClose={() => setShowMergeModal(false)}
+        />
+      )}
       <div className="sticky profiles-sticky top-0 z-40">
         <div className="flex p-2">
           <Input
@@ -422,6 +431,9 @@ const Profiles: React.FC = () => {
                     }
                     break
                   }
+                  case 'merge':
+                    setShowMergeModal(true)
+                    break
                   case 'import': {
                     const newRemoteProfile: ProfileItem = {
                       id: '',
@@ -441,6 +453,7 @@ const Profiles: React.FC = () => {
               <DropdownItem key="open">打开本地配置</DropdownItem>
               <DropdownItem key="new">新建本地配置</DropdownItem>
               <DropdownItem key="import">导入远程配置</DropdownItem>
+              <DropdownItem key="merge">新建合并订阅</DropdownItem>
             </DropdownMenu>
           </Dropdown>
         </div>

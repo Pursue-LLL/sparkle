@@ -1,4 +1,5 @@
 import os from 'os'
+import { DEFAULT_REGION_PRIORITY } from '../core/regionPriority'
 
 export const defaultConfig: AppConfig = {
   core: 'mihomo',
@@ -25,14 +26,14 @@ export const defaultConfig: AppConfig = {
   connectionInterval: 500,
   gistSyncEnabled: false,
   useSubStore: true,
-  proxyDisplayOrder: 'default',
+  proxyDisplayOrder: 'delay',
   autoCheckUpdate: false,
   autoProxySwitch: true,
   cursorBidiOptimize: true,
   cursorProxyAppPathPrefixes: [],
   cursorSysProxyLock: false,
   cursorConnectionHygieneEnabled: false,
-  proxySwitchPriority: ['新加坡', '日本', '台湾', '韩国', '美国'],
+  proxySwitchPriority: [...DEFAULT_REGION_PRIORITY],
   proxyHealthCheckInterval: 60,
   proxyTimeoutThreshold: 5000,
   networkAlertEnabled: true,

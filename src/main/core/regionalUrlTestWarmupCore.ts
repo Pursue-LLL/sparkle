@@ -40,7 +40,11 @@ export async function warmupRegionalUrlTestGroupsCore(
       continue
     }
     try {
-      await mihomoGroupDelay(group.name, resolveDelayTestUrl({ groupName: group.name }))
+      // 预热必须用组自身的探测目标（Gemini），否则初始选中的节点与后续探测口径不一致。
+      await mihomoGroupDelay(
+        group.name,
+        resolveDelayTestUrl({ groupName: group.name, groupTestUrl: group.testUrl })
+      )
       warmed += 1
     } catch (error) {
       failures.push({

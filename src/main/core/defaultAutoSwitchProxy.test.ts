@@ -10,8 +10,17 @@ import {
   shouldApplyDefaultAutoSwitch
 } from './defaultAutoSwitchProxy'
 
+/** 默认地区优先级生成的 5 个地区组；香港由专用组单独管理，不进入 Cursor 专用。 */
+const REGIONAL_GROUPS_WITHOUT_HONG_KONG = [
+  'Sparkle-日本',
+  'Sparkle-台湾',
+  'Sparkle-韩国',
+  'Sparkle-新加坡',
+  'Sparkle-美国',
+]
+
 describe('defaultAutoSwitchProxy', () => {
-  it('injects 自动选择 manual-select over the fast provider', () => {
+  it('builds 自动选择 as a fallback chain over sticky regional url-test groups', () => {
     const profile = {
       'proxy-groups': [
         { name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] },
@@ -31,32 +40,22 @@ describe('defaultAutoSwitchProxy', () => {
       proxies?: string[]
     }[]
     const autoSelect = groups.find((group) => group.name === '自动选择')
-    // 自动选择 = native fallback chain over priority regions + 其他地区 兜底.
     assert.equal(autoSelect?.type, 'fallback')
-    // 自动选择 = fallback，成员来自 sparkle-fast（按地区优先级排序的扁平文件）。
-    assert.equal(autoSelect?.type, 'fallback')
-    assert.deepEqual(autoSelect?.use, ['sparkle-fast'])
-    assert.equal(autoSelect?.proxies, undefined)
-    assert.equal(
-      groups.find((group) => group.name === 'Sparkle-新加坡')?.type,
-      'url-test'
-    )
+    assert.deepEqual(autoSelect?.proxies, REGIONAL_GROUPS_WITHOUT_HONG_KONG)
+    assert.equal(autoSelect?.use, undefined)
     const sgGroup = groups.find((group) => group.name === 'Sparkle-新加坡')
+    assert.equal(sgGroup?.type, 'url-test')
     assert.deepEqual(sgGroup?.use, ['test-profile'])
     assert.equal(sgGroup?.filter, '新加坡|(?i)\\bSG\\b|singapore')
     assert.equal(sgGroup?.proxies, undefined)
     assert.deepEqual(groups.find((group) => group.name === '🚀 节点选择')?.proxies, [
       'SG-01',
       '自动选择',
-      'Sparkle-台湾',
-      'Sparkle-日本',
-      'Sparkle-韩国',
-      'Sparkle-新加坡',
-      'Sparkle-美国'
+      ...REGIONAL_GROUPS_WITHOUT_HONG_KONG
     ])
   })
 
-  it('keeps the 5 regional groups as manual select while 自动选择 lists fast nodes', () => {
+  it('probes 自动选择 and every regional group with Gemini, excluding hy2 and AnyTLS', () => {
     const profile = {
       'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }]
     } as unknown as MihomoConfig
@@ -65,22 +64,33 @@ describe('defaultAutoSwitchProxy', () => {
       leafProxyNames: ['SG-01', 'JP-01', 'TW-01', 'KR-01', 'US-01']
     })
 
-    const groups = profile['proxy-groups'] as { name: string; url?: string; type?: string; tolerance?: number; use?: string[]; filter?: string; proxies?: string[] }[]
+    const groups = profile['proxy-groups'] as {
+      name: string
+      url?: string
+      type?: string
+      tolerance?: number
+      timeout?: number
+      lazy?: boolean
+      'exclude-type'?: string
+    }[]
     const regionalGroups = groups.filter((group) => group.name.startsWith('Sparkle-'))
     assert.equal(regionalGroups.length, 5)
     for (const group of regionalGroups) {
-      // 地区组 = url-test：组内自动选最低延迟；当前节点失效才切换。
       assert.equal(group.type, 'url-test')
-      assert.equal(group.url, 'https://www.gstatic.com/generate_204')
+      assert.equal(group.url, 'https://gemini.google.com')
       assert.equal(group.tolerance, 2000)
+      assert.equal(group.timeout, 5000)
+      assert.equal(group.lazy, true)
+      assert.equal(group['exclude-type'], 'hysteria2|anytls')
     }
 
     const autoSelect = groups.find((group) => group.name === '自动选择')
     assert.equal(autoSelect?.type, 'fallback')
-    assert.deepEqual(autoSelect?.use, ['sparkle-fast'])
+    assert.equal(autoSelect?.url, 'https://gemini.google.com')
+    assert.equal(autoSelect?.timeout, 5000)
   })
 
-  it('rewrites subscription 自动选择 into manual select over the fast provider', () => {
+  it('rewrites subscription 自动选择 into a fallback chain over static regional groups', () => {
     const profile = {
       'proxy-groups': [
         { name: '自动选择', type: 'url-test', proxies: ['SG-01', 'JP-01', 'TW-01'] },
@@ -96,13 +106,7 @@ describe('defaultAutoSwitchProxy', () => {
     const autoSelect = groups.find((group) => group.name === '自动选择')
     // No provider id → fallback over the regional groups (priority order).
     assert.equal(autoSelect?.type, 'fallback')
-    assert.deepEqual(autoSelect?.proxies, [
-      'Sparkle-台湾',
-      'Sparkle-日本',
-      'Sparkle-韩国',
-      'Sparkle-新加坡',
-      'Sparkle-美国'
-    ])
+    assert.deepEqual(autoSelect?.proxies, REGIONAL_GROUPS_WITHOUT_HONG_KONG)
     assert.deepEqual(
       groups.find((group) => group.name === 'Sparkle-新加坡')?.proxies,
       ['SG-01']
@@ -135,10 +139,10 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(sgGroup?.proxies, undefined)
   })
 
-  it('builds regional url-test groups from typed catalog while select groups keep all', () => {
+  it('skips regions without eligible nodes so no empty (direct-type) group joins the chain', () => {
     const catalog = [
       { name: '🇸🇬 新加坡 01', type: 'anytls' },
-      { name: '🇸🇬 新加坡 02', type: 'hysteria2' },
+      { name: '🇸🇬 新加坡 02', type: 'trojan' },
       { name: '🇯🇵 日本 01', type: 'anytls' },
       { name: '🇯🇵 日本 02', type: 'hysteria2' },
     ]
@@ -163,12 +167,16 @@ describe('defaultAutoSwitchProxy', () => {
       proxies?: string[]
       use?: string[]
       filter?: string
+      'exclude-type'?: string
     }[]
     const sgAuto = groups.find((group) => group.name === 'Sparkle-新加坡')
     assert.deepEqual(sgAuto?.use, ['test-profile'])
-    // Regional groups source members through `use`; their filter stays as authored.
     assert.equal(sgAuto?.filter, '新加坡|(?i)\\bSG\\b|singapore')
+    assert.equal(sgAuto?.['exclude-type'], 'hysteria2|anytls')
     assert.equal(sgAuto?.proxies, undefined)
+    // 日本 only has AnyTLS / hysteria2 nodes, so it gets no group and stays out of the chain.
+    assert.equal(groups.some((group) => group.name === 'Sparkle-日本'), false)
+    assert.deepEqual(groups.find((group) => group.name === '自动选择')?.proxies, ['Sparkle-新加坡'])
     const aiGroup = groups.find((group) => group.name === '🤖 AI')
     assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 01'), true)
     assert.equal(aiGroup?.proxies?.includes('🇸🇬 新加坡 02'), true)
@@ -185,11 +193,34 @@ describe('defaultAutoSwitchProxy', () => {
       ],
     } as unknown as MihomoConfig
 
-    appendRegionalAutoGroupsToCursorDedicated(profile, [])
-    appendRegionalAutoGroupsToCursorDedicated(profile, [])
+    appendRegionalAutoGroupsToCursorDedicated(profile)
+    appendRegionalAutoGroupsToCursorDedicated(profile)
 
     const cursorGroup = (profile['proxy-groups'] as { proxies?: string[] }[])[0]
     assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY, 'KR-VPS-HY2'])
+  })
+
+  it('appendRegionalAutoGroupsToCursorDedicated adds regional groups before 自动选择, never Hong Kong', () => {
+    const profile = {
+      'proxy-groups': [
+        { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: [CURSOR_DEDICATED_DIRECT_PROXY] },
+        { name: 'Sparkle-香港', type: 'url-test', use: ['p'] },
+        { name: 'Sparkle-台湾', type: 'url-test', use: ['p'] },
+        { name: 'Sparkle-日本', type: 'url-test', use: ['p'] },
+        { name: '自动选择', type: 'fallback', proxies: ['Sparkle-台湾', 'Sparkle-日本'] },
+      ],
+    } as unknown as MihomoConfig
+
+    appendRegionalAutoGroupsToCursorDedicated(profile)
+    appendRegionalAutoGroupsToCursorDedicated(profile)
+
+    const cursorGroup = (profile['proxy-groups'] as { proxies?: string[] }[])[0]
+    assert.deepEqual(cursorGroup?.proxies, [
+      CURSOR_DEDICATED_DIRECT_PROXY,
+      'Sparkle-台湾',
+      'Sparkle-日本',
+      '自动选择',
+    ])
   })
 
   it('prepends DIRECT to Cursor dedicated provider-mode group', () => {
@@ -207,11 +238,15 @@ describe('defaultAutoSwitchProxy', () => {
     const cursorGroup = (profile['proxy-groups'] as { name: string; type?: string; proxies?: string[]; use?: string[] }[]).find(
       (group) => group.name === CURSOR_DEDICATED_GROUP_NAME,
     )
-    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY, '自动选择'])
+    assert.deepEqual(cursorGroup?.proxies, [
+      CURSOR_DEDICATED_DIRECT_PROXY,
+      ...REGIONAL_GROUPS_WITHOUT_HONG_KONG,
+      '自动选择',
+    ])
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
   })
 
-  it('appends 自动选择 to 🎯 Cursor 专用 (no regional sub-groups)', () => {
+  it('adds the five regional groups (no Hong Kong) and 自动选择 to 🎯 Cursor 专用', () => {
     const profile = {
       'proxy-groups': [
         {
@@ -233,12 +268,13 @@ describe('defaultAutoSwitchProxy', () => {
     const autoSelect = groups.find((group) => group.name === '自动选择')
     const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
     assert.equal(autoSelect?.type, 'fallback')
-    assert.deepEqual(autoSelect?.use, ['sparkle-fast'])
+    assert.deepEqual(autoSelect?.proxies, REGIONAL_GROUPS_WITHOUT_HONG_KONG)
     assert.equal(cursorGroup?.proxies?.at(-1), '自动选择')
-    assert.equal(cursorGroup?.proxies?.includes('Sparkle-新加坡'), false)
+    assert.deepEqual(cursorGroup?.proxies?.slice(1, -1), REGIONAL_GROUPS_WITHOUT_HONG_KONG)
+    assert.equal(cursorGroup?.proxies?.some((name) => name.includes('香港')), false)
   })
 
-  it('appends 自动选择 to non-Cursor select groups and keeps Cursor DIRECT + VPS-only', () => {
+  it('appends 自动选择 to non-Cursor select groups and gives Cursor DIRECT + VPS + regional groups', () => {
     const profile = {
       'proxy-groups': [
         { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: ['KR-VPS-HY2'] },
@@ -255,17 +291,17 @@ describe('defaultAutoSwitchProxy', () => {
 
     const groups = profile['proxy-groups'] as { name: string; proxies?: string[]; use?: string[] }[]
     const cursorGroup = groups.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
-    assert.equal(cursorGroup?.proxies?.includes('Sparkle-新加坡'), false)
-    assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY, 'KR-VPS-HY2', '自动选择'])
+    assert.deepEqual(cursorGroup?.proxies, [
+      CURSOR_DEDICATED_DIRECT_PROXY,
+      'KR-VPS-HY2',
+      ...REGIONAL_GROUPS_WITHOUT_HONG_KONG,
+      '自动选择',
+    ])
     assert.deepEqual(groups.find((group) => group.name === '🚀 节点选择')?.proxies, [
       'SG-01',
       'TW-01',
       '自动选择',
-      'Sparkle-台湾',
-      'Sparkle-日本',
-      'Sparkle-韩国',
-      'Sparkle-新加坡',
-      'Sparkle-美国',
+      ...REGIONAL_GROUPS_WITHOUT_HONG_KONG,
       '故障转移'
     ])
   })
