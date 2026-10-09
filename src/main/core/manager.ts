@@ -1,5 +1,5 @@
 import { ChildProcess, spawn } from 'child_process'
-import { dataDir, coreLogPath, ensureLogDir, mihomoCorePath, mihomoIpcPath } from '../utils/dirs'
+import { dataDir, coreLogPath, ensureLogDir, mihomoCorePath } from '../utils/dirs'
 import { generateProfile, getRuntimeConfig } from './factory'
 import { getAppConfig, getControledMihomoConfig, getProfileConfig, patchAppConfig } from '../config'
 import { app, ipcMain } from 'electron'
@@ -254,10 +254,6 @@ async function startMihomoApiStreams(): Promise<void> {
   await startMihomoConnections()
   await startMihomoLogs()
   await startMihomoMemory()
-  const { startCoreLogDialFailureTailWatcher } = await import(
-    './coreLogDialFailureTailWatcher'
-  )
-  startCoreLogDialFailureTailWatcher()
   retry = 10
 }
 
@@ -384,8 +380,13 @@ async function getServiceStatusAfterConnectionError(): Promise<
 
 type ServiceCoreLaunchAction = 'start' | 'restart' | 'keep'
 
+/** 内核控制器是否已在响应（短探测）。 */
+async function probeMihomoCoreLive(maxWaitMs = 800): Promise<boolean> {
+  const { waitForMihomoControllerReady } = await import('./postCoreBootstrap')
+  return waitForMihomoControllerReady(maxWaitMs)
+}
+
 async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Promise<ServiceCoreLaunchAction> {
-  const { probeMihomoCoreLive } = await import('./marathonCoreRestartGuard')
   if (!serviceCoreRunning || !(await probeMihomoCoreLive())) {
     return 'start'
   }
@@ -396,7 +397,6 @@ async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Prom
       resolveExpectedProxyProviderIds,
       collectRunningProxyProviderIds,
       formatProviderParityMismatchLog,
-      formatProviderHotReloadLog,
       shouldRestartServiceCoreForProviderParity
     } = await import('./serviceCoreProviderParityCore')
     const { loadRuntimeConfigFromDisk } = await import('./factory')
@@ -411,19 +411,6 @@ async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Prom
     }
 
     const mismatch = formatProviderParityMismatchLog(expectedIds, runningIds)
-    const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
-    const guard = await evaluateMarathonCoreColdRestart('restartCore', false)
-    if (guard.blocked) {
-      const { mihomoUpdateProxyProviders } = await import('./mihomoApi')
-      for (const providerId of expectedIds) {
-        await mihomoUpdateProxyProviders(providerId, { purpose: 'tier0_provider_parity_hot_reload' })
-      }
-      await appendAppLog(
-        `[Manager]: defer service core provider reload reason=${guard.reason} ${mismatch} ${formatProviderHotReloadLog(expectedIds, guard.reason)}\n`
-      )
-      return 'keep'
-    }
-
     await appendAppLog(`[Manager]: service core proxy-provider mismatch — restarting ${mismatch}\n`)
     return 'restart'
   } catch (error) {
@@ -446,37 +433,6 @@ async function launchServiceCore(
   if (action === 'restart') {
     await restartServiceCoreApi(serviceProfile)
   }
-}
-
-async function resolveStartCoreMutationIntent(
-  useServiceCore: boolean,
-  serviceCoreRunning: boolean,
-): Promise<{ wouldMutate: boolean; reason: string }> {
-  const {
-    resolveElevatedStartCoreMutationIntent,
-    resolveServiceStartCoreMutationIntent,
-  } = await import('./startCoreMutationGuardCore')
-
-  if (useServiceCore) {
-    if (!serviceCoreRunning) {
-      return { wouldMutate: false, reason: 'no_live_core' }
-    }
-    const action = await resolveServiceCoreLaunchAction(serviceCoreRunning)
-    const intent = resolveServiceStartCoreMutationIntent(action)
-    return { wouldMutate: intent.wouldMutate, reason: intent.reason }
-  }
-
-  const { resolveCoreFootprintBeforeStartOnly } = await import('./staleMihomoApiSocketHygiene')
-  const footprint = await resolveCoreFootprintBeforeStartOnly({
-    hasChildProcess: Boolean(child && !child.killed),
-    corePidPath: path.join(dataDir(), 'core.pid'),
-    socketPath: mihomoIpcPath(),
-  })
-  const intent = resolveElevatedStartCoreMutationIntent({
-    hasChildProcess: Boolean(child && !child.killed),
-    footprint,
-  })
-  return { wouldMutate: intent.wouldMutate, reason: intent.reason }
 }
 
 export async function startCore(detached = false): Promise<Promise<void>[]> {
@@ -515,7 +471,6 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   if (corePermissionMode === 'service' && !detached) {
     try {
       await getCoreStatus()
-      const { probeMihomoCoreLive } = await import('./marathonCoreRestartGuard')
       serviceCoreRunning = await probeMihomoCoreLive()
     } catch (error) {
       if (isServiceUnavailableError(error)) {
@@ -528,40 +483,10 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
     }
   }
 
-  const mutationIntent = await resolveStartCoreMutationIntent(useServiceCore, serviceCoreRunning)
-  if (mutationIntent.wouldMutate) {
-    const { evaluateGuardSkipWhenNoLiveCore } = await import('./marathonCoreRestartGuard')
-    const guard = await evaluateGuardSkipWhenNoLiveCore('startCore')
-    if (guard.blocked) {
-      await deferCoreRestartForActiveCursorStreams()
-      await appendAppLog(
-        `[CoreLifecycle]: core_start_blocked reason=${mutationIntent.reason} data_plane_action=none\n`,
-      )
-      return [Promise.resolve()]
-    }
-  }
-
   await generateProfile()
   await checkProfileWithRetry()
   if (!serviceCoreRunning) {
-    const stopped = await stopCoreWithOutcome()
-    if (!stopped) {
-      const { resolveCoreFootprintBeforeStartOnly } = await import('./staleMihomoApiSocketHygiene')
-      const footprint = await resolveCoreFootprintBeforeStartOnly({
-        hasChildProcess: Boolean(child && !child.killed),
-        corePidPath: path.join(dataDir(), 'core.pid'),
-        socketPath: mihomoIpcPath(),
-      })
-      if (footprint.blockStart) {
-        await appendAppLog(
-          `[CoreLifecycle]: core_start_aborted reason=${footprint.reason} data_plane_action=none\n`
-        )
-        return [Promise.resolve()]
-      }
-      await appendAppLog(
-        `[CoreLifecycle]: core_start_allowed reason=${footprint.reason} data_plane_action=start_only\n`
-      )
-    }
+    await stopCore()
   }
   resetTunStartupGuardState()
   await ensureTunCorePermissionBeforeStart()
@@ -774,7 +699,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
   return coreStartupMode === 'post-up' ? waitForCoreReadyByHook() : waitForCoreReadyByLog()
 }
 
-async function stopCoreUnchecked(force = false): Promise<void> {
+export async function stopCore(force = false): Promise<void> {
   try {
     if (!force) {
       await recoverDNS()
@@ -834,23 +759,6 @@ async function stopCoreUnchecked(force = false): Promise<void> {
     }
     await rm(path.join(dataDir(), 'core.pid')).catch(() => {})
   }
-}
-
-async function stopCoreWithOutcome(force = false): Promise<boolean> {
-  const { evaluateGuardSkipWhenNoLiveCore, evaluateMarathonCoreColdRestart, probeMihomoCoreLive } =
-    await import('./marathonCoreRestartGuard')
-  const guard = (await probeMihomoCoreLive())
-    ? await evaluateMarathonCoreColdRestart('stopCore', force)
-    : await evaluateGuardSkipWhenNoLiveCore('stopCore')
-  if (guard.blocked) {
-    return false
-  }
-  await stopCoreUnchecked(force)
-  return true
-}
-
-export async function stopCore(force = false): Promise<void> {
-  await stopCoreWithOutcome(force)
 }
 
 function ensureServiceCoreEventHandler(): void {
@@ -1111,10 +1019,6 @@ async function ensureServiceCoreStreamsStarted(): Promise<void> {
     await startMihomoLogs()
     await startMihomoMemory()
     setMihomoLogSource('ws')
-    const { startCoreLogDialFailureTailWatcher } = await import(
-      './coreLogDialFailureTailWatcher'
-    )
-    startCoreLogDialFailureTailWatcher()
     retry = 10
     serviceCoreStreamsActive = true
   })()
@@ -1203,44 +1107,10 @@ async function fallbackUnavailableServiceModes(reason: unknown): Promise<void> {
   }
 }
 
-async function getActiveCursorConnectionCount(): Promise<number> {
-  try {
-    const { countCursorConnections } = await import('./cursorConnectionHygiene')
-    return await countCursorConnections()
-  } catch {
-    return 0
-  }
-}
-
-async function deferCoreRestartForActiveCursorStreams(): Promise<boolean> {
-  const activeConns = await getActiveCursorConnectionCount()
-  if (activeConns <= 0) {
-    return false
-  }
-
-  await appendAppLog(
-    `[Manager]: defer core restart — active cursor_conn=${activeConns} data_plane_action=none (zero-disruption)\n`
-  )
-  return true
-}
-
 export async function restartCore(force = false): Promise<void> {
-  const { evaluateMarathonCoreColdRestart } = await import('./marathonCoreRestartGuard')
-  const guard = await evaluateMarathonCoreColdRestart('restartCore', force)
-  if (guard.blocked) {
-    await deferCoreRestartForActiveCursorStreams()
-    return
-  }
-
-  if (!force) {
-    if (await deferCoreRestartForActiveCursorStreams()) {
-      return
-    }
-  }
-
   try {
     clearTailscaleAuthNotifications()
-    await stopCoreUnchecked(force)
+    await stopCore(force)
     setPendingCoreReadyReason('manual')
     const promises = await startCore()
     await Promise.all(promises)

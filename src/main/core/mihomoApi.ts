@@ -20,27 +20,16 @@ import {
   resolveGroupMemberProxies
 } from './mihomoGroupMembersCore'
 import {
-  isMarathonRescueDelayPurpose,
   isMihomoApiResourceNotFoundError,
   isUserExplicitDelayPurpose,
   resolveProviderNameForLeaf,
-  shouldBypassMarathonQuiesceForDelay,
-  shouldBypassMihomoDelayProbeSlot,
-  shouldRefreshProviderLeafBeforeDelay,
   type MihomoDelayPurpose,
 } from './mihomoProxyDelayCore'
-import { formatMarathonProviderMutationBlockedLogLine } from './marathonDataPlaneMutationGuardCore'
 
-export type MihomoChangeProxySource =
-  | 'auto'
-  | 'manual'
-  | 'bootstrap'
-  | 'protocol_contract'
-  | 'recovery_coordinator'
-  | 'hy2_vitality_failback'
+export type MihomoChangeProxySource = 'auto' | 'manual' | 'bootstrap'
 
 export interface MihomoChangeProxyOptions {
-  /** Manual/bootstrap switches bypass Cursor api2 failover defer. Default: auto. */
+  /** Cursor 专用组仅接受 manual / 首次 bootstrap 默认值。Default: auto. */
   source?: MihomoChangeProxySource
 }
 
@@ -249,24 +238,7 @@ export const mihomoProxyProviders = async (): Promise<ControllerProxyProviders> 
   return await instance.get('/providers/proxies')
 }
 
-export const mihomoUpdateProxyProviders = async (
-  name: string,
-  options?: { purpose?: MihomoDelayPurpose },
-): Promise<void> => {
-  const { evaluateMarathonProviderMutationBlock } = await import('./marathonDataPlaneMutationGuard')
-  const guard = await evaluateMarathonProviderMutationBlock(options?.purpose)
-  if (guard.blocked) {
-    const { appendAppLog } = await import('../utils/log')
-    await appendAppLog(
-      formatMarathonProviderMutationBlockedLogLine({
-        operation: 'provider_update',
-        providerName: name,
-        purpose: options?.purpose,
-        cursorConnectionCount: guard.cursorConnectionCount,
-      }),
-    )
-    return
-  }
+export const mihomoUpdateProxyProviders = async (name: string): Promise<void> => {
   const instance = await getAxios()
   return await instance.put(`/providers/proxies/${encodeURIComponent(name)}`)
 }
@@ -310,7 +282,6 @@ export const mihomoChangeProxy = async (
   options: MihomoChangeProxyOptions = {}
 ): Promise<boolean> => {
   const source = options.source ?? 'auto'
-  let previousCursorNode = ''
 
   const { isCursorSelectorGroupName } = await import('./cursorProxyGroup')
   const isCursorGroup = isCursorSelectorGroupName(group)
@@ -318,7 +289,6 @@ export const mihomoChangeProxy = async (
     const groups = await mihomoGroups()
     const targetGroup = groups?.find((item) => item.name === group)
     const current = targetGroup?.now ?? ''
-    previousCursorNode = current
     const { isCursorDedicatedManualOnlySwitchAllowed, formatCursorDedicatedManualOnlyBlockedLogLine } =
       await import('./cursorDedicatedManualOnlyCore')
     if (
@@ -339,60 +309,14 @@ export const mihomoChangeProxy = async (
       )
       return false
     }
-    if (current !== proxy) {
-      const {
-        evaluateMarathonProtocolSwitchBlock,
-        logMarathonProtocolSwitchBlocked,
-      } = await import('./marathonProtocolContract')
-      const block = await evaluateMarathonProtocolSwitchBlock({
-        group,
-        fromNode: current,
-        toNode: proxy,
-        source,
-      })
-      if (block.blocked) {
-        await logMarathonProtocolSwitchBlocked({
-          group,
-          fromNode: current,
-          toNode: proxy,
-          source,
-          block,
-        })
-        return false
-      }
-    }
-  }
-
-  if (source === 'auto' && isCursorGroup && previousCursorNode && previousCursorNode !== proxy) {
-    const { shouldDeferCursorFailover } = await import('./networkStabilityMonitor')
-    if (await shouldDeferCursorFailover(previousCursorNode)) {
-      const { appendAppLog } = await import('../utils/log')
-      await appendAppLog(
-        `[mihomoChangeProxy]: defer auto switch ${group} "${previousCursorNode}" → "${proxy}" — api2 reachable\n`
-      )
-      return false
-    }
   }
 
   const instance = await getAxios()
   await instance.put(`/proxies/${encodeURIComponent(group)}`, { name: proxy })
 
-  if ((source === 'manual' || source === 'protocol_contract' || source === 'recovery_coordinator') && isCursorGroup) {
+  if (source === 'manual' && isCursorGroup) {
     const { writeCursorDedicatedManualSelection } = await import('./cursorDedicatedSelectionCore')
     await writeCursorDedicatedManualSelection(proxy)
-  }
-
-  if (source === 'protocol_contract' && previousCursorNode && previousCursorNode !== proxy) {
-    const { appendAppLog } = await import('../utils/log')
-    const { formatMarathonProtocolUpgradeLogLine } = await import('./marathonProtocolContractCore')
-    await appendAppLog(
-      formatMarathonProtocolUpgradeLogLine({
-        group,
-        fromNode: previousCursorNode,
-        toNode: proxy,
-        source,
-      }),
-    )
   }
 
   return true
@@ -407,28 +331,7 @@ async function refreshProviderLeafBeforeDelay(
   providerName: string,
   options: MihomoDelayOptions | undefined,
 ): Promise<void> {
-  const { evaluateMarathonProviderMutationBlock } = await import('./marathonDataPlaneMutationGuard')
-  const mutationGuard = await evaluateMarathonProviderMutationBlock(options?.purpose)
-  if (mutationGuard.blocked) {
-    return
-  }
-  const refreshWithHealthcheck = shouldRefreshProviderLeafBeforeDelay(options?.purpose)
-  if (refreshWithHealthcheck && !isMarathonRescueDelayPurpose(options?.purpose)) {
-    const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
-    const { shouldAllowObservabilityDial } = await import('./marathonQuiesceCore')
-    const { resolveProviderRefreshDialKind } = await import('./mihomoProxyDelayCore')
-    const quiesceSnapshot = getMarathonQuiesceSnapshot()
-    const dialKind = resolveProviderRefreshDialKind(options?.purpose)
-    if (
-      !shouldAllowObservabilityDial(
-        dialKind,
-        quiesceSnapshot.active,
-        quiesceSnapshot.cursorConnectionCount,
-      )
-    ) {
-      return
-    }
-  }
+  const refreshWithHealthcheck = isUserExplicitDelayPurpose(options?.purpose)
   if (refreshWithHealthcheck) {
     try {
       await mihomoProviderHealthcheckDeduped(providerName)
@@ -439,7 +342,7 @@ async function refreshProviderLeafBeforeDelay(
   }
 
   try {
-    await mihomoUpdateProxyProviders(providerName, { purpose: options?.purpose })
+    await mihomoUpdateProxyProviders(providerName)
   } catch {
     // Best-effort re-register provider leaves in /proxies before delay dial.
   }
@@ -448,15 +351,12 @@ async function refreshProviderLeafBeforeDelay(
     try {
       await mihomoProviderHealthcheckDeduped(providerName)
     } catch {
-      // Rescue / user explicit dial may still succeed via cached provider history.
+      // User explicit dial may still succeed via cached provider history.
     }
   }
 }
 
-async function mihomoProxyDelayFromProvider(
-  proxy: string,
-  options?: MihomoDelayOptions,
-): Promise<ControllerProxiesDelay> {
+async function mihomoProxyDelayFromProvider(proxy: string): Promise<ControllerProxiesDelay> {
   const providers = await mihomoProxyProviders()
   const providerName = resolveProviderNameForLeaf(providers, proxy)
   if (!providerName) {
@@ -471,33 +371,11 @@ async function mihomoProxyDelayFromProvider(
     return { delay: cached.delay }
   }
 
-  const bypassQuiesce = shouldBypassMarathonQuiesceForDelay(options?.purpose)
-  const providerDialKind = isUserExplicitDelayPurpose(options?.purpose)
-    ? 'managed_ui_delay_test'
-    : 'provider_healthcheck_api'
-  const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
-  const { shouldAllowObservabilityDial } = await import('./marathonQuiesceCore')
-  const quiesceSnapshot = getMarathonQuiesceSnapshot()
-  if (
-    !bypassQuiesce &&
-    !shouldAllowObservabilityDial(
-      providerDialKind,
-      quiesceSnapshot.active,
-      quiesceSnapshot.cursorConnectionCount,
-    )
-  ) {
-    const latestSuccessful = pickLatestSuccessfulProviderDelay(proxyDetail?.history ?? [])
-    if (latestSuccessful) {
-      return { delay: latestSuccessful.delay }
-    }
-    return { delay: 0, message: 'provider healthcheck skipped: marathon_quiesce' }
-  }
-
   try {
     await mihomoProviderHealthcheckDeduped(providerName)
   } catch {
     try {
-      await mihomoUpdateProxyProviders(providerName, { purpose: options?.purpose })
+      await mihomoUpdateProxyProviders(providerName)
     } catch {
       // Fall back to cached provider history when healthcheck fails.
     }
@@ -521,7 +399,7 @@ export type { MihomoDelayPurpose }
 
 export interface MihomoDelayOptions {
   timeoutMs?: number
-  /** Marathon rescue dial bypasses quiesce provider healthcheck gate (BUG-014). */
+  /** user_explicit：UI 手动测速，先刷新 provider 叶子节点再拨测。 */
   purpose?: MihomoDelayPurpose
 }
 
@@ -566,7 +444,7 @@ async function mihomoProxyDelayViaProviderLeaf(
     if (!isMihomoApiResourceNotFoundError(retryError)) {
       throw retryError
     }
-    const providerDelay = await mihomoProxyDelayFromProvider(proxy, options)
+    const providerDelay = await mihomoProxyDelayFromProvider(proxy)
     if (providerDelay.delay !== undefined && providerDelay.delay > 0) {
       return providerDelay
     }
@@ -610,11 +488,7 @@ export const mihomoProxyDelay = async (
   url?: string,
   options?: MihomoDelayOptions
 ): Promise<ControllerProxiesDelay> => {
-  const runUnchecked = () => mihomoProxyDelayUnchecked(proxy, url, options)
-  if (shouldBypassMihomoDelayProbeSlot(options?.purpose)) {
-    return runUnchecked()
-  }
-  return withMihomoDelayProbeSlot(runUnchecked)
+  return withMihomoDelayProbeSlot(() => mihomoProxyDelayUnchecked(proxy, url, options))
 }
 
 async function mihomoGroupDelayUnchecked(
@@ -880,16 +754,6 @@ const mihomoConnections = async (): Promise<void> => {
     try {
       const payload = JSON.parse(data) as ControllerConnections
       mainWindow?.webContents.send('mihomoConnections', payload)
-      void (async () => {
-        try {
-          const { observeMihomoConnectionsForQuicSilentStall } = await import(
-            './mihomoQuicSilentStallObserver'
-          )
-          await observeMihomoConnectionsForQuicSilentStall(payload)
-        } catch {
-          // R-16 observe-only — renderer IPC must not fail
-        }
-      })()
     } catch {
       // ignore
     }

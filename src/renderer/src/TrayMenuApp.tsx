@@ -5,11 +5,6 @@ import { useGroups } from './hooks/use-groups'
 import { mihomoChangeProxy, mihomoGroupDelay, mihomoCloseConnections } from './utils/ipc'
 import { useAppConfig } from './hooks/use-app-config'
 import { calcTraffic } from './utils/calc'
-import ConfirmModal from './components/base/base-confirm'
-import {
-  cursorProxySwitchConfirmDescription,
-  isCursorSelectorGroupName
-} from './utils/cursor-proxy-groups'
 
 interface TrafficData {
   up: number
@@ -23,11 +18,6 @@ const TrayMenuApp: React.FC = () => {
 
   const [traffic, setTraffic] = useState<TrafficData>({ up: 0, down: 0 })
   const [testingGroup, setTestingGroup] = useState<string | null>(null)
-  const [pendingProxySwitch, setPendingProxySwitch] = useState<{
-    group: string
-    proxy: string
-    current: string
-  } | null>(null)
 
   useEffect(() => {
     window.electron.ipcRenderer.on('mihomoTraffic', (_e, info: TrafficData) => {
@@ -58,14 +48,6 @@ const TrayMenuApp: React.FC = () => {
     }
   }
 
-  const executeProxySwitch = async (groupName: string, proxyName: string): Promise<void> => {
-    await mihomoChangeProxy(groupName, proxyName)
-    if (autoCloseConnection) {
-      await mihomoCloseConnections()
-    }
-    mutate()
-  }
-
   const handleSelectProxy = async (groupName: string, proxyName: string): Promise<void> => {
     try {
       const groupObj = groups?.find((item) => item.name === groupName)
@@ -73,11 +55,11 @@ const TrayMenuApp: React.FC = () => {
       if (current === proxyName) {
         return
       }
-      if (isCursorSelectorGroupName(groupName)) {
-        setPendingProxySwitch({ group: groupName, proxy: proxyName, current })
-        return
+      await mihomoChangeProxy(groupName, proxyName)
+      if (autoCloseConnection) {
+        await mihomoCloseConnections()
       }
-      await executeProxySwitch(groupName, proxyName)
+      mutate()
     } catch {
       // ignore
     }
@@ -118,31 +100,6 @@ const TrayMenuApp: React.FC = () => {
   }, [groups])
 
   return (
-    <>
-      {pendingProxySwitch && (
-        <ConfirmModal
-          title="切换 Cursor 节点"
-          description={cursorProxySwitchConfirmDescription(
-            pendingProxySwitch.group,
-            pendingProxySwitch.current,
-            pendingProxySwitch.proxy
-          )}
-          confirmText="确认切换"
-          cancelText="取消"
-          onChange={(open) => {
-            if (!open) {
-              setPendingProxySwitch(null)
-            }
-          }}
-          onConfirm={async () => {
-            const pending = pendingProxySwitch
-            setPendingProxySwitch(null)
-            if (pending) {
-              await executeProxySwitch(pending.group, pending.proxy)
-            }
-          }}
-        />
-      )}
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-content1 rounded-xl border border-divider">
       <div className="flex items-center justify-between px-3 py-2 border-b border-divider bg-content2/50">
         <div className="flex items-center gap-2">
@@ -246,10 +203,10 @@ const TrayMenuApp: React.FC = () => {
                         key={proxy.name}
                         onClick={() => handleSelectProxy(group.name, proxy.name)}
                         className={`
-                          flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer
-                          transition-colors duration-150
-                          ${isActive ? 'bg-primary/15 border border-primary/30' : 'hover:bg-default-100'}
-                        `}
+                        flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer
+                        transition-colors duration-150
+                        ${isActive ? 'bg-primary/15 border border-primary/30' : 'hover:bg-default-100'}
+                      `}
                       >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           {isActive && (
@@ -279,7 +236,6 @@ const TrayMenuApp: React.FC = () => {
         )}
       </ScrollShadow>
     </div>
-    </>
   )
 }
 

@@ -8,10 +8,7 @@ import {
   patchControledMihomoConfig,
   restartCore,
   startNetworkDetection,
-  stopNetworkDetection,
-  restartCommercialNodeBenchmark,
-  stopCommercialNodeBenchmark,
-  runNetworkTriangulationDiagnostic
+  stopNetworkDetection
 } from '@renderer/utils/ipc'
 import { platform } from '@renderer/utils/init'
 import { IoIosHelpCircle } from 'react-icons/io'
@@ -23,7 +20,6 @@ const emptyArray: string[] = []
 
 const AdvancedSettings: React.FC = () => {
   const { appConfig, patchAppConfig } = useAppConfig()
-  const [triangulationRunning, setTriangulationRunning] = useState(false)
   const {
     controlDns = true,
     controlSniff = true,
@@ -34,10 +30,7 @@ const AdvancedSettings: React.FC = () => {
     envType = [platform === 'win32' ? 'powershell' : 'bash'],
     networkDetection = false,
     networkDetectionBypass = ['VMware', 'vEthernet'],
-    networkDetectionInterval = 10,
-    networkAlertEnabled = true,
-    commercialNodeBenchmarkEnabled = false,
-    commercialNodeBenchmarkReportIntervalSec = 3600
+    networkDetectionInterval = 10
   } = appConfig || {}
 
   const pauseSSIDArray = pauseSSID ?? emptyArray
@@ -177,101 +170,6 @@ const AdvancedSettings: React.FC = () => {
               await restartCore()
             } catch (e) {
               notify(e, { variant: 'danger' })
-            }
-          }}
-        />
-      </SettingItem>
-      <SettingItem
-        compatKey="legacy"
-        title="Cursor 网络异常通知"
-        actions={
-          <Tooltip content="HY2 节点延迟过高或 api2 探针连续失败时发送系统通知（与自动切节点无关）">
-            <Button isIconOnly size="sm" variant="light">
-              <IoIosHelpCircle className="text-lg" />
-            </Button>
-          </Tooltip>
-        }
-        divider
-      >
-        <Switch
-          size="sm"
-          isSelected={networkAlertEnabled}
-          onValueChange={(v) => {
-            patchAppConfig({ networkAlertEnabled: v })
-          }}
-        />
-      </SettingItem>
-      <SettingItem
-        compatKey="legacy"
-        title="Cursor 网络定责探测"
-        actions={
-          <Tooltip content="KR/JP Reality→api2 + 当前 Cursor 专用 active 节点 + marketplace 对照；不含 VPS SSH（L4 见 ledger scope=vps）">
-            <Button isIconOnly size="sm" variant="light">
-              <IoIosHelpCircle className="text-lg" />
-            </Button>
-          </Tooltip>
-        }
-        divider
-      >
-        <Button
-          size="sm"
-          color="primary"
-          variant="flat"
-          isLoading={triangulationRunning}
-          onPress={async () => {
-            setTriangulationRunning(true)
-            try {
-              const report = await runNetworkTriangulationDiagnostic()
-              const { verdict, probes } = report
-              const krLine = probes.kr.skipped
-                ? `KR: SKIP`
-                : `KR→api2: ${probes.kr.ok ? 'OK' : 'FAIL'} ${probes.kr.delayMs}ms`
-              const jpLine = probes.jp.skipped
-                ? `JP: SKIP`
-                : `JP→api2: ${probes.jp.ok ? 'OK' : 'FAIL'} ${probes.jp.delayMs}ms`
-              const mpLine = probes.marketplace.skipped
-                ? `marketplace: SKIP`
-                : `marketplace: ${probes.marketplace.ok ? 'OK' : 'FAIL'} ${probes.marketplace.delayMs}ms`
-              const activeLine = probes.active.skipped
-                ? `active: SKIP`
-                : `active ${probes.active.proxy}: ${probes.active.ok ? 'OK' : 'FAIL'} ${probes.active.delayMs}ms`
-              notify(
-                `${verdict.summaryZh}\n[${verdict.confidence}] ${verdict.layer}\n${krLine} | ${jpLine} | ${mpLine} | ${activeLine}\n${verdict.limitationZh}`,
-                { variant: verdict.layer === 'paths_healthy' ? 'success' : 'warning' }
-              )
-            } catch (e) {
-              notify(e, { variant: 'danger' })
-            } finally {
-              setTriangulationRunning(false)
-            }
-          }}
-        >
-          运行定责探测
-        </Button>
-      </SettingItem>
-      <SettingItem
-        compatKey="legacy"
-        title="Cursor 节点 24h 质量报告"
-        actions={
-          <Tooltip
-            content={`从 api2-probe-ledger 汇总 24h VPS 质量报告（含 scope=vps SSH L4 探针 + scope=active 传输探针）。core 就绪后 45s grace 启动 active 60s + VPS L4 300s 探针。报告每 ${Math.round(commercialNodeBenchmarkReportIntervalSec / 60)}min → cursor-node-quality-report.md。`}
-          >
-            <Button isIconOnly size="sm" variant="light">
-              <IoIosHelpCircle className="text-lg" />
-            </Button>
-          </Tooltip>
-        }
-        divider
-      >
-        <Switch
-          size="sm"
-          isSelected={commercialNodeBenchmarkEnabled}
-          onValueChange={async (v) => {
-            await patchAppConfig({ commercialNodeBenchmarkEnabled: v })
-            if (v) {
-              await restartCommercialNodeBenchmark()
-            } else {
-              await stopCommercialNodeBenchmark()
             }
           }}
         />

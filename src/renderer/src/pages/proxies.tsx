@@ -8,9 +8,7 @@ import {
   mihomoChangeProxy,
   mihomoCloseConnections,
   mihomoGroupDelay,
-  mihomoProxyDelay,
-  runManagedVpsDelayTestSingle,
-  runManagedVpsDelayTests
+  mihomoProxyDelay
 } from '@renderer/utils/ipc'
 import { FaLocationCrosshairs } from 'react-icons/fa6'
 import { memo, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
@@ -20,30 +18,17 @@ import ProxySettingDrawer from '@renderer/components/proxies/proxy-setting-drawe
 import { IoIosArrowBack } from 'react-icons/io'
 import { MdDoubleArrow, MdOutlineSpeed, MdTune } from 'react-icons/md'
 import { useGroups } from '@renderer/hooks/use-groups'
-import { useCommercialNodeStabilityMarkers } from '@renderer/hooks/use-commercial-node-stability'
 import CollapseInput from '@renderer/components/base/collapse-input'
 import { includesIgnoreCase } from '@renderer/utils/includes'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
-import {
-  isVpsCursorLeafBatch,
-  isVpsCursorLeafNode,
-  resolveDelayTestConcurrencyForProxies,
-  runDelayTestsWithConcurrency
-} from '@renderer/utils/delay-test'
-import ConfirmModal from '@renderer/components/base/base-confirm'
+import { runDelayTestsWithConcurrency } from '@renderer/utils/delay-test'
 import { notify } from '@renderer/utils/notification'
 import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
 import {
-  cursorProxySwitchConfirmDescription,
   formatDelayTestUrlDisplay,
-  isCursorSelectorGroupName,
   resolveDelayTestUrl,
   resolveEffectiveDelayTestUrl
 } from '@renderer/utils/cursor-proxy-groups'
-import {
-  partitionGroupMembersForDelayTest,
-  shouldRunManagedVpsGroupDelayTest,
-} from '@sparkle-core/groupDelayTestCore'
 
 type ProxyLike = ControllerProxiesDetail | ControllerGroupDetail
 
@@ -228,7 +213,6 @@ const Proxies: React.FC = () => {
     delayTestUrl,
     rememberProxyGroupOpenState = false
   } = appConfig || {}
-  const stabilitySnapshot = useCommercialNodeStabilityMarkers()
   const [cols, setCols] = useState(1)
   const [isOpen, setIsOpen] = useState<boolean[]>(() => {
     if (
@@ -256,11 +240,6 @@ const Proxies: React.FC = () => {
   })
   const [isSettingDrawerOpen, setIsSettingDrawerOpen] = useState(false)
   const [settingDrawerReopenSignal, setSettingDrawerReopenSignal] = useState(0)
-  const [pendingProxySwitch, setPendingProxySwitch] = useState<{
-    group: string
-    proxy: string
-    current: string
-  } | null>(null)
   const [initialScrollTop] = useState(() =>
     rememberProxyGroupOpenState ? proxyGroupPageCache.scrollTop : 0
   )
@@ -365,10 +344,6 @@ const Proxies: React.FC = () => {
       if (current === proxy) {
         return
       }
-      if (isCursorSelectorGroupName(group)) {
-        setPendingProxySwitch({ group, proxy, current })
-        return
-      }
       await executeProxySwitch(group, proxy)
     },
     [groups, executeProxySwitch]
@@ -395,11 +370,6 @@ const Proxies: React.FC = () => {
 
   const onProxyDelay = useCallback(
     async (proxy: string, group?: ControllerMixedGroup): Promise<ControllerProxiesDelay> => {
-      if (isVpsCursorLeafNode(proxy)) {
-        return runManagedVpsDelayTestSingle(proxy, getDelayTestUrl(group), {
-          explicitUserRequest: true
-        })
-      }
       return await mihomoProxyDelay(proxy, getDelayTestUrl(group))
     },
     [getDelayTestUrl]
@@ -444,23 +414,10 @@ const Proxies: React.FC = () => {
       setGroupDelaying(index, true)
 
       try {
-        const proxyNames = proxies.map((proxy) => proxy.name)
-        const partition = partitionGroupMembersForDelayTest(proxyNames)
-
-        if (shouldRunManagedVpsGroupDelayTest(partition)) {
-          await runManagedVpsDelayTests(partition.vpsLeafNames, testUrl, {
-            explicitUserRequest: true,
-          })
-        } else if (isVpsCursorLeafBatch(proxyNames)) {
-          await runManagedVpsDelayTests(proxyNames, testUrl, { explicitUserRequest: true })
-        } else if (delayTestUseGroupApi) {
+        if (delayTestUseGroupApi) {
           await mihomoGroupDelay(group.name, testUrl)
         } else {
-          const delayConcurrency = resolveDelayTestConcurrencyForProxies(
-            proxyNames,
-            delayTestConcurrency,
-          )
-          await runDelayTestsWithConcurrency(proxies, delayConcurrency, async (proxy) => {
+          await runDelayTestsWithConcurrency(proxies, delayTestConcurrency, async (proxy) => {
             if (proxy.name === 'DIRECT') {
               return
             }
@@ -664,10 +621,6 @@ const Proxies: React.FC = () => {
   toggleOpenRef.current = toggleOpen
   const updateSearchValueRef = useRef(updateSearchValue)
   updateSearchValueRef.current = updateSearchValue
-  const stabilityMarkersRef = useRef(stabilitySnapshot?.markersByNode ?? {})
-  stabilityMarkersRef.current = stabilitySnapshot?.markersByNode ?? {}
-  const benchmarkScoresRef = useRef(stabilitySnapshot?.scoresByNode ?? {})
-  benchmarkScoresRef.current = stabilitySnapshot?.scoresByNode ?? {}
 
   useEffect(() => {
     groups.forEach((group) => {
@@ -750,8 +703,6 @@ const Proxies: React.FC = () => {
           showGroupSelectedProxy={showGroupSelected}
           showProxyDetailTooltip={showTooltip}
           selected={proxy.name === grps[groupIndex].now}
-          stabilityMarker={stabilityMarkersRef.current[proxy.name]}
-          benchmarkScore={benchmarkScoresRef.current[proxy.name]}
         />
       )
     }
@@ -774,7 +725,7 @@ const Proxies: React.FC = () => {
     ) : (
       <div>Never See This</div>
     )
-  }, [stabilitySnapshot?.updatedAt, stabilitySnapshot?.scoresByNode])
+  }, [])
 
   return (
     <BasePage
@@ -812,30 +763,6 @@ const Proxies: React.FC = () => {
         <ProxySettingDrawer
           reopenSignal={settingDrawerReopenSignal}
           onClose={() => setIsSettingDrawerOpen(false)}
-        />
-      )}
-      {pendingProxySwitch && (
-        <ConfirmModal
-          title="切换 Cursor 节点"
-          description={cursorProxySwitchConfirmDescription(
-            pendingProxySwitch.group,
-            pendingProxySwitch.current,
-            pendingProxySwitch.proxy
-          )}
-          confirmText="确认切换"
-          cancelText="取消"
-          onChange={(open) => {
-            if (!open) {
-              setPendingProxySwitch(null)
-            }
-          }}
-          onConfirm={async () => {
-            const pending = pendingProxySwitch
-            setPendingProxySwitch(null)
-            if (pending) {
-              await executeProxySwitch(pending.group, pending.proxy)
-            }
-          }}
         />
       )}
       {mode === 'direct' ? (

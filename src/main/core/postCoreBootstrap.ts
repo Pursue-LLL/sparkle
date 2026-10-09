@@ -1,9 +1,5 @@
 import { appendAppLog } from '../utils/log'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
-import {
-  currentPlatformRelease,
-  shouldSkipMacOs26GuiPostCoreObservabilityStack,
-} from '../sys/macos26ElectronMitigationCore'
 import { probeMihomoControllerVersion } from './mihomoControllerReadyCore'
 
 const MIHOMO_API_READY_MAX_WAIT_MS = 30_000
@@ -38,15 +34,13 @@ export async function waitForMihomoControllerReady(
   return false
 }
 
-/** Bootstrap profile updater, VPS default, and network monitor without blocking on WS streams. */
+/** 内核就绪后：自动选择延迟排序、订阅更新器、Cursor 专用组默认节点、地区 url-test 预热。 */
 export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Promise<void> {
   await Promise.race([coreInitPromise, delay(CORE_INIT_RACE_MS)])
 
   const apiReady = await waitForMihomoControllerReady()
   if (!apiReady) {
-    await appendAppLog(
-      '[PostCoreBootstrap]: mihomo API not reachable after 30s — network monitor not started\n'
-    )
+    await appendAppLog('[PostCoreBootstrap]: mihomo API not reachable after 30s — post-core services not started\n')
     return
   }
 
@@ -64,85 +58,16 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
     )
   }
 
-  try {
-    const { readTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
-    const { HY2_PARENT_SIDECAR_DIAL_AGE_MS, resolveEffectiveHy2ParentChainAgeMs } = await import(
-      './hy2ParentSidecarCore'
-    )
-    const longevity = await readTransportLongevityTruthSnapshot()
-    if (longevity) {
-      const nowMs = Date.now()
-      const chainAgeMs = resolveEffectiveHy2ParentChainAgeMs(longevity, nowMs)
-      if (chainAgeMs >= HY2_PARENT_SIDECAR_DIAL_AGE_MS) {
-        await appendAppLog(
-          `[PostCoreBootstrap]: proactive_risk parent_chain_stale` +
-            ` http_parent_chain_age_ms=${longevity.httpParentChainAgeMs}` +
-            ` outbound_hy2_session_age_ms=${longevity.outboundHy2SessionAgeMs}` +
-            ` effective_chain_age_ms=${chainAgeMs}` +
-            ` active_hy2_leaf=${longevity.activeHy2Leaf ?? 'unknown'}` +
-            ` cursor_conn=${longevity.cursorConnectionCount}\n`,
-        )
-        setTimeout(() => {
-          void (async () => {
-            try {
-              const { runProactiveHy2HardRotateIfDue } = await import(
-                './proactiveHy2HardRotateRuntime'
-              )
-              await runProactiveHy2HardRotateIfDue()
-            } catch (error) {
-              await appendAppLog(
-                `[PostCoreBootstrap]: proactive_hard_rotate failed: ${error instanceof Error ? error.message : String(error)}\n`,
-              )
-            }
-          })()
-        }, NETWORK_MONITOR_STARTUP_GRACE_MS)
-      }
-    }
-  } catch (error) {
-    await appendAppLog(
-      `[PostCoreBootstrap]: proactive parent-chain risk check failed: ${error instanceof Error ? error.message : String(error)}\n`,
-    )
-  }
-
   const { mihomoGroups, mihomoChangeProxy, mihomoGroupDelay } = await import('./mihomoApi')
-  const { registerMihomoGroupsAccessor } = await import('./networkStabilityMonitor')
-  registerMihomoGroupsAccessor(mihomoGroups)
 
   const { initProfileUpdater } = await import('./profileUpdater')
   await initProfileUpdater()
-
-  try {
-    const { countCursorConnections } = await import('./cursorConnectionHygiene')
-    const { ensureVpsProviderMarathonDialTimeoutBootstrapAtIdle } = await import(
-      './marathonDialTolerance'
-    )
-    const cursorConnAtBootstrap = await countCursorConnections().catch(() => 0)
-    await ensureVpsProviderMarathonDialTimeoutBootstrapAtIdle(cursorConnAtBootstrap)
-  } catch (error) {
-    await appendAppLog(
-      `[PostCoreBootstrap]: MarathonDialTolerance bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`,
-    )
-  }
 
   try {
     const { applyCursorDedicatedVpsSelection } = await import('./cursorDedicatedDefault')
     const switched = await applyCursorDedicatedVpsSelection({ mihomoGroups, mihomoChangeProxy })
     if (!switched) {
       await appendAppLog('[PostCoreBootstrap]: Cursor dedicated VPS default unchanged or skipped\n')
-    }
-    const groups = await mihomoGroups()
-    const { CURSOR_DEDICATED_GROUP_NAME } = await import('./cursorProxyGroup')
-    const cursorGroup = groups?.find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
-    if (cursorGroup?.now) {
-      const { runMarathonProtocolColdStartGateIfDue } = await import('./marathonProtocolContract')
-      await runMarathonProtocolColdStartGateIfDue(cursorGroup.now, 0)
-      const groupsAfterGate = await mihomoGroups()
-      const cursorGroupAfterGate = groupsAfterGate?.find(
-        (group) => group.name === CURSOR_DEDICATED_GROUP_NAME,
-      )
-      const activeAfterGate = cursorGroupAfterGate?.now ?? cursorGroup.now
-      const { formatMarathonHy2OnlySsotBootLogLine } = await import('./marathonHy2OnlyCore')
-      await appendAppLog(formatMarathonHy2OnlySsotBootLogLine({ activeNode: activeAfterGate }))
     }
   } catch (error) {
     await appendAppLog(
@@ -153,83 +78,18 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
   setTimeout(() => {
     void (async () => {
       try {
-        const { countCursorConnections } = await import('./cursorConnectionHygiene')
-        const { syncMarathonQuiesceIfNeeded, getMarathonQuiesceSnapshot } = await import(
-          './marathonQuiesce'
-        )
-        const { shouldAllowObservabilityDial } = await import('./marathonQuiesceCore')
-        const cursorConn = await countCursorConnections().catch(() => 0)
-        await syncMarathonQuiesceIfNeeded(cursorConn)
-        const quiesceSnapshot = getMarathonQuiesceSnapshot()
-        const { refreshMarathonCoreRestartGuardStateFile } = await import('./marathonCoreRestartGuard')
-        await refreshMarathonCoreRestartGuardStateFile({
-          quiesceActive: quiesceSnapshot.active,
-          cursorConnectionCount: quiesceSnapshot.cursorConnectionCount || cursorConn,
-          updatedAtMs: Date.now(),
-        })
-        const { safeGetLastCoreReadyAtMs } = await import('./coreReadyTimestamp')
-        const {
-          isPostCoreRestartQuarantineActive,
-          remainingPostCoreRestartQuarantineMs,
-          shouldDeferObservabilityDialDuringPostCoreRestartQuarantine,
-        } = await import('./coreRestartQuarantineCore')
-        const coreReadyAtMs = safeGetLastCoreReadyAtMs()
-        const quarantineActive = isPostCoreRestartQuarantineActive(coreReadyAtMs)
-        const deferWarmup =
-          quarantineActive &&
-          shouldDeferObservabilityDialDuringPostCoreRestartQuarantine(
-            'regional_url_test_warmup',
-            coreReadyAtMs,
-          )
-        if (deferWarmup) {
+        const { warmupRegionalUrlTestGroups } = await import('./regionalUrlTestWarmup')
+        const warmed = await warmupRegionalUrlTestGroups({ mihomoGroups, mihomoGroupDelay })
+        if (warmed > 0) {
           await appendAppLog(
-            `[RegionalUrlTestWarmup]: deferred post_core_restart_quarantine remaining_ms=${remainingPostCoreRestartQuarantineMs(coreReadyAtMs)} cursor_conn=${quiesceSnapshot.cursorConnectionCount}\n`,
+            `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`,
           )
-        } else if (
-          !shouldAllowObservabilityDial(
-            'regional_url_test_warmup',
-            quiesceSnapshot.active,
-            quiesceSnapshot.cursorConnectionCount,
-          )
-        ) {
-          await appendAppLog(
-            `[RegionalUrlTestWarmup]: deferred marathon_quiesce cursor_conn=${quiesceSnapshot.cursorConnectionCount}\n`,
-          )
-        } else {
-          const { warmupRegionalUrlTestGroups } = await import('./regionalUrlTestWarmup')
-          const warmed = await warmupRegionalUrlTestGroups({ mihomoGroups, mihomoGroupDelay })
-          if (warmed > 0) {
-            await appendAppLog(
-              `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`,
-            )
-          }
         }
       } catch (error) {
         await appendAppLog(
           `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`,
         )
       }
-
-      const { platform, release } = currentPlatformRelease()
-      if (shouldSkipMacOs26GuiPostCoreObservabilityStack(platform, release)) {
-        await appendAppLog(
-          '[PostCoreBootstrap]: macOS 26 GUI — observability stack skipped (Electron V8 SIGTRAP mitigation)\n',
-        )
-        return
-      }
-
-      const { startApi2ProbePlane } = await import('./api2ProbePlane')
-      await startApi2ProbePlane()
-
-      const { startAgentTransportFailureSync } = await import('./agentTransportFailureSync')
-      startAgentTransportFailureSync()
-
-      const { startNetworkPathMonitor } = await import('./networkPathMonitor')
-      startNetworkPathMonitor()
-
-      await appendAppLog(
-        `[PostCoreBootstrap]: Api2ProbePlane ON after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace (60s active transport probe)\n`
-      )
     })()
   }, NETWORK_MONITOR_STARTUP_GRACE_MS)
 }

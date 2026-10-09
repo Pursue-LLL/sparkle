@@ -17,7 +17,6 @@ import {
   patchMihomoConfig
 } from '../core/mihomoApi'
 import { pickLatestSuccessfulProviderDelay } from '../core/mihomoProviderDelayCore'
-import { confirmCursorProxySwitch } from '../core/confirmCursorProxySwitch'
 import { mainWindow, setNotQuitDialog, showMainWindow, triggerMainWindow } from '..'
 import {
   app,
@@ -275,14 +274,6 @@ export const buildContextMenu = async (): Promise<Menu> => {
                 type: 'radio' as const,
                 checked: proxy.name === group.now,
                 click: async (): Promise<void> => {
-                  const confirmed = await confirmCursorProxySwitch(
-                    group.name,
-                    group.now,
-                    proxy.name
-                  )
-                  if (!confirmed) {
-                    return
-                  }
                   await mihomoChangeProxy(group.name, proxy.name, { source: 'manual' })
                   if (autoCloseConnection) {
                     await mihomoCloseConnections()

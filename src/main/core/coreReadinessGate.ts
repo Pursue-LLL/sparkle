@@ -5,7 +5,6 @@
 import { getAppConfig } from '../config'
 import { appendAppLog } from '../utils/log'
 import { showNotification } from '../utils/notification'
-import { bootstrapCursorNetworkDefaults } from './cursorNetworkOptimize'
 import { startCore } from './manager'
 import { waitForMihomoControllerReady } from './postCoreBootstrap'
 import { test as probeSidecarTest } from '../service/api'
@@ -85,7 +84,6 @@ export async function runCoreReadinessPipeline(
 
   await ensureSidecarReachable()
   await logPhase('profile', 'bootstrap_begin')
-  await bootstrapCursorNetworkDefaults()
 
   const [startPromise] = await startCore()
   const apiReady = await verifyDataPlaneLive()

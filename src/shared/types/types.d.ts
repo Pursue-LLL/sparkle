@@ -69,23 +69,5 @@ type Fingerprints =
 /** 与 src/main/core/mihomoProxyDelayCore.ts 的 MihomoDelayPurpose 保持一致。 */
 interface MihomoDelayOptions {
   timeoutMs?: number
-  purpose?:
-    | 'default'
-    | 'marathon_rescue'
-    | 'user_explicit'
-    | 'hy2_tunnel_vitality'
-    | 'hy2_parent_sidecar'
-    | 'tier0_provider_parity_hot_reload'
-    | 'session_nudge'
-}
-
-interface ManagedVpsDelayTestOptions {
-  explicitUserRequest?: boolean
-}
-
-interface ManagedVpsDelayTestResult {
-  deferredMs: number
-  proxyNames: string[]
-  testUrl?: string
-  delays: Record<string, ControllerProxiesDelay>
+  purpose?: 'default' | 'user_explicit'
 }

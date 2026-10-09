@@ -4,16 +4,6 @@ import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'
 
 export const CURSOR_DEFAULT_VPS_NODE = 'KR-VPS-Reality' as const
 
-/** Never auto-select transports that can reintroduce QUIC failure modes. */
-export function isCursorSuboptimalNode(name: string): boolean {
-  return /-VPS-(TUIC|HY2)$/i.test(name)
-}
-
-/** Allow a one-way upgrade to trusted standard TLS even when the short api2 probe is green. */
-export function isCursorProtocolUpgrade(from: string, to: string): boolean {
-  return isCursorSuboptimalNode(from) && !isCursorSuboptimalNode(to)
-}
-
 /** Only seed the default when the Cursor group has no real selection yet. */
 export function shouldApplyCursorDedicatedDefault(current: string | undefined): boolean {
   return !current || current === 'SDK DNS'

@@ -24,21 +24,13 @@ describe('cursorDedicatedManualOnlyCore', () => {
     )
   })
 
-  it('blocks recovery and auto sources once a leaf is selected', () => {
-    for (const source of [
-      'auto',
-      'recovery_coordinator',
-      'hy2_vitality_failback',
-      'protocol_contract',
-    ] as const) {
-      assert.equal(
-        isCursorDedicatedManualOnlySwitchAllowed({
-          source,
-          fromNode: '🇸🇬 新加坡 02',
-        }),
-        false,
-        source,
-      )
-    }
+  it('blocks auto source once a leaf is selected', () => {
+    assert.equal(
+      isCursorDedicatedManualOnlySwitchAllowed({
+        source: 'auto',
+        fromNode: '🇸🇬 新加坡 02',
+      }),
+      false,
+    )
   })
 })

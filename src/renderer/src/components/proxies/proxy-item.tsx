@@ -1,18 +1,15 @@
-import { Button, Card, CardBody, Chip, Tooltip } from '@heroui/react'
-import { formatStabilityMarkerTooltip } from '@renderer/hooks/use-commercial-node-stability'
+import { Button, Card, CardBody, Tooltip } from '@heroui/react'
 import { notify } from '@renderer/utils/notification'
 import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FaMapPin } from 'react-icons/fa6'
 import {
-  formatProxyDelayAgeLabel,
+  formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
+  latestProxyDelayHistoryEntry,
   PROXY_DELAY_AGE_TICK_MS,
-  proxyDelayDisplayColor,
-  resolveVpsLeafProxyDelayDisplay,
 } from '@renderer/utils/proxy-delay-sample-age'
-import { getLatencyTruthSummaryForNode, mihomoUnfixedProxy } from '@renderer/utils/ipc'
-import { isVpsCursorLeafNode } from '@renderer/utils/delay-test'
+import { mihomoUnfixedProxy } from '@renderer/utils/ipc'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
 
 interface Props {
@@ -25,8 +22,6 @@ interface Props {
   group: ControllerMixedGroup
   onSelect: (group: string, proxy: string) => void
   selected: boolean
-  stabilityMarker?: CommercialNodeStabilityEntry
-  benchmarkScore?: CommercialNodeStabilityEntry
 }
 
 const isGroup = (
@@ -35,51 +30,35 @@ const isGroup = (
   return 'now' in proxy && typeof (proxy as ControllerGroupDetail).now === 'string'
 }
 
-function delayColor(
-  delay: number,
-  displaySource?: 'mac_full_path' | 'mihomo_history' | 'vps_body_ssh' | 'none',
-  mihomoProbeTimedOut?: boolean,
-  delayKind?: 'none' | 'p50' | 'last_probe' | 'probe_timeout',
-): 'primary' | 'success' | 'warning' | 'danger' {
-  return proxyDelayDisplayColor({
-    delayMs: delay,
-    source: displaySource ?? 'none',
-    delayKind: delayKind ?? 'none',
-    mihomoProbeTimedOut: mihomoProbeTimedOut === true,
-  })
+function delayColor(delay: number): 'primary' | 'success' | 'warning' | 'danger' {
+  if (delay === -1) return 'primary'
+  if (delay === 0) return 'danger'
+  if (delay < 500) return 'success'
+  return 'warning'
 }
 
-function delayText(delay: number, displaySource?: 'mac_full_path' | 'mihomo_history' | 'vps_body_ssh' | 'none', mihomoProbeTimedOut?: boolean): string {
+function delayText(delay: number): string {
   if (delay === -1) return '测试'
   if (delay === 0) return '超时'
-  if (displaySource === 'vps_body_ssh' && mihomoProbeTimedOut) {
-    return `~${delay}`
-  }
   return delay.toString()
 }
 
 interface ProxyDelayControlProps {
   delay: number
   sampleTime?: string
-  delayKind?: 'none' | 'p50' | 'last_probe' | 'probe_timeout'
   loading: boolean
   onDelay: () => void
   buttonClassName: string
   textClassName?: string
-  displaySource?: 'mac_full_path' | 'mihomo_history' | 'vps_body_ssh' | 'none'
-  mihomoProbeTimedOut?: boolean
 }
 
 const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   delay,
   sampleTime,
-  delayKind,
   loading,
   onDelay,
   buttonClassName,
   textClassName = 'text-xs',
-  displaySource,
-  mihomoProbeTimedOut,
 }) => {
   const [ageNowMs, setAgeNowMs] = useState(() => Date.now())
 
@@ -94,29 +73,24 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   }, [delay])
 
   const ageLabel = useMemo(
-    () => formatProxyDelayAgeLabel(delayKind, sampleTime, ageNowMs, 'zh'),
-    [ageNowMs, delayKind, sampleTime]
+    () => (delay === -1 ? undefined : formatProxyDelaySampleAge(sampleTime, ageNowMs, 'zh')),
+    [ageNowMs, delay, sampleTime]
   )
   const tooltip = useMemo(
-    () =>
-      formatProxyDelayTooltip(delay, sampleTime, ageNowMs, 'zh', {
-        source: displaySource,
-        delayKind,
-        mihomoProbeTimedOut,
-      }),
-    [ageNowMs, delay, delayKind, displaySource, mihomoProbeTimedOut, sampleTime]
+    () => formatProxyDelayTooltip(delay, sampleTime, ageNowMs, 'zh'),
+    [ageNowMs, delay, sampleTime]
   )
 
   const button = (
     <Button
       isIconOnly
       isLoading={loading}
-      color={delayColor(delay, displaySource, mihomoProbeTimedOut, delayKind)}
+      color={delayColor(delay)}
       onPress={onDelay}
       variant="light"
       className={buttonClassName}
     >
-      <span className={textClassName}>{delayText(delay, displaySource, mihomoProbeTimedOut)}</span>
+      <span className={textClassName}>{delayText(delay)}</span>
     </Button>
   )
 
@@ -161,47 +135,14 @@ const ProxyItem: React.FC<Props> = (props) => {
     proxy,
     selected,
     onSelect,
-    onProxyDelay,
-    stabilityMarker,
-    benchmarkScore
+    onProxyDelay
   } = props
   const shouldShowGroupSelectedProxy =
     showGroupSelectedProxy && isGroup(proxy) && Boolean(proxy.now)
 
-  const [latencyTruth, setLatencyTruth] = useState<LatencyTruthSummary | null>(null)
-
-  useEffect(() => {
-    if (isGroup(proxy) || !isVpsCursorLeafNode(proxy.name)) {
-      setLatencyTruth(null)
-      return
-    }
-    let cancelled = false
-    void getLatencyTruthSummaryForNode(proxy.name)
-      .then((summary) => {
-        if (!cancelled) {
-          setLatencyTruth(summary)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLatencyTruth(null)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [proxy])
-
-  const delaySample = useMemo(
-    () => resolveVpsLeafProxyDelayDisplay(isGroup(proxy) ? undefined : proxy.history, latencyTruth),
-    [proxy, latencyTruth]
-  )
-
-  const delay = isGroup(proxy) ? -1 : delaySample.delayMs
-  const delaySampleTime = isGroup(proxy) ? undefined : delaySample.sampleTime
-  const delayKind = isGroup(proxy) ? undefined : delaySample.delayKind
-  const delayDisplaySource = isGroup(proxy) ? undefined : delaySample.source
-  const mihomoProbeTimedOut = isGroup(proxy) ? false : delaySample.mihomoProbeTimedOut
+  const latestDelay = isGroup(proxy) ? undefined : latestProxyDelayHistoryEntry(proxy.history)
+  const delay = latestDelay?.delay ?? -1
+  const delaySampleTime = latestDelay?.time
 
   const [loading, setLoading] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -314,42 +255,6 @@ const ProxyItem: React.FC<Props> = (props) => {
 
   const fixed = group.fixed && group.fixed === proxy.name
 
-  const stabilityBadge =
-    stabilityMarker !== undefined ? (
-      <Tooltip content={formatStabilityMarkerTooltip(stabilityMarker)} placement="top">
-        <Chip
-          size="sm"
-          color="warning"
-          variant="flat"
-          className="h-4 min-h-4 px-1 text-[10px] ml-1 shrink-0"
-        >
-          {stabilityMarker.kind === 'vps' ? '24h自建推荐' : '24h商业推荐'}
-        </Chip>
-      </Tooltip>
-    ) : null
-
-  const cursorAgentBadge =
-    benchmarkScore && !stabilityMarker ? (
-      <Tooltip content={formatStabilityMarkerTooltip(benchmarkScore)} placement="top">
-        <Chip
-          size="sm"
-          color={
-            benchmarkScore.cursorStability === 'risk'
-              ? 'danger'
-              : benchmarkScore.cursorStability === 'watch'
-                ? 'warning'
-                : benchmarkScore.cursorStability === 'unknown'
-                  ? 'default'
-                  : 'success'
-          }
-          variant="flat"
-          className="h-4 min-h-4 px-1 text-[10px] ml-1 shrink-0"
-        >
-          Agent·{benchmarkScore.cursorStabilityLabel}
-        </Chip>
-      </Tooltip>
-    ) : null
-
   return (
     <div
       ref={wrapperRef}
@@ -383,8 +288,6 @@ const ProxyItem: React.FC<Props> = (props) => {
                 <div className="flex flex-col gap-0 flex-1 min-w-0">
                   <div className="text-ellipsis overflow-hidden whitespace-nowrap">
                     <div className="flag-emoji inline">{proxy.name}</div>
-                    {stabilityBadge}
-                    {cursorAgentBadge}
                   </div>
                   <div className="text-[12px] text-foreground-500 leading-snug mt-0.5 overflow-hidden whitespace-nowrap text-ellipsis">
                     <span>{proxy.type}</span>
@@ -417,12 +320,9 @@ const ProxyItem: React.FC<Props> = (props) => {
                   <ProxyDelayControl
                     delay={delay}
                     sampleTime={delaySampleTime}
-                    delayKind={delayKind}
                     loading={loading}
                     onDelay={onDelay}
                     buttonClassName="h-8 w-8 min-w-8 p-0 text-xs"
-                    displaySource={delayDisplaySource}
-                    mihomoProbeTimedOut={mihomoProbeTimedOut}
                   />
                 </div>
               </>
@@ -430,8 +330,6 @@ const ProxyItem: React.FC<Props> = (props) => {
               <>
                 <div className="text-ellipsis overflow-hidden whitespace-nowrap">
                   <div className="flag-emoji inline">{proxy.name}</div>
-                  {stabilityBadge}
-                  {cursorAgentBadge}
                   {proxyDisplayLayout === 'single' && (
                     <>
                       <div className="inline ml-2 text-foreground-500">{proxy.type}</div>
@@ -464,13 +362,10 @@ const ProxyItem: React.FC<Props> = (props) => {
                     <ProxyDelayControl
                       delay={delay}
                       sampleTime={delaySampleTime}
-                      delayKind={delayKind}
                       loading={loading}
                       onDelay={onDelay}
                       buttonClassName="h-full w-8 min-w-8 p-0 text-sm"
                       textClassName="text-sm"
-                      displaySource={delayDisplaySource}
-                      mihomoProbeTimedOut={mihomoProbeTimedOut}
                     />
                   </div>
                 </div>
@@ -484,7 +379,6 @@ const ProxyItem: React.FC<Props> = (props) => {
           proxy={proxy}
           anchorEl={showTooltip ? wrapperRef.current : null}
           visible={showTooltip}
-          benchmarkScore={benchmarkScore ?? stabilityMarker}
         />
       )}
     </div>

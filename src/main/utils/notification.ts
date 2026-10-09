@@ -3,7 +3,6 @@ import { getAppConfig } from '../config/app'
 
 export type AppNotificationVariant = 'default' | 'accent' | 'success' | 'warning' | 'danger'
 type AppNotificationMode = 'system' | 'toast'
-export type AppNotificationActionKind = 'copy-bug-report'
 
 export interface AppNotificationPayload {
   id?: string
@@ -13,7 +12,6 @@ export interface AppNotificationPayload {
   url?: string
   variant?: AppNotificationVariant
   forceToast?: boolean
-  actionKind?: AppNotificationActionKind
 }
 
 const pendingToastNotifications: AppNotificationPayload[] = []

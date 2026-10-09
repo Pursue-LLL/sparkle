@@ -10,7 +10,6 @@ export interface AppNotificationPayload {
   persistent?: boolean
   url?: string
   variant?: AppNotificationVariant
-  actionKind?: 'copy-bug-report'
   timeout?: number
   onClose?: () => void
   /** 通知上的动作按钮属性（透传给 UI 组件）。 */
@@ -97,14 +96,6 @@ async function showNotification(
 }
 
 function resolveToastActionProps(payload: AppNotificationPayload): ButtonProps | undefined {
-  if (payload.actionKind === 'copy-bug-report') {
-    return {
-      children: '复制 Bug 信息',
-      onPress: () => {
-        void copyCollectiveDeathBugReportToClipboard()
-      },
-    }
-  }
   if (payload.url) {
     return {
       children: '打开',
@@ -112,22 +103,6 @@ function resolveToastActionProps(payload: AppNotificationPayload): ButtonProps |
     }
   }
   return undefined
-}
-
-async function copyCollectiveDeathBugReportToClipboard(): Promise<void> {
-  try {
-    const text = (await window.electron.ipcRenderer.invoke('getCollectiveDeathBugReport')) as
-      | string
-      | null
-    if (!text || !text.trim()) {
-      notify('暂无可复制的诊断信息', { forceToast: true, variant: 'warning', timeout: 4000 })
-      return
-    }
-    await navigator.clipboard.writeText(text)
-    notify('Bug 信息已复制', { forceToast: true, variant: 'success', timeout: 3000 })
-  } catch (error) {
-    notify(formatNotificationText(error), { forceToast: true, variant: 'danger', timeout: 5000 })
-  }
 }
 
 function normalizeToastPayload(payload: AppNotificationPayload): { title: string; body?: string } {
