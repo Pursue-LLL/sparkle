@@ -1,81 +1,63 @@
 // [INPUT] 当前订阅节点 · 地区优先级
-// [OUTPUT] FAST_NODE_PROVIDER_ID · orderProxiesByRegionPriority · buildSparkleFastProviderDocument
-// [POS] `自动选择` 的专属 provider 文件：剔除 hy2/AnyTLS，按地区优先级平铺排序。
-// mihomo 解析期不识别 provider 节点名，`自动选择` 通过 use 引用本文件；组类型为 url-test（节点挂了才换）。
+// [OUTPUT] FAST_NODE_PROVIDER_ID · orderProxiesByRegionPriority · buildSparkleFastProviderDocument · listFlatAutoSelectProxyNames
+// [POS] `自动选择` 的专属 provider 文件：按地区优先级平铺排序，剔除 AnyTLS 与香港。
+// mihomo 解析期不识别 provider 节点名，`自动选择` 通过 use 引用本文件；
+// 组类型为 fallback：按此顺序用第一个可用节点，当前节点挂了才降级。
+// 纯函数模块（fs/路径由调用方持有），便于单测。
 
+import { isAnyTlsProxyType } from './autoSelectAnyTlsExclusionCore'
 import { isBlockedRegionNodeName, nodeMatchesRegion } from './regionPriority'
-import { AUTO_SELECT_EXCLUDED_NODE_TYPES } from './regionalAutoSelectGroupsCore'
 
 export const FAST_NODE_PROVIDER_ID = 'sparkle-fast' as const
 export const FAST_NODE_PROVIDER_FILENAME = 'sparkle-fast-proxies.yaml' as const
 
-function isExcludedAutoSelectProxy(proxy: Record<string, unknown>): boolean {
-  const type = String(proxy.type ?? '')
-    .trim()
-    .toLowerCase()
-  return (AUTO_SELECT_EXCLUDED_NODE_TYPES as readonly string[]).includes(type)
+type ProxyRecord = Record<string, unknown>
+
+function proxyName(proxy: ProxyRecord): string {
+  return String(proxy.name ?? '').trim()
 }
 
-function dropExcludedAutoSelectProxies(
-  proxies: Array<Record<string, unknown>>
-): Array<Record<string, unknown>> {
-  return proxies.filter((proxy) => !isExcludedAutoSelectProxy(proxy))
-}
-
-/** 按地区优先级平铺排序；非优先国家节点排在尾部；香港排除；去重保序。 */
+/** 优先地区节点按优先级在前，其余国家节点垫底；去重保序；AnyTLS 与香港不进入。 */
 export function orderProxiesByRegionPriority(
-  proxies: Array<Record<string, unknown>>,
+  proxies: ProxyRecord[],
   regionPriority: string[]
-): Array<Record<string, unknown>> {
+): ProxyRecord[] {
   const included = new Set<string>()
-  const ordered: Array<Record<string, unknown>> = []
-  for (const region of regionPriority) {
+  const ordered: ProxyRecord[] = []
+  const take = (matches: (name: string) => boolean): void => {
     for (const proxy of proxies) {
-      const name = String(proxy.name ?? '').trim()
-      if (!name || included.has(name)) {
+      const name = proxyName(proxy)
+      if (
+        !name ||
+        included.has(name) ||
+        isAnyTlsProxyType(String(proxy.type ?? '')) ||
+        isBlockedRegionNodeName(name) ||
+        !matches(name)
+      ) {
         continue
       }
-      if (isBlockedRegionNodeName(name)) {
-        continue
-      }
-      if (nodeMatchesRegion(name, region)) {
-        included.add(name)
-        ordered.push(proxy)
-      }
+      included.add(name)
+      ordered.push(proxy)
     }
   }
-  for (const proxy of proxies) {
-    const name = String(proxy.name ?? '').trim()
-    if (!name || included.has(name)) {
-      continue
-    }
-    if (isBlockedRegionNodeName(name)) {
-      continue
-    }
-    included.add(name)
-    ordered.push(proxy)
+  for (const region of regionPriority) {
+    take((name) => nodeMatchesRegion(name, region))
   }
+  take(() => true)
   return ordered
 }
 
 export function buildSparkleFastProviderDocument(input: {
-  proxies: Array<Record<string, unknown>>
+  proxies: ProxyRecord[]
   regionPriority: string[]
-}): { proxies: Array<Record<string, unknown>> } {
-  return {
-    proxies: orderProxiesByRegionPriority(
-      dropExcludedAutoSelectProxies(input.proxies),
-      input.regionPriority
-    )
-  }
+}): { proxies: ProxyRecord[] } {
+  return { proxies: orderProxiesByRegionPriority(input.proxies, input.regionPriority) }
 }
 
-/** 无 provider 模式：`自动选择` 的平铺成员名（与 sparkle-fast 文件同序同过滤）。 */
+/** 无 provider 模式：`自动选择` 的平铺成员名（与 sparkle-fast 文件同序）。 */
 export function listFlatAutoSelectProxyNames(
-  proxies: Array<Record<string, unknown>>,
+  proxies: ProxyRecord[],
   regionPriority: string[]
 ): string[] {
-  return buildSparkleFastProviderDocument({ proxies, regionPriority }).proxies.map((proxy) =>
-    String(proxy.name ?? '').trim()
-  ).filter(Boolean)
+  return orderProxiesByRegionPriority(proxies, regionPriority).map(proxyName)
 }

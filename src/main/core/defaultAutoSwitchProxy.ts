@@ -173,7 +173,7 @@ function resolveAutoSelectLeafNames(
 }
 
 /**
- * Sparkle-* 地区组仅供手动选路；`自动选择` = 平铺节点 + url-test（挂了才换，tolerance 防抖）。
+ * Sparkle-* 地区组仅供手动选路；`自动选择` = 平铺节点 + fallback（按地区优先级用第一个可用节点，挂了才降级）。
  * 不把 🎯 Cursor 专用 嵌进 自动选择：Cursor 专用已包含 自动选择，反向嵌套会成环。
  */
 function ensureRegionPriorityAutoSelect(
@@ -202,10 +202,9 @@ function ensureRegionPriorityAutoSelect(
 
   const autoSelectGroup: ProxyGroupConfig = {
     name: AUTO_SELECT_GROUP_NAME,
-    type: 'url-test',
+    type: 'fallback',
     url: AUTO_SELECT_PROBE.url,
     interval: AUTO_SELECT_PROBE.interval,
-    tolerance: AUTO_SELECT_PROBE.tolerance,
     timeout: AUTO_SELECT_PROBE.timeout,
     lazy: true
   }
