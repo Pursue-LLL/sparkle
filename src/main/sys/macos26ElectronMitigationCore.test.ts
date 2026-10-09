@@ -5,9 +5,7 @@ import {
   darwinMajorFromRelease,
   isMacOs26OrNewer,
   MACOS26_FORCE_GUI_ARG,
-  shouldDisableHungScanOnMacOs26,
   shouldForceDisableGpu,
-  shouldSkipMacOs26GuiPostCoreObservabilityStack,
   shouldUseMacOs26HeadlessBootstrap,
   wantsMacOs26ForceGui,
 } from './macos26ElectronMitigationCore'
@@ -35,12 +33,6 @@ describe('macos26ElectronMitigationCore', () => {
     assert.equal(shouldForceDisableGpu('darwin', '24.6.0', false), false)
   })
 
-  it('disables hung_scan on macOS 26', () => {
-    assert.equal(shouldDisableHungScanOnMacOs26('darwin', '25.5.0'), true)
-    assert.equal(shouldDisableHungScanOnMacOs26('darwin', '24.6.0'), false)
-    assert.equal(shouldDisableHungScanOnMacOs26('linux', '25.5.0'), false)
-  })
-
   it('defaults to headless bootstrap on macOS 26 unless force GUI', () => {
     assert.equal(shouldUseMacOs26HeadlessBootstrap('darwin', '25.5.0', false), true)
     assert.equal(shouldUseMacOs26HeadlessBootstrap('darwin', '25.5.0', true), false)
@@ -52,11 +44,5 @@ describe('macos26ElectronMitigationCore', () => {
     assert.equal(wantsMacOs26ForceGui([MACOS26_FORCE_GUI_ARG], {}, false), true)
     assert.equal(wantsMacOs26ForceGui([], { SPARKLE_FORCE_GUI: '1' }, false), true)
     assert.equal(wantsMacOs26ForceGui([], {}, true), true)
-  })
-
-  it('skips post-core observability stack on macOS 26 GUI path', () => {
-    assert.equal(shouldSkipMacOs26GuiPostCoreObservabilityStack('darwin', '25.5.0'), true)
-    assert.equal(shouldSkipMacOs26GuiPostCoreObservabilityStack('darwin', '24.6.0'), false)
-    assert.equal(shouldSkipMacOs26GuiPostCoreObservabilityStack('linux', '25.5.0'), false)
   })
 })

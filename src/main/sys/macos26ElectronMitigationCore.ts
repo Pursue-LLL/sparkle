@@ -1,5 +1,3 @@
-import os from 'os'
-
 /** macOS 26 ships Darwin 25.x; macOS 15 is Darwin 24.x. */
 export function darwinMajorFromRelease(release: string): number {
   const head = release.split('.')[0] ?? '0'
@@ -49,14 +47,6 @@ export function shouldForceDisableGpu(
   return isMacOs26OrNewer(platform, release)
 }
 
-/** hung_scan drives periodic fs + V8 callbacks; disable on macOS 26 to reduce SIGTRAP rate. */
-export function shouldDisableHungScanOnMacOs26(
-  platform: NodeJS.Platform,
-  release: string,
-): boolean {
-  return isMacOs26OrNewer(platform, release)
-}
-
 export const MACOS26_FORCE_GUI_ARG = '--sparkle-force-gui'
 
 /** User intentionally opens settings UI (CLI flag, env, or persisted config). */
@@ -77,20 +67,4 @@ export function shouldUseMacOs26HeadlessBootstrap(
   forceGui: boolean,
 ): boolean {
   return isMacOs26OrNewer(platform, release) && !forceGui
-}
-
-/**
- * macOS 26 GUI (BrowserWindow) defers Api2ProbePlane / agentTransportFailureSync /
- * networkPathMonitor — fs-heavy callbacks on main thread correlate with V8 ThreadIsolation SIGTRAP.
- * Headless path never calls runPostCoreBootstrap; this applies only to force-GUI sessions.
- */
-export function shouldSkipMacOs26GuiPostCoreObservabilityStack(
-  platform: NodeJS.Platform,
-  release: string,
-): boolean {
-  return isMacOs26OrNewer(platform, release)
-}
-
-export function currentPlatformRelease(): { platform: NodeJS.Platform; release: string } {
-  return { platform: process.platform, release: os.release() }
 }

@@ -196,10 +196,6 @@ function datedLogPath(prefix?: string): string {
   return path.join(logDir(), `${prefix ? `${prefix}-` : ''}${name}.log`)
 }
 
-export function logPath(): string {
-  return datedLogPath()
-}
-
 export function appLogPath(): string {
   return datedLogPath('app')
 }

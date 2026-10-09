@@ -140,7 +140,6 @@ sparkle/
 - `pnpm build:mac` - 构建 macOS 版本（含 pkg）
 - `pnpm run upgrade:mac` - **本地 dev 一条龙**：编译 + 安装到 `/Applications`
 - `pnpm run agent:upgrade:mac` - **Agent SSOT**：dist 就绪则仅 install，否则 full upgrade + post gate（自动化推荐）
-- `tsx scripts/verify-byte-death-recovery-gate.mts [--minutes N]` - post-upgrade byte-death / R2 恢复门禁（默认 15min）
 - `pnpm build:linux` - 构建 Linux 版本
 
 #### 其他命令
@@ -212,7 +211,7 @@ pnpm run agent:upgrade:mac
 # 等价：bash scripts/agent-sparkle-upgrade.sh
 ```
 
-逻辑：若 `dist/mac-arm64/Sparkle.app` 版本已匹配且签名有效 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后自动跑 byte-death gate + preflight。马拉松紧急：`SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1 pnpm run agent:upgrade:mac`。
+逻辑：若 `dist/mac-arm64/Sparkle.app` 版本已匹配且签名有效 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后跑数据面就绪门禁（`sparkle-data-plane-readiness.mts`）与 profile due-check。
 
 **人工 dev 一条龙**：
 
@@ -221,9 +220,9 @@ cd /path/to/sparkle
 pnpm run upgrade:mac
 ```
 
-等价 `bash scripts/upgrade-sparkle-local.sh`：vite 编译 → **`rm -rf dist/mac-arm64`** → electron-builder dir（`mac.identity: "-"` + deepSign · 失败自动重试）→ **`verify-sparkle-main-asar.mts`**（SSOT asar 门禁）→ **Marathon PRE-gate**（conn≥12 或 quiesce ON 时 FAIL，见 `scripts/lib/marathon-core-restart-guard.sh`）→ 安装到 `/Applications` → **Marathon 就绪门控**（`Api2ProbePlane ON` · 90s · grace 内 FAIL 可忽略，见 BUG-006 踩坑）→ Finder 启动。网络不可达时：`SKIP_PREPARE=1 bash scripts/upgrade-sparkle-local.sh`。紧急 override：`SPARKLE_FORCE_CORE_RESTART=1`（会 kill in-flight Connect 流）。
+等价 `bash scripts/upgrade-sparkle-local.sh`：vite 编译 → **`rm -rf dist/mac-arm64`** → electron-builder dir（`mac.identity: "-"` + deepSign · 失败自动重试）→ **`verify-sparkle-main-asar.mts`**（SSOT asar 门禁）→ 安装到 `/Applications` → **PostCoreBootstrap 就绪门控**（日志出现 `mihomo API ready` · 90s）→ Finder 启动。网络不可达时：`SKIP_PREPARE=1 bash scripts/upgrade-sparkle-local.sh`。
 
-**仅安装已构建 dist**：`bash scripts/install-sparkle-local.sh`（同样受 Marathon PRE-gate 约束）
+**仅安装已构建 dist**：`bash scripts/install-sparkle-local.sh`
 
 **禁止**：
 
@@ -236,9 +235,9 @@ pnpm run upgrade:mac
 
 完整 SSOT 见 [BUGFIX_LOG.md — Sparkle 本地安装](BUGFIX_LOG.md)。
 
-**升级后配置**：`~/Library/Application Support/sparkle/config.yaml` 通常保留；若目录被清空或首次安装，会写入 `src/main/utils/template.ts` 默认值。探针 ledger 与 marathon 事件在 **`~/.sparkle/`**（与 Application Support 分离），重装 app 一般不删。
+**升级后配置**：`~/Library/Application Support/sparkle/config.yaml` 通常保留；若目录被清空或首次安装，会写入 `src/main/utils/template.ts` 默认值。安装状态（CDHash 等）在 **`~/.sparkle/`**（与 Application Support 分离），重装 app 一般不删。
 
-### 代理页 UI（Cursor 联调默认开启）
+### 代理页 UI
 
 以下功能默认 **开启**（`src/main/utils/template.ts`）；可在 **代理页 → 设置抽屉** 关闭：
 
@@ -246,12 +245,9 @@ pnpm run upgrade:mac
 |--------|------|
 | `showProxyDetailTooltip` | hover 节点 **600ms** 显示详情弹窗 |
 | `showGroupSelectedProxy` | 代理组卡片显示当前选中子节点 |
-| `commercialNodeBenchmarkEnabled` | 24h benchmark 与 **Agent·稳定性** badge |
 | `rememberProxyGroupOpenState` | 记住代理组展开状态（默认关） |
 
 组件与数据流见 [src/renderer/src/components/proxies/_ARCH.md](src/renderer/src/components/proxies/_ARCH.md)。
-
-**Agent 稳定性**：安装 **≥1.30.15**（R-41 byte-death bypass · Plane B parent lifecycle · HY2-only marathon SSOT）。最低 **≥1.26.77**（P17 Structured transport ingest）。Marathon 赛后验收：`tsx scripts/verify-byte-death-recovery-gate.mts --minutes 15` + G9 soak `attemptRate≥90%`（见 [CURSOR-DISCONNECT-TRIAGE.md](CURSOR-DISCONNECT-TRIAGE.md) §6.1）。
 
 ### 常见问题
 

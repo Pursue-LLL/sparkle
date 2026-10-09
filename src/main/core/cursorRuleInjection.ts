@@ -2,8 +2,7 @@ import {
   CURSOR_2_APP_PATH_PREFIX,
   CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES,
   CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES,
-  CURSOR_NODE_SELECT_APP_PATH_PREFIXES,
-  MARATHON_CURSOR_APP_PATH_PREFIXES
+  CURSOR_NODE_SELECT_APP_PATH_PREFIXES
 } from './cursorAppBundlePathsCore'
 import {
   CURSOR_DEDICATED_GROUP_NAME,
@@ -18,7 +17,7 @@ export const DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES = CURSOR_DEDICATED_PROXY_APP
 /** Stock Cursor.app → 🚀 节点选择 / 自动选择. */
 export const DEFAULT_CURSOR_NODE_SELECT_APP_PATH_PREFIXES = CURSOR_NODE_SELECT_APP_PATH_PREFIXES
 
-/** Optional path-scoped DIRECT fallback — empty when Marathon Cursor also uses Cursor 专用. */
+/** Optional path-scoped DIRECT fallback — empty because every Cursor bundle uses Cursor 专用. */
 export const DEFAULT_CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES =
   CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES
 
@@ -26,18 +25,8 @@ export {
   CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES,
   CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES,
   CURSOR_NODE_SELECT_APP_PATH_PREFIXES,
-  MARATHON_CURSOR_APP_PATH_PREFIXES,
   CURSOR_2_APP_PATH_PREFIX
 }
-
-/** macOS / Electron Cursor outbound processes — used by tests and legacy rule stripping. */
-export const CURSOR_PROCESS_NAMES = [
-  'Cursor',
-  'Cursor Helper',
-  'Cursor Helper (Renderer)',
-  'Cursor Helper (Plugin)',
-  'Cursor Helper (GPU)'
-] as const
 
 /** Cursor Agent / Chat API hosts (HTTP/2 bidi + SSE). */
 export const CURSOR_PROXY_DOMAINS = [
