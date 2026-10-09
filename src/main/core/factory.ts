@@ -13,7 +13,8 @@ import {
   mihomoProfileWorkDir,
   mihomoWorkConfigPath,
   mihomoWorkDir,
-  overridePath
+  overridePath,
+  profilesDir
 } from '../utils/dirs'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { copyFile, mkdir, readdir, writeFile } from 'fs/promises'
@@ -244,6 +245,23 @@ async function generateProfileImpl(): Promise<void> {
     await appendAppLog(formatAutoSelectAnyTlsExclusionLogLine(anyTlsExclusion))
   }
   await logGenerateProfileStep('auto_switch_groups', stepStartedAtMs)
+  try {
+    const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } = await import(
+      './sparkleFastProviderCore'
+    )
+    await writeFileSync(
+      path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME),
+      stringifyYaml(
+        buildSparkleFastProviderDocument({
+          proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
+          regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority)
+        })
+      ),
+      'utf8'
+    )
+  } catch {
+    // best-effort：写失败沿用上一份 sparkle-fast 文件
+  }
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)
   const { cursorBidiOptimize = true, cursorProxyAppPathPrefixes } = await getAppConfig()
