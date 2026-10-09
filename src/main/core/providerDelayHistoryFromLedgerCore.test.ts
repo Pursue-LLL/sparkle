@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  buildNodeDelayMapFromLedgerRows,
   ledgerRowsToProviderDelayHistory,
   LEDGER_PROVIDER_DELAY_HISTORY_LIMIT,
 } from './providerDelayHistoryFromLedgerCore'
@@ -55,5 +56,16 @@ describe('providerDelayHistoryFromLedgerCore', () => {
       }),
     )
     assert.equal(ledgerRowsToProviderDelayHistory(rows, 'KR-VPS-HY2').length, LEDGER_PROVIDER_DELAY_HISTORY_LIMIT)
+  })
+
+  it('buildNodeDelayMapFromLedgerRows keeps median delay per node', () => {
+    const rows = [
+      row({ ts: '2026-07-24T08:00:00.000Z', method: 'transport_pair', node: 'TW-A', latency_ms: 300 }),
+      row({ ts: '2026-07-24T08:01:00.000Z', method: 'transport_pair', node: 'TW-A', latency_ms: 100 }),
+      row({ ts: '2026-07-24T08:02:00.000Z', method: 'transport_pair', node: 'TW-B', latency_ms: 50 }),
+    ]
+    const delays = buildNodeDelayMapFromLedgerRows(rows)
+    assert.equal(delays.get('TW-A'), 200)
+    assert.equal(delays.get('TW-B'), 50)
   })
 })

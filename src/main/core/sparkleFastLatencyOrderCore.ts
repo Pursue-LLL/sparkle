@@ -50,6 +50,15 @@ export function collectNodeDelays(
   return delays
 }
 
+/** provider 实测优先；ledger 仅填补尚未探测到的节点。 */
+export function mergeNodeDelayMaps(primary: NodeDelayMap, fallback: NodeDelayMap): NodeDelayMap {
+  const merged = new Map(fallback)
+  for (const [name, delay] of primary) {
+    merged.set(name, delay)
+  }
+  return merged
+}
+
 export function hasSameNodeOrder(
   before: ReadonlyArray<{ name?: unknown }>,
   after: ReadonlyArray<{ name?: unknown }>

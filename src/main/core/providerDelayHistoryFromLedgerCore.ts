@@ -42,3 +42,28 @@ export function ledgerRowsToProviderDelayHistory(
 
   return samples.slice(-limit)
 }
+
+/** 从 ledger 行批量折算节点 → 延迟中位数（与 UI 柱图同源：active + transport_pair）。 */
+export function buildNodeDelayMapFromLedgerRows(
+  rows: readonly Api2ProbeLedgerRow[],
+): Map<string, number> {
+  const buckets = new Map<string, number[]>()
+  for (const row of rows) {
+    if (row.scope !== 'active' || !row.ok || row.latency_ms <= 0) {
+      continue
+    }
+    if (!LEDGER_PROVIDER_DELAY_HISTORY_METHODS.has(row.method)) {
+      continue
+    }
+    const list = buckets.get(row.node) ?? []
+    list.push(row.latency_ms)
+    buckets.set(row.node, list)
+  }
+  const delays = new Map<string, number>()
+  for (const [node, samples] of buckets) {
+    const recent = samples.slice(-LEDGER_PROVIDER_DELAY_HISTORY_LIMIT)
+    const sorted = [...recent].sort((a, b) => a - b)
+    delays.set(node, sorted[Math.floor(sorted.length / 2)]!)
+  }
+  return delays
+}

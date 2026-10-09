@@ -282,7 +282,7 @@ async function mihomoProviderHealthcheck(providerName: string): Promise<void> {
   })
 }
 
-async function mihomoProviderHealthcheckDeduped(providerName: string): Promise<void> {
+export async function mihomoProviderHealthcheckDeduped(providerName: string): Promise<void> {
   const inflight = providerHealthcheckInflight.get(providerName)
   if (inflight) {
     return inflight

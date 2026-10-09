@@ -46,6 +46,18 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
   await appendAppLog('[PostCoreBootstrap]: mihomo API ready — scheduling post-core services\n')
 
   try {
+    const { bootstrapSparkleFastLatencyOrder, startSparkleFastLatencyOrderLoop } = await import(
+      './sparkleFastLatencyOrder'
+    )
+    await bootstrapSparkleFastLatencyOrder()
+    startSparkleFastLatencyOrderLoop()
+  } catch (error) {
+    await appendAppLog(
+      `[SparkleFastOrder]: failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    )
+  }
+
+  try {
     const { readTransportLongevityTruthSnapshot } = await import('./transportLongevityTruth')
     const { HY2_PARENT_SIDECAR_DIAL_AGE_MS, resolveEffectiveHy2ParentChainAgeMs } = await import(
       './hy2ParentSidecarCore'
@@ -188,18 +200,6 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
       } catch (error) {
         await appendAppLog(
           `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`,
-        )
-      }
-
-      try {
-        const { refreshSparkleFastLatencyOrder, startSparkleFastLatencyOrderLoop } = await import(
-          './sparkleFastLatencyOrder'
-        )
-        await refreshSparkleFastLatencyOrder(true)
-        startSparkleFastLatencyOrderLoop()
-      } catch (error) {
-        await appendAppLog(
-          `[SparkleFastOrder]: failed: ${error instanceof Error ? error.message : String(error)}\n`,
         )
       }
 
