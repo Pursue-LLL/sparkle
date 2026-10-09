@@ -10,6 +10,7 @@ import {
   PROXY_DELAY_AGE_TICK_MS,
 } from '@renderer/utils/proxy-delay-sample-age'
 import { mihomoUnfixedProxy } from '@renderer/utils/ipc'
+import { useProbeWarmup } from '@renderer/hooks/use-probe-warmup'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
 
 interface Props {
@@ -47,6 +48,8 @@ interface ProxyDelayControlProps {
   delay: number
   sampleTime?: string
   loading: boolean
+  /** 预热窗口内没有可信样本（未测或超时）：显示 loading 而不是「测试」/「超时」。 */
+  warmingUp: boolean
   onDelay: () => void
   buttonClassName: string
   textClassName?: string
@@ -56,6 +59,7 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   delay,
   sampleTime,
   loading,
+  warmingUp,
   onDelay,
   buttonClassName,
   textClassName = 'text-xs',
@@ -84,7 +88,7 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   const button = (
     <Button
       isIconOnly
-      isLoading={loading}
+      isLoading={loading || (warmingUp && delay <= 0)}
       color={delayColor(delay)}
       onPress={onDelay}
       variant="light"
@@ -145,6 +149,7 @@ const ProxyItem: React.FC<Props> = (props) => {
   const delaySampleTime = latestDelay?.time
 
   const [loading, setLoading] = useState(false)
+  const warmingUp = useProbeWarmup()
   const wrapperRef = useRef<HTMLDivElement>(null)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -321,6 +326,7 @@ const ProxyItem: React.FC<Props> = (props) => {
                     delay={delay}
                     sampleTime={delaySampleTime}
                     loading={loading}
+                    warmingUp={warmingUp}
                     onDelay={onDelay}
                     buttonClassName="h-8 w-8 min-w-8 p-0 text-xs"
                   />
@@ -363,6 +369,7 @@ const ProxyItem: React.FC<Props> = (props) => {
                       delay={delay}
                       sampleTime={delaySampleTime}
                       loading={loading}
+                      warmingUp={warmingUp}
                       onDelay={onDelay}
                       buttonClassName="h-full w-8 min-w-8 p-0 text-sm"
                       textClassName="text-sm"

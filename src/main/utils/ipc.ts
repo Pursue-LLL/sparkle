@@ -25,6 +25,7 @@ import {
   restartMihomoConnections,
   mihomoRulesDisable
 } from '../core/mihomoApi'
+import { isProbeWarmupActive } from '../core/probeWarmupState'
 import { checkAutoRun, disableAutoRun, enableAutoRun } from '../sys/autoRun'
 import {
   getAppConfig,
@@ -246,6 +247,7 @@ export function registerIpcMainHandlers(): void {
     ipcErrorWrapper(mihomoChangeProxy)(group, proxy, options)
   )
   ipcMain.handle('mihomoUnfixedProxy', (_e, group) => ipcErrorWrapper(mihomoUnfixedProxy)(group))
+  ipcMain.handle('getProbeWarmupActive', () => isProbeWarmupActive())
   ipcMain.handle('mihomoUpgradeGeo', ipcErrorWrapper(mihomoUpgradeGeo))
   ipcMain.handle('mihomoUpgradeUI', ipcErrorWrapper(mihomoUpgradeUI))
   ipcMain.handle('mihomoUpgrade', (_e, channel) => ipcErrorWrapper(mihomoUpgrade)(channel))

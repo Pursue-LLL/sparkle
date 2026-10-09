@@ -1,6 +1,7 @@
 import { appendAppLog } from '../utils/log'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
 import { probeMihomoControllerVersion } from './mihomoControllerReadyCore'
+import { beginProbeWarmup, endProbeWarmup } from './probeWarmupState'
 
 const MIHOMO_API_READY_MAX_WAIT_MS = 30_000
 const CORE_INIT_RACE_MS = 8_000
@@ -46,6 +47,17 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
 
   await appendAppLog('[PostCoreBootstrap]: mihomo API ready — scheduling post-core services\n')
 
+  // 窗口覆盖冷启动批量测速；地区组预热结束（或任一步骤抛错）时收口。
+  beginProbeWarmup()
+  try {
+    await runPostReadyServices()
+  } catch (error) {
+    endProbeWarmup()
+    throw error
+  }
+}
+
+async function runPostReadyServices(): Promise<void> {
   try {
     const { bootstrapSparkleFastLatencyOrder, startSparkleFastLatencyOrderLoop } = await import(
       './sparkleFastLatencyOrder'
@@ -89,6 +101,8 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
         await appendAppLog(
           `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`,
         )
+      } finally {
+        endProbeWarmup()
       }
     })()
   }, NETWORK_MONITOR_STARTUP_GRACE_MS)
