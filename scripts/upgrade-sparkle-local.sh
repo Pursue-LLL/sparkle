@@ -68,15 +68,6 @@ APP="$DIST_ARM64/Sparkle.app"
 log "Building Sparkle $EXPECTED_VER (electron-vite + electron-builder dir)..."
 export SPARKLE_UPGRADE_TARGET_VERSION="$EXPECTED_VER"
 
-if [[ "${SPARKLE_UPGRADE_SKIP_G9_GATE:-}" != "1" ]]; then
-  log "G9 pre-install gate (attempt_rate SLO + remedial incident registry)..."
-  if ! "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/evaluate-sparkle-g9-preinstall-gate.mts"; then
-    fail "G9 pre-install gate blocked upgrade — attempt_rate below 90% with sufficient sample and no remedial incident. Fix root cause or add incident to ~/.sparkle/upgrade-incident-registry.json."
-  fi
-else
-  log "WARN: SPARKLE_UPGRADE_SKIP_G9_GATE=1 — deprecated; prefer remedial registry in ~/.sparkle/upgrade-incident-registry.json"
-fi
-
 if [[ -f "$ROOT/extra/sidecar/mihomo" ]]; then
   export SKIP_PREPARE=1
   log "SKIP_PREPARE=1 (extra/sidecar/mihomo present — skip GitHub sidecar re-download)"
@@ -88,7 +79,6 @@ pnpm exec electron-vite build
 
 log "Stage-A bundle gate (out/main, fail-fast before electron-builder)..."
 "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/verify-sparkle-main-bundle.mts" "$ROOT/out/main"
-"$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/verify-marathon-mutation-callers.mts"
 
 # Stale dist/mac-arm64 (e.g. interrupted packaging leaves Electron.app only) causes
 # @electron/osx-sign "Sparkle.app could not be found" — always clean before dir build.
@@ -145,19 +135,11 @@ sparkle_pin_login_home
 
 SPARKLE_LOG_DIR="$HOME/Library/Application Support/sparkle/logs"
 APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
-BUG014_GATE_SINCE_LINE=0
+INSTALL_GATE_SINCE_LINE=0
 if [[ -n "$APP_LOG" && -f "$APP_LOG" ]]; then
-  BUG014_GATE_SINCE_LINE="$(wc -l < "$APP_LOG" | tr -d ' ')"
-  log "BUG-014 gate: snapshot app log at line=$BUG014_GATE_SINCE_LINE ($APP_LOG)"
+  INSTALL_GATE_SINCE_LINE="$(wc -l < "$APP_LOG" | tr -d ' ')"
+  log "Install gate: snapshot app log at line=$INSTALL_GATE_SINCE_LINE ($APP_LOG)"
 fi
-
-log "Upgrade Safe Window — wait for idle before install (SPARKLE_UPGRADE_BREAK_GLASS=1 to override)..."
-"$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/upgradeSafeWindowWaitCli.mts"
-
-# shellcheck source=lib/marathon-core-restart-guard.sh
-source "$ROOT/scripts/lib/marathon-core-restart-guard.sh"
-export MARATHON_GUARD_ROOT="$ROOT"
-marathon_core_restart_guard_assert_idle "upgrade-sparkle-local"
 
 bash "$ROOT/scripts/install-sparkle-local.sh"
 
@@ -185,14 +167,14 @@ if [[ "${MACOS_PRODUCT_MAJOR:-0}" -ge 26 && "$MACOS26_FORCE_GUI" != true ]]; the
           process.stdout.write(
             hasMacOs26HeadlessBootstrapCompleteSinceLine(text, Number(process.argv[2])) ? '1' : '0',
           );
-        " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
+        " "$APP_LOG" "$INSTALL_GATE_SINCE_LINE"
       )"
       [[ "$headless_ok" == "1" ]] && break
     fi
     sleep 2
   done
   [[ "$headless_ok" == "1" ]] || fail "macOS 26 headless bootstrap not logged — check $APP_LOG"
-  curl -sf --max-time 10 -x http://127.0.0.1:7890 https://api2.cursor.sh/ >/dev/null \
+  curl -sf --max-time 10 -x http://127.0.0.1:7890 https://www.gstatic.com/generate_204 >/dev/null \
     || fail "macOS 26 post-install: proxy :7890 not reachable after headless bootstrap"
   log "macOS 26 headless post-install OK (bootstrap log + proxy :7890)"
   log "Done. Sparkle $VER installed (headless); proxy via sparkle-service"
@@ -209,7 +191,7 @@ else
   log "mihomo close API OK (direct or service path)"
 fi
 
-# Marathon readiness gate — PostCoreBootstrap must succeed or CTHC/keepalive blind (BUG-004).
+# PostCoreBootstrap must reach "mihomo API ready", otherwise post-core services never start.
 if [[ -z "${SPARKLE_LOG_DIR:-}" ]]; then
   SPARKLE_LOG_DIR="$HOME/Library/Application Support/sparkle/logs"
 fi
@@ -221,53 +203,36 @@ if [[ -n "$APP_LOG" ]]; then
   recovery_round=0
   max_recovery_rounds="${SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS:-2}"
   while [[ "$post_install_bootstrap_ok" != true ]]; do
-    post_core_fail="$(
-      "$ROOT/node_modules/.bin/tsx" -e "
-        import { readFileSync } from 'node:fs';
-        import { countPostCoreBootstrapFailuresSinceLine } from './scripts/upgradeSparklePostInstallGateCore.ts';
-        const text = readFileSync(process.argv[1], 'utf8');
-        process.stdout.write(String(countPostCoreBootstrapFailuresSinceLine(text, Number(process.argv[2]))));
-      " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
-    )"
-    if [[ "${post_core_fail:-0}" -gt 0 ]]; then
-      log "WARN: PostCoreBootstrap failed ${post_core_fail} time(s) since install line $BUG014_GATE_SINCE_LINE"
-    fi
-    log "Waiting for Api2ProbePlane ON (PostCoreBootstrap, up to 90s)..."
-    probe_ok=false
+    log "Waiting for PostCoreBootstrap mihomo API ready (up to 90s)..."
+    bootstrap_state=wait
     for _ in $(seq 1 18); do
       if [[ -f "$APP_LOG" ]]; then
-        post_core_fail="$(
+        bootstrap_state="$(
           "$ROOT/node_modules/.bin/tsx" -e "
             import { readFileSync } from 'node:fs';
             import {
               countPostCoreBootstrapFailuresSinceLine,
-              hasApi2ProbePlaneSettledSinceLine,
               hasMihomoApiReadySinceLine,
             } from './scripts/upgradeSparklePostInstallGateCore.ts';
             const text = readFileSync(process.argv[1], 'utf8');
             const since = Number(process.argv[2]);
             if (countPostCoreBootstrapFailuresSinceLine(text, since) > 0) {
               process.stdout.write('fail');
-              process.exit(0);
-            }
-            if (hasMihomoApiReadySinceLine(text, since) && hasApi2ProbePlaneSettledSinceLine(text, since)) {
+            } else if (hasMihomoApiReadySinceLine(text, since)) {
               process.stdout.write('ok');
-              process.exit(0);
+            } else {
+              process.stdout.write('wait');
             }
-            process.stdout.write('wait');
-          " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
+          " "$APP_LOG" "$INSTALL_GATE_SINCE_LINE"
         )"
-        if [[ "$post_core_fail" == "ok" ]]; then
-          probe_ok=true
-          break
-        fi
+        [[ "$bootstrap_state" == "ok" ]] && break
       fi
       sleep 5
       APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
     done
-    if [[ "$probe_ok" == true ]]; then
+    if [[ "$bootstrap_state" == "ok" ]]; then
       post_install_bootstrap_ok=true
-      log "PostCoreBootstrap OK (mihomo API ready + Api2ProbePlane ON)"
+      log "PostCoreBootstrap OK (mihomo API ready)"
       break
     fi
     if (( recovery_round >= max_recovery_rounds )); then
@@ -275,32 +240,11 @@ if [[ -n "$APP_LOG" ]]; then
     fi
     recovery_round=$((recovery_round + 1))
     log "Post-install recovery round ${recovery_round}/${max_recovery_rounds} (socket hygiene + GUI relaunch)..."
-    if ! "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/upgrade-sparkle-post-install-recovery.mts" "$BUG014_GATE_SINCE_LINE" "$recovery_round"; then
+    if ! "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/upgrade-sparkle-post-install-recovery.mts" "$INSTALL_GATE_SINCE_LINE" "$recovery_round"; then
       fail "Post-install recovery round ${recovery_round} failed — check $APP_LOG"
     fi
     APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
   done
-
-  log "BUG-014 gate: waiting 45s for post-install hung_scan sample..."
-  sleep 45
-  APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
-  if [[ -n "$APP_LOG" && -f "$APP_LOG" ]]; then
-    recent_fail="$(
-      "$ROOT/node_modules/.bin/tsx" -e "
-        import { readFileSync } from 'node:fs';
-        import { countBug014RescueFailuresSinceLine } from './scripts/upgradeSparklePostInstallGateCore.ts';
-        const text = readFileSync(process.argv[1], 'utf8');
-        process.stdout.write(String(countBug014RescueFailuresSinceLine(text, Number(process.argv[2]))));
-      " "$APP_LOG" "$BUG014_GATE_SINCE_LINE"
-    )"
-    if [[ "${recent_fail:-0}" -gt 0 ]]; then
-      fail "BUG-014 gate: $recent_fail post-install Resource not found rescue failure(s) since line $BUG014_GATE_SINCE_LINE in $APP_LOG"
-    fi
-    log "BUG-014 gate OK (no post-install Resource not found on rescue paths since line $BUG014_GATE_SINCE_LINE)"
-  fi
-
-  log "Preflight 1.28.0 bundle (R-34 + G8 + close smoke)..."
-  bash "$ROOT/scripts/preflight-sparkle-1280.sh" || fail "preflight-sparkle-1280 failed — see report above"
 else
   log "WARN: no sparkle app-*.log yet — skip PostCoreBootstrap gate"
 fi

@@ -76,7 +76,7 @@ describe('migrateLegacyCursorDefaults', () => {
     assert.equal(migrated, false)
   })
 
-  it('migrates legacy autoCloseConnection', () => {
+  it('leaves a user-enabled autoCloseConnection untouched', () => {
     const input = {
       ...baseConfig(),
       autoCloseConnection: true
@@ -84,7 +84,7 @@ describe('migrateLegacyCursorDefaults', () => {
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)
 
-    assert.equal(config.autoCloseConnection, false)
-    assert.equal(migrated, true)
+    assert.equal(config.autoCloseConnection, true)
+    assert.equal(migrated, false)
   })
 })

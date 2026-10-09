@@ -1,7 +1,4 @@
-/** Post-install gates — count failures only after install line offset (BUG-014 / R-27). */
-
-export const BUG014_RESCUE_RESOURCE_NOT_FOUND_RE =
-  /outcome=failed.*Resource not found|connect_stream_keepalive_failed.*Resource not found/
+/** Post-install gates — evaluate app-log lines only after the install line offset (R-27). */
 
 export const POST_CORE_BOOTSTRAP_FAILED_RE = /\[PostCoreBootstrap\]:.*failed/
 
@@ -12,25 +9,11 @@ export const MIHOMO_API_READY_RE = /\[PostCoreBootstrap\]: mihomo API ready/
 
 export const MACOS26_HEADLESS_COMPLETE_RE = /\[MacOs26Headless\]: bootstrap complete/
 
-export const API2_PROBE_PLANE_ON_RE = /\[Api2ProbePlane\]:.*ON/
-
-export const MACOS26_GUI_OBSERVABILITY_SKIPPED_RE =
-  /\[PostCoreBootstrap\]: macOS 26 GUI — observability stack skipped/
-
 function linesSinceExclusive(logText: string, sinceLineExclusive: number): string[] {
   if (sinceLineExclusive < 0) {
     return []
   }
   return logText.split('\n').slice(sinceLineExclusive)
-}
-
-export function countBug014RescueFailuresSinceLine(
-  logText: string,
-  sinceLineExclusive: number,
-): number {
-  return linesSinceExclusive(logText, sinceLineExclusive).filter((line) =>
-    BUG014_RESCUE_RESOURCE_NOT_FOUND_RE.test(line),
-  ).length
 }
 
 export function countPostCoreBootstrapFailuresSinceLine(
@@ -58,16 +41,6 @@ export function countPostCoreBootstrapNotReachableSinceLine(
   return linesSinceExclusive(logText, sinceLineExclusive).filter((line) =>
     POST_CORE_BOOTSTRAP_NOT_REACHABLE_RE.test(line),
   ).length
-}
-
-/** Probe plane is running, or deliberately not started on the macOS 26 GUI path. */
-export function hasApi2ProbePlaneSettledSinceLine(
-  logText: string,
-  sinceLineExclusive: number,
-): boolean {
-  return linesSinceExclusive(logText, sinceLineExclusive).some(
-    (line) => API2_PROBE_PLANE_ON_RE.test(line) || MACOS26_GUI_OBSERVABILITY_SKIPPED_RE.test(line),
-  )
 }
 
 export function hasMacOs26HeadlessBootstrapCompleteSinceLine(

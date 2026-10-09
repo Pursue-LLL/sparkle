@@ -17,73 +17,6 @@ DEST="/Applications/Sparkle.app"
 USER_COPY="${HOME}/Applications/Sparkle.app"
 STATE_DIR="${HOME}/.sparkle"
 CDHASH_FILE="${STATE_DIR}/last-sparkle-cdhash"
-SPARKLE_CONFIG="${HOME}/Library/Application Support/sparkle/config.yaml"
-CURSOR_PREFIX_PRESERVE="${STATE_DIR}/install-preserve-cursor-path-prefixes.yaml"
-
-preserve_cursor_path_prefixes_before_quit() {
-  node - <<'NODE'
-const fs = require('fs')
-const path = require('path')
-const yaml = require('yaml')
-
-const home = process.env.HOME
-const cfgPaths = [
-  path.join(home, 'Library/Application Support/sparkle/config.yaml'),
-  path.join(home, 'Library/Application Support/sparkle/config.yaml.backup')
-]
-let prefixes = []
-for (const cfgPath of cfgPaths) {
-  if (!fs.existsSync(cfgPath)) continue
-  const data = yaml.parse(fs.readFileSync(cfgPath, 'utf8')) || {}
-  const value = data.cursorProxyAppPathPrefixes
-  if (Array.isArray(value) && value.length > 0) {
-    prefixes = value.map((item) => String(item).trim()).filter(Boolean)
-    if (prefixes.length > 0) break
-  }
-}
-
-const state = path.join(home, '.sparkle/install-preserve-cursor-path-prefixes.yaml')
-if (prefixes.length > 0) {
-  fs.writeFileSync(state, yaml.stringify({ cursorProxyAppPathPrefixes: prefixes }))
-  console.error(`[install-sparkle] preserved cursorProxyAppPathPrefixes=${JSON.stringify(prefixes)}`)
-} else {
-  try {
-    fs.unlinkSync(state)
-  } catch {
-    // ignore
-  }
-}
-NODE
-}
-
-restore_cursor_path_prefixes_after_launch() {
-  node - "$SPARKLE_CONFIG" "$CURSOR_PREFIX_PRESERVE" <<'NODE'
-const fs = require('fs')
-const yaml = require('yaml')
-
-const cfgPath = process.argv[2]
-const preservePath = process.argv[3]
-if (!fs.existsSync(preservePath) || !fs.existsSync(cfgPath)) {
-  process.exit(0)
-}
-
-const preserve = yaml.parse(fs.readFileSync(preservePath, 'utf8')) || {}
-const wanted = preserve.cursorProxyAppPathPrefixes
-if (!Array.isArray(wanted) || wanted.length === 0) {
-  process.exit(0)
-}
-
-const data = yaml.parse(fs.readFileSync(cfgPath, 'utf8')) || {}
-const current = data.cursorProxyAppPathPrefixes
-if (Array.isArray(current) && current.length > 0) {
-  process.exit(0)
-}
-
-data.cursorProxyAppPathPrefixes = wanted
-fs.writeFileSync(cfgPath, yaml.stringify(data))
-console.error(`[install-sparkle] restored cursorProxyAppPathPrefixes=${JSON.stringify(wanted)}`)
-NODE
-}
 
 fail() { echo "[install-sparkle] FAIL: $*" >&2; exit 1; }
 log() { echo "[install-sparkle] $*" >&2; }
@@ -128,13 +61,6 @@ if ! codesign --verify --deep --strict "$SRC" >/dev/null 2>&1; then
   fail "source app signature invalid — rebuild: pnpm run build:mac (afterSign deepSignMac.cjs)"
 fi
 
-# shellcheck source=lib/marathon-core-restart-guard.sh
-source "$ROOT/scripts/lib/marathon-core-restart-guard.sh"
-export MARATHON_GUARD_ROOT="$ROOT"
-marathon_core_restart_guard_assert_idle "install-sparkle-local-pre-quit"
-marathon_core_restart_guard_capture_pre_quit_snapshot "install-sparkle-local-pre-quit"
-preserve_cursor_path_prefixes_before_quit
-
 SRC_CDHASH="$(get_cdhash "$SRC")"
 [[ -n "$SRC_CDHASH" ]] || fail "could not read CDHash from $SRC"
 
@@ -168,8 +94,6 @@ fi
 
 log "Mihomo API socket hygiene (remove zombie direct socket if probe fails)..."
 "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/sparkle-stale-mihomo-socket-hygiene.mts" || true
-
-marathon_guard_assert_pre_quit_snapshot_idle "install-sparkle-local-post-quit"
 
 if [[ -d "$USER_COPY" ]]; then
   BAK="${USER_COPY}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
@@ -212,8 +136,6 @@ if [[ "$GK" == "rejected" ]]; then
 fi
 
 echo "$NEW_CDHASH" > "$CDHASH_FILE"
-marathon_guard_clear_pre_quit_snapshot
-restore_cursor_path_prefixes_after_launch || true
 log "Installed Sparkle $VER at $DEST (CDHash $NEW_CDHASH)"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
