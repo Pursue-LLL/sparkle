@@ -103,7 +103,6 @@ interface AppConfig {
   appTheme: AppTheme
   customTheme?: string
   autoCheckUpdate: boolean
-  autoProxySwitch?: boolean
   cursorBidiOptimize?: boolean
   /** Optional macOS Cursor .app bundle path prefixes for path-scoped rules; empty = all Cursor traffic → 🎯 Cursor 专用. */
   cursorProxyAppPathPrefixes?: string[]
@@ -112,13 +111,7 @@ interface AppConfig {
   /** Prune idle duplicate Cursor mihomo sockets during marathon (preserves active SSE). */
   cursorConnectionHygieneEnabled?: boolean
   proxySwitchPriority?: string[]
-  proxyHealthCheckInterval?: number
-  proxyTimeoutThreshold?: number
-  /** BUG-2026-09-15-007: failover only picks nodes at/under this delay. */
-  proxySwitchMaxTargetDelayMs?: number
-  /** BUG-2026-09-15-009: 自动选择 only ever lists nodes at/under this delay. */
-  autoSelectMaxNodeDelayMs?: number
-  /** Notify when Cursor proxy delay/latency exceeds thresholds (independent of autoProxySwitch). */
+  /** Notify when Cursor proxy delay/latency exceeds thresholds. */
   networkAlertEnabled?: boolean
   networkAlertDelayThresholdMs?: number
   networkAlertProbeLatencyThresholdMs?: number

@@ -13,12 +13,12 @@
 | 装包 | `/Applications/Sparkle.app`，GUI + mihomo + `:7890` 可用；实测 `自动选择` = `Fallback`、`now=台湾 I0`、`fixed=''`（未固定） |
 
 **能力/行为基线（后续不得回退）**
-- `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 台湾→日本→韩国→新加坡→美国→其他国家，地区内按 Gemini 探测延迟升序；香港与 AnyTLS 排除；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点，当前节点探测失败才降级，恢复后升回。**`自动选择` 不得被固定（pin）**：内核就绪后按实测延迟重排文件序并解除固定（`sparkleFastLatencyOrder.ts`），之后每 30 分钟复查，新首选须比当前首选快 ≥50ms 且 ≥30% 才换（BUG-2026-10-09-001）。
+- `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 台湾→日本→韩国→新加坡→美国→其他国家，地区内按 Gemini 探测延迟升序；香港与 AnyTLS 排除；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点，当前节点探测失败才降级，恢复后升回。**`自动选择` 不得被固定（pin）**：内核就绪后按实测延迟重排文件序并解除固定（`sparkleFastLatencyOrder.ts`），之后每 30 分钟复查，新首选须比当前首选快 ≥50ms 且 ≥30% 才换；Marathon（Cursor SSE 活跃 / quiesce）期间不重排，顺延到下一轮（BUG-2026-10-09-001）。
 - 探测：`gemini.google.com`（用户主用服务），interval 300s，timeout 5000ms，lazy=true（组空闲时跳过定时探测）；预热也用组自身探测目标。
 - 地区组 `Sparkle-<地区>`（日本/台湾/韩国/新加坡/美国）= url-test（tolerance 2000，`exclude-type: anytls`），仅供手动选择，**不被 `自动选择` 引用**；没有可用节点的地区不建组（空组会被 mihomo 变成直连型 `COMPATIBLE`）。香港为专用组。
 - **铁律**：`proxies` 里只能引用组名，不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）；`sparkle-fast` 文件必须随每次配置生成重写。
 1. **不会因卡顿整核重启**：`restartCoreEmergency`/bridge/oscillation/smoke 已从代码删除；emergency 只决策+记录 `emergency_core_restart_removed`。
-2. **选点防抖**：地区组 url-test `interval:300` + `tolerance:2000` + `lazy:true`；`自动选择` fallback 同为 `interval:300`、`timeout:5000`、`lazy:true`（`defaultAutoSwitchProxy.ts`）。**应用层不自动切换 `自动选择`**：`proxyHealthMonitor.ts` 已于 2026-09-29（`febdc08`）删除，配置项 `autoProxySwitch` / `proxyHealthCheckInterval` / `proxyTimeoutThreshold` / `proxySwitchMaxTargetDelayMs` 目前无消费方（仅类型、默认值与迁移代码残留）；`自动选择` 的切换只来自 mihomo fallback 与上方 `自动选择` 条目里的 30 分钟延迟序复查。`proxySwitchPriority`（默认 台湾→日本→韩国→新加坡→美国）仍决定 `sparkle-fast` 与地区组的地区顺序。
+2. **选点防抖**：地区组 url-test `interval:300` + `tolerance:2000` + `lazy:true`；`自动选择` fallback 同为 `interval:300`、`timeout:5000`、`lazy:true`（`defaultAutoSwitchProxy.ts`）。**应用层不自动切换 `自动选择`**：`proxyHealthMonitor.ts` 已于 2026-09-29（`febdc08`）删除，其配置项（`autoProxySwitch` / `proxyHealthCheckInterval` / `proxyTimeoutThreshold` / `proxySwitchMaxTargetDelayMs` / `autoSelectMaxNodeDelayMs`）与 `isMarathonQuiesceProxyHealthPaused`、`proxy_health_monitor` 拨号类别已一并清理；`自动选择` 的切换只来自 mihomo fallback 与上方 `自动选择` 条目里的 30 分钟延迟序复查。`proxySwitchPriority`（默认 台湾→日本→韩国→新加坡→美国）仍决定 `sparkle-fast` 与地区组的地区顺序。
 3. **恢复证据契约**：`LongflowEvidence=measured|unknown`（禁止 `?? 0`）；探针在 controller 不可达时不伪造 `leaf:fail`；集体死亡报告按日历日选日志 + 30min 窗口。
 4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁含 `emergency_core_restart_removed` + longflow 契约标记。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。

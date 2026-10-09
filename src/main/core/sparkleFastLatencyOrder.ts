@@ -1,10 +1,11 @@
 // [INPUT] mihomo provider 探测历史 · api2-probe-ledger · sparkle-fast-proxies.yaml · proxySwitchPriority
-// [OUTPUT] bootstrapSparkleFastLatencyOrder · refreshSparkleFastLatencyOrder · startSparkleFastLatencyOrderLoop
+// [OUTPUT] bootstrapSparkleFastLatencyOrder · startSparkleFastLatencyOrderLoop
 // [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变），并让 mihomo 重读 provider。
 // 生成配置时先用 ledger 延迟写 sparkle-fast，避免冷启动在「未测延迟」时盲选订阅顺序第一个。
 // 不固定（pin）`自动选择`：fallback 本就取文件序里第一个存活节点，固定反而会盖过文件序并写入 store-selected。
 // 启动时先 healthcheck 再重排；周期复查仅当新首选明显更快才换文件序。
 // fallback 仍只在当前节点挂掉时切换，不因延迟抖动来回切。
+// Marathon（Cursor 长流进行中）期间不碰数据面：重排会改文件序并让 fallback 换节点，故顺延到下一轮。
 
 import { readFile, writeFile } from 'fs/promises'
 import path from 'path'
@@ -58,6 +59,28 @@ async function resolveSparkleFastDelayMap(
   return loadSparkleFastLedgerDelayMap()
 }
 
+/** 启动时因 Marathon 顺延了首次重排；下一轮复查改走完整启动流程。 */
+let startupOrderPending = false
+
+/**
+ * Marathon 真值（Cursor SSE 活跃）或静默期内返回 true，与 provider 更新同一判据。
+ * 重排会让 fallback 换节点，且 mihomo 可能自行重读被改写的 provider 文件，必须先于写盘判断。
+ */
+async function deferWhileMarathon(stage: 'bootstrap' | 'recheck'): Promise<boolean> {
+  const { evaluateMarathonProviderMutationBlock } = await import('./marathonDataPlaneMutationGuard')
+  const { getMarathonQuiesceSnapshot } = await import('./marathonQuiesce')
+  const mutation = await evaluateMarathonProviderMutationBlock(undefined)
+  const quiesceActive = getMarathonQuiesceSnapshot().active
+  if (!mutation.blocked && !quiesceActive) {
+    return false
+  }
+  await appendAppLog(
+    `[SparkleFastOrder]: deferred stage=${stage} marathon_truth=${mutation.marathonTruthActive ? 1 : 0}` +
+      ` quiesce=${quiesceActive ? 1 : 0} cursor_conn=${mutation.cursorConnectionCount}\n`
+  )
+  return true
+}
+
 /** 清除 `自动选择` 的固定节点，让 fallback 回到「文件序第一个存活节点」。 */
 async function releaseAutoSelectPin(): Promise<void> {
   await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
@@ -68,7 +91,7 @@ async function releaseAutoSelectPin(): Promise<void> {
  * 采用新序后解除 `自动选择` 的固定，由 fallback 直接取新序第一个存活节点。
  * @returns 是否重排并通知了 mihomo。
  */
-export async function refreshSparkleFastLatencyOrder(force: boolean): Promise<boolean> {
+async function applyLatencyOrder(force: boolean): Promise<boolean> {
   const provider = (await mihomoProxyProviders()).providers[FAST_NODE_PROVIDER_ID]
   const delays = await resolveSparkleFastDelayMap(provider?.proxies ?? [])
   if (delays.size === 0) {
@@ -110,7 +133,12 @@ export async function refreshSparkleFastLatencyOrder(force: boolean): Promise<bo
 
 /** API 就绪后立即探测并重排，避免 fallback 长时间停在订阅顺序第一个。 */
 export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
-  if (await refreshSparkleFastLatencyOrder(true)) {
+  if (await deferWhileMarathon('bootstrap')) {
+    startupOrderPending = true
+    return
+  }
+  startupOrderPending = false
+  if (await applyLatencyOrder(true)) {
     return
   }
   try {
@@ -127,7 +155,18 @@ export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
       `[SparkleFastOrder]: healthcheck failed: ${error instanceof Error ? error.message : String(error)}\n`,
     )
   }
-  await refreshSparkleFastLatencyOrder(true)
+  await applyLatencyOrder(true)
+}
+
+async function recheckSparkleFastLatencyOrder(): Promise<void> {
+  if (startupOrderPending) {
+    await bootstrapSparkleFastLatencyOrder()
+    return
+  }
+  if (await deferWhileMarathon('recheck')) {
+    return
+  }
+  await applyLatencyOrder(false)
 }
 
 let refreshTimer: NodeJS.Timeout | undefined
@@ -138,7 +177,7 @@ export function startSparkleFastLatencyOrderLoop(): void {
     return
   }
   refreshTimer = setInterval(() => {
-    refreshSparkleFastLatencyOrder(false).catch(() => undefined)
+    recheckSparkleFastLatencyOrder().catch(() => undefined)
   }, REFRESH_INTERVAL_MS)
   refreshTimer.unref()
 }

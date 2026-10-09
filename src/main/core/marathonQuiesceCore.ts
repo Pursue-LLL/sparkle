@@ -130,7 +130,6 @@ export type ObservabilityDialKind =
   | 'managed_ui_delay_test'
   | 'tray_manual_delay_test'
   | 'network_triangulation'
-  | 'proxy_health_monitor'
 
 /** P9 Phase 2 SSOT: block non-production dials while Marathon quiesce is active (incl. exit hysteresis). */
 export function shouldAllowObservabilityDial(
@@ -145,7 +144,6 @@ export function shouldAllowObservabilityDial(
     case 'managed_ui_delay_test':
     case 'tray_manual_delay_test':
     case 'network_triangulation':
-    case 'proxy_health_monitor':
       return true
     case 'provider_healthcheck_api':
     case 'probe_cycle_transport':
