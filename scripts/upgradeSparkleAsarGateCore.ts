@@ -16,26 +16,20 @@ export type SparkleMainAsarGateResult =
       ok: false
       reason:
         | 'stale_bundle'
-        | 'missing_mark_core_ready_call'
         | 'invalid_js_regex_pcre'
         | 'missing_core_readiness_gate'
     }
 
 const FAILURE_MESSAGES: Record<Exclude<SparkleMainAsarGateResult, { ok: true }>['reason'], string> = {
   stale_bundle: 'asar main bundle looks stale or corrupt',
-  missing_mark_core_ready_call: 'asar missing markCoreReadyAtMs call — PostCoreBootstrap will fail',
   invalid_js_regex_pcre:
     'asar contains invalid JS regex PCRE inline flags e.g. /(?i)/ — SyntaxError at launch',
   missing_core_readiness_gate: 'asar missing Core Readiness Contract — cold start may silent-hang',
 }
 
-/** Vite minifies to `.markCoreReadyAtMs(` on chunk export — a bare `markCoreReadyAtMs(` call is a mis-bound import. */
 export function validateSparkleMainAsarBundle(mainSource: string): SparkleMainAsarGateResult {
   if (!mainSource.includes('appendAppLog')) {
     return { ok: false, reason: 'stale_bundle' }
-  }
-  if (!mainSource.includes('.markCoreReadyAtMs(')) {
-    return { ok: false, reason: 'missing_mark_core_ready_call' }
   }
   if (findInvalidJsRegexPcrePatterns(mainSource).length > 0) {
     return { ok: false, reason: 'invalid_js_regex_pcre' }

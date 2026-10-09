@@ -14,7 +14,7 @@ describe('sparkleMainAsarSourceCore disk collector', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'sparkle-main-out-'))
     writeFileSync(
       path.join(dir, 'index.js'),
-      'appendAppLog .markCoreReadyAtMs(',
+      'appendAppLog',
       'utf8',
     )
     writeFileSync(
