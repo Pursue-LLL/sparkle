@@ -4,6 +4,7 @@ import {
   currentPlatformRelease,
   shouldSkipMacOs26GuiPostCoreObservabilityStack,
 } from '../sys/macos26ElectronMitigationCore'
+import { probeMihomoControllerVersion } from './mihomoControllerReadyCore'
 
 const MIHOMO_API_READY_MAX_WAIT_MS = 30_000
 const CORE_INIT_RACE_MS = 8_000
@@ -22,8 +23,7 @@ export async function waitForMihomoControllerReady(
   let lastError: unknown
   while (Date.now() < deadline) {
     try {
-      const { mihomoVersion } = await import('./mihomoApi')
-      await mihomoVersion()
+      await probeMihomoControllerVersion()
       return true
     } catch (error) {
       lastError = error
