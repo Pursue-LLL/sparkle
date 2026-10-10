@@ -1,17 +1,3 @@
-export interface ProxyDelayHistoryEntry {
-  time: string
-  delay: number
-}
-
-export function latestProxyDelayHistoryEntry(
-  history: ProxyDelayHistoryEntry[] | undefined,
-): ProxyDelayHistoryEntry | undefined {
-  if (!history?.length) {
-    return undefined
-  }
-  return history[history.length - 1]
-}
-
 /** Compact relative age for proxy delay sample timestamp (UI beside delay button). */
 export function formatProxyDelaySampleAge(
   sampledAtIso: string | undefined,

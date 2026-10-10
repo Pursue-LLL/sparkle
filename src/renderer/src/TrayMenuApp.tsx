@@ -5,6 +5,7 @@ import { useGroups } from './hooks/use-groups'
 import { mihomoChangeProxy, mihomoGroupDelay, mihomoCloseConnections } from './utils/ipc'
 import { useAppConfig } from './hooks/use-app-config'
 import { calcTraffic } from './utils/calc'
+import { effectiveProxyDelay, judgeProxyForUrl } from '@sparkle-core/proxyDelayVerdictCore'
 
 interface TrafficData {
   up: number
@@ -14,7 +15,7 @@ interface TrafficData {
 const TrayMenuApp: React.FC = () => {
   const { groups, mutate } = useGroups()
   const { appConfig } = useAppConfig()
-  const { autoCloseConnection } = appConfig || {}
+  const { autoCloseConnection, delayTestUrl } = appConfig || {}
 
   const [traffic, setTraffic] = useState<TrafficData>({ up: 0, down: 0 })
   const [testingGroup, setTestingGroup] = useState<string | null>(null)
@@ -81,17 +82,15 @@ const TrayMenuApp: React.FC = () => {
     return `${delay} ms`
   }
 
+  // 与组旁「重新测试」同一探测地址：测出什么、显示什么
+  const getProxyDelay = (
+    proxy: ControllerProxiesDetail | ControllerGroupDetail,
+    group: ControllerMixedGroup
+  ): number => effectiveProxyDelay(judgeProxyForUrl(proxy, group.testUrl || delayTestUrl))
+
   const getCurrentDelay = (group: ControllerMixedGroup): number | undefined => {
     const current = group.all?.find((p) => p.name === group.now)
-    if (!current?.history?.length) return undefined
-    return current.history[current.history.length - 1].delay
-  }
-
-  const getProxyDelay = (
-    proxy: ControllerProxiesDetail | ControllerGroupDetail
-  ): number | undefined => {
-    if (!proxy.history?.length) return undefined
-    return proxy.history[proxy.history.length - 1].delay
+    return current ? getProxyDelay(current, group) : undefined
   }
 
   const defaultExpandedKeys = useMemo(() => {
@@ -197,7 +196,7 @@ const TrayMenuApp: React.FC = () => {
                 <div className="flex flex-col gap-1 pl-2">
                   {group.all?.map((proxy) => {
                     const isActive = proxy.name === group.now
-                    const delay = getProxyDelay(proxy)
+                    const delay = getProxyDelay(proxy, group)
                     return (
                       <div
                         key={proxy.name}

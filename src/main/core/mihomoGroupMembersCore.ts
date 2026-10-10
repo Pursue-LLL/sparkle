@@ -1,5 +1,8 @@
 /** Resolve proxy-group members when mihomo omits provider leaf nodes from /proxies. */
 
+import { poolProxyInstances } from './proxyProbeHistoryCore'
+
+/** 同名节点视为同一节点：多个 provider 里的探测样本合并，而不是只取最先出现的那份。 */
 export function buildProviderProxyLookup(
   providers: ControllerProxyProviders | null | undefined
 ): Map<string, ControllerProxiesDetail> {
@@ -11,9 +14,11 @@ export function buildProviderProxyLookup(
 
   for (const provider of Object.values(providerRecords)) {
     for (const proxy of provider.proxies ?? []) {
-      if (proxy.name && !lookup.has(proxy.name)) {
-        lookup.set(proxy.name, proxy)
+      if (!proxy.name) {
+        continue
       }
+      const existing = lookup.get(proxy.name)
+      lookup.set(proxy.name, existing ? poolProxyInstances(existing, proxy) : proxy)
     }
   }
   return lookup

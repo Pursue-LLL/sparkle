@@ -9,7 +9,7 @@ import {
   formatProxyDelayTooltip,
   PROXY_DELAY_AGE_TICK_MS,
 } from '@renderer/utils/proxy-delay-sample-age'
-import { effectiveProxyDelay, judgeProxyDelay } from '@sparkle-core/proxyDelayVerdictCore'
+import { effectiveProxyDelay, judgeProxyForUrl } from '@sparkle-core/proxyDelayVerdictCore'
 import { mihomoUnfixedProxy } from '@renderer/utils/ipc'
 import { useProbeWarmup } from '@renderer/hooks/use-probe-warmup'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
@@ -22,6 +22,8 @@ interface Props {
   showProxyDetailTooltip: boolean
   proxy: ControllerProxiesDetail | ControllerGroupDetail
   group: ControllerMixedGroup
+  /** 该组实际使用的探测地址：延迟与超时判定只看这个地址上的样本。 */
+  probeUrl: string
   onSelect: (group: string, proxy: string) => void
   selected: boolean
 }
@@ -144,6 +146,7 @@ const ProxyItem: React.FC<Props> = (props) => {
     showGroupSelectedProxy,
     showProxyDetailTooltip,
     group,
+    probeUrl,
     proxy,
     selected,
     onSelect,
@@ -152,7 +155,7 @@ const ProxyItem: React.FC<Props> = (props) => {
   const shouldShowGroupSelectedProxy =
     showGroupSelectedProxy && isGroup(proxy) && Boolean(proxy.now)
 
-  const verdict = judgeProxyDelay(isGroup(proxy) ? undefined : proxy.history)
+  const verdict = judgeProxyForUrl(isGroup(proxy) ? {} : proxy, probeUrl)
   const delay = effectiveProxyDelay(verdict)
   const delaySampleTime = verdict.kind === 'untested' ? undefined : verdict.sampledAt
   const flaky = verdict.kind === 'flaky'
@@ -395,6 +398,7 @@ const ProxyItem: React.FC<Props> = (props) => {
       {showProxyDetailTooltip && (
         <ProxyDetailTooltip
           proxy={proxy}
+          probeUrl={probeUrl}
           anchorEl={showTooltip ? wrapperRef.current : null}
           visible={showTooltip}
         />

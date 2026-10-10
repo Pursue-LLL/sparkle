@@ -16,7 +16,7 @@ import {
   mihomoGroupDelay,
   patchMihomoConfig
 } from '../core/mihomoApi'
-import { pickLatestSuccessfulProviderDelay } from '../core/mihomoProviderDelayCore'
+import { effectiveProxyDelay, judgeProxyForUrl } from '../core/proxyDelayVerdictCore'
 import { mainWindow, setNotQuitDialog, showMainWindow, triggerMainWindow } from '..'
 import {
   app,
@@ -215,6 +215,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
     autoCloseConnection,
     proxyInTray = true,
     trayProxyDelayLayout = 'new-line',
+    delayTestUrl,
     // useCustomTrayMenu = false,
     triggerSysProxyShortcut = '',
     showFloatingWindowShortcut = '',
@@ -231,11 +232,10 @@ export const buildContextMenu = async (): Promise<Menu> => {
     try {
       const groups = await mihomoGroups()
       groupsMenu = groups.map((group) => {
+        // 与「重新测试」同一探测地址：测出什么、显示什么
+        const probeUrl = group.testUrl || delayTestUrl
         const currentProxy = group.all.find((proxy) => proxy.name === group.now)
-        const latestSuccessful = currentProxy?.history
-          ? pickLatestSuccessfulProviderDelay(currentProxy.history)
-          : undefined
-        const delay = latestSuccessful?.delay ?? -1
+        const delay = currentProxy ? effectiveProxyDelay(judgeProxyForUrl(currentProxy, probeUrl)) : -1
         const displayDelay = formatDelayText(delay)
 
         const isNewLine = trayProxyDelayLayout === 'new-line'
@@ -260,10 +260,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
             },
             { type: 'separator' },
             ...group.all.map((proxy) => {
-              const latestSuccessful = proxy.history
-                ? pickLatestSuccessfulProviderDelay(proxy.history)
-                : undefined
-              const proxyDelay = latestSuccessful?.delay ?? -1
+              const proxyDelay = effectiveProxyDelay(judgeProxyForUrl(proxy, probeUrl))
               const proxyDisplayDelay = formatDelayText(proxyDelay)
 
               const isNewLine = trayProxyDelayLayout === 'new-line'

@@ -17,8 +17,9 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `mihomoControllerReadyCore.ts` | controller 就绪探测 `GET /version`（service 模式走签名请求）；独立成模块以避免 rolldown 把 `mihomoApi` 动态 import 错绑到 `index.js`（会导致 `runPostCoreBootstrap` 永不执行） |
 | `mihomoProbeCoordinator.ts` | 全局 mihomo delay 并发槽（最多 2，等待上限 30s） |
 | `mihomoProxyDelayCore.ts` | `isMihomoApiResourceNotFoundError` · `resolveProviderNameForLeaf` · `MihomoDelayPurpose` |
-| `mihomoProviderDelayCore.ts` / `mihomoGroupMembersCore.ts` | 托盘取最近成功样本 · 组成员解析 |
-| `proxyDelayVerdictCore.ts` | 延迟展示的单一判定规则（ok / flaky / failed / untested）：连续失败 ≥3 次才判超时；渲染进程经 `@sparkle-core` 引用 |
+| `mihomoGroupMembersCore.ts` | 组成员解析；同名节点在多个 provider 的样本经 `poolProxyInstances` 合并 |
+| `proxyProbeHistoryCore.ts` | 节点探测样本的唯一取数口径：按组实际探测地址读 `extra[url]`（忽略 http/https 差异），不再读混杂各地址样本的顶层 `history`；`poolProxyInstances` 合并同一节点多份样本；渲染进程经 `@sparkle-core` 引用 |
+| `proxyDelayVerdictCore.ts` | 延迟展示的单一判定规则（ok / flaky / failed / untested）：在 `judgeProxyForUrl` 取到的单一探测地址样本上，连续失败 ≥3 次才判超时；代理页、详情浮窗、两处托盘、复测共用 |
 | `providerLeafProbeCore.ts` / `providerLeafProbe.ts` | 冷启动低并发（4）逐点拨测：`sparkle-fast` 启动探测 + 地区组预热后复测「超时/未测」节点（总时长上限 150s），取代 provider 级并发体检 |
 | `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
 | `coreReadinessGate.ts` / `coreReadinessGateCore.ts` | 冷启动 Readiness Contract：sidecar → profile 检查 → startCore → API → 数据面探测 |

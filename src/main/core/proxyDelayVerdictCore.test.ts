@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { effectiveProxyDelay, judgeProxyDelay } from './proxyDelayVerdictCore'
+import { effectiveProxyDelay, judgeProxyDelay, judgeProxyForUrl } from './proxyDelayVerdictCore'
 
 const NOW = Date.parse('2026-10-09T10:40:00.000Z')
 
@@ -43,5 +43,20 @@ describe('proxyDelayVerdictCore', () => {
 
   it('does not reuse a success that is too old', () => {
     assert.equal(judgeProxyDelay([entry(120, 300), entry(1, 0)], NOW).kind, 'failed')
+  })
+
+  it('judges a node by the samples of the probe url the group actually uses', () => {
+    // 通用网址通、Gemini 一直不通：对 Gemini 组必须判超时，而不是被通用网址的成功样本洗成「波动」
+    const node = {
+      alive: false,
+      history: [entry(9, 0), entry(8, 320), entry(4, 0), entry(3, 318), entry(1, 0)],
+      extra: {
+        'https://gemini.google.com': { alive: false, history: [entry(9, 0), entry(4, 0), entry(1, 0)] },
+        'http://www.gstatic.com/generate_204': { alive: true, history: [entry(8, 320), entry(3, 318)] }
+      }
+    }
+    assert.equal(judgeProxyForUrl(node, 'https://gemini.google.com', NOW).kind, 'failed')
+    assert.equal(judgeProxyForUrl(node, 'https://www.gstatic.com/generate_204', NOW).kind, 'ok')
+    assert.equal(judgeProxyForUrl(node, 'https://grok.com', NOW).kind, 'untested')
   })
 })

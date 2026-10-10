@@ -19,7 +19,7 @@ import { IoIosArrowBack } from 'react-icons/io'
 import { MdDoubleArrow, MdOutlineSpeed, MdTune } from 'react-icons/md'
 import { useGroups } from '@renderer/hooks/use-groups'
 import ProbeWarmupChip from '@renderer/components/proxies/probe-warmup-chip'
-import { effectiveProxyDelay, judgeProxyDelay } from '@sparkle-core/proxyDelayVerdictCore'
+import { effectiveProxyDelay, judgeProxyForUrl } from '@sparkle-core/proxyDelayVerdictCore'
 import CollapseInput from '@renderer/components/base/collapse-input'
 import { includesIgnoreCase } from '@renderer/utils/includes'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
@@ -36,8 +36,8 @@ type ProxyLike = ControllerProxiesDetail | ControllerGroupDetail
 
 const EMPTY_PROXIES: ProxyLike[] = []
 
-function getProxyDelay(proxy: ProxyLike): number {
-  return effectiveProxyDelay(judgeProxyDelay(proxy.history))
+function getProxyDelay(proxy: ProxyLike, probeUrl: string): number {
+  return effectiveProxyDelay(judgeProxyForUrl(proxy, probeUrl))
 }
 
 /** 延迟升序：有延迟的在前，未测试居中，超时（0）垫底。 */
@@ -46,12 +46,14 @@ function delayRank(delay: number): number {
   return delay === -1 ? 1 : 2
 }
 
-function compareProxyDelay(a: ProxyLike, b: ProxyLike): number {
-  const delayA = getProxyDelay(a)
-  const delayB = getProxyDelay(b)
-  const rankA = delayRank(delayA)
-  const rankB = delayRank(delayB)
-  return rankA === rankB ? (rankA === 0 ? delayA - delayB : 0) : rankA - rankB
+function createDelayComparator(probeUrl: string): (a: ProxyLike, b: ProxyLike) => number {
+  return (a, b) => {
+    const delayA = getProxyDelay(a, probeUrl)
+    const delayB = getProxyDelay(b, probeUrl)
+    const rankA = delayRank(delayA)
+    const rankB = delayRank(delayB)
+    return rankA === rankB ? (rankA === 0 ? delayA - delayB : 0) : rankA - rankB
+  }
 }
 
 interface GroupHeaderProps {
@@ -297,6 +299,17 @@ const Proxies: React.FC = () => {
     )
   }, [groups])
 
+  const getGroupProbeUrl = useCallback(
+    (group: ControllerMixedGroup): string =>
+      resolveEffectiveDelayTestUrl({
+        groupName: group.name,
+        groupTestUrl: group.testUrl,
+        delayTestUrlScope,
+        globalDelayTestUrl: delayTestUrl
+      }),
+    [delayTestUrl, delayTestUrlScope]
+  )
+
   const { groupCounts, allProxies } = useMemo(() => {
     const groupCounts: number[] = []
     const allProxies: ProxyLike[][] = []
@@ -308,7 +321,7 @@ const Proxies: React.FC = () => {
           : (group.all as ProxyLike[])
 
         if (proxyDisplayOrder === 'delay') {
-          groupProxies = [...groupProxies].sort(compareProxyDelay)
+          groupProxies = [...groupProxies].sort(createDelayComparator(getGroupProbeUrl(group)))
         }
         if (proxyDisplayOrder === 'name') {
           groupProxies = [...groupProxies].sort((a, b) => a.name.localeCompare(b.name))
@@ -322,7 +335,7 @@ const Proxies: React.FC = () => {
       }
     })
     return { groupCounts, allProxies }
-  }, [groups, isOpenContent, proxyDisplayOrder, cols, searchValue])
+  }, [groups, isOpenContent, proxyDisplayOrder, cols, searchValue, getGroupProbeUrl])
 
   const executeProxySwitch = useCallback(
     async (group: string, proxy: string): Promise<void> => {
@@ -357,17 +370,6 @@ const Proxies: React.FC = () => {
       return resolveDelayTestUrl(group?.name, group?.testUrl)
     },
     [delayTestUrlScope]
-  )
-
-  const getGroupProbeUrl = useCallback(
-    (group: ControllerMixedGroup): string =>
-      resolveEffectiveDelayTestUrl({
-        groupName: group.name,
-        groupTestUrl: group.testUrl,
-        delayTestUrlScope,
-        globalDelayTestUrl: delayTestUrl
-      }),
-    [delayTestUrl, delayTestUrlScope]
   )
 
   const onProxyDelay = useCallback(
@@ -701,6 +703,7 @@ const Proxies: React.FC = () => {
           onSelect={onChangeProxyRef.current}
           proxy={proxy}
           group={grps[groupIndex]}
+          probeUrl={getGroupProbeUrlRef.current(grps[groupIndex])}
           proxyDisplayLayout={pLayout}
           showGroupSelectedProxy={showGroupSelected}
           showProxyDetailTooltip={showTooltip}
