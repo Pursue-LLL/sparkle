@@ -16,6 +16,7 @@ import {
   mihomoGroupDelay,
   patchMihomoConfig
 } from '../core/mihomoApi'
+import { DEFAULT_GENERAL_DELAY_TEST_URL } from '../core/cursorProxyGroup'
 import { effectiveProxyDelay, judgeProxyForUrl } from '../core/proxyDelayVerdictCore'
 import { mainWindow, setNotQuitDialog, showMainWindow, triggerMainWindow } from '..'
 import {
@@ -232,8 +233,8 @@ export const buildContextMenu = async (): Promise<Menu> => {
     try {
       const groups = await mihomoGroups()
       groupsMenu = groups.map((group) => {
-        // 与「重新测试」同一探测地址：测出什么、显示什么
-        const probeUrl = group.testUrl || delayTestUrl
+        // 与「重新测试」同一探测地址（回退链同 mihomoApi）：测出什么、显示什么
+        const probeUrl = group.testUrl || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL
         const currentProxy = group.all.find((proxy) => proxy.name === group.now)
         const delay = currentProxy ? effectiveProxyDelay(judgeProxyForUrl(currentProxy, probeUrl)) : -1
         const displayDelay = formatDelayText(delay)
