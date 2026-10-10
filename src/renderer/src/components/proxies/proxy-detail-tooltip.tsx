@@ -1,10 +1,14 @@
 import { Chip, Separator, Surface } from '@heroui-v3/react'
-import { latestProxyDelayHistoryEntry } from '@renderer/utils/proxy-delay-sample-age'
+import { formatDelayTestUrlDisplay } from '@renderer/utils/cursor-proxy-groups'
+import { effectiveProxyDelay, judgeProxyDelay } from '@sparkle-core/proxyDelayVerdictCore'
+import { resolveProbeRecord } from '@sparkle-core/proxyProbeHistoryCore'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 interface Props {
   proxy: ControllerProxiesDetail | ControllerGroupDetail
+  /** 该组实际使用的探测地址：柱图与状态只取这个地址上的样本。 */
+  probeUrl: string
   anchorEl: HTMLElement | null
   visible: boolean
 }
@@ -48,7 +52,7 @@ function getDelaySvgColor(delay: number): string {
   return 'var(--color-warning)'
 }
 
-const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
+const ProxyDetailTooltip: React.FC<Props> = ({ proxy, probeUrl, anchorEl, visible }) => {
   const [pos, setPos] = useState<{ top: number; left: number; side: 'left' | 'right' } | null>(null)
   const [finalTop, setFinalTop] = useState<number | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -86,9 +90,10 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
   const tooltipH = panelRef.current?.offsetHeight ?? 120
   const arrowTop = Math.max(10, Math.min(anchorMidRelative - 6, tooltipH - 22))
 
-  const history = (proxy.history ?? []).slice(-8)
-  const delay = isGroupProxy(proxy) ? -1 : (latestProxyDelayHistoryEntry(history)?.delay ?? -1)
-  const effectiveAlive = isGroupProxy(proxy) ? true : proxy.alive
+  const probeRecord = resolveProbeRecord(proxy, probeUrl)
+  const history = probeRecord.history.slice(-8)
+  const delay = isGroupProxy(proxy) ? -1 : effectiveProxyDelay(judgeProxyDelay(probeRecord.history))
+  const effectiveAlive = isGroupProxy(proxy) ? true : (probeRecord.alive ?? proxy.alive)
   const validDelays = history.filter((h) => h.delay > 0).map((h) => h.delay)
   const maxDelay = validDelays.length > 0 ? Math.max(...validDelays) : 500
 
@@ -165,6 +170,11 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, anchorEl, visible }) => {
           <span className="text-[10px] text-muted">类型</span>
           <Chip className="justify-self-end" variant="soft" size="sm">
             {proxy.type}
+          </Chip>
+
+          <span className="text-[10px] text-muted">探测</span>
+          <Chip className="justify-self-end" variant="soft" size="sm">
+            {formatDelayTestUrlDisplay(probeUrl)}
           </Chip>
 
           <span className="text-[10px] text-muted">状态</span>

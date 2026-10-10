@@ -52,7 +52,7 @@ export async function verifyUnconfirmedFailures(): Promise<number> {
     if (provider.vehicleType === INLINE_GROUP_VEHICLE_TYPE) {
       continue
     }
-    const names = listUnconfirmedLeafNames(provider.proxies ?? [])
+    const names = listUnconfirmedLeafNames(provider.proxies ?? [], AUTO_SELECT_GEMINI_PROBE_URL)
     await probeLeaves(providerName, names, deadlineMs)
     probed += names.length
   }

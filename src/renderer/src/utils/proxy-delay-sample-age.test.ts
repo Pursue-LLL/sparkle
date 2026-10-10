@@ -4,24 +4,9 @@ import {
   formatFlakyDelayTooltip,
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
-  latestProxyDelayHistoryEntry,
 } from './proxy-delay-sample-age'
 
 describe('proxyDelaySampleAge', () => {
-  it('returns latest history entry', () => {
-    const latest = latestProxyDelayHistoryEntry([
-      { time: '2026-07-01T08:00:00.000Z', delay: 900 },
-      { time: '2026-07-01T09:00:00.000Z', delay: 0 }
-    ])
-    assert.equal(latest?.delay, 0)
-    assert.equal(latest?.time, '2026-07-01T09:00:00.000Z')
-  })
-
-  it('returns undefined for empty history', () => {
-    assert.equal(latestProxyDelayHistoryEntry([]), undefined)
-    assert.equal(latestProxyDelayHistoryEntry(undefined), undefined)
-  })
-
   it('formats relative age buckets', () => {
     const now = Date.parse('2026-07-01T10:05:30.000Z')
     assert.equal(formatProxyDelaySampleAge('2026-07-01T10:05:00.000Z', now, 'zh'), '30秒前')

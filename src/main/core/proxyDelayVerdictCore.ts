@@ -1,8 +1,10 @@
-// [INPUT] mihomo 节点 history（按时间升序，delay≤0 表示该次探测失败）
-// [OUTPUT] judgeProxyDelay · effectiveProxyDelay
+// [INPUT] mihomo 节点在某个探测地址上的 history（按时间升序，delay≤0 表示该次探测失败）
+// [OUTPUT] judgeProxyDelay · judgeProxyForUrl · effectiveProxyDelay
 // [POS] 延迟展示的单一判定规则（渲染进程经 @sparkle-core 引用）：
 // 只有连续失败达到 FAILED_STREAK_TO_CONDEMN 次才判「超时」；失败不足此数且此前刚成功过，
 // 判「波动」并沿用上次成功的延迟，避免一次抖动或批量探测的误报被当成节点已死。
+
+import { resolveProbeHistory, type ProbeSource } from './proxyProbeHistoryCore'
 
 export const FAILED_STREAK_TO_CONDEMN = 3
 /** 上次成功距今超过此时长，不再沿用其延迟。 */
@@ -35,6 +37,15 @@ export function judgeProxyDelay(
     return { kind: 'flaky', delay: lastSuccess.delay, sampledAt: lastSuccess.time, failedAt: last.time }
   }
   return { kind: 'failed', sampledAt: last.time }
+}
+
+/** 按组实际使用的探测地址取样本后判定；界面、托盘、复测共用此入口，保证各处结论一致。 */
+export function judgeProxyForUrl(
+  source: ProbeSource<ControllerProxiesHistory>,
+  probeUrl: string | undefined,
+  nowMs?: number
+): ProxyDelayVerdict {
+  return judgeProxyDelay(resolveProbeHistory(source, probeUrl), nowMs)
 }
 
 /** 兼容原有约定：>0 延迟 · 0 超时 · -1 未测。 */

@@ -103,4 +103,45 @@ describe('mihomoGroupMembersCore', () => {
     assert.equal(resolved[2].name, 'MISSING-NODE')
     assert.equal((resolved[2] as ControllerProxiesDetail).type, 'Unknown')
   })
+
+  it('buildProviderProxyLookup pools samples of a node that lives in several providers', () => {
+    const node = (delay: number, time: string): ControllerProxiesDetail => ({
+      name: 'TW-I0',
+      type: 'Hysteria2',
+      alive: true,
+      history: [{ time, delay }],
+      extra: { 'https://gemini.google.com': { alive: true, history: [{ time, delay }] } },
+      id: 'tw-i0',
+      tfo: false,
+      udp: true,
+      xudp: false,
+      mptcp: false,
+      smux: false,
+      uot: false,
+      'dialer-proxy': '',
+      interface: '',
+      'routing-mark': 0
+    })
+    const provider = (name: string, proxy: ControllerProxiesDetail): ControllerProxyProviders['providers'][string] => ({
+      name,
+      type: 'file',
+      expectedStatus: '204',
+      vehicleType: 'File',
+      proxies: [proxy]
+    })
+
+    const lookup = buildProviderProxyLookup({
+      providers: {
+        profile: provider('profile', node(0, '2026-10-10T10:26:25+08:00')),
+        fast: provider('fast', node(191, '2026-10-10T10:26:18+08:00'))
+      }
+    })
+
+    assert.equal(lookup.size, 1)
+    const pooled = lookup.get('TW-I0')
+    assert.deepEqual(
+      pooled?.extra['https://gemini.google.com'].history.map((entry) => entry.delay),
+      [191, 0]
+    )
+  })
 })

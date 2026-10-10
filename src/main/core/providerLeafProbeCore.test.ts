@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import { listUnconfirmedLeafNames, mapWithConcurrency } from './providerLeafProbeCore'
 
 const NOW = Date.parse('2026-10-09T10:40:00.000Z')
+const GEMINI = 'https://gemini.google.com'
 const at = (minutesAgo: number, delay: number): ControllerProxiesHistory => ({
   time: new Date(NOW - minutesAgo * 60_000).toISOString(),
   delay
@@ -45,8 +46,32 @@ describe('providerLeafProbeCore', () => {
         { name: 'new', history: [] },
         { name: 'missing' }
       ],
+      GEMINI,
       NOW
     )
     assert.deepEqual(names, ['dead', 'new', 'missing'])
+  })
+
+  it('judges leaves by the probe url, not by samples of other urls', () => {
+    const names = listUnconfirmedLeafNames(
+      [
+        {
+          name: 'gemini-dead',
+          history: [at(8, 320), at(7, 0), at(3, 310), at(2, 0), at(1, 305)],
+          extra: {
+            [GEMINI]: { alive: false, history: [at(7, 0), at(2, 0), at(1, 0)] },
+            'http://www.gstatic.com/generate_204': { alive: true, history: [at(8, 320), at(3, 310)] }
+          }
+        },
+        {
+          name: 'gemini-ok',
+          history: [at(2, 0), at(1, 220)],
+          extra: { [GEMINI]: { alive: true, history: [at(1, 220)] } }
+        }
+      ],
+      GEMINI,
+      NOW
+    )
+    assert.deepEqual(names, ['gemini-dead'])
   })
 })
