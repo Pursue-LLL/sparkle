@@ -6,6 +6,7 @@ import { mihomoChangeProxy, mihomoGroupDelay, mihomoCloseConnections } from './u
 import { useAppConfig } from './hooks/use-app-config'
 import { calcTraffic } from './utils/calc'
 import { effectiveProxyDelay, judgeProxyForUrl } from '@sparkle-core/proxyDelayVerdictCore'
+import { DEFAULT_GENERAL_DELAY_TEST_URL } from './utils/cursor-proxy-groups'
 
 interface TrafficData {
   up: number
@@ -82,11 +83,14 @@ const TrayMenuApp: React.FC = () => {
     return `${delay} ms`
   }
 
-  // 与组旁「重新测试」同一探测地址：测出什么、显示什么
+  // 与组旁「重新测试」同一探测地址（回退链同主进程）：测出什么、显示什么；配置未加载时也不退回混合记录
   const getProxyDelay = (
     proxy: ControllerProxiesDetail | ControllerGroupDetail,
     group: ControllerMixedGroup
-  ): number => effectiveProxyDelay(judgeProxyForUrl(proxy, group.testUrl || delayTestUrl))
+  ): number =>
+    effectiveProxyDelay(
+      judgeProxyForUrl(proxy, group.testUrl || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL)
+    )
 
   const getCurrentDelay = (group: ControllerMixedGroup): number | undefined => {
     const current = group.all?.find((p) => p.name === group.now)
