@@ -97,7 +97,7 @@ async function runPostReadyServices(): Promise<void> {
             `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`,
           )
         }
-        // 地区组预热是组内并发测速，易产生误报；对仍显示超时/未测的节点做一次低并发复测。
+        // 地区组预热是组内并发测速，易产生误报；对最近一次样本不是成功的节点（超时/不稳定/未测）做一次低并发复测。
         const { verifyUnconfirmedFailures } = await import('./providerLeafProbe')
         await verifyUnconfirmedFailures()
       } catch (error) {

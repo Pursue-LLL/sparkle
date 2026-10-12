@@ -17,9 +17,9 @@
 | 文件 | 职责 |
 |------|------|
 | `proxy-item.tsx` | 节点卡片；测速按钮；条件绑定 hover/touch → 详情弹窗 |
-| `proxy-item.tsx` 延迟显示 | 经 `judgeProxyForUrl(proxy, probeUrl)` 判定，`probeUrl` 为该组实际探测地址（`自动选择`/地区组为 Gemini，香港为 grok）：最近一次失败但此前刚成功（连续失败 <3 次）显示上次延迟 + 「最近失败」，不显示「超时」 |
+| `proxy-item.tsx` 延迟显示 | 经 `judgeProxyForUrl(proxy, probeUrl)` 判定，`probeUrl` 为该组实际探测地址（`自动选择`/地区组为 Gemini，香港为 grok）：最近一次失败但近期成功过判「不稳定」，显示上次成功的延迟 + 「N分前成功」，窗口内一次都没成功才显示「超时」 |
 | `probe-warmup-chip.tsx` | 页头「测速预热中」提示；状态来自 `@renderer/hooks/use-probe-warmup`，窗口内 `proxy-item.tsx` 对无可信样本的节点显示 loading 而非「测试」/「超时」 |
-| `proxy-detail-tooltip.tsx` | Portal 浮层：该组探测地址上的测速柱图、探测地址与存活状态 |
+| `proxy-detail-tooltip.tsx` | Portal 浮层：该组探测地址上的测速柱图、探测地址、其它探测地址上的表现（区分「只对该地址不通」与「整个节点不通」）与存活状态 |
 | `proxy-setting-drawer.tsx` | 代理页设置抽屉（含上述 Switch） |
 
 ## 详情弹窗数据源

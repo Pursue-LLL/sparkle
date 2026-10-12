@@ -4,6 +4,7 @@ import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FaMapPin } from 'react-icons/fa6'
 import {
+  formatFlakyDelayCaption,
   formatFlakyDelayTooltip,
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
@@ -54,7 +55,7 @@ interface ProxyDelayControlProps {
   loading: boolean
   /** 预热窗口内没有可信样本（未测或超时）：显示 loading 而不是「测试」/「超时」。 */
   warmingUp: boolean
-  /** 最近一次失败但此前刚成功过：沿用上次成功的延迟并提示，不显示「超时」。 */
+  /** 不稳定：最近一次失败但近期成功过，沿用上次成功的延迟并标明成功时间，不显示「超时」。 */
   flaky: boolean
   onDelay: () => void
   buttonClassName: string
@@ -84,7 +85,7 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   }, [delay])
 
   const ageLabel = useMemo(() => {
-    if (flaky) return '最近失败'
+    if (flaky) return formatFlakyDelayCaption(sampleTime, ageNowMs)
     return delay === -1 ? undefined : formatProxyDelaySampleAge(sampleTime, ageNowMs, 'zh')
   }, [ageNowMs, delay, flaky, sampleTime])
   const tooltip = useMemo(

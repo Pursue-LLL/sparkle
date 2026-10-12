@@ -1,6 +1,6 @@
 // [INPUT] mihomo provider 列表 · Gemini 探测目标（与 `自动选择` 同源）
 // [OUTPUT] probeProviderLeavesGently · verifyUnconfirmedFailures
-// [POS] 冷启动阶段的低并发拨测：逐点探测并复测「超时/未测」节点，让界面看到的是确认过的结论而非批量并发的误报。
+// [POS] 冷启动阶段的低并发拨测：逐点探测并复测「超时/不稳定/未测」节点，让界面看到的是确认过的结论而非批量并发的误报。
 
 import { appendAppLog } from '../utils/log'
 import {
@@ -41,7 +41,7 @@ export async function probeProviderLeavesGently(providerName: string): Promise<n
 }
 
 /**
- * 复测所有非内联组 provider 里仍为「超时/未测」的节点。
+ * 复测所有非内联组 provider 里最近一次样本不是成功的节点（超时 / 不稳定 / 未测）。
  * 结果由 mihomo 写入各节点 history，界面随之更新；返回复测的节点数。
  */
 export async function verifyUnconfirmedFailures(): Promise<number> {

@@ -4,6 +4,7 @@
 // 每轮实测延迟落盘为快照；生成配置重写 sparkle-fast 时读取快照，避免订阅刷新后退回「未测延迟」的订阅顺序。
 // 不固定（pin）`自动选择`：fallback 本就取文件序里第一个存活节点，固定反而会盖过文件序并写入 store-selected。
 // 启动时先低并发逐点拨测再重排；周期复查仅当新首选明显更快才换文件序。
+// 重排会重载 provider 并清空其探测记录，周期重排后立即逐点补测，让 fallback 的存活判断与下一轮排序有新样本。
 // fallback 仍只在当前节点挂掉时切换，不因延迟抖动来回切。
 
 import { readFile, writeFile } from 'fs/promises'
@@ -127,7 +128,17 @@ export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
 }
 
 async function recheckSparkleFastLatencyOrder(): Promise<void> {
-  await applyLatencyOrder(false)
+  if (!(await applyLatencyOrder(false))) {
+    return
+  }
+  try {
+    await probeProviderLeavesGently(FAST_NODE_PROVIDER_ID)
+    await appendAppLog('[SparkleFastOrder]: refilled probe samples after reorder\n')
+  } catch (error) {
+    await appendAppLog(
+      `[SparkleFastOrder]: refill failed: ${error instanceof Error ? error.message : String(error)}\n`
+    )
+  }
 }
 
 let refreshTimer: NodeJS.Timeout | undefined
