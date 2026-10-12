@@ -15,6 +15,8 @@ import ConfigViewer from './config-viewer'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { TiFolder } from 'react-icons/ti'
 import {
+  mergeProfileUpdateCardLabel,
+  mergeProfileUpdateTooltipLabel,
   subscriptionUpdateCardLabel,
   subscriptionUpdateTooltipLabel
 } from '@sparkle-core/profileSubscriptionDisplayCore'
@@ -212,6 +214,17 @@ const ProfileCard: React.FC<Props> = (props) => {
                 >
                   本地
                 </Chip>
+                {info.merge && (
+                  <Tooltip
+                    delay={1000}
+                    placement="left"
+                    content={mergeProfileUpdateTooltipLabel(info.updated)}
+                  >
+                    <small className="cursor-default">
+                      {mergeProfileUpdateCardLabel(info.updated, dayjs(info.updated).fromNow())}
+                    </small>
+                  </Tooltip>
+                )}
               </div>
             )}
             {extra && (

@@ -130,7 +130,7 @@ if (!gotTheLock) {
     if (commandline.includes(PROFILE_UPDATE_DUE_ARG)) {
       try {
         const { runDueProfileUpdates } = await import('./core/profileUpdater')
-        const updatedCount = await runDueProfileUpdates('cli')
+        const updatedCount = await runDueProfileUpdates()
         await appendAppLog(`[ProfileUpdaterCli]: second-instance updated_count=${updatedCount}\n`)
       } catch (error) {
         await appendAppLog(

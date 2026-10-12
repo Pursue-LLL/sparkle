@@ -23,6 +23,8 @@ import { openFile } from '@renderer/utils/ipc'
 import ConfirmModal from '../base/base-confirm'
 import QRCodeModal from '../base/base-qrcode-modal'
 import {
+  mergeProfileUpdateCardLabel,
+  mergeProfileUpdateTooltipLabel,
   subscriptionUpdateCardLabel,
   subscriptionUpdateTooltipLabel
 } from '@sparkle-core/profileSubscriptionDisplayCore'
@@ -346,6 +348,13 @@ const ProfileItem: React.FC<Props> = (props) => {
                 >
                   本地
                 </Chip>
+                {info.merge && (
+                  <Tooltip placement="left" content={mergeProfileUpdateTooltipLabel(info.updated)}>
+                    <small className="cursor-default">
+                      {mergeProfileUpdateCardLabel(info.updated, dayjs(info.updated).fromNow())}
+                    </small>
+                  </Tooltip>
+                )}
               </div>
             )}
             {extra && (

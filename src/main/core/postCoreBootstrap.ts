@@ -73,7 +73,7 @@ async function runPostReadyServices(): Promise<void> {
   const { mihomoGroups, mihomoChangeProxy, mihomoGroupDelay } = await import('./mihomoApi')
 
   const { initProfileUpdater } = await import('./profileUpdater')
-  await initProfileUpdater()
+  initProfileUpdater()
 
   try {
     const { applyCursorDedicatedVpsSelection } = await import('./cursorDedicatedDefault')
