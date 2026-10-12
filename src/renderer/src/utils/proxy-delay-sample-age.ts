@@ -59,7 +59,16 @@ export function formatProxyDelayTooltip(
   return locale === 'zh' ? `测试于 ${age} · ${delayLabel}` : `Tested ${age} · ${delayLabel}`
 }
 
-/** 「波动」状态的提示：最近一次失败，但此前刚成功过，不能据此判定节点已死。 */
+/** 「不稳定」状态的延迟小字：显示的是上次成功的延迟，明确告诉用户它是多久前测的。 */
+export function formatFlakyDelayCaption(
+  lastSuccessAtIso: string | undefined,
+  nowMs: number = Date.now()
+): string {
+  const age = formatProxyDelaySampleAge(lastSuccessAtIso, nowMs, 'zh')
+  return age ? `${age}成功` : '上次成功'
+}
+
+/** 「不稳定」状态的提示：近期时好时坏，最近一次失败，不能据此判定节点已死。 */
 export function formatFlakyDelayTooltip(
   lastSuccessDelay: number,
   lastSuccessAtIso: string | undefined,
@@ -67,5 +76,5 @@ export function formatFlakyDelayTooltip(
 ): string {
   const age = formatProxyDelaySampleAge(lastSuccessAtIso, nowMs, 'zh')
   const lastSuccess = age ? `${age}成功 ${lastSuccessDelay}ms` : `上次成功 ${lastSuccessDelay}ms`
-  return `最近一次测速失败（可能是偶发抖动），${lastSuccess}`
+  return `近期时好时坏：最近一次测速失败，${lastSuccess}`
 }

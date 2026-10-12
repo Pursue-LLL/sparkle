@@ -1,6 +1,11 @@
 import { Chip, Separator, Surface } from '@heroui-v3/react'
 import { formatDelayTestUrlDisplay } from '@renderer/utils/cursor-proxy-groups'
-import { effectiveProxyDelay, judgeProxyDelay } from '@sparkle-core/proxyDelayVerdictCore'
+import {
+  judgeOtherProbeUrls,
+  judgeProxyDelay,
+  type OtherProbeVerdict,
+  type ProxyDelayVerdict
+} from '@sparkle-core/proxyDelayVerdictCore'
 import { resolveProbeRecord } from '@sparkle-core/proxyProbeHistoryCore'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -32,17 +37,24 @@ function getDelayChipColor(delay: number): DelayColor {
   return 'warning'
 }
 
-function getDelayText(delay: number): string {
-  if (delay === -1) return '未测试'
-  if (delay === 0) return '超时'
-  return `${delay}ms`
-}
-
 function getDelayLabel(delay: number): string {
   if (delay === -1) return '?'
   if (delay === 0) return '×'
   if (delay >= 1000) return '>1s'
   return String(delay)
+}
+
+function describeVerdict(verdict: ProxyDelayVerdict): { text: string; color: DelayColor } {
+  switch (verdict.kind) {
+    case 'ok':
+      return { text: `${verdict.delay}ms`, color: getDelayChipColor(verdict.delay) }
+    case 'flaky':
+      return { text: `${verdict.delay}ms · 不稳定`, color: 'warning' }
+    case 'failed':
+      return { text: '超时', color: 'danger' }
+    case 'untested':
+      return { text: '未测试', color: 'default' }
+  }
 }
 
 function getDelaySvgColor(delay: number): string {
@@ -92,7 +104,11 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, probeUrl, anchorEl, visibl
 
   const probeRecord = resolveProbeRecord(proxy, probeUrl)
   const history = probeRecord.history.slice(-8)
-  const delay = isGroupProxy(proxy) ? -1 : effectiveProxyDelay(judgeProxyDelay(probeRecord.history))
+  const verdict: ProxyDelayVerdict = isGroupProxy(proxy)
+    ? { kind: 'untested' }
+    : judgeProxyDelay(probeRecord.history)
+  const headerChip = describeVerdict(verdict)
+  const otherProbes: OtherProbeVerdict[] = isGroupProxy(proxy) ? [] : judgeOtherProbeUrls(proxy, probeUrl)
   const effectiveAlive = isGroupProxy(proxy) ? true : (probeRecord.alive ?? proxy.alive)
   const validDelays = history.filter((h) => h.delay > 0).map((h) => h.delay)
   const maxDelay = validDelays.length > 0 ? Math.max(...validDelays) : 500
@@ -159,8 +175,8 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, probeUrl, anchorEl, visibl
           <span className="text-xs font-semibold flag-emoji truncate flex-1 leading-snug">
             {proxy.name}
           </span>
-          <Chip color={getDelayChipColor(delay)} variant="soft" size="sm" className="shrink-0">
-            {getDelayText(delay)}
+          <Chip color={headerChip.color} variant="soft" size="sm" className="shrink-0">
+            {headerChip.text}
           </Chip>
         </div>
 
@@ -176,6 +192,20 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, probeUrl, anchorEl, visibl
           <Chip className="justify-self-end" variant="soft" size="sm">
             {formatDelayTestUrlDisplay(probeUrl)}
           </Chip>
+
+          {otherProbes.map(({ url, verdict: otherVerdict }) => {
+            const { text, color } = describeVerdict(otherVerdict)
+            return (
+              <React.Fragment key={url}>
+                <span className="text-[10px] text-muted truncate" title={url}>
+                  {formatDelayTestUrlDisplay(url)}
+                </span>
+                <Chip className="justify-self-end" color={color} variant="soft" size="sm">
+                  {text}
+                </Chip>
+              </React.Fragment>
+            )
+          })}
 
           <span className="text-[10px] text-muted">状态</span>
           <Chip

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { effectiveProxyDelay, judgeProxyDelay, judgeProxyForUrl } from './proxyDelayVerdictCore'
+import {
+  effectiveProxyDelay,
+  judgeOtherProbeUrls,
+  judgeProxyDelay,
+  judgeProxyForUrl
+} from './proxyDelayVerdictCore'
 
 const NOW = Date.parse('2026-10-09T10:40:00.000Z')
 
@@ -26,13 +31,16 @@ describe('proxyDelayVerdictCore', () => {
     assert.equal(effectiveProxyDelay(verdict), 280)
   })
 
-  it('still tolerates two consecutive failures', () => {
-    const verdict = judgeProxyDelay([entry(8, 300), entry(4, 0), entry(1, 0)], NOW)
+  it('keeps calling a node unstable while its recent window still contains a success', () => {
+    // 线上形态：美国 I1 最近连续失败，但窗口内成功过、重测也能通——不能叫「超时」
+    const verdict = judgeProxyDelay([entry(14, 0), entry(11, 564), entry(8, 0), entry(5, 0), entry(2, 0), entry(1, 0)], NOW)
     assert.equal(verdict.kind, 'flaky')
+    assert.equal(effectiveProxyDelay(verdict), 564)
+    assert.equal(verdict.kind === 'flaky' ? verdict.sampledAt : '', entry(11, 564).time)
   })
 
-  it('condemns the node after three consecutive failures', () => {
-    const verdict = judgeProxyDelay([entry(9, 300), entry(6, 0), entry(3, 0), entry(1, 0)], NOW)
+  it('condemns the node only when the whole window has no success', () => {
+    const verdict = judgeProxyDelay([entry(9, 0), entry(6, 0), entry(3, 0), entry(1, 0)], NOW)
     assert.equal(verdict.kind, 'failed')
     assert.equal(effectiveProxyDelay(verdict), 0)
   })
@@ -58,5 +66,40 @@ describe('proxyDelayVerdictCore', () => {
     assert.equal(judgeProxyForUrl(node, 'https://gemini.google.com', NOW).kind, 'failed')
     assert.equal(judgeProxyForUrl(node, 'https://www.gstatic.com/generate_204', NOW).kind, 'ok')
     assert.equal(judgeProxyForUrl(node, 'https://grok.com', NOW).kind, 'untested')
+  })
+
+  it('reports how the node does on the other probe urls it has been tested against', () => {
+    const node = {
+      history: [],
+      extra: {
+        'https://gemini.google.com': { alive: false, history: [entry(4, 0), entry(1, 0)] },
+        'http://www.gstatic.com/generate_204': { alive: true, history: [entry(4, 100), entry(1, 104)] },
+        'https://grok.com': { alive: true, history: [] }
+      }
+    }
+    const others = judgeOtherProbeUrls(node, 'https://gemini.google.com', NOW)
+    assert.deepEqual(
+      others.map((other) => [other.url, other.verdict.kind]),
+      [['http://www.gstatic.com/generate_204', 'ok']]
+    )
+    // 与组探测地址仅协议不同的记录不算「其它地址」
+    assert.deepEqual(judgeOtherProbeUrls(node, 'https://www.gstatic.com/generate_204', NOW).map((o) => o.verdict.kind), ['failed'])
+  })
+
+  it('lets the newer failure on the https record override the older http success of the same target', () => {
+    // 线上形态：体检写 http 记录（旧成功），界面测速写 https 记录（新失败），不能只读到旧成功而显示正常
+    const node = {
+      history: [],
+      extra: {
+        'https://gemini.google.com': { alive: false, history: [entry(4, 0), entry(1, 0)] },
+        'http://www.gstatic.com/generate_204': { alive: true, history: [entry(5, 1042)] },
+        'https://www.gstatic.com/generate_204': { alive: false, history: [entry(1, 0)] }
+      }
+    }
+    assert.equal(judgeProxyForUrl(node, 'https://www.gstatic.com/generate_204', NOW).kind, 'flaky')
+    assert.deepEqual(
+      judgeOtherProbeUrls(node, 'https://gemini.google.com', NOW).map((o) => o.verdict.kind),
+      ['flaky']
+    )
   })
 })

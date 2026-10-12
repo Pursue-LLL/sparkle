@@ -1,12 +1,15 @@
 // [INPUT] mihomo 节点在某个探测地址上的 history（按时间升序，delay≤0 表示该次探测失败）
-// [OUTPUT] judgeProxyDelay · judgeProxyForUrl · effectiveProxyDelay
+// [OUTPUT] judgeProxyDelay · judgeProxyForUrl · judgeOtherProbeUrls · effectiveProxyDelay
 // [POS] 延迟展示的单一判定规则（渲染进程经 @sparkle-core 引用）：
-// 只有连续失败达到 FAILED_STREAK_TO_CONDEMN 次才判「超时」；失败不足此数且此前刚成功过，
-// 判「波动」并沿用上次成功的延迟，避免一次抖动或批量探测的误报被当成节点已死。
+// 近期样本窗口里一次都没成功才判「超时」；最近一次失败但窗口内成功过，判「不稳定」并沿用上次成功的延迟，
+// 避免时好时坏的节点或批量探测的误报被当成节点已死。
 
-import { resolveProbeHistory, type ProbeSource } from './proxyProbeHistoryCore'
+import {
+  isSameProbeUrl,
+  resolveProbeHistory,
+  type ProbeSource
+} from './proxyProbeHistoryCore'
 
-export const FAILED_STREAK_TO_CONDEMN = 3
 /** 上次成功距今超过此时长，不再沿用其延迟。 */
 export const FLAKY_MAX_SUCCESS_AGE_MS = 30 * 60 * 1000
 
@@ -28,12 +31,10 @@ export function judgeProxyDelay(
     return { kind: 'ok', delay: last.delay, sampledAt: last.time }
   }
 
-  const lastSuccessIndex = history.findLastIndex((entry) => entry.delay > 0)
-  const failedStreak = history.length - 1 - lastSuccessIndex
-  const lastSuccess = lastSuccessIndex >= 0 ? history[lastSuccessIndex] : undefined
+  const lastSuccess = history.findLast((entry) => entry.delay > 0)
   const successAgeMs = lastSuccess ? nowMs - Date.parse(lastSuccess.time) : Number.POSITIVE_INFINITY
 
-  if (lastSuccess && failedStreak < FAILED_STREAK_TO_CONDEMN && successAgeMs <= FLAKY_MAX_SUCCESS_AGE_MS) {
+  if (lastSuccess && successAgeMs <= FLAKY_MAX_SUCCESS_AGE_MS) {
     return { kind: 'flaky', delay: lastSuccess.delay, sampledAt: lastSuccess.time, failedAt: last.time }
   }
   return { kind: 'failed', sampledAt: last.time }
@@ -41,14 +42,40 @@ export function judgeProxyDelay(
 
 /** 按组实际使用的探测地址取样本后判定；界面、托盘、复测共用此入口，保证各处结论一致。 */
 export function judgeProxyForUrl(
-  source: ProbeSource<ControllerProxiesHistory>,
+  source: ProbeSource,
   probeUrl: string | undefined,
   nowMs?: number
 ): ProxyDelayVerdict {
   return judgeProxyDelay(resolveProbeHistory(source, probeUrl), nowMs)
 }
 
-/** 兼容原有约定：>0 延迟 · 0 超时 · -1 未测。 */
+export interface OtherProbeVerdict {
+  url: string
+  verdict: ProxyDelayVerdict
+}
+
+/** 节点在「组探测地址」之外的其它地址上的表现（已测过的），用来区分「只对该地址不通」与「整个节点不通」。 */
+export function judgeOtherProbeUrls(
+  source: ProbeSource,
+  probeUrl: string | undefined,
+  nowMs?: number
+): OtherProbeVerdict[] {
+  const seen: string[] = probeUrl ? [probeUrl] : []
+  const others: OtherProbeVerdict[] = []
+  for (const url of Object.keys(source.extra ?? {})) {
+    if (seen.some((known) => isSameProbeUrl(known, url))) {
+      continue
+    }
+    seen.push(url)
+    const verdict = judgeProxyForUrl(source, url, nowMs)
+    if (verdict.kind !== 'untested') {
+      others.push({ url, verdict })
+    }
+  }
+  return others
+}
+
+/** 折算成排序/展示用的数值：>0 延迟 · 0 超时 · -1 未测。 */
 export function effectiveProxyDelay(verdict: ProxyDelayVerdict): number {
   switch (verdict.kind) {
     case 'ok':

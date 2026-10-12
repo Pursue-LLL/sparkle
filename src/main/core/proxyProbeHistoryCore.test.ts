@@ -65,6 +65,24 @@ describe('resolveProbeRecord', () => {
     assert.equal(resolveProbeHistory(mixed, 'https://GEMINI.google.com/').length, 2)
   })
 
+  it('merges the http and https records of the same target by time instead of picking one', () => {
+    // 线上形态：provider 体检写 http 记录、界面测速写 https 记录，后者更新且已失败
+    const split = detail({
+      extra: {
+        [GENERAL_HTTP]: { alive: true, history: [sample('09:05:17', 0), sample('09:13:44', 1042)] },
+        [GENERAL_HTTPS]: { alive: false, history: [sample('09:17:12', 0)] }
+      }
+    })
+    for (const url of [GENERAL_HTTP, GENERAL_HTTPS]) {
+      const record = resolveProbeRecord(split, url)
+      assert.deepEqual(
+        record.history.map((entry) => entry.delay),
+        [0, 1042, 0]
+      )
+      assert.equal(record.alive, false)
+    }
+  })
+
   it('reports an untested url as empty instead of borrowing other urls samples', () => {
     const record = resolveProbeRecord(mixed, 'https://api2.cursor.sh')
     assert.deepEqual(record.history, [])

@@ -5,7 +5,7 @@
 import { judgeProxyForUrl } from './proxyDelayVerdictCore'
 import type { ProbeSource } from './proxyProbeHistoryCore'
 
-export interface ProviderLeaf extends ProbeSource<ControllerProxiesHistory> {
+export interface ProviderLeaf extends ProbeSource {
   name: string
 }
 
@@ -30,7 +30,7 @@ export async function mapWithConcurrency<T>(
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker))
 }
 
-/** 在 `probeUrl` 上仍是「超时」或「未测」的节点：它们的结论尚未经过一次低并发的复测确认。 */
+/** 在 `probeUrl` 上最近一次样本不是成功的节点（超时 / 不稳定 / 未测）：它们的结论尚未经过一次低并发的复测确认。 */
 export function listUnconfirmedLeafNames(
   leaves: readonly ProviderLeaf[],
   probeUrl: string,
@@ -38,8 +38,7 @@ export function listUnconfirmedLeafNames(
 ): string[] {
   return leaves
     .filter((leaf) => {
-      const kind = judgeProxyForUrl(leaf, probeUrl, nowMs).kind
-      return kind === 'failed' || kind === 'untested'
+      return judgeProxyForUrl(leaf, probeUrl, nowMs).kind !== 'ok'
     })
     .map((leaf) => leaf.name)
 }

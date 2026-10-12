@@ -13,6 +13,7 @@
 | 根因 | 单点测速对 provider 叶子节点会触发**整个 provider 的体检/重载**（`refreshProviderLeafBeforeDelay` · `mihomoProxyDelayFromProvider`），组测速时每个节点都来一次；且 `pickLatestSuccessfulProviderDelay` 会把多分钟前的成功当作本次结果；界面只看最后一条样本 |
 | 修复 | ① 叶子节点改走 provider 单点端点 `mihomoProviderLeafDelay`，删除 provider 级体检/重载/缓存路径与 `purpose` 参数；② `sparkle-fast` 启动探测与超时节点复测改为低并发（4）逐点拨测；③ 展示判定收敛为 `proxyDelayVerdictCore`：连续失败 ≥3 次才显示超时，否则显示上次成功 + 「最近失败」 |
 | 二次修正 | 上一版在 mihomo 顶层 `history` 上判定，而该数组把各探测地址（通用网址 / Gemini）的样本按时间混在一起，Gemini 一直不通的节点被判成「波动」，界面零超时（线上 59 节点：旧口径 48 ok / 11 波动 / 0 超时）。改为按组实际探测地址读 `extra[url]`（`proxyProbeHistoryCore`），同一节点在多个 provider 的样本合并（两份记录曾互相矛盾，如台湾 I0 一份 Gemini=191ms、一份=0）；代理页、浮窗、两处托盘统一走 `judgeProxyForUrl`。同口径线上数据：43 ok / 9 波动 / 7 超时 |
+| 三次修正 | 实测被判「超时」的 13 个节点：6 个真不通、5 个仅 Gemini 不通、2 个时好时坏（重测能通）。判定改为按近期窗口：窗口内一次都没成功才「超时」，最近失败但近期成功过为「不稳定」（卡片小字改为「N分前成功」，旧「最近失败」措辞让人看不出数字是旧的）；详情浮窗加「其它探测地址」区分「只对 Gemini 不通」与「整个节点不通」；启动复测范围扩到所有最近一次样本非成功的节点；周期重排会重载 provider 清空其记录，重排后立即逐点补测；同一目标的 http（体检）/ https（界面测速）两份记录改为按时间合并，修复新失败被旧成功盖住的问题 |
 | 说明 | `自动选择` 与地区组以 Gemini 探测为准（香港为 grok），Gemini 不通即该组眼中的不可用，显示超时是预期语义，不是误报 |
 
 ## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-09 **15:22 CST**

@@ -37,7 +37,7 @@ describe('providerLeafProbeCore', () => {
     assert.deepEqual(done.sort(), [1, 3])
   })
 
-  it('lists only failed or untested leaves for re-probing', () => {
+  it('lists every leaf whose latest sample is not a success for re-probing', () => {
     const names = listUnconfirmedLeafNames(
       [
         { name: 'ok', history: [at(1, 200)] },
@@ -49,7 +49,7 @@ describe('providerLeafProbeCore', () => {
       GEMINI,
       NOW
     )
-    assert.deepEqual(names, ['dead', 'new', 'missing'])
+    assert.deepEqual(names, ['flaky', 'dead', 'new', 'missing'])
   })
 
   it('judges leaves by the probe url, not by samples of other urls', () => {

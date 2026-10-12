@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  formatFlakyDelayCaption,
   formatFlakyDelayTooltip,
   formatProxyDelaySampleAge,
   formatProxyDelayTooltip,
@@ -32,7 +33,14 @@ describe('proxyDelaySampleAge', () => {
     const now = Date.parse('2026-07-01T10:05:30.000Z')
     const tip = formatFlakyDelayTooltip(280, '2026-07-01T09:50:00.000Z', now)
     assert.match(tip, /最近一次测速失败/)
+    assert.match(tip, /近期时好时坏/)
     assert.match(tip, /15分前成功 280ms/)
     assert.doesNotMatch(tip, /超时/)
+  })
+
+  it('captions an unstable node with how long ago it last succeeded', () => {
+    const now = Date.parse('2026-07-01T10:05:30.000Z')
+    assert.equal(formatFlakyDelayCaption('2026-07-01T09:50:00.000Z', now), '15分前成功')
+    assert.equal(formatFlakyDelayCaption(undefined, now), '上次成功')
   })
 })
