@@ -1,6 +1,5 @@
 import { getControledMihomoConfig } from './controledMihomo'
 import { mihomoProfileWorkDir, mihomoWorkDir, profileConfigPath, profilePath } from '../utils/dirs'
-import { addProfileUpdater, delProfileUpdater } from '../core/profileUpdater'
 import { existsSync } from 'fs'
 import { readFile, writeFile, rm, mkdir } from 'fs/promises'
 import { fileToStr } from '@uruhalushia/sparkle-native'
@@ -109,11 +108,6 @@ export async function updateProfileItem(item: ProfileItem): Promise<void> {
   }
   config.items[index] = item
   await setProfileConfig(config)
-  if (!item.autoUpdate) {
-    await delProfileUpdater(item.id)
-  } else {
-    await addProfileUpdater(item)
-  }
 }
 
 export async function addProfileItem(item: Partial<ProfileItem>): Promise<void> {
@@ -129,7 +123,6 @@ export async function addProfileItem(item: Partial<ProfileItem>): Promise<void> 
   if (!config.current) {
     await changeCurrentProfile(newItem.id)
   }
-  await addProfileUpdater(newItem)
 }
 
 export async function removeProfileItem(id: string): Promise<void> {
@@ -162,7 +155,6 @@ export async function removeProfileItem(id: string): Promise<void> {
   if (existsSync(mihomoProfileWorkDir(id))) {
     await rm(mihomoProfileWorkDir(id), { recursive: true })
   }
-  await delProfileUpdater(id)
 }
 
 export async function getCurrentProfileItem(): Promise<ProfileItem> {

@@ -21,7 +21,7 @@ export async function runProfileUpdateDueCli(): Promise<number> {
     const { startPromise } = await runCoreReadinessPipeline('profile-update-cli')
     await Promise.race([startPromise, delay(CORE_INIT_RACE_MS)])
 
-    updatedCount = await runDueProfileUpdates('cli')
+    updatedCount = await runDueProfileUpdates()
     await appendAppLog(`[ProfileUpdaterCli]: complete updated_count=${updatedCount}\n`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

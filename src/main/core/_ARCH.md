@@ -33,8 +33,8 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | ---- | ---- |
 | `factory.ts` | runtime config 生成（provider 拆分、分组、规则、DNS、sniffer）；首步调用 `logBuildDriftAtStartup` |
 | `provider.ts` / `providerConfigCore.ts` / `vpsProviderSplitCore.ts` | 订阅节点 → provider 文件；VPS 与商用节点拆成 `{profileId}-vps` 与商用 provider；`applyVlessVisionMuxGuard` |
-| `mergeProfileCore.ts` | 合并订阅：按地区白名单取多个订阅节点并集，策略组与规则沿用 base 订阅 |
-| `profileUpdater.ts` / `profileUpdaterCore.ts` / `profileUpdateDueCli.ts` | 订阅定时更新；`--sparkle-profile-update-due` CLI 入口 |
+| `mergeProfileCore.ts` | 合并订阅：按地区白名单取多个订阅节点并集，策略组与规则沿用 base 订阅；无独立定时，来源订阅更新时重建（并写入自身 `updated`），来源比它新时由更新心跳补重建 |
+| `profileUpdater.ts` / `profileUpdaterCore.ts` / `profileUpdateDueCli.ts` | 订阅自动更新：判定「最近一个计划时刻之后是否成功更新过」，不依赖定时器恰好触发。GUI 每 5 分钟心跳（启动后 60s 首次）与 LaunchAgent（`--sparkle-profile-update-due`，同样每 5 分钟）共用 `createDueProfileUpdateRunner`：先更新到期的来源订阅，再补齐落后于来源的合并订阅；单次更新 2 分钟超时兜底，并发调用共享同一次执行；失败不推进 `updated`，下次心跳自动重试 |
 | `profileConfigRecoveryCore.ts` / `profileConfigRecoveryPureCore.ts` | BUG-2026-09-03-003 空/损坏 `profile.yaml` 从 `.bak` + 磁盘 profiles 恢复 · 禁止 persist 空配置 |
 | `profileCacheRefreshCore.ts` / `profileCacheRefreshPureCore.ts` | 无 URL 时从磁盘 cache reload provider · 缺失 URL 双语错误 |
 | `profileSubscriptionDisplayCore.ts` | 订阅到期 / 更新时间展示 SSOT |

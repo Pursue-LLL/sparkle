@@ -1,5 +1,5 @@
 // [INPUT] subscription-userinfo expire field (seconds or milliseconds)
-// [OUTPUT] normalizeSubscriptionExpireTimestamp · subscriptionUpdateCardLabel · subscriptionScheduleHint
+// [OUTPUT] normalizeSubscriptionExpireTimestamp · subscriptionUpdateCardLabel · subscriptionScheduleHint · mergeProfileUpdateCardLabel · mergeProfileUpdateTooltipLabel
 // [POS] Profile card must not show expire date without label; show daily schedule + relative update (BUG-2026-09-03-003)
 
 const SUBSCRIPTION_EXPIRE_MS_THRESHOLD = 10_000_000_000
@@ -103,6 +103,26 @@ export function subscriptionUpdateTooltipLabel(
   return locale === 'zh'
     ? `${lastUpdate} · 定时 ${schedule.replace('每日 ', '')}`
     : `${lastUpdate} · Scheduled ${schedule.replace('Daily ', '')}`
+}
+
+/** 合并订阅没有自己的定时，跟随来源订阅重建；卡片只展示最近一次重建的相对时间。 */
+export function mergeProfileUpdateCardLabel(
+  updatedMs: number | undefined,
+  relativeLabel: string,
+  locale: 'zh' | 'en' = 'zh',
+): string {
+  const updatePart = subscriptionUpdateDisplayLabel(updatedMs, relativeLabel, locale)
+  return locale === 'zh' ? `跟随来源 · ${updatePart}` : `Follows sources · ${updatePart}`
+}
+
+export function mergeProfileUpdateTooltipLabel(
+  updatedMs: number | undefined,
+  locale: 'zh' | 'en' = 'zh',
+): string {
+  const lastUpdate = subscriptionUpdateTooltipLabel(updatedMs, undefined, undefined, locale)
+  return locale === 'zh'
+    ? `${lastUpdate} · 来源订阅更新后自动重建`
+    : `${lastUpdate} · Rebuilt automatically after sources update`
 }
 
 function formatSubscriptionLocalDateTime(updatedMs: number, _locale: 'zh' | 'en'): string {
