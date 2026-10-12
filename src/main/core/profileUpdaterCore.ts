@@ -21,6 +21,15 @@ function parseUpdateTime(time: string): { hours: number; minutes: number } | nul
   return { hours, minutes }
 }
 
+/**
+ * 比此刻还晚的 updated 来自曾经错误的系统时钟：按有效值使用会让远程订阅直到时间追上才更新、
+ * 让合并订阅永远「来源比它新」而每个心跳都重建，因此视为未知（0），到期后重新写入正确的时间。
+ */
+function trustedUpdated(item: ProfileItem | undefined, nowMs: number): number {
+  const updated = item?.updated ?? 0
+  return updated > nowMs ? 0 : updated
+}
+
 /** 最近一个已到的每日更新时刻（含此刻）；时间格式非法返回 null。 */
 export function latestScheduledSlotMs(updateTime: string, nowMs: number): number | null {
   const parsed = parseUpdateTime(updateTime)
@@ -45,7 +54,7 @@ export function isRemoteProfileDue(item: ProfileItem, nowMs: number): boolean {
     return false
   }
 
-  const lastUpdated = item.updated || 0
+  const lastUpdated = trustedUpdated(item, nowMs)
   if (item.updateTime) {
     const slot = latestScheduledSlotMs(item.updateTime, nowMs)
     if (slot !== null) {
@@ -58,14 +67,24 @@ export function isRemoteProfileDue(item: ProfileItem, nowMs: number): boolean {
 }
 
 /** 合并订阅内容完全由来源文件决定：任一来源比合并订阅更新，就说明合并订阅落后、需要重建。 */
-export function isMergeProfileDue(item: ProfileItem, items: readonly ProfileItem[]): boolean {
+export function isMergeProfileDue(
+  item: ProfileItem,
+  items: readonly ProfileItem[],
+  nowMs: number
+): boolean {
   if (!item.merge || item.autoUpdate === false) {
     return false
   }
 
-  const lastBuilt = item.updated || 0
+  const lastBuilt = trustedUpdated(item, nowMs)
   const sourceIds = [item.merge.base, ...item.merge.sources]
-  return sourceIds.some((id) => (items.find((candidate) => candidate.id === id)?.updated ?? 0) > lastBuilt)
+  return sourceIds.some(
+    (id) =>
+      trustedUpdated(
+        items.find((candidate) => candidate.id === id),
+        nowMs
+      ) > lastBuilt
+  )
 }
 
 /** 订阅下载本身没有超时；单次更新卡住会让并发共享的这次执行永不结束，必须由编排器兜底。 */
@@ -121,7 +140,7 @@ export function createDueProfileUpdateRunner(deps: DueProfileUpdateDeps): () => 
     }
 
     const second = await deps.listItems()
-    for (const item of second.filter((candidate) => isMergeProfileDue(candidate, second))) {
+    for (const item of second.filter((candidate) => isMergeProfileDue(candidate, second, now()))) {
       updatedCount += Number(await attempt(item))
     }
 

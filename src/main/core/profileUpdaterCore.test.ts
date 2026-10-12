@@ -69,6 +69,10 @@ describe('isRemoteProfileDue (daily schedule)', () => {
     assert.equal(isRemoteProfileDue(remote({ updated: at(11, 7, 5) }), at(12, 6, 0)), false)
   })
 
+  it('treats an updated time in the future as unknown so a skewed clock cannot block updates', () => {
+    assert.equal(isRemoteProfileDue(remote({ updated: at(14, 7, 0) }), at(12, 12, 0)), true)
+  })
+
   it('counts a manual update after the slot as satisfying it', () => {
     assert.equal(isRemoteProfileDue(remote({ updated: at(12, 10, 0) }), at(12, 11, 0)), false)
   })
@@ -99,6 +103,7 @@ describe('isRemoteProfileDue (interval)', () => {
 })
 
 describe('isMergeProfileDue', () => {
+  const NOW = at(12, 12, 0)
   const sources = (mainUpdated: number, mobileUpdated: number): ProfileItem[] => [
     remote({ id: 'main', updated: mainUpdated }),
     remote({ id: 'mobile', name: '移动订阅', updated: mobileUpdated })
@@ -106,26 +111,40 @@ describe('isMergeProfileDue', () => {
 
   it('is due when any source is newer than the merged profile', () => {
     const items = [...sources(at(12, 11, 7), at(12, 11, 7)), merged({ updated: at(10, 7, 0) })]
-    assert.equal(isMergeProfileDue(items[2], items), true)
+    assert.equal(isMergeProfileDue(items[2], items, NOW), true)
   })
 
   it('is due when only the mobile source moved ahead', () => {
     const items = [...sources(at(12, 7, 0), at(12, 11, 7)), merged({ updated: at(12, 8, 0) })]
-    assert.equal(isMergeProfileDue(items[2], items), true)
+    assert.equal(isMergeProfileDue(items[2], items, NOW), true)
   })
 
   it('is not due once it was rebuilt after every source', () => {
     const items = [...sources(at(12, 11, 7), at(12, 11, 7)), merged({ updated: at(12, 11, 8) })]
-    assert.equal(isMergeProfileDue(items[2], items), false)
+    assert.equal(isMergeProfileDue(items[2], items, NOW), false)
   })
 
   it('ignores missing sources, non-merge profiles and disabled auto update', () => {
     const lonely = merged({ updated: at(10, 7, 0) })
-    assert.equal(isMergeProfileDue(lonely, [lonely]), false)
+    assert.equal(isMergeProfileDue(lonely, [lonely], NOW), false)
 
     const items = [...sources(at(12, 11, 7), at(12, 11, 7))]
-    assert.equal(isMergeProfileDue(remote(), items), false)
-    assert.equal(isMergeProfileDue(merged({ updated: at(10, 7, 0), autoUpdate: false }), items), false)
+    assert.equal(isMergeProfileDue(remote(), items, NOW), false)
+    assert.equal(
+      isMergeProfileDue(merged({ updated: at(10, 7, 0), autoUpdate: false }), items, NOW),
+      false
+    )
+  })
+
+  it('does not rebuild forever because of a source dated in the future', () => {
+    // 系统时钟曾经错到后天：该来源的 updated 比此刻晚，按有效值用会让合并版每个心跳都重建
+    const items = [...sources(at(14, 7, 0), at(12, 11, 7)), merged({ updated: at(12, 11, 30) })]
+    assert.equal(isMergeProfileDue(items[2], items, NOW), false)
+  })
+
+  it('rebuilds a merged profile that is itself dated in the future', () => {
+    const items = [...sources(at(12, 11, 7), at(12, 11, 7)), merged({ updated: at(14, 7, 0) })]
+    assert.equal(isMergeProfileDue(items[2], items, NOW), true)
   })
 })
 
@@ -184,6 +203,41 @@ describe('createDueProfileUpdateRunner', () => {
     calls.length = 0
     assert.equal(await run(), 2)
     assert.deepEqual(calls, ['main', 'merged'])
+  })
+
+  it('does not rebuild the merged profile again once a source update already rebuilt it', async () => {
+    const items: ProfileItem[] = [
+      remote({ id: 'main', updated: at(10, 7, 0) }),
+      remote({ id: 'mobile', name: '移动订阅', updated: at(10, 7, 0) }),
+      merged({ updated: at(10, 7, 0) })
+    ]
+    let clock = NOW
+    const tick = (): number => (clock += 1000)
+    const calls: string[] = []
+    const run = createDueProfileUpdateRunner({
+      now: () => clock,
+      listItems: async () => items,
+      update: async (item) => {
+        calls.push(item.id)
+        const stored = items.find((candidate) => candidate.id === item.id) as ProfileItem
+        if (item.type !== 'remote') {
+          stored.updated = tick()
+          return
+        }
+        // 真实时序：来源的 updated 取下载开始时刻，来源写入后重建合并版并写入其 updated，
+        // 来源自己的 updated 在重建之后才随配置落盘——合并版的时间必须晚于来源，否则每个心跳都会重建。
+        const startedAt = tick()
+        const mergedItem = items.find((candidate) => candidate.merge) as ProfileItem
+        mergedItem.updated = tick()
+        stored.updated = startedAt
+      },
+      log: async () => undefined
+    })
+
+    assert.equal(await run(), 2)
+    assert.deepEqual(calls, ['main', 'mobile'])
+    assert.equal(await run(), 0)
+    assert.deepEqual(calls, ['main', 'mobile'])
   })
 
   it('gives up on an update that never finishes so the shared run cannot hang forever', async () => {
