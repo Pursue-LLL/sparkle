@@ -5,7 +5,16 @@
 
 ---
 
-## 2026-10-12 订阅自动更新可靠化（待装包验证）
+## 2026-10-13 Cursor 主 / Latest 默认走 🎯 Cursor 专用（已装包 @1.30.71）
+
+| 项 | 内容 |
+|---|---|
+| 变更 | 默认专用路由的 `.app` 前缀由 `Cursor-2` / `Cursor-3` 扩为 `Cursor`（主）/ `Cursor-Latest` / `Cursor-2` / `Cursor-3`；「节点选择」默认 bundle 列表置空（`CURSOR_NODE_SELECT_APP_PATH_PREFIXES`）。取代 BUGFIX_LOG 中「Cursor 主走自动选择」的旧约定 |
+| 代码 | `cursorAppBundlePathsCore.ts`（前缀 SSOT）、`cursorRuleInjection.ts`（注释与分流语义）；`.test.ts` 同步：主 / Latest 现在断言落入 `🎯 Cursor 专用` 而非 `自动选择` |
+| 验证 | 单元测试通过；线上运行配置（2026-10-13 11:38 生成）中 `Cursor.app`、`Cursor-Latest.app`、`Cursor-2.app`、`Cursor-3.app` 各 22 条规则（1 条路径规则 + 21 条域名 AND 路径规则）全部指向 `🎯 Cursor 专用`，指向 `节点选择` / `自动选择` 的为 0；未做真实 Cursor 流量的出口比对 |
+| 说明 | `🎯 Cursor 专用` 仍是仅手动选择的 selector（当前 `Sparkle-日本`），不随 `自动选择` 的延迟序重排自动换节点 |
+
+## 2026-10-12 订阅自动更新可靠化（已装包 @1.30.71 · 睡眠补更新待观察）
 
 | 项 | 内容 |
 |---|---|
@@ -13,9 +22,10 @@
 | 根因 | Mac 睡眠时定时器在唤醒瞬间（DarkWake，网络未就绪）触发，两个订阅同秒 `getaddrinfo ENOTFOUND`；失败后直接排到次日 07:00，不重试（`profileUpdater.ts` 旧失败分支）。LaunchAgent 每 5 分钟兜底一直在跑，但只认 07:00~07:05 窗口，睡过就永远补不上。合并版（local）从未被调度，重建后也不写自身 `updated`，卡片上看不到更新时间 |
 | 修复 | 判定改为「`updated` 早于最近一个计划时刻即到期」；GUI 去掉每订阅一个 `setTimeout`，改为 5 分钟心跳，与 LaunchAgent 共用同一入口；失败自动在下次心跳重试；单次更新 2 分钟超时；无 URL 的远程订阅不参与；合并版跟随来源（来源更新时重建、来源比它新时补重建），重建后写 `updated`，两处卡片显示「跟随来源 · 更新 N 分钟前」；比此刻还晚的 `updated`（系统时钟曾出错）视为未知，避免来源卡住不更新、合并版每个心跳都重建；检查读配置缓存而不强制重读 `profile.yaml`（强制重读会撞上非原子写入的半截文件并触发「读到空 → 从备份恢复写盘」） |
 | 验证 | 单元测试覆盖睡过计划时刻、失败重试、手动更新、超时、并发共享；用真实 `profile.yaml` 模拟时间：现在仅合并版到期，10-13 07:00:01 起来源到期，07:13/23:59 仍到期 |
-| 说明 | 睡死/关机期间无法更新，唤醒联网后最多 5 分钟补上；装包后首个心跳会重建合并版一次（热重载 provider，样本由 mihomo 5 分钟体检补回） |
+| 线上验证 | 2026-10-13 11:34 装包：GUI 心跳在启动后 60 秒触发，合并版重建一次（日志 `update succeeded id=1a11e783a18`），`updated` 由停在 10-09 变为 11:38:06，晚于两个来源的 07:00:00，故不再到期；之后 LaunchAgent 每 5 分钟检查均 `updated_count=0`，当天无 `update failed` / `heartbeat failed`。当天 07:00 的来源更新是 Mac 清醒时由旧版本完成的，**睡过计划时刻后的补更新尚未在真机出现过，待下一次睡眠后观察** |
+| 说明 | 睡死/关机期间无法更新，唤醒联网后最多 5 分钟补上；装包后首个心跳已重建合并版一次（热重载 provider，样本由启动复测与 mihomo 5 分钟体检补回）。服务端持续不可用时每 5 分钟重试一次、无退避，单订阅每天最多约 288 次请求 |
 
-## 2026-10-09 测速结论可信化（待装包验证）
+## 2026-10-09 测速结论可信化（已装包 @1.30.71）
 
 | 项 | 内容 |
 |---|---|
@@ -24,14 +34,15 @@
 | 修复 | ① 叶子节点改走 provider 单点端点 `mihomoProviderLeafDelay`，删除 provider 级体检/重载/缓存路径与 `purpose` 参数；② `sparkle-fast` 启动探测与超时节点复测改为低并发（4）逐点拨测；③ 展示判定收敛为 `proxyDelayVerdictCore`：连续失败 ≥3 次才显示超时，否则显示上次成功 + 「最近失败」 |
 | 二次修正 | 上一版在 mihomo 顶层 `history` 上判定，而该数组把各探测地址（通用网址 / Gemini）的样本按时间混在一起，Gemini 一直不通的节点被判成「波动」，界面零超时（线上 59 节点：旧口径 48 ok / 11 波动 / 0 超时）。改为按组实际探测地址读 `extra[url]`（`proxyProbeHistoryCore`），同一节点在多个 provider 的样本合并（两份记录曾互相矛盾，如台湾 I0 一份 Gemini=191ms、一份=0）；代理页、浮窗、两处托盘统一走 `judgeProxyForUrl`。同口径线上数据：43 ok / 9 波动 / 7 超时 |
 | 三次修正 | 实测被判「超时」的 13 个节点：6 个真不通、5 个仅 Gemini 不通、2 个时好时坏（重测能通）。判定改为按近期窗口：窗口内一次都没成功才「超时」，最近失败但近期成功过为「不稳定」（卡片小字改为「N分前成功」，旧「最近失败」措辞让人看不出数字是旧的）；详情浮窗加「其它探测地址」区分「只对 Gemini 不通」与「整个节点不通」；启动复测范围扩到所有最近一次样本非成功的节点；周期重排会重载 provider 清空其记录，重排后立即逐点补测；同一目标的 http（体检）/ https（界面测速）两份记录改为按时间合并，修复新失败被旧成功盖住的问题 |
+| 线上验证 | 2026-10-13 11:53（装包后约 20 分钟）：`自动选择` 63 个成员 = 45 正常 / 9 不稳定 / 9 超时 / 0 未测（11:49 时为 49 / 4 / 10，「不稳定」节点在两次采样间会跳动，属预期）；9 个超时中 8 个通用地址（`gstatic`）可用、仅 Gemini 不通，1 个（美国 G2）整个节点不通。「重排后立即补测」只在 30 分钟复查真的发生重排时才触发，尚未观察到；界面渲染未做目视验证 |
 | 说明 | `自动选择` 与地区组以 Gemini 探测为准（香港为 grok），Gemini 不通即该组眼中的不可用，显示超时是预期语义，不是误报 |
 
-## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-09 **15:22 CST**
+## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-13 **11:55 CST**
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.30.71** · CDHash **`075fbb0c850be2bbb3a341d5aa09f109fb9ab8f9`**（构建自 `9df932e`：`自动选择` 台湾优先 + 延迟序运行时重排 + controller 探针修复） |
-| 装包 | `/Applications/Sparkle.app`，GUI + mihomo + `:7890` 可用；实测 `自动选择` = `Fallback`、`now=台湾 I0`、`fixed=''`（未固定） |
+| 版本 | **1.30.71** · CDHash **`482891c84a36e7abfc8d01624a75843822b4e44d`**（stamp `2026.1013.1131`，构建自 `104cd48` 加 6 个当时未提交的文件，`BuildDrift` 报 `app_dirty` / `rebuild_required`，需在干净工作区重装后消除） |
+| 装包 | `/Applications/Sparkle.app`，GUI + mihomo + `:7890` 可用；实测 `自动选择` = `Fallback`、`now=台湾 I0`、`fixed=''`（未固定）、63 个成员；`🎯 Cursor 专用` = `Selector`（`now=Sparkle-日本`） |
 
 **能力/行为基线（后续不得回退）**
 - `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 台湾→日本→韩国→新加坡→美国→其他国家，地区内按 Gemini 探测延迟升序；香港与 AnyTLS 排除；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点，当前节点探测失败才降级，恢复后升回。**`自动选择` 不得被固定（pin）**：内核就绪后按实测延迟重排文件序并解除固定（`sparkleFastLatencyOrder.ts`），之后每 30 分钟复查，新首选须比当前首选快 ≥50ms 且 ≥30% 才换；Marathon（Cursor SSE 活跃 / quiesce）期间不重排，顺延到下一轮（BUG-2026-10-09-001）。
@@ -45,6 +56,8 @@
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
 6. **保留的 fork 功能**：Cursor 专用组、地区自动组、定时更新、TUN、订阅刷新。
 7. **Antigravity 专用路由**（2026-10-04 用户裁决版 @1.30.71）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `自动选择` fallback 组**（不新增组；`🎯 Cursor 专用` 归还 Cursor 原 select 语义，不再承载 agy）——用户裁决"agy 走自动选择，Cursor 专用是给 Cursor 用的"（KR VPS 不续费，固定物理出口架构失去地基）。**Google 按出口 IP 段判地域**（2026-10-04 机场 6 节点矩阵实测全 200：TW/JP/KR/SG/US/MO 出口 IP 均为 CF AS13335 共享段且节点内固定，hop 只换入站端口；`available-regions` 官方表含 TW/KR 但实际判定是 IP 段级、随会话/时段波动，同节点同日 400 与 200 并存）。`自动选择` 组缺席时注入跳过（安全降级）。mihomo 硬约束（实测 `mihomo -t` 报 `proxy not found`）：规则 target 不能直指 provider 节点，必须经组。**遇 400 时手动在 Sparkle 把 `自动选择` 切到其他节点**（矩阵实测其余节点当前均可用）。
+8. **延迟展示口径**（2026-10-09 起，详见该日条目）：节点结论按组实际探测地址取样（`extra[url]`，同一目标的 http / https 记录按时间合并，同一节点在多个 provider 的样本合并），窗口内一次都没成功才显示「超时」，最近失败但近期成功过为「不稳定」，详情浮窗另列「其它探测地址」；代理页、浮窗、托盘、复测范围共用 `proxyDelayVerdictCore`，**不得回退到读混杂各地址样本的顶层 `history`**。
+9. **订阅自动更新**（2026-10-12 起，详见该日条目）：远程订阅以「`updated` 是否早于最近一个计划时刻」判定到期，合并版以「任一来源的 `updated` 晚于自己」判定到期；GUI 5 分钟心跳与 LaunchAgent 共用 `createDueProfileUpdateRunner`，失败不推进 `updated`、下次心跳自动重试；合并版无独立定时。**不得改回按定时器触发时刻 / 固定时间窗口判断，心跳读 `profile.yaml` 不得强制重读**（非原子写入，强读可能读到半截文件并触发恢复写入）。
 
 **2026-10-09 移除 Cursor 长流子系统（待装包验证）**
 - **保留**：`🎯 Cursor 专用` 组（成员、仅手动选择、默认节点）+ Cursor 路由 / DNS 规则（`cursorBidiOptimize`、`cursorProxyAppPathPrefixes`）。
