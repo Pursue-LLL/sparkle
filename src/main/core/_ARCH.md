@@ -61,7 +61,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `cursorDedicatedSelectionCore.ts` | 手选节点持久化（`writeCursorDedicatedManualSelection`） |
 | `cursorDedicatedManualOnlyCore.ts` | Cursor 专用组仅允许手动 / 启动恢复切换，自动来源一律拒绝 |
 | `cursorRuleInjection.ts` | Cursor DOMAIN / PROCESS-NAME 规则 → 🎯 Cursor 专用；可选 path-scoped AND 规则（`cursorBidiOptimize` 控制开关） |
-| `cursorAppBundlePathsCore.ts` / `cursorPathPrefixProfileReloadCore.ts` | Cursor .app 路径前缀 SSOT · 前缀变更触发 profile 重生成 |
+| `cursorAppBundlePathsCore.ts` / `cursorPathPrefixProfileReloadCore.ts` | Cursor .app 路径前缀 SSOT（默认 主 / Latest / Cursor-2 / Cursor-3 全走 `🎯 Cursor 专用`，「节点选择」默认列表为空）· 前缀变更触发 profile 重生成 |
 | `fakeIpRoutingIntegrity.ts` | fake-ip 路由一致性：Tier0 Cursor · Tier0 Direct · Tier1 Proxy · sniffer 完整性 |
 
 ### 网络与 DNS
