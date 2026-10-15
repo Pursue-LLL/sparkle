@@ -35,7 +35,7 @@ export async function waitForMihomoControllerReady(
   return false
 }
 
-/** 内核就绪后：自动选择延迟排序、订阅更新器、Cursor 专用组默认节点、地区 url-test 预热。 */
+/** 内核就绪后：自动选择延迟排序与粘性固定、订阅更新器、Cursor 专用组默认节点、地区 url-test 预热。 */
 export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Promise<void> {
   await Promise.race([coreInitPromise, delay(CORE_INIT_RACE_MS)])
 
@@ -69,6 +69,10 @@ async function runPostReadyServices(): Promise<void> {
       `[SparkleFastOrder]: failed: ${error instanceof Error ? error.message : String(error)}\n`,
     )
   }
+
+  // 排序失败也要启动：固定逻辑只依赖 controller，与重排相互独立。
+  const { startAutoSelectStickyPin } = await import('./autoSelectStickyPin')
+  startAutoSelectStickyPin()
 
   const { mihomoGroups, mihomoChangeProxy, mihomoGroupDelay } = await import('./mihomoApi')
 

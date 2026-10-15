@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { CURSOR_DELAY_TEST_URL } from './cursorProxyGroup'
+import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
 import { buildBaseConfigWithProviders } from './providerConfigCore'
+import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import {
   VPS_PROVIDER_HEALTH_CHECK_INTERVAL_SEC,
   resolveVpsProviderId
@@ -59,6 +61,11 @@ describe('provider VPS split integration', () => {
       VPS_PROVIDER_HEALTH_CHECK_INTERVAL_SEC
     )
     assert.equal(providers[vpsProviderId]['health-check'].lazy, true)
+    assert.equal(
+      providers[FAST_NODE_PROVIDER_ID]['health-check'].url,
+      AUTO_SELECT_GEMINI_PROBE_URL
+    )
+    assert.equal(providers[FAST_NODE_PROVIDER_ID]['health-check'].lazy, true)
 
     const cursorGroup = (base['proxy-groups'] as { name: string; use?: string[]; filter?: string }[]).find(
       (group) => group.name === '🎯 Cursor 专用'

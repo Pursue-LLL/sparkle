@@ -291,8 +291,16 @@ export const mihomoChangeProxy = async (
 }
 
 export const mihomoUnfixedProxy = async (group: string): Promise<ControllerProxiesDetail> => {
+  const { notifyAutoSelectUnfixed } = await import('./autoSelectStickyPin')
+  notifyAutoSelectUnfixed(group)
   const instance = await getAxios()
   return await instance.delete(`/proxies/${encodeURIComponent(group)}`)
+}
+
+/** 单个代理组的当前状态（now / fixed / all），比 `/proxies` 全量轻。 */
+export const mihomoGroupDetail = async (group: string): Promise<ControllerGroupDetail> => {
+  const instance = await getAxios()
+  return await instance.get(`/proxies/${encodeURIComponent(group)}`)
 }
 
 const DEFAULT_DELAY_TEST_TIMEOUT_MS = 10000

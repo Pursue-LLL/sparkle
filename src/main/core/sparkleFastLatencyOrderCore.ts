@@ -1,5 +1,5 @@
 // [INPUT] mihomo provider 节点（history / extra[url].history）
-// [OUTPUT] collectNodeDelays · hasSameNodeOrder · shouldAdoptLatencyOrder
+// [OUTPUT] collectNodeDelays · hasPreferredUrlSamples · hasSameNodeOrder · shouldAdoptLatencyOrder
 // [POS] 把 mihomo 探测历史折算成「节点名 → 延迟」，供 sparkle-fast 段内按延迟排序。
 // 纯函数模块，便于单测。
 
@@ -8,7 +8,7 @@ import type { NodeDelayMap } from './sparkleFastProviderCore'
 /** 取最近若干次成功探测的中位数，抑制单次抖动。 */
 const DELAY_SAMPLE_WINDOW = 5
 
-interface ProviderNodeProbe {
+export interface ProviderNodeProbe {
   name: string
   alive: boolean
   history?: Array<{ delay: number }>
@@ -27,6 +27,22 @@ function medianOfRecentSuccess(history: Array<{ delay: number }> | undefined): n
   return sorted[Math.floor(sorted.length / 2)]
 }
 
+/** 存活判定优先看 `自动选择` 自身探测目标（Gemini），缺失时退回 provider 默认探测。 */
+function isProbeAlive(proxy: ProviderNodeProbe, preferredUrl: string): boolean {
+  const preferred = proxy.extra?.[preferredUrl]
+  return preferred ? preferred.alive : proxy.alive
+}
+
+/** 是否已有针对指定探测地址（如 Gemini）的成功样本；冷启动时顶层 history 可能只有 gstatic 样本。 */
+export function hasPreferredUrlSamples(
+  proxies: readonly ProviderNodeProbe[],
+  preferredUrl: string
+): boolean {
+  return proxies.some(
+    (proxy) => medianOfRecentSuccess(proxy.extra?.[preferredUrl]?.history) !== undefined
+  )
+}
+
 /**
  * 优先使用 `自动选择` 自身探测目标（Gemini）的历史，缺失时退回 provider 默认探测历史。
  * 不存活或没有成功样本的节点不入表（排序时垫在段尾）。
@@ -37,11 +53,10 @@ export function collectNodeDelays(
 ): NodeDelayMap {
   const delays = new Map<string, number>()
   for (const proxy of proxies) {
-    const preferred = proxy.extra?.[preferredUrl]
-    const alive = preferred ? preferred.alive : proxy.alive
-    if (!alive) {
+    if (!isProbeAlive(proxy, preferredUrl)) {
       continue
     }
+    const preferred = proxy.extra?.[preferredUrl]
     const delay = medianOfRecentSuccess(preferred?.history) ?? medianOfRecentSuccess(proxy.history)
     if (delay !== undefined) {
       delays.set(proxy.name, delay)

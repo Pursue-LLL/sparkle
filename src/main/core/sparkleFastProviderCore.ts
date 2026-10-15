@@ -22,7 +22,8 @@ export type NodeDelayMap = ReadonlyMap<string, number>
 
 /**
  * 优先地区节点按优先级分段在前，其余国家节点垫底；去重保序；AnyTLS 与香港不进入。
- * 段内按延迟升序（Array.sort 稳定：无延迟的节点垫在段尾并保持订阅顺序）。
+ * 有实测延迟样本时：所有有样本（探测存活）的节点按地区分段 + 段内延迟升序排在前面，
+ * 无样本（探测超时/不可达）的节点按地区顺序统一垫在文件末尾，防止已知死节点挡在低优先地区的活节点前面。
  */
 export function orderProxiesByRegionPriority(
   proxies: ProxyRecord[],
@@ -31,6 +32,8 @@ export function orderProxiesByRegionPriority(
 ): ProxyRecord[] {
   const included = new Set<string>()
   const ordered: ProxyRecord[] = []
+  const trailingUnsampled: ProxyRecord[] = []
+  const hasSamples = Boolean(delayMs && delayMs.size > 0)
   const delayOf = (proxy: ProxyRecord): number =>
     delayMs?.get(proxyName(proxy)) ?? Number.POSITIVE_INFINITY
   const take = (matches: (name: string) => boolean): void => {
@@ -49,21 +52,25 @@ export function orderProxiesByRegionPriority(
       included.add(name)
       segment.push(proxy)
     }
-    if (delayMs) {
-      // 两端同为 Infinity 时相减得 NaN，须显式比较以保持稳定序。
-      segment.sort((a, b) => {
-        const da = delayOf(a)
-        const db = delayOf(b)
-        return da === db ? 0 : da < db ? -1 : 1
-      })
+    if (!hasSamples) {
+      ordered.push(...segment)
+      return
     }
-    ordered.push(...segment)
+    const sampled = segment.filter((proxy) => delayMs?.has(proxyName(proxy)))
+    const unsampled = segment.filter((proxy) => !delayMs?.has(proxyName(proxy)))
+    sampled.sort((a, b) => {
+      const da = delayOf(a)
+      const db = delayOf(b)
+      return da === db ? 0 : da < db ? -1 : 1
+    })
+    ordered.push(...sampled)
+    trailingUnsampled.push(...unsampled)
   }
   for (const region of regionPriority) {
     take((name) => nodeMatchesRegion(name, region))
   }
   take(() => true)
-  return ordered
+  return [...ordered, ...trailingUnsampled]
 }
 
 export function buildSparkleFastProviderDocument(input: {
