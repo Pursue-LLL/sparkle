@@ -12,7 +12,7 @@
 | 现象 | 10-14 约 15 小时内 `自动选择` 切换 201–207 次（10-08 基线 17 次/天），38% 的切换离开了失败率 <20% 的健康节点 |
 | 根因 | ① 原生 `fallback` 无迟滞：前序节点单次探测失败即被放弃，恢复后立即回切；② 周期重排（30 分钟）每次采用都 `DELETE /proxies/自动选择` 解除固定；③ 订阅刷新（`reloadMihomoProfileProviders`）漏热重载 `sparkle-fast`，旧失效节点触发 1,863 次全量并发体检风暴；同时 `sparkle-fast` 原配置使用非懒加载 `gstatic` 体检造成双倍并发压力；④ 若仅固定而不拦截单次探测误杀，每次并发体检超时都会造成单向不可逆降级；⑤ 高优先级地区全挂时，未测/死节点仍排在低优先级地区的活节点前面 |
 | 修复 | ① `autoSelectStickyPinCore.ts` + `autoSelectStickyPin.ts`：每 3 秒检查 `自动选择`（纯本机内存读取，0 网络请求），`now` 连续 2 次稳定后 `PUT` 固定（无 Gemini 样本时先单点拨测验活）；固定被 mihomo 清除且节点仍在组内时，先单点独立复测 Gemini（并发度 1），存活则立即恢复固定（10 分钟冷却窗内再次丢固定则视为节点不稳不再救回）；清理孤儿固定；主动解锁同步重置记忆；② `sparkleFastLatencyOrder.ts` + `sparkleFastProviderCore.ts`：启动阶段若磁盘已有延迟快照则直接沿用（`hasPreferredUrlSamples` 要求 ≥80% 节点已探测，防冷启动少量节点刚测完触发残缺样本重排与 46s 全量重测）、仅当原固定节点不在存活表内才解除固定；周期重排保留固定；有实测延迟时将无样本节点全局垫底；③ `provider.ts` + `providerConfigCore.ts` + `vpsProviderSplitCore.ts`：订阅刷新同步热重载 `sparkle-fast`，`sparkle-fast` 对齐为 `Gemini + lazy: true`（mihomo 内部与 `自动选择` 自动按 URL 去重为单次任务），主订阅商业 provider 同样开启 `lazy: true` |
-| 线上验证 | 2026-10-15 11:04 装包（CDHash `590cd0e8f8de5815479a19fedbf29fd8b215d647`，`BuildDrift: app_commit=96af137 app_dirty=0 drift=none`）：`work/config.yaml` 中 `sparkle-fast` 已生效为 `url: https://gemini.google.com` + `lazy: true`；启动重排后自动执行 `refilled probe samples after reorder`，6 秒后记录 `[AutoSelectSticky]: pinned 🇨🇳 台湾 I0 | AI、动态IP | 2x` |
+| 线上验证 | 2026-10-15 11:04 装包（CDHash `590cd0e8`）完成首次重排并记录 `[AutoSelectSticky]: pinned 🇨🇳 台湾 I0 | AI、动态IP | 2x`，随后 80 分钟内 0 次切换；13:24 二次装包（CDHash `d19fd1a18c4013367c42052db0719eae82dbb710`，`BuildDrift: app_commit=3b60710 app_dirty=0 drift=none`）：`work/config.yaml` 中主订阅 `1a11e783a18` 与 `sparkle-fast` 均生效 `lazy: true`；冷启动输出 `[SparkleFastOrder]: bootstrap using disk snapshot samples=43`（0 残缺重排、0 重复全量重测，原有健康固定节点 `台湾 I0` 保持不中断） |
 
 ## 2026-10-13 Cursor 主 / Latest 默认走 🎯 Cursor 专用（已装包 @1.30.71）
 
@@ -46,11 +46,11 @@
 | 线上验证 | 2026-10-13 11:53（装包后约 20 分钟）：`自动选择` 63 个成员 = 45 正常 / 9 不稳定 / 9 超时 / 0 未测（11:49 时为 49 / 4 / 10，「不稳定」节点在两次采样间会跳动，属预期）；9 个超时中 8 个通用地址（`gstatic`）可用、仅 Gemini 不通，1 个（美国 G2）整个节点不通。「重排后立即补测」只在 30 分钟复查真的发生重排时才触发，尚未观察到；界面渲染未做目视验证 |
 | 说明 | `自动选择` 与地区组以 Gemini 探测为准（香港为 grok），Gemini 不通即该组眼中的不可用，显示超时是预期语义，不是误报 |
 
-## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-15 **11:05 CST**
+## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-15 **13:25 CST**
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.30.71** · CDHash **`590cd0e8f8de5815479a19fedbf29fd8b215d647`**（stamp `2026.1015.1043`，commit `96af137`，`BuildDrift` `app_dirty=0 drift=none`） |
+| 版本 | **1.30.71** · CDHash **`d19fd1a18c4013367c42052db0719eae82dbb710`**（stamp `2026.1015.1319`，commit `3b60710`，`BuildDrift` `app_dirty=0 drift=none`） |
 | 装包 | `/Applications/Sparkle.app`，GUI + mihomo + `:7890` 可用；实测 `自动选择` = `Fallback`、已由 `[AutoSelectSticky]` 固定在 `🇨🇳 台湾 I0 | AI、动态IP | 2x`；`🎯 Cursor 专用` = `Selector` |
 
 **能力/行为基线（后续不得回退）**
