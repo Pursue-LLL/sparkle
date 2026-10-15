@@ -69,6 +69,7 @@ import {
 } from './vlessVisionMuxGuardCore'
 import { partitionLeafProxies, resolveVpsProviderId } from './vpsProviderSplitCore'
 import { buildBaseConfigWithProviders } from './providerConfigCore'
+import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import { appendAppLog } from '../utils/log'
 
 export { resolveVpsProviderId, partitionLeafProxies } from './vpsProviderSplitCore'
@@ -140,7 +141,7 @@ export async function setupProfileProviders(
   return { commercial, vps }
 }
 
-/** Hot-reload mihomo proxy-provider files after disk write (commercial + optional VPS split). */
+/** Hot-reload mihomo proxy-provider files after disk write (commercial + optional VPS split + sparkle-fast). */
 export async function reloadMihomoProfileProviders(
   profileId: string,
   hasVpsProvider: boolean
@@ -148,6 +149,11 @@ export async function reloadMihomoProfileProviders(
   await mihomoUpdateProxyProviders(profileId)
   if (hasVpsProvider) {
     await mihomoUpdateProxyProviders(resolveVpsProviderId(profileId))
+  }
+  try {
+    await mihomoUpdateProxyProviders(FAST_NODE_PROVIDER_ID)
+  } catch {
+    // sparkle-fast 未启用时不阻断主订阅 provider 热重载
   }
 }
 

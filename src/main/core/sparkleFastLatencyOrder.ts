@@ -2,10 +2,10 @@
 // [OUTPUT] bootstrapSparkleFastLatencyOrder · loadSparkleFastDelaySnapshot · startSparkleFastLatencyOrderLoop
 // [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变），并让 mihomo 重读 provider。
 // 每轮实测延迟落盘为快照；生成配置重写 sparkle-fast 时读取快照，避免订阅刷新后退回「未测延迟」的订阅顺序。
-// 不固定（pin）`自动选择`：fallback 本就取文件序里第一个存活节点，固定反而会盖过文件序并写入 store-selected。
+// 文件序只决定「下一次选节点」选谁：`自动选择` 固定（autoSelectStickyPin）后，存活的当前节点不受重排影响。
+// 仅启动阶段解除固定，让重启后按最新延迟序重新选择；周期复查绝不解除，避免存活节点被换掉。
 // 启动时先低并发逐点拨测再重排；周期复查仅当新首选明显更快才换文件序。
 // 重排会重载 provider 并清空其探测记录，周期重排后立即逐点补测，让 fallback 的存活判断与下一轮排序有新样本。
-// fallback 仍只在当前节点挂掉时切换，不因延迟抖动来回切。
 
 import { readFile, writeFile } from 'fs/promises'
 import path from 'path'
@@ -14,11 +14,17 @@ import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { AUTO_SELECT_GROUP_NAME, AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
-import { mihomoProxyProviders, mihomoUnfixedProxy, mihomoUpdateProxyProviders } from './mihomoApi'
+import {
+  mihomoGroupDetail,
+  mihomoProxyProviders,
+  mihomoUnfixedProxy,
+  mihomoUpdateProxyProviders
+} from './mihomoApi'
 import { probeProviderLeavesGently } from './providerLeafProbe'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import {
   collectNodeDelays,
+  hasPreferredUrlSamples,
   hasSameNodeOrder,
   shouldAdoptLatencyOrder
 } from './sparkleFastLatencyOrderCore'
@@ -61,14 +67,32 @@ async function resolveSparkleFastDelayMap(
   return measured
 }
 
-/** 清除 `自动选择` 的固定节点，让 fallback 回到「文件序第一个存活节点」。 */
-async function releaseAutoSelectPin(): Promise<void> {
-  await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
+/** 仅当 `自动选择` 当前固定节点不在实测存活表内（已死或已移除）时解除固定，避免打断健康节点。 */
+async function releaseAutoSelectPinIfUnhealthy(delays: NodeDelayMap): Promise<void> {
+  try {
+    const group = await mihomoGroupDetail(AUTO_SELECT_GROUP_NAME)
+    if (group.fixed && !delays.has(group.fixed)) {
+      await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
+    }
+  } catch {
+    await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
+  }
+}
+
+async function refillProviderSamplesAfterReorder(): Promise<void> {
+  try {
+    await probeProviderLeavesGently(FAST_NODE_PROVIDER_ID)
+    await appendAppLog('[SparkleFastOrder]: refilled probe samples after reorder\n')
+  } catch (error) {
+    await appendAppLog(
+      `[SparkleFastOrder]: refill failed: ${error instanceof Error ? error.message : String(error)}\n`
+    )
+  }
 }
 
 /**
  * @param force 启动阶段为 true：无条件采用延迟序；周期复查为 false：需通过迟滞判定。
- * 采用新序后解除 `自动选择` 的固定，由 fallback 直接取新序第一个存活节点。
+ * 仅 force 且当前固定节点不存活时解除 `自动选择` 的固定；周期复查保留固定。
  * @returns 是否重排并通知了 mihomo。
  */
 async function applyLatencyOrder(force: boolean): Promise<boolean> {
@@ -89,56 +113,47 @@ async function applyLatencyOrder(force: boolean): Promise<boolean> {
     delayMs: delays
   })
   const nextFirst = String(ordered[0]?.name ?? '')
-  if (hasSameNodeOrder(current, ordered)) {
-    if (force) {
-      await releaseAutoSelectPin()
-    }
-    return false
-  }
-  if (
-    !force &&
-    !shouldAdoptLatencyOrder(String(current[0]?.name), nextFirst, delays)
-  ) {
+  const sameOrder = hasSameNodeOrder(current, ordered)
+  if (!force && (sameOrder || !shouldAdoptLatencyOrder(String(current[0]?.name), nextFirst, delays))) {
     return false
   }
 
-  await writeFile(filePath, stringifyYaml({ proxies: ordered }), 'utf8')
-  await mihomoUpdateProxyProviders(FAST_NODE_PROVIDER_ID)
-  await releaseAutoSelectPin()
-  await appendAppLog(
-    `[SparkleFastOrder]: reordered by latency nodes=${ordered.length} sampled=${delays.size} first=${nextFirst}\n`
-  )
-  return true
-}
-
-/** API 就绪后立即探测并重排，避免 fallback 长时间停在订阅顺序第一个。 */
-export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
-  if (await applyLatencyOrder(true)) {
-    return
-  }
-  try {
-    // 逐点低并发拨测：整个 provider 同时体检会把正常节点测成超时，进而被排到段尾。
-    await probeProviderLeavesGently(FAST_NODE_PROVIDER_ID)
-  } catch (error) {
+  if (!sameOrder) {
+    await writeFile(filePath, stringifyYaml({ proxies: ordered }), 'utf8')
+    await mihomoUpdateProxyProviders(FAST_NODE_PROVIDER_ID)
     await appendAppLog(
-      `[SparkleFastOrder]: probe failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      `[SparkleFastOrder]: reordered by latency nodes=${ordered.length} sampled=${delays.size} first=${nextFirst}\n`
     )
   }
-  await applyLatencyOrder(true)
+  if (force) {
+    await releaseAutoSelectPinIfUnhealthy(delays)
+  }
+  return !sameOrder
+}
+
+/** API 就绪后先确认有实测 Gemini 样本（冷启动无样本时先低并发拨测），再重排；若重排重载清空了内存样本则补测。 */
+export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
+  const provider = (await mihomoProxyProviders()).providers[FAST_NODE_PROVIDER_ID]
+  if (!hasPreferredUrlSamples(provider?.proxies ?? [], AUTO_SELECT_GEMINI_PROBE_URL)) {
+    try {
+      // 逐点低并发拨测：整个 provider 同时体检会把正常节点测成超时，进而被排到段尾。
+      await probeProviderLeavesGently(FAST_NODE_PROVIDER_ID)
+    } catch (error) {
+      await appendAppLog(
+        `[SparkleFastOrder]: probe failed: ${error instanceof Error ? error.message : String(error)}\n`
+      )
+    }
+  }
+  if (await applyLatencyOrder(true)) {
+    await refillProviderSamplesAfterReorder()
+  }
 }
 
 async function recheckSparkleFastLatencyOrder(): Promise<void> {
   if (!(await applyLatencyOrder(false))) {
     return
   }
-  try {
-    await probeProviderLeavesGently(FAST_NODE_PROVIDER_ID)
-    await appendAppLog('[SparkleFastOrder]: refilled probe samples after reorder\n')
-  } catch (error) {
-    await appendAppLog(
-      `[SparkleFastOrder]: refill failed: ${error instanceof Error ? error.message : String(error)}\n`
-    )
-  }
+  await refillProviderSamplesAfterReorder()
 }
 
 let refreshTimer: NodeJS.Timeout | undefined

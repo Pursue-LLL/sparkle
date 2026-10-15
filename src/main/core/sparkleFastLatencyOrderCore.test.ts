@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { collectNodeDelays, hasSameNodeOrder, shouldAdoptLatencyOrder } from './sparkleFastLatencyOrderCore'
+import {
+  collectNodeDelays,
+  hasPreferredUrlSamples,
+  hasSameNodeOrder,
+  shouldAdoptLatencyOrder
+} from './sparkleFastLatencyOrderCore'
 
 const URL = 'https://gemini.google.com'
 
@@ -39,6 +44,27 @@ describe('sparkleFastLatencyOrderCore', () => {
     assert.equal(hasSameNodeOrder([{ name: 'a' }, { name: 'b' }], [{ name: 'a' }, { name: 'b' }]), true)
     assert.equal(hasSameNodeOrder([{ name: 'a' }, { name: 'b' }], [{ name: 'b' }, { name: 'a' }]), false)
     assert.equal(hasSameNodeOrder([{ name: 'a' }], []), false)
+  })
+
+  it('distinguishes target-url probe samples from default gstatic history', () => {
+    assert.equal(
+      hasPreferredUrlSamples([{ name: 'a', alive: true, history: [{ delay: 50 }] }], URL),
+      false
+    )
+    assert.equal(
+      hasPreferredUrlSamples(
+        [{ name: 'a', alive: true, extra: { [URL]: { alive: false, history: [{ delay: 0 }] } } }],
+        URL
+      ),
+      false
+    )
+    assert.equal(
+      hasPreferredUrlSamples(
+        [{ name: 'a', alive: true, extra: { [URL]: { alive: true, history: [{ delay: 120 }] } } }],
+        URL
+      ),
+      true
+    )
   })
 })
 

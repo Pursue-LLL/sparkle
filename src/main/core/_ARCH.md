@@ -45,7 +45,8 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | 文件 | 职责 |
 | ---- | ---- |
 | `sparkleFastProviderCore.ts` | `自动选择` 的 `sparkle-fast` provider 文件生成（纯函数）：按 `proxySwitchPriority` 地区分段平铺，剔除 AnyTLS / 香港，传入 `delayMs` 时段内按延迟升序（无样本垫段尾）；BUG-2026-10-09-001 |
-| `sparkleFastLatencyOrderCore.ts` / `sparkleFastLatencyOrder.ts` | 延迟序运行时：Core 把 provider 探测历史折算成「节点→延迟」并做迟滞判定（≥50ms 且 ≥30% 才换首选）；运行时在内核就绪后重排并解除 `自动选择` 固定，每 30 分钟复查；实测结果落盘 `sparkle-fast-delays.json`，订阅刷新重建 provider 时用作排序依据 |
+| `sparkleFastLatencyOrderCore.ts` / `sparkleFastLatencyOrder.ts` | 延迟序运行时：Core 把 provider 探测历史折算成「节点→延迟」并做迟滞判定（≥50ms 且 ≥30% 才换首选）；运行时在内核就绪后重排并解除 `自动选择` 固定（仅启动阶段），每 30 分钟复查且不解除固定；实测结果落盘 `sparkle-fast-delays.json`，订阅刷新重建 provider 时用作排序依据 |
+| `autoSelectStickyPinCore.ts` / `autoSelectStickyPin.ts` | `自动选择` 粘性固定：Core 决策（fallback 选出的 `now` 连续稳定 2 次轮询即固定；原固定被清除时先触发单点独立复测过滤并发体检误杀，10 分钟冷却防死守抖动节点；固定节点已不在组内则解除）；运行时每 3 秒 `GET /proxies/自动选择`（不触发 lazy 体检），固定前确认 Gemini 存活，日志 `[AutoSelectSticky]: pinned X (left Y)` / `restored X` |
 | `defaultAutoSwitchProxy.ts` | `自动选择` = `type:fallback`（`use:[sparkle-fast]`，Gemini 探测 `interval:300` / `timeout:5000` / `lazy:true`）；`Sparkle-<地区>` = 仅手动选择的 `type:url-test`（`interval:300` + `tolerance:2000` + `lazy:true`，BUG-2026-09-15-007），不被 `自动选择` 引用 |
 | `regionalAutoSelectGroupsCore.ts` / `regionalUrlTestWarmup.ts` / `regionalUrlTestWarmupCore.ts` | `Sparkle-<地区>` 组构建（排除 AnyTLS，无可用节点的地区不建组）与启动预热 |
 | `autoSelectAnyTlsExclusionCore.ts` | url-test 自动选择组剔除 AnyTLS |

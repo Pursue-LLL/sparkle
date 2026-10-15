@@ -27,7 +27,7 @@ mihomo (TUN) → 节点 leaf → 目标站点
 ## 架构约束
 
 1. **Cursor 专用组仅手动选择** — `🎯 Cursor 专用` 只接受 `manual` / `bootstrap` 来源的切换，任何自动逻辑不得改写。
-2. **`自动选择` 不被固定** — 它是 `fallback` 组，按 `sparkle-fast` 的文件顺序取首个存活节点；运行时只重排 provider 文件，不 pin。
+2. **`自动选择` 粘性固定** — 它是 `fallback` 组，按 `sparkle-fast` 的文件顺序选出首个存活节点后由 `autoSelectStickyPin` 固定（pin），只有该节点挂掉才换，高优先级节点恢复不回切；周期重排只改 provider 文件序，不解除固定，仅启动重排解除。
 3. **安装 SSOT** — macOS 仅 `/Applications/Sparkle.app`（`pnpm run agent:upgrade:mac` / `upgrade:mac`）；禁止 ditto 覆盖、禁止 Agent 裸 `pnpm build:mac`。
 4. **Ship 定义** — git HEAD = 已安装 semver，且装后 PostCoreBootstrap 日志出现 `mihomo API ready`。
 
