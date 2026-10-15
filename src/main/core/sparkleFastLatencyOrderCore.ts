@@ -33,14 +33,33 @@ function isProbeAlive(proxy: ProviderNodeProbe, preferredUrl: string): boolean {
   return preferred ? preferred.alive : proxy.alive
 }
 
-/** 是否已有针对指定探测地址（如 Gemini）的成功样本；冷启动时顶层 history 可能只有 gstatic 样本。 */
+/** 判定内存探测已就绪所需的最小探测覆盖比例，防止冷启动初期少量节点刚测完就触发残缺样本重排。 */
+const MIN_PREFERRED_PROBE_COVERAGE_RATIO = 0.8
+
+/**
+ * 是否已有针对指定探测地址（如 Gemini）的完整探测样本：
+ * 至少 {@link MIN_PREFERRED_PROBE_COVERAGE_RATIO} 比例的节点已完成该地址探测，且至少 1 个节点有成功样本。
+ */
 export function hasPreferredUrlSamples(
   proxies: readonly ProviderNodeProbe[],
   preferredUrl: string
 ): boolean {
-  return proxies.some(
-    (proxy) => medianOfRecentSuccess(proxy.extra?.[preferredUrl]?.history) !== undefined
-  )
+  if (proxies.length === 0) {
+    return false
+  }
+  const minProbed = Math.ceil(proxies.length * MIN_PREFERRED_PROBE_COVERAGE_RATIO)
+  let probedCount = 0
+  let hasSuccess = false
+  for (const proxy of proxies) {
+    const history = proxy.extra?.[preferredUrl]?.history
+    if ((history?.length ?? 0) > 0) {
+      probedCount += 1
+      if (!hasSuccess && medianOfRecentSuccess(history) !== undefined) {
+        hasSuccess = true
+      }
+    }
+  }
+  return hasSuccess && probedCount >= minProbed
 }
 
 /**

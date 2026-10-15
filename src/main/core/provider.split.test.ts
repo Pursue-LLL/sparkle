@@ -55,6 +55,7 @@ describe('provider VPS split integration', () => {
       'http://example.com/custom-commercial-only'
     )
     assert.equal(providers[profileId]['health-check'].interval, 300)
+    assert.equal(providers[profileId]['health-check'].lazy, true)
     assert.equal(providers[vpsProviderId]['health-check'].url, CURSOR_DELAY_TEST_URL)
     assert.equal(
       providers[vpsProviderId]['health-check'].interval,

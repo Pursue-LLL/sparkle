@@ -40,9 +40,10 @@ describe('vpsProviderSplitCore', () => {
     assert.equal(isVpsLeafProxy({ name: 'SG-01', type: 'trojan' }), false)
   })
 
-  it('uses generate_204 for commercial-only provider health-check', () => {
+  it('uses generate_204 lazy health-check for commercial-only provider', () => {
     const healthCheck = buildCommercialProviderHealthCheck([{ name: 'SG-01', type: 'trojan' }])
     assert.equal(healthCheck.url, 'http://www.gstatic.com/generate_204')
+    assert.equal(healthCheck.lazy, true)
   })
 
   it('uses api2 lazy health-check for vps provider', () => {
