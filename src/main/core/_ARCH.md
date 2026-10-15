@@ -21,7 +21,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `proxyProbeHistoryCore.ts` | 节点探测样本的唯一取数口径：按组实际探测地址读 `extra[url]`（忽略 http/https 差异，同一目标的多份记录按时间合并而非只取其一），不再读混杂各地址样本的顶层 `history`；`poolProxyInstances` 合并同一节点多份样本；渲染进程经 `@sparkle-core` 引用 |
 | `proxyDelayVerdictCore.ts` | 延迟展示的单一判定规则（ok / flaky=不稳定 / failed / untested）：在 `judgeProxyForUrl` 取到的单一探测地址样本上，窗口内一次都没成功才判超时，最近失败但近期成功过判不稳定；`judgeOtherProbeUrls` 给出其它探测地址上的表现；代理页、详情浮窗、两处托盘、复测共用 |
 | `providerLeafProbeCore.ts` / `providerLeafProbe.ts` | 冷启动低并发（4）逐点拨测：`sparkle-fast` 启动探测 + 地区组预热后复测最近一次样本不是成功的节点（超时/不稳定/未测，总时长上限 150s），取代 provider 级并发体检 |
-| `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
+| `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `autoSelectStickyPin` 粘性固定 → `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
 | `coreReadinessGate.ts` / `coreReadinessGateCore.ts` | 冷启动 Readiness Contract：sidecar → profile 检查 → startCore → API → 数据面探测 |
 | `coreLifecycle.ts` / `coreLifecycleCore.ts` | core 就绪后 fake-ip flush（cold / manual restart 后卫生） |
 | `probeWarmupCore.ts` / `probeWarmupState.ts` | 内核启动后批量测速窗口标志（`postCoreBootstrap` 开始/结束，5 分钟兜底）；经 `probeWarmupChanged` 事件与 `getProbeWarmupActive` IPC 推给代理页，窗口内无可信样本的节点显示 loading |
@@ -32,7 +32,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | 文件 | 职责 |
 | ---- | ---- |
 | `factory.ts` | runtime config 生成（provider 拆分、分组、规则、DNS、sniffer）；首步调用 `logBuildDriftAtStartup` |
-| `provider.ts` / `providerConfigCore.ts` / `vpsProviderSplitCore.ts` | 订阅节点 → provider 文件；VPS 与商用节点拆成 `{profileId}-vps` 与商用 provider；`applyVlessVisionMuxGuard` |
+| `provider.ts` / `providerConfigCore.ts` / `vpsProviderSplitCore.ts` | 订阅节点 → provider 文件；VPS 与商用节点拆成 `{profileId}-vps` 与商用 provider；`sparkle-fast` provider 统一使用 `Gemini + lazy:true` 体检并在订阅刷新（`reloadMihomoProfileProviders`）时同步热重载；`applyVlessVisionMuxGuard` |
 | `mergeProfileCore.ts` | 合并订阅：按地区白名单取多个订阅节点并集，策略组与规则沿用 base 订阅；无独立定时，来源订阅更新时重建（并写入自身 `updated`），来源比它新时由更新心跳补重建 |
 | `profileUpdater.ts` / `profileUpdaterCore.ts` / `profileUpdateDueCli.ts` | 订阅自动更新：判定「最近一个计划时刻之后是否成功更新过」，不依赖定时器恰好触发。GUI 每 5 分钟心跳（启动后 60s 首次）与 LaunchAgent（`--sparkle-profile-update-due`，同样每 5 分钟）共用 `createDueProfileUpdateRunner`：先更新到期的来源订阅，再补齐落后于来源的合并订阅；单次更新 2 分钟超时兜底，并发调用共享同一次执行；失败不推进 `updated`，下次心跳自动重试 |
 | `profileConfigRecoveryCore.ts` / `profileConfigRecoveryPureCore.ts` | BUG-2026-09-03-003 空/损坏 `profile.yaml` 从 `.bak` + 磁盘 profiles 恢复 · 禁止 persist 空配置 |
@@ -44,9 +44,9 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 
 | 文件 | 职责 |
 | ---- | ---- |
-| `sparkleFastProviderCore.ts` | `自动选择` 的 `sparkle-fast` provider 文件生成（纯函数）：按 `proxySwitchPriority` 地区分段平铺，剔除 AnyTLS / 香港，传入 `delayMs` 时段内按延迟升序（无样本垫段尾）；BUG-2026-10-09-001 |
-| `sparkleFastLatencyOrderCore.ts` / `sparkleFastLatencyOrder.ts` | 延迟序运行时：Core 把 provider 探测历史折算成「节点→延迟」并做迟滞判定（≥50ms 且 ≥30% 才换首选）；运行时在内核就绪后重排并解除 `自动选择` 固定（仅启动阶段），每 30 分钟复查且不解除固定；实测结果落盘 `sparkle-fast-delays.json`，订阅刷新重建 provider 时用作排序依据 |
-| `autoSelectStickyPinCore.ts` / `autoSelectStickyPin.ts` | `自动选择` 粘性固定：Core 决策（fallback 选出的 `now` 连续稳定 2 次轮询即固定；原固定被清除时先触发单点独立复测过滤并发体检误杀，10 分钟冷却防死守抖动节点；固定节点已不在组内则解除）；运行时每 3 秒 `GET /proxies/自动选择`（不触发 lazy 体检），固定前确认 Gemini 存活，日志 `[AutoSelectSticky]: pinned X (left Y)` / `restored X` |
+| `sparkleFastProviderCore.ts` | `自动选择` 的 `sparkle-fast` provider 文件生成（纯函数）：按 `proxySwitchPriority` 地区分段平铺，剔除 AnyTLS / 香港；传入非空 `delayMs` 时，有样本（存活）节点按地区分段 + 段内延迟升序排在前，无样本（超时/未测）节点按地区序统一垫在文件末尾；BUG-2026-10-09-001 / BUG-2026-10-14-001 |
+| `sparkleFastLatencyOrderCore.ts` / `sparkleFastLatencyOrder.ts` | 延迟序运行时：Core 把 provider 探测历史折算成「节点→延迟」并做迟滞判定（≥50ms 且 ≥30% 才换首选）；运行时在内核就绪后校验 Gemini 样本、重排并在原固定节点不存活时解除固定（重排重载后自动回填被清空的样本），每 30 分钟复查且不解除固定；实测结果落盘 `sparkle-fast-delays.json`，订阅刷新重建 provider 时用作排序依据 |
+| `autoSelectStickyPinCore.ts` / `autoSelectStickyPin.ts` | `自动选择` 粘性固定：Core 决策（fallback 选出的 `now` 连续稳定 2 次轮询即固定；原固定被清除时先触发单点独立复测过滤并发体检误杀，10 分钟冷却防死守抖动节点；固定节点已不在组内则解除）；运行时每 3 秒 `GET /proxies/自动选择`（不触发 lazy 体检），固定前确认 Gemini 存活，主动解锁同步重置记忆，日志 `[AutoSelectSticky]: pinned X (left Y)` / `restored X` |
 | `defaultAutoSwitchProxy.ts` | `自动选择` = `type:fallback`（`use:[sparkle-fast]`，Gemini 探测 `interval:300` / `timeout:5000` / `lazy:true`）；`Sparkle-<地区>` = 仅手动选择的 `type:url-test`（`interval:300` + `tolerance:2000` + `lazy:true`，BUG-2026-09-15-007），不被 `自动选择` 引用 |
 | `regionalAutoSelectGroupsCore.ts` / `regionalUrlTestWarmup.ts` / `regionalUrlTestWarmupCore.ts` | `Sparkle-<地区>` 组构建（排除 AnyTLS，无可用节点的地区不建组）与启动预热 |
 | `autoSelectAnyTlsExclusionCore.ts` | url-test 自动选择组剔除 AnyTLS |
@@ -83,6 +83,7 @@ startCore (manager.ts)
   → generateProfile (factory.ts) → checkProfileWithRetry → mihomo up
   → runPostCoreBootstrap (postCoreBootstrap.ts)
        ├ sparkle-fast 延迟序 bootstrap + 30min 复查
+       ├ startAutoSelectStickyPin（3s 粘性固定轮询）
        ├ initProfileUpdater
        ├ applyCursorDedicatedVpsSelection（恢复手选 / 默认节点）
        └ NETWORK_MONITOR_STARTUP_GRACE_MS 后 warmupRegionalUrlTestGroups

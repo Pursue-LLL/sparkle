@@ -1,8 +1,9 @@
 // [INPUT] 当前订阅节点 · 地区优先级 · 可选的节点延迟
 // [OUTPUT] FAST_NODE_PROVIDER_ID · orderProxiesByRegionPriority · buildSparkleFastProviderDocument · listFlatAutoSelectProxyNames
-// [POS] `自动选择` 的专属 provider 文件：地区优先级分段，段内按延迟升序（无延迟数据则保持订阅顺序），剔除 AnyTLS 与香港。
+// [POS] `自动选择` 的专属 provider 文件：按地区优先级分段，剔除 AnyTLS 与香港；
+// 有实测延迟样本时，存活节点按地区分段 + 段内延迟升序排在前，无样本（超时/未测）节点按地区序统一垫在文件末尾（无延迟数据时保持订阅顺序）。
 // mihomo 解析期不识别 provider 节点名，`自动选择` 通过 use 引用本文件；
-// 组类型为 fallback：按此顺序用第一个可用节点，当前节点挂了才降级。
+// 组类型为 fallback：按此顺序用第一个可用节点，选定后由 autoSelectStickyPin 粘性固定，当前节点真挂掉才降级。
 // 纯函数模块（fs/路径由调用方持有），便于单测。
 
 import { isAnyTlsProxyType } from './autoSelectAnyTlsExclusionCore'
