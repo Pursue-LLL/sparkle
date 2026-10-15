@@ -89,7 +89,7 @@
 
 ---
 
-### BUG-2026-10-14-001 · `自动选择` 对存活节点也频繁切换：fallback 无粘性 + 周期重排解除固定 · **CODE-DONE（未装包 · 线上效果待验）**
+### BUG-2026-10-14-001 · `自动选择` 对存活节点也频繁切换：fallback 无粘性 + 周期重排解除固定 · **INSTALLED（已装包 @1.30.71 · 线上固定已生效）**
 
 | 字段 | 内容 |
 | --- | --- |
@@ -97,7 +97,7 @@
 | **根因** | ① `自动选择` 是平铺 `fallback`，每次都取文件序里第一个存活节点：任一在前节点单次探测失败即被放弃，恢复后立刻回切（BUG-2026-10-09-001 已记载，当时只靠重排缓解，未消除）。② 每次周期重排（10-14 当天 18 次采用）都 `DELETE /proxies/自动选择` 解除固定，等于强制 fallback 重选。③ 订阅刷新（`reloadMihomoProfileProviders`）重写了 `sparkle-fast-proxies.yaml` 却未热重载 `sparkle-fast` provider，旧节点/失效配置触发 mihomo 并发强制体检（1863 次），5 秒超时把健康节点误判为死亡；同时 `sparkle-fast` provider 原配置使用非懒加载 `gstatic` 体检，与 `自动选择` 的 `Gemini` 体检形成双倍全量并发探测风暴。④ 若仅固定而不拦截单次探测误判，每次并发体检误杀都会让节点单向不可逆地往后退化（台湾→日本→…→末尾）。⑤ 原地区分段排序仅在同地区段内将无延迟（死/超时）节点置后，高优先级地区全军覆没时死节点仍排在低优先级地区的活节点前面。 |
 | **修复** | ① 新增 `autoSelectStickyPinCore.ts`（纯决策）+ `autoSelectStickyPin.ts`（轮询）：每 3 秒 `GET /proxies/自动选择`，fallback 选出的 `now` 连续稳定 2 次轮询即 `PUT` 固定（若尚无 `extra[Gemini]` 样本则先单点 Gemini 拨测验活，防止把仅 `gstatic` 通而 Gemini 不通的节点固定住）；**原固定节点被 mihomo 清除固定时（仍在组内），先做一次单点独立 Gemini 复测（并发度 1）：复测存活则立即恢复固定（过滤并发体检单次误报），同一节点 10 分钟冷却窗口内再次丢固定则视为确实不稳、不再救回**；固定节点已不在组内时 `DELETE` 解除；主动解除固定（`mihomoUnfixedProxy`）同步重置记忆。② `sparkleFastLatencyOrder.ts` + `sparkleFastProviderCore.ts`：启动阶段按 `hasPreferredUrlSamples` 判断是否已有 Gemini 样本，重排重载后补齐被清空的内存样本，且仅当原固定节点不在存活表内时才解除固定；有实测延迟样本时将所有无样本（超时/死）节点全局垫底。③ `provider.ts` + `providerConfigCore.ts`：`reloadMihomoProfileProviders` 同步热重载 `sparkle-fast`；`sparkle-fast` 的 `health-check` 统一对齐为 `AUTO_SELECT_GEMINI_PROBE_URL` + `lazy: true`，消除冗余 `gstatic` 并发风暴。 |
 | **实测依据（mihomo v1.19.32 隔离实例，非线上）** | ① 固定节点存活时一直保持；挂掉时 `fixed` 自动清空，首次求值返回「固定节点的下一个成员」，随后回到首个存活成员（稠密采样观察到 0.5–1.5 秒的过渡节点）。② **单点复测保活**：节点 A 因单次探测失败变成 `alive: false` 且 `fixed` 被清为 `''` 后，调用 `/providers/proxies/P/A/healthcheck` 单点复测成功（110ms），mihomo 立即将 `extra[url].alive` 恢复为 `true`，`PUT /proxies/G` 立即恢复固定 `('A','A')`。③ 固定会写入 cache.db，内核重启后恢复。④ **孤儿固定**：固定节点被 provider 重载移除后，`fixed` 不清除，`now` 恒为首个成员，首个成员已死、其余存活时仍不切换，`DELETE` 后恢复——故必须解除。⑤ 同一脚本事件序列（依次杀/起 A、B、A、C）：纯 fallback 4 次切换（A→B、B→A、A→B、B→A）；固定后高优先级恢复不再回切，仅当前节点确认真死时切换。⑥ 否决方案：`fallback` 套地区 `url-test`——杀掉地区内当前节点时外层 fallback 会短暂跳到下一个地区约 5 秒再回来，不是真粘性。 |
-| **验证** | `autoSelectStickyPinCore.test.ts` 8 条 + `sparkleFastLatencyOrderCore.test.ts` 7 条 + `test:node-quality` 全量通过；`tsc` node 通过；eslint 无告警。 |
+| **验证** | `autoSelectStickyPinCore.test.ts` 8 条 + `sparkleFastLatencyOrderCore.test.ts` 7 条 + `sparkleFastProviderCore.test.ts` + `provider.split.test.ts` + `test:node-quality` 236 条全量通过；`tsc` node/web 通过；eslint 无告警。2026-10-15 11:04 装包（CDHash `590cd0e8f8de5815479a19fedbf29fd8b215d647`），`app-2026-10-15.log:458-461` 实测完成启动重排、样本回填并输出 `[AutoSelectSticky]: pinned 🇨🇳 台湾 I0 | AI、动态IP | 2x`。 |
 | **不能保证的** | 当前节点挂掉时首次求值可能把 1 个连接送到「固定节点的下一个成员」（可能是另一地区），随后回首个存活成员；高优先级地区恢复后不再自动回切（需重启或在 UI 解除固定）；3 秒轮询的窗口内若原节点瞬断又恢复仍可能切换一次；线上 lazy=true / interval=300 的真实时序未测。 |
 | **验收指标** | 日志 `[AutoSelectSticky]: pinned X (left Y)` 与 `restored X after single probe blip` 的每日次数；core 日志 `using 🐟 漏网之鱼[<node>]` 的叶子切换次数与失败率分桶（基线 201 次/15 小时，38% 离开 <20% 失败率节点）。 |
 | **关联** | `src/main/core/autoSelectStickyPinCore.ts` · `src/main/core/autoSelectStickyPin.ts` · `src/main/core/sparkleFastLatencyOrder.ts` · `src/main/core/sparkleFastLatencyOrderCore.ts` · `src/main/core/provider.ts` · `src/main/core/mihomoApi.ts`（`mihomoGroupDetail` / `mihomoUnfixedProxy`）· `src/main/core/postCoreBootstrap.ts` |
