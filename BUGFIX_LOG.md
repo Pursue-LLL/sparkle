@@ -35,7 +35,8 @@
 
 ---
 
-> **2026-09-15 后续7 最新**：**BUG-2026-09-15-007** · AI 工具长流被"选点抖动"打断：url-test 组 60s 无迟滞切换（api2 实测在新/日/美/台间乱跳）→ 加 **`tolerance=200ms` 迟滞 + `interval=300` + `lazy`**；failover 目标改为 **只挑 ≤`proxySwitchMaxTargetDelayMs`(500ms)**；切换触发 `proxyTimeoutThreshold` 5000→**2000**；区域优先级改 **新加坡→台湾→日本→韩国→美国**
+> **2026-10-15 11:04 最新**：**BUG-2026-10-14-001 INSTALLED @1.30.71 96af137**（CDHash `590cd0e8`）· `自动选择` 粘性固定与单点复测保活（连续 2 次轮询稳定即 `PUT` 固定、丢固定时单点独立 Gemini 复测过滤并发体检假超时、10 分钟防抖冷却、孤儿锁清理）+ `sparkle-fast` 体检统一对齐 `Gemini + lazy:true` 并在订阅刷新时同步热重载 + 有实测延迟时无样本节点全局垫底 · 单测 236/236 · ESLint 0 warning
+> **2026-09-15 后续7**：**BUG-2026-09-15-007** · AI 工具长流被"选点抖动"打断：url-test 组 60s 无迟滞切换（api2 实测在新/日/美/台间乱跳）→ 加 **`tolerance=200ms` 迟滞 + `interval=300` + `lazy`**；failover 目标改为 **只挑 ≤`proxySwitchMaxTargetDelayMs`(500ms)**；切换触发 `proxyTimeoutThreshold` 5000→**2000**；区域优先级改 **新加坡→台湾→日本→韩国→美国**
 > **2026-09-15 后续5**：**BUG-2026-09-15-006** · 产品包泄漏内部文档：`electron-builder.yml` 未排除仓库 md，实包内含 `BUGFIX_LOG/VERSION_LOG/ARCHITECTURE/VPS-INFRA/…`；已加 `!*.md` + `!reports/**` + `!temp-docs/**`
 > **2026-09-15 后续4**：**BUG-2026-09-15-005 元凶级修复** · DistFreshness 门禁因 `execFileSync` 默认 1MB `maxBuffer` 被 3MB 的 `git diff HEAD` 撑爆（ENOBUFS 被吞成空串）→ 树指纹恒为 `sha256("")` → **永远判 fresh → 永远 install-only 装旧包**。已提高上限并对"diff 不可用"做 fail-safe（判为 stale）。**这就是"一次次修复达不到预期"的根因。**
 > **2026-09-15 后续4**：**BUG-2026-09-15-004** · 彻底删除"紧急整核冷重启"代码（`restartCoreEmergency`/bridge/oscillation/smoke CLI），升级只决策+记录（`emergency_core_restart_removed`），不再停内核
@@ -100,7 +101,7 @@
 | **验证** | `autoSelectStickyPinCore.test.ts` 8 条 + `sparkleFastLatencyOrderCore.test.ts` 7 条 + `sparkleFastProviderCore.test.ts` + `provider.split.test.ts` + `test:node-quality` 236 条全量通过；`tsc` node/web 通过；eslint 无告警。2026-10-15 11:04 装包（CDHash `590cd0e8f8de5815479a19fedbf29fd8b215d647`），`app-2026-10-15.log:458-461` 实测完成启动重排、样本回填并输出 `[AutoSelectSticky]: pinned 🇨🇳 台湾 I0 | AI、动态IP | 2x`。 |
 | **不能保证的** | 当前节点挂掉时首次求值可能把 1 个连接送到「固定节点的下一个成员」（可能是另一地区），随后回首个存活成员；高优先级地区恢复后不再自动回切（需重启或在 UI 解除固定）；3 秒轮询的窗口内若原节点瞬断又恢复仍可能切换一次；线上 lazy=true / interval=300 的真实时序未测。 |
 | **验收指标** | 日志 `[AutoSelectSticky]: pinned X (left Y)` 与 `restored X after single probe blip` 的每日次数；core 日志 `using 🐟 漏网之鱼[<node>]` 的叶子切换次数与失败率分桶（基线 201 次/15 小时，38% 离开 <20% 失败率节点）。 |
-| **关联** | `src/main/core/autoSelectStickyPinCore.ts` · `src/main/core/autoSelectStickyPin.ts` · `src/main/core/sparkleFastLatencyOrder.ts` · `src/main/core/sparkleFastLatencyOrderCore.ts` · `src/main/core/provider.ts` · `src/main/core/mihomoApi.ts`（`mihomoGroupDetail` / `mihomoUnfixedProxy`）· `src/main/core/postCoreBootstrap.ts` |
+| **关联** | `src/main/core/autoSelectStickyPinCore.ts` · `src/main/core/autoSelectStickyPin.ts` · `src/main/core/sparkleFastLatencyOrder.ts` · `src/main/core/sparkleFastLatencyOrderCore.ts` · `src/main/core/sparkleFastProviderCore.ts` · `src/main/core/providerConfigCore.ts` · `src/main/core/provider.ts` · `src/main/core/mihomoApi.ts`（`mihomoGroupDetail` / `mihomoUnfixedProxy`）· `src/main/core/postCoreBootstrap.ts` |
 
 ---
 
@@ -117,7 +118,7 @@
 
 ---
 
-### BUG-2026-10-09-001 · `自动选择` 频繁切节点：fallback 无迟滞 + 不稳节点排在最前 · **INSTALLED（2026-10-09 15:22）/ 切换次数指标验收中**
+### BUG-2026-10-09-001 · `自动选择` 频繁切节点：fallback 无迟滞 + 不稳节点排在最前 · **INSTALLED（2026-10-09 15:22 · 其中的「不固定 + 周期重排解除固定」已由上方 BUG-2026-10-14-001 升级为粘性固定与单点复测保活）**
 
 | 字段 | 内容 |
 | --- | --- |
