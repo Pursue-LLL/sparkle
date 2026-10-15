@@ -46,7 +46,7 @@ describe('sparkleFastLatencyOrderCore', () => {
     assert.equal(hasSameNodeOrder([{ name: 'a' }], []), false)
   })
 
-  it('distinguishes target-url probe samples from default gstatic history', () => {
+  it('distinguishes target-url probe samples from default gstatic history and rejects partial startup probes', () => {
     assert.equal(
       hasPreferredUrlSamples([{ name: 'a', alive: true, history: [{ delay: 50 }] }], URL),
       false
@@ -64,6 +64,17 @@ describe('sparkleFastLatencyOrderCore', () => {
         URL
       ),
       true
+    )
+    assert.equal(
+      hasPreferredUrlSamples(
+        [
+          { name: 'a', alive: true, extra: { [URL]: { alive: true, history: [{ delay: 120 }] } } },
+          { name: 'b', alive: true },
+          { name: 'c', alive: true }
+        ],
+        URL
+      ),
+      false
     )
   })
 })

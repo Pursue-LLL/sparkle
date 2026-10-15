@@ -46,13 +46,14 @@ export interface ProviderHealthCheckConfig {
 
 export function buildCommercialProviderHealthCheck(
   commercialProxies: unknown[],
-  options?: { enable?: boolean; interval?: number }
+  options?: { enable?: boolean; interval?: number; lazy?: boolean }
 ): ProviderHealthCheckConfig {
   const hasVpsInBatch = commercialProxies.some(isVpsLeafProxy)
   return {
     enable: options?.enable ?? true,
     url: hasVpsInBatch ? CURSOR_DELAY_TEST_URL : 'http://www.gstatic.com/generate_204',
-    interval: options?.interval ?? 300
+    interval: options?.interval ?? 300,
+    lazy: options?.lazy ?? true
   }
 }
 

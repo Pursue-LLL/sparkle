@@ -57,7 +57,8 @@ export function buildBaseConfigWithProviders(
     'health-check': {
       enable: commercialHealthCheck.enable,
       url: healthCheck?.url || commercialHealthCheck.url,
-      interval: commercialHealthCheck.interval
+      interval: commercialHealthCheck.interval,
+      ...(commercialHealthCheck.lazy ? { lazy: true } : {})
     }
   }
 

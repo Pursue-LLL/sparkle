@@ -4,8 +4,8 @@
 // 每轮实测延迟落盘为快照；生成配置重写 sparkle-fast 时读取快照，避免订阅刷新后退回「未测延迟」的订阅顺序。
 // 文件序只决定「下一次选节点」选谁：`自动选择` 固定（autoSelectStickyPin）后，存活的当前节点不受重排影响。
 // 仅启动阶段且原固定节点不在实测存活表内时解除固定；周期复查绝不解除，避免存活节点被换掉。
-// 启动时若无 Gemini 实测样本则先低并发逐点拨测再重排；周期复查仅当新首选明显更快才换文件序。
-// 重排会重载 provider 并清空其探测记录，启动与周期重排后均立即逐点补测，让 fallback 的存活判断与下一轮排序有新样本。
+// 启动时若磁盘已有快照则直接沿用，仅首次无快照无样本时才低并发逐点拨测再重排；周期复查仅当新首选明显更快才换文件序。
+// 重排会重载 provider 并清空其探测记录，发生重排后立即逐点补测，让 fallback 的存活判断与下一轮排序有新样本。
 
 import { readFile, writeFile } from 'fs/promises'
 import path from 'path'
@@ -131,10 +131,23 @@ async function applyLatencyOrder(force: boolean): Promise<boolean> {
   return !sameOrder
 }
 
-/** API 就绪后先确认有实测 Gemini 样本（冷启动无样本时先低并发拨测），再重排；若重排重载清空了内存样本则补测。 */
+/**
+ * API 就绪后的启动处理：
+ * - 若磁盘已有延迟快照（factory.ts 生成配置时已按快照排好 sparkle-fast-proxies.yaml）且内存尚未完成全量探测，
+ *   直接沿用快照顺序并仅检查当前固定节点是否存活，避免冷启动重复全量拨测与重载；
+ * - 若首次运行既无快照也无内存样本，才执行一次低并发拨测并重排。
+ */
 export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
   const provider = (await mihomoProxyProviders()).providers[FAST_NODE_PROVIDER_ID]
   if (!hasPreferredUrlSamples(provider?.proxies ?? [], AUTO_SELECT_GEMINI_PROBE_URL)) {
+    const snapshot = await loadSparkleFastDelaySnapshot()
+    if (snapshot.size > 0) {
+      await releaseAutoSelectPinIfUnhealthy(snapshot)
+      await appendAppLog(
+        `[SparkleFastOrder]: bootstrap using disk snapshot samples=${snapshot.size}\n`
+      )
+      return
+    }
     try {
       // 逐点低并发拨测：整个 provider 同时体检会把正常节点测成超时，进而被排到段尾。
       await probeProviderLeavesGently(FAST_NODE_PROVIDER_ID)
