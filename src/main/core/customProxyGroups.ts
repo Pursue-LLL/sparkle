@@ -7,8 +7,15 @@ import {
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName,
   prependCursorDedicatedDirectOption,
-  HONG_KONG_DELAY_TEST_URL
+  HONG_KONG_DELAY_TEST_URL,
+  MAIL_DEDICATED_GROUP_NAME,
+  MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
+import {
+  buildMailGroupConfig,
+  buildMailProbeHiddenGroupConfig,
+  ensureMailProbeListener
+} from './sparkleMailProviderCore'
 import { resolveVpsProviderId } from './vpsProviderSplitCore'
 
 /** Sparkle-injected HK filter group — members rebuilt on every generateProfile(). */
@@ -17,7 +24,9 @@ export const HONG_KONG_FILTER_GROUP_NAME = 'Sparkle-香港' as const
 const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
   CURSOR_DEDICATED_GROUP_NAME,
   ...LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
-  HONG_KONG_FILTER_GROUP_NAME
+  HONG_KONG_FILTER_GROUP_NAME,
+  MAIL_DEDICATED_GROUP_NAME,
+  MAIL_PROBE_HIDDEN_GROUP_NAME
 ])
 
 /** mihomo provider filter — Hong Kong leaf nodes (provider mode). */
@@ -31,6 +40,7 @@ interface ProxyGroupConfig {
   tolerance?: number
   timeout?: number
   lazy?: boolean
+  hidden?: boolean
   proxies?: string[]
   use?: string[]
   filter?: string
@@ -307,10 +317,19 @@ export function ensureCustomProxyGroups(
     buildCursorGroupConfig(leafProxyNames, subscriptionGroupNames, existingGroups, profileId)
   ]
   const hkGroup = buildHongKongGroupConfig(leafProxyNames, profileId)
+  const mailGroup = buildMailGroupConfig(leafProxyNames, profileId)
+  const mailProbeGroup = buildMailProbeHiddenGroupConfig(profileId)
 
   if (hkGroup) {
     injected.push(hkGroup)
   }
+  if (mailGroup) {
+    injected.push(mailGroup)
+  }
+  if (mailProbeGroup) {
+    injected.push(mailProbeGroup)
+  }
+  ensureMailProbeListener(profile, profileId)
 
   subscriptionGroups = dropRedundantHongKongWrapperGroups(
     subscriptionGroups,
@@ -346,6 +365,8 @@ export function resolveFailoverProxyGroup(
     (group) =>
       group.type === 'Selector' &&
       group.name !== 'GLOBAL' &&
-      group.name !== HONG_KONG_FILTER_GROUP_NAME
+      group.name !== HONG_KONG_FILTER_GROUP_NAME &&
+      group.name !== MAIL_DEDICATED_GROUP_NAME &&
+      group.name !== MAIL_PROBE_HIDDEN_GROUP_NAME
   )
 }

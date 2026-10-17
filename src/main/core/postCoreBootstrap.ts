@@ -70,6 +70,33 @@ async function runPostReadyServices(): Promise<void> {
     )
   }
 
+  void (async () => {
+    try {
+      const { bootstrapSparkleGeminiRegionAudit, startSparkleGeminiRegionAuditLoop } =
+        await import('./sparkleGeminiProbe')
+      await bootstrapSparkleGeminiRegionAudit()
+      startSparkleGeminiRegionAuditLoop()
+    } catch (error) {
+      await appendAppLog(
+        `[SparkleGeminiProbe]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`
+      )
+    }
+  })()
+
+  void (async () => {
+    try {
+      const { bootstrapSparkleMailProvider, startSparkleMailProbeLoop } = await import(
+        './sparkleMailProbe'
+      )
+      await bootstrapSparkleMailProvider()
+      startSparkleMailProbeLoop()
+    } catch (error) {
+      await appendAppLog(
+        `[SparkleMailProbe]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      )
+    }
+  })()
+
   // 排序失败也要启动：固定逻辑只依赖 controller，与重排相互独立。
   const { startAutoSelectStickyPin } = await import('./autoSelectStickyPin')
   startAutoSelectStickyPin()

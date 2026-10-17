@@ -30,6 +30,9 @@ export const LEGACY_CURSOR_DEDICATED_GROUP_NAMES = [
 
 export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 
+export const MAIL_DEDICATED_GROUP_NAME = '📧 邮件专用' as const
+export const MAIL_PROBE_HIDDEN_GROUP_NAME = '__sparkle_mail_probe__' as const
+
 /** Cursor 专用组 provider 模式的 VPS 过滤器：只收 Reality / HY2 叶子。 */
 export const CURSOR_VPS_PROVIDER_FILTER = '(?i)-VPS-(Reality|HY2)$'
 
@@ -66,6 +69,8 @@ export const GEMINI_REACHABILITY_PROBE_URL = 'https://gemini.google.com' as cons
 export const AUTO_SELECT_DELAY_TEST_URL = 'https://chatgpt.com' as const
 /** Hong Kong url-test group probes Grok reachability for Stripe/X/Grok traffic. */
 export const HONG_KONG_DELAY_TEST_URL = 'https://grok.com' as const
+/** Mail dedicated url-test group measures RTT among IMAPS/SMTPS-verified nodes. */
+export const MAIL_DELAY_TEST_URL = 'https://mail.google.com' as const
 
 export const REGION_AUTO_SELECT_PREFIX = 'Sparkle-' as const
 
@@ -94,6 +99,14 @@ export function isHongKongFilterGroupName(groupName: string): boolean {
   return groupName === 'Sparkle-香港' || groupName === '🇭🇰 香港节点'
 }
 
+export function isMailDedicatedGroupName(groupName: string): boolean {
+  return groupName === MAIL_DEDICATED_GROUP_NAME
+}
+
+export function isMailProbeHiddenGroupName(groupName: string): boolean {
+  return groupName === MAIL_PROBE_HIDDEN_GROUP_NAME
+}
+
 export function isCursorDedicatedGroupName(groupName: string): boolean {
   return (
     groupName === CURSOR_DEDICATED_GROUP_NAME ||
@@ -120,6 +133,9 @@ export function resolveDelayTestUrl(options?: {
   }
   if (options?.groupName && isHongKongFilterGroupName(options.groupName)) {
     return options.groupTestUrl || HONG_KONG_DELAY_TEST_URL
+  }
+  if (options?.groupName && isMailDedicatedGroupName(options.groupName)) {
+    return options.groupTestUrl || MAIL_DELAY_TEST_URL
   }
   return options?.groupTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL
 }

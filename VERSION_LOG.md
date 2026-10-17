@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-10-17 `自动选择` Gemini 真实地区解锁校验与「送中」节点自动剔除（@1.30.71）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 访问 `https://gemini.google.com/u/3/?dest=create` 报错「Gemini 目前不支持你所在的地区。敬请期待！」，当时 `自动选择` 选中并固定在 `🇸🇬 日本 V0 \| 移动优化、新开机 \| 2x` |
+| 根因 | ① mihomo 的 `fallback` / `url-test` / `health-check` 探测 `https://gemini.google.com` 时仅校验 HTTP 状态码是否为 2xx/3xx，而 Google 对锁区/送中 IP 访问 `gemini.google.com` 依然返回 `HTTP/2 200 OK`（锁区提示由前端根据 HTML 内嵌的 `window.WIZ_global_data.vXmutd` 地区码渲染）；② 订阅中 7 个名为日本/韩国/美国/德国的节点（如 `🇸🇬 日本 V0`、`🇯🇵 日本 I2`、`🇯🇵 日本 V3`、`🇰🇷 韩国 I1`、`🇺🇸 德国 B16`、`🇺🇸 美国 G2`、`🇺🇸 美国 V0`）出口 IP 被 Google GeoIP 判定为 `www.google.cn` / `vXmutd="ZZ"`（送中），静态名称过滤无法识别 |
+| 实现 | ① 新增 `sparkleGeminiProbeCore.ts` + `sparkleGeminiProbe.ts`：复用本地隐藏探测监听器 `127.0.0.1:17899`（与邮件探测共享 `withLocalProbeChannelLock` 互斥锁防串台），发起带 `Accept-Encoding: gzip` 的流式 `GET https://gemini.google.com/app`，在前部 ~50–120KB 解压流中提取 `vXmutd` 地区码后立即断开连接；凡是 `ZZ`/`CN`/`HK`/`MO`/`RU`/`BY` 或指向 `www.google.cn` 的节点判定为 `eligible: false` 并持久化至 `sparkle-gemini-nodes.json`（网络超时返回 `definitive: false`，绝不误杀正常节点）；② `sparkleFastProviderCore.ts`、`factory.ts`、`sparkleFastLatencyOrder.ts` 生成或重排 `sparkle-fast-proxies.yaml` 时自动剔除已知锁区/送中节点（保留全空兜底）；③ `autoSelectStickyPin.ts` 固定前与固定期间校验 `verifyNodeGeminiRegion`，发现送中节点立即拒绝/解除固定并热重载 `sparkle-fast`；`postCoreBootstrap.ts` 启动后台静默巡检提前剔除潜伏送中节点 |
+| 单测 | `sparkleGeminiProbeCore.test.ts` · `sparkleFastProviderCore.test.ts`（并入 `pnpm run test:node-quality`） |
+
+## 2026-10-16 `📧 邮件专用` 组与 993/465 真实端口探测（INSTALLED @1.30.71 · app.asar 2026-10-16 15:13）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | macOS **邮件** 收 Gmail 报 SSL `-9806`：Gmail 域名走 `🔍 Google` → `自动选择`，部分机场节点封 993/465/587，TLS 握手被掐断；163 等国内邮箱直连正常 |
+| 根因 | ① 通用 Gemini/443 探测无法识别「仅封邮件端口」的节点；② mihomo `url-test` 若设 `https://imap.gmail.com:993` 会把 IMAP Banner 当非法 HTTP，**全节点判死** |
+| 实现 | ① 组 `📧 邮件专用`（`url-test`，`use: sparkle-mail`，日常保活 `https://mail.google.com`）；② provider `sparkle-mail-proxies.yaml` 只含 Sparkle 主进程验证 **993 IMAP + 465 SMTP 双通** 的节点；③ 隐藏组 `__sparkle_mail_probe__` + 本地 mixed 监听器 `127.0.0.1:17899` 逐点探测，与业务组隔离；④ `mailTrafficRuleInjection.ts` 前置海外邮件收发域名规则；⑤ 缓存 `sparkle-mail-nodes.json`，`postCoreBootstrap` 启动 `bootstrapSparkleMailProvider` + 60min 复查 |
+| 代码 | `sparkleMailProviderCore.ts` · `sparkleMailProbe.ts` · `mailTrafficRuleInjection.ts` · `customProxyGroups.ts` · `factory.ts` · `providerConfigCore.ts` · `cursorProxyGroup.ts` · `mihomo.d.ts`（`listeners`） |
+| 单测 | `sparkleMailProviderCore.test.ts` · `mailTrafficRuleInjection.test.ts`（并入 `pnpm run test:node-quality`） |
+| 线上验证 | 2026-10-16 GUI 启动日志 `[SparkleMailProbe]: fast-tier … newly_alive=9 active_pool=9`；`work/config.yaml` 含 `📧 邮件专用` 与 `sparkle-mail` provider；**Mail.app 收信需用户确认** |
+
 ## 2026-10-15 `自动选择` 粘性固定与单点复测保活（已装包 @1.30.71 · 线上运行观察中）
 
 | 项 | 内容 |
@@ -46,15 +66,15 @@
 | 线上验证 | 2026-10-13 11:53（装包后约 20 分钟）：`自动选择` 63 个成员 = 45 正常 / 9 不稳定 / 9 超时 / 0 未测（11:49 时为 49 / 4 / 10，「不稳定」节点在两次采样间会跳动，属预期）；9 个超时中 8 个通用地址（`gstatic`）可用、仅 Gemini 不通，1 个（美国 G2）整个节点不通。「重排后立即补测」只在 30 分钟复查真的发生重排时才触发，尚未观察到；界面渲染未做目视验证 |
 | 说明 | `自动选择` 与地区组以 Gemini 探测为准（香港为 grok），Gemini 不通即该组眼中的不可用，显示超时是预期语义，不是误报 |
 
-## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-15 **13:25 CST**
+## 📌 当前最佳基线（Agent 迭代 SSOT）· 2026-10-17 **13:50 CST**
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.30.71** · CDHash **`d19fd1a18c4013367c42052db0719eae82dbb710`**（stamp `2026.1015.1319`，commit `3b60710`，`BuildDrift` `app_dirty=0 drift=none`） |
-| 装包 | `/Applications/Sparkle.app`，GUI + mihomo + `:7890` 可用；实测 `自动选择` = `Fallback`、已由 `[AutoSelectSticky]` 固定在 `🇨🇳 台湾 I0 | AI、动态IP | 2x`；`🎯 Cursor 专用` = `Selector` |
+| 版本 | **1.30.71** · 2026-10-17 装包（含 `sparkleGeminiProbe` 真实地区解锁校验与 `sparkleMailProbe` 993/465 双通校验） |
+| 装包 | `/Applications/Sparkle.app`，GUI + mihomo + `:7890` 可用；实测 `自动选择` = `Fallback`（已剔除 8 个 `vXmutd="ZZ"` 送中节点，固定在真解锁节点 `🇯🇵 日本 I3 \| AI、Netflix(JP)、SVIP \| 3x`）；`📧 邮件专用` = `URLTest`；`🎯 Cursor 专用` = `Selector` |
 
 **能力/行为基线（后续不得回退）**
-- `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 台湾→日本→韩国→新加坡→美国→其他国家，地区内按 Gemini 探测延迟升序，有实测延迟时无样本节点按地区序统一垫在文件末尾；香港与 AnyTLS 排除；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点；原生 fallback 无迟滞（高优先级节点恢复立刻回切、任一节点单次探测失败即被放弃）。**`自动选择` 粘性固定（pin）**：fallback 选出的存活节点连续稳定 2 次轮询（3 秒间隔）后由 `autoSelectStickyPin.ts` 固定（无 Gemini 样本时先单点拨测验活），之后只有该节点真挂掉才换，高优先级节点恢复不回切；固定被 mihomo 清除时先做单点独立 Gemini 复测（过滤并发体检单次超时误杀，防止单向不可逆降级；10 分钟冷却窗口内再次丢固定则视为节点不稳不再救回）；固定节点已不在组内（订阅刷新 / cache.db 恢复旧固定）时立即解除，否则 mihomo 会一直返回首个成员而不判存活（BUG-2026-10-14-001）。内核就绪后按实测延迟重排文件序，仅当原固定节点不在实测存活表内时解除固定（`sparkleFastLatencyOrder.ts`，重排重载后自动回填 Gemini 样本），之后每 30 分钟复查，新首选须比当前首选快 ≥50ms 且 ≥30% 才换文件序，复查不解除固定（BUG-2026-10-09-001 / BUG-2026-10-14-001）。
+- `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 台湾→日本→韩国→新加坡→美国→其他国家，地区内按 Gemini 探测延迟升序，有实测延迟时无样本节点按地区序统一垫在文件末尾；**香港、AnyTLS 以及经 `sparkleGeminiProbe` 实测确认为 Gemini 锁区/送中（`vXmutd` 为 `ZZ`/`CN`/`HK`/`MO`/`RU`/`BY` 或含 `www.google.cn`）的节点一律排除**；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点；原生 fallback 无迟滞（高优先级节点恢复立刻回切、任一节点单次探测失败即被放弃）。**`自动选择` 粘性固定（pin）**：fallback 选出的存活节点连续稳定 2 次轮询（3 秒间隔）后由 `autoSelectStickyPin.ts` 固定（无 Gemini 样本时先单点拨测验活，并通过 `verifyNodeGeminiRegion` 确认非送中/锁区节点；若发现送中节点立即拒绝/解除固定并从 `sparkle-fast` 热移除），之后只有该节点真挂掉才换，高优先级节点恢复不回切；固定被 mihomo 清除时先做单点独立 Gemini 复测（过滤并发体检单次超时误杀，防止单向不可逆降级；10 分钟冷却窗口内再次丢固定则视为节点不稳不再救回）；固定节点已不在组内（订阅刷新 / cache.db 恢复旧固定）时立即解除，否则 mihomo 会一直返回首个成员而不判存活（BUG-2026-10-14-001 / BUG-2026-10-17-001）。内核就绪后按实测延迟重排文件序，仅当原固定节点不在实测存活表内时解除固定（`sparkleFastLatencyOrder.ts`，重排重载后自动回填 Gemini 样本），之后每 30 分钟复查，新首选须比当前首选快 ≥50ms 且 ≥30% 才换文件序，复查不解除固定（BUG-2026-10-09-001 / BUG-2026-10-14-001）。
 - 探测：`gemini.google.com`（用户主用服务），interval 300s，timeout 5000ms，lazy=true（`自动选择` 组与 `sparkle-fast` provider 统一为此配置，组空闲时跳过定时探测，消除双倍并发风暴）；预热也用组自身探测目标。
 - 地区组 `Sparkle-<地区>`（日本/台湾/韩国/新加坡/美国）= url-test（tolerance 2000，`exclude-type: anytls`），仅供手动选择，**不被 `自动选择` 引用**；没有可用节点的地区不建组（空组会被 mihomo 变成直连型 `COMPATIBLE`）。香港为专用组。
 - **铁律**：`proxies` 里只能引用组名，不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）；`sparkle-fast` 文件必须随每次配置生成重写并在订阅刷新（`reloadMihomoProfileProviders`）时同步热重载。
@@ -67,6 +87,8 @@
 7. **Antigravity 专用路由**（2026-10-04 用户裁决版 @1.30.71）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `自动选择` fallback 组**（不新增组；`🎯 Cursor 专用` 归还 Cursor 原 select 语义，不再承载 agy）——用户裁决"agy 走自动选择，Cursor 专用是给 Cursor 用的"（KR VPS 不续费，固定物理出口架构失去地基）。**Google 按出口 IP 段判地域**（2026-10-04 机场 6 节点矩阵实测全 200：TW/JP/KR/SG/US/MO 出口 IP 均为 CF AS13335 共享段且节点内固定，hop 只换入站端口；`available-regions` 官方表含 TW/KR 但实际判定是 IP 段级、随会话/时段波动，同节点同日 400 与 200 并存）。`自动选择` 组缺席时注入跳过（安全降级）。mihomo 硬约束（实测 `mihomo -t` 报 `proxy not found`）：规则 target 不能直指 provider 节点，必须经组。**遇 400 时手动在 Sparkle 把 `自动选择` 切到其他节点**（矩阵实测其余节点当前均可用）。
 8. **延迟展示口径**（2026-10-09 起，详见该日条目）：节点结论按组实际探测地址取样（`extra[url]`，同一目标的 http / https 记录按时间合并，同一节点在多个 provider 的样本合并），窗口内一次都没成功才显示「超时」，最近失败但近期成功过为「不稳定」，详情浮窗另列「其它探测地址」；代理页、浮窗、托盘、复测范围共用 `proxyDelayVerdictCore`，**不得回退到读混杂各地址样本的顶层 `history`**。
 9. **订阅自动更新**（2026-10-12 起，详见该日条目）：远程订阅以「`updated` 是否早于最近一个计划时刻」判定到期，合并版以「任一来源的 `updated` 晚于自己」判定到期；GUI 5 分钟心跳与 LaunchAgent 共用 `createDueProfileUpdateRunner`，失败不推进 `updated`、下次心跳自动重试；合并版无独立定时。**不得改回按定时器触发时刻 / 固定时间窗口判断，心跳读 `profile.yaml` 不得强制重读**（非原子写入，强读可能读到半截文件并触发恢复写入）。
+10. **邮件专用**（2026-10-16 起，详见该日条目）：`imap.gmail.com` / `smtp.gmail.com` 等海外邮件客户端域名 → `📧 邮件专用`；成员来自 `sparkle-mail` provider（Sparkle 主进程 **993+465 双通** 探测 + `sparkle-mail-nodes.json` 缓存）；组内 lazy url-test 用 `mail.google.com` 测 RTT。**不得**用 mihomo 直接 url-test IMAPS 端口，**不得**仅用 443 探测代替邮件端口筛选；国内邮箱与 Gmail 网页流量保持原路由。
+11. **Gemini 真实地区解锁校验**（2026-10-17 起，详见该日条目与 BUG-2026-10-17-001）：mihomo 对 `https://gemini.google.com` 的健康检查只看 HTTP 200 状态码，无法识别「HTTP 200 但 HTML 内嵌 `vXmutd="ZZ"/"CN"/"HK"` 或 `www.google.cn`」的机场送中节点；Sparkle 主进程通过 `sparkleGeminiProbe.ts`（与邮件探测共享 `withLocalProbeChannelLock` 串行复用 `127.0.0.1:17899`）流式校验 `vXmutd` 国家码，在 `autoSelectStickyPin` 固定前拦截并在 `sparkle-fast-proxies.yaml` 生成/重排时自动剔除送中节点（持久化至 `sparkle-gemini-nodes.json`）。**铁律**：网络超时/连接错误必须返回 `definitive: false`（fail-open），绝不可把瞬时网络抖动的节点记入地区锁区黑名单。
 
 **2026-10-09 移除 Cursor 长流子系统（待装包验证）**
 - **保留**：`🎯 Cursor 专用` 组（成员、仅手动选择、默认节点）+ Cursor 路由 / DNS 规则（`cursorBidiOptimize`、`cursorProxyAppPathPrefixes`）。

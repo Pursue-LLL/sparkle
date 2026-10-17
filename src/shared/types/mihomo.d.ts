@@ -48,6 +48,7 @@ interface MihomoConfig {
   dns: MihomoDNSConfig
   sniffer: MihomoSnifferConfig
   profile: MihomoProfileConfig
+  listeners?: Array<Record<string, unknown>>
   'rule-providers'?: Record<string, unknown>
   'proxy-providers'?: Record<string, unknown>
 }
