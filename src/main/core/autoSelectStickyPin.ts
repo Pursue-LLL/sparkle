@@ -25,6 +25,7 @@ import {
   mihomoUnfixedProxy
 } from './mihomoApi'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { verifyNodeGeminiRegion } from './sparkleGeminiProbe'
 
 /** 回环调用开销可忽略；间隔越短，节点挂掉后到重新固定之间被回切的窗口越小。 */
 const POLL_INTERVAL_MS = 3000
@@ -88,6 +89,18 @@ async function pollOnce(): Promise<void> {
   }
 
   const { action } = decision
+  if (group.fixed) {
+    const regionCheck = await verifyNodeGeminiRegion(group.fixed)
+    if (regionCheck.definitive && !regionCheck.eligible) {
+      await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
+      memory = INITIAL_STICKY_PIN_MEMORY
+      await appendAppLog(
+        `[AutoSelectSticky]: unfixed region-restricted node ${group.fixed} (region=${regionCheck.countryCode})\n`
+      )
+      return
+    }
+  }
+
   if (action.kind === 'unfix') {
     await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
     await appendAppLog(`[AutoSelectSticky]: released orphan pin ${action.orphan}\n`)
@@ -98,6 +111,13 @@ async function pollOnce(): Promise<void> {
     const alive = await probeNodeGeminiAlive(action.node)
     if (!alive) {
       await appendAppLog(`[AutoSelectSticky]: confirmed dead ${action.node}\n`)
+      return
+    }
+    const regionCheck = await verifyNodeGeminiRegion(action.node)
+    if (regionCheck.definitive && !regionCheck.eligible) {
+      await appendAppLog(
+        `[AutoSelectSticky]: dropped lost pin on region-restricted node ${action.node} (region=${regionCheck.countryCode})\n`
+      )
       return
     }
     if (startGen !== stateGeneration) {
@@ -114,6 +134,14 @@ async function pollOnce(): Promise<void> {
   }
 
   if (action.kind === 'pin' && (await ensureNodeAliveForGemini(action.node))) {
+    const regionCheck = await verifyNodeGeminiRegion(action.node)
+    if (regionCheck.definitive && !regionCheck.eligible) {
+      memory = INITIAL_STICKY_PIN_MEMORY
+      await appendAppLog(
+        `[AutoSelectSticky]: rejected region-restricted node ${action.node} (region=${regionCheck.countryCode})\n`
+      )
+      return
+    }
     if (startGen !== stateGeneration) {
       return
     }

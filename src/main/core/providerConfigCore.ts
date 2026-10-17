@@ -6,6 +6,8 @@ import {
   rewriteVpsFilteredGroupsToDedicatedProvider
 } from './vpsProviderSplitCore'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { MAIL_NODE_PROVIDER_ID } from './sparkleMailProviderCore'
+import { MAIL_DELAY_TEST_URL } from './cursorProxyGroup'
 import {
   AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
   AUTO_SELECT_GEMINI_PROBE_URL
@@ -68,6 +70,18 @@ export function buildBaseConfigWithProviders(
     'health-check': {
       enable: commercialHealthCheck.enable,
       url: AUTO_SELECT_GEMINI_PROBE_URL,
+      interval: commercialHealthCheck.interval,
+      timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
+      lazy: true
+    }
+  }
+
+  baseConfig['proxy-providers'][MAIL_NODE_PROVIDER_ID] = {
+    type: 'file',
+    path: resolveProviderPath(MAIL_NODE_PROVIDER_ID),
+    'health-check': {
+      enable: commercialHealthCheck.enable,
+      url: MAIL_DELAY_TEST_URL,
       interval: commercialHealthCheck.interval,
       timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
       lazy: true

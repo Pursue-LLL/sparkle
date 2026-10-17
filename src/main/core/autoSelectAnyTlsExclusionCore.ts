@@ -5,6 +5,7 @@
 import {
   isAutoSwitchingProxyName,
   isHongKongFilterGroupName,
+  isMailDedicatedGroupName,
   isSparkleAutoSelectSubGroup,
 } from './cursorProxyGroup'
 
@@ -81,6 +82,9 @@ export function isAutoSelectUrlTestGroupName(groupName: string, groupType?: stri
     return true
   }
   if (isHongKongFilterGroupName(groupName)) {
+    return true
+  }
+  if (isMailDedicatedGroupName(groupName)) {
     return true
   }
   return (LEGACY_SUBSCRIPTION_AUTO_SELECT_NAMES as readonly string[]).includes(groupName)

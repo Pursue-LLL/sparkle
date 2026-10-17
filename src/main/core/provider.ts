@@ -70,6 +70,7 @@ import {
 import { partitionLeafProxies, resolveVpsProviderId } from './vpsProviderSplitCore'
 import { buildBaseConfigWithProviders } from './providerConfigCore'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { MAIL_NODE_PROVIDER_ID } from './sparkleMailProviderCore'
 import { appendAppLog } from '../utils/log'
 
 export { resolveVpsProviderId, partitionLeafProxies } from './vpsProviderSplitCore'
@@ -154,6 +155,11 @@ export async function reloadMihomoProfileProviders(
     await mihomoUpdateProxyProviders(FAST_NODE_PROVIDER_ID)
   } catch {
     // sparkle-fast 未启用时不阻断主订阅 provider 热重载
+  }
+  try {
+    await mihomoUpdateProxyProviders(MAIL_NODE_PROVIDER_ID)
+  } catch {
+    // sparkle-mail 未启用时不阻断主订阅 provider 热重载
   }
 }
 

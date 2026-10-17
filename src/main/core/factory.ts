@@ -39,6 +39,7 @@ import {
   type ProxyCatalogEntry,
 } from './autoSelectAnyTlsExclusionCore'
 import { injectHongKongTrafficRules } from './hongKongTrafficRuleInjection'
+import { injectMailTrafficRules } from './mailTrafficRuleInjection'
 import { injectAntigravityTrafficRules } from './antigravityRuleInjection'
 import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
 import { resolveEffectiveRegionPriority } from './regionPriority'
@@ -209,6 +210,7 @@ async function generateProfileImpl(): Promise<void> {
   const providerProfileId = current && current !== 'default' ? current : undefined
   const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
   injectHongKongTrafficRules(profile)
+  injectMailTrafficRules(profile)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
     cursorDedicatedGroupRenameNotified = true
     const detail =
@@ -238,20 +240,48 @@ async function generateProfileImpl(): Promise<void> {
       './sparkleFastProviderCore'
     )
     const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
-    const delaySnapshot = await loadSparkleFastDelaySnapshot()
-    await writeFileSync(
+    const { loadGeminiBlockedNodeNames } = await import('./sparkleGeminiProbe')
+    const fastInputProxies = extractProxies(currentProfile) as unknown as Array<
+      Record<string, unknown>
+    >
+    const [delaySnapshot, blockedNodeNames] = await Promise.all([
+      loadSparkleFastDelaySnapshot(),
+      loadGeminiBlockedNodeNames(fastInputProxies)
+    ])
+    writeFileSync(
       path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME),
       stringifyYaml(
         buildSparkleFastProviderDocument({
-          proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
+          proxies: fastInputProxies,
           regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
-          delayMs: delaySnapshot.size ? delaySnapshot : undefined
+          delayMs: delaySnapshot.size ? delaySnapshot : undefined,
+          blockedNodeNames
         })
       ),
       'utf8'
     )
   } catch {
     // best-effort：写失败沿用上一份 sparkle-fast 文件
+  }
+  try {
+    const { buildSparkleMailProviderDocument, MAIL_NODE_PROVIDER_FILENAME } = await import(
+      './sparkleMailProviderCore'
+    )
+    const { loadSparkleMailProbeCache } = await import('./sparkleMailProbe')
+    const mailProbeCache = await loadSparkleMailProbeCache()
+    writeFileSync(
+      path.join(profilesDir(), MAIL_NODE_PROVIDER_FILENAME),
+      stringifyYaml(
+        buildSparkleMailProviderDocument({
+          proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
+          regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
+          probeCache: mailProbeCache.size ? mailProbeCache : undefined
+        })
+      ),
+      'utf8'
+    )
+  } catch {
+    // best-effort：写失败沿用上一份 sparkle-mail 文件
   }
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)

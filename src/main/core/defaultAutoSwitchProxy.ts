@@ -8,6 +8,8 @@ import {
   isNestedAutoSwitchSelection,
   isSparkleAutoSelectSubGroup,
   isHongKongFilterGroupName,
+  isMailDedicatedGroupName,
+  isMailProbeHiddenGroupName,
   isSparkleRegionalAutoSelectGroup,
   filterCursorEligibleVpsLeaves,
   prependCursorDedicatedDirectOption,
@@ -303,7 +305,12 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
     }
     // BUG-2026-09-15-009: Sparkle sub-groups (regional + cursor) are select groups too;
     // appending the auto-switch refs to them would create self-references.
-    if (isSparkleAutoSelectSubGroup(group.name) || isHongKongFilterGroupName(group.name)) {
+    if (
+      isSparkleAutoSelectSubGroup(group.name) ||
+      isHongKongFilterGroupName(group.name) ||
+      isMailDedicatedGroupName(group.name) ||
+      isMailProbeHiddenGroupName(group.name)
+    ) {
       continue
     }
 

@@ -107,10 +107,13 @@ async function applyLatencyOrder(force: boolean): Promise<boolean> {
   const current = (parseYaml<{ proxies?: ProxyRecord[] }>(await readFile(filePath, 'utf8'))
     .proxies ?? []) as ProxyRecord[]
   const { proxySwitchPriority = [] } = await getAppConfig()
+  const { loadGeminiBlockedNodeNames } = await import('./sparkleGeminiProbe')
+  const blockedNodeNames = await loadGeminiBlockedNodeNames(current)
   const { proxies: ordered } = buildSparkleFastProviderDocument({
     proxies: current,
     regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
-    delayMs: delays
+    delayMs: delays,
+    blockedNodeNames
   })
   const nextFirst = String(ordered[0]?.name ?? '')
   const sameOrder = hasSameNodeOrder(current, ordered)

@@ -22,65 +22,84 @@ function proxyName(proxy: ProxyRecord): string {
 export type NodeDelayMap = ReadonlyMap<string, number>
 
 /**
- * 优先地区节点按优先级分段在前，其余国家节点垫底；去重保序；AnyTLS 与香港不进入。
+ * 优先地区节点按优先级分段在前，其余国家节点垫底；去重保序；AnyTLS、香港与已确认 Gemini 锁区/送中节点不进入。
  * 有实测延迟样本时：所有有样本（探测存活）的节点按地区分段 + 段内延迟升序排在前面，
  * 无样本（探测超时/不可达）的节点按地区顺序统一垫在文件末尾，防止已知死节点挡在低优先地区的活节点前面。
+ * 极端兜底：若排除 `blockedNodeNames` 后候选池为空，则回退保留原候选池，防止空 provider 报错。
  */
 export function orderProxiesByRegionPriority(
   proxies: ProxyRecord[],
   regionPriority: string[],
-  delayMs?: NodeDelayMap
+  delayMs?: NodeDelayMap,
+  blockedNodeNames?: ReadonlySet<string>
 ): ProxyRecord[] {
-  const included = new Set<string>()
-  const ordered: ProxyRecord[] = []
-  const trailingUnsampled: ProxyRecord[] = []
-  const hasSamples = Boolean(delayMs && delayMs.size > 0)
-  const delayOf = (proxy: ProxyRecord): number =>
-    delayMs?.get(proxyName(proxy)) ?? Number.POSITIVE_INFINITY
-  const take = (matches: (name: string) => boolean): void => {
-    const segment: ProxyRecord[] = []
-    for (const proxy of proxies) {
-      const name = proxyName(proxy)
-      if (
-        !name ||
-        included.has(name) ||
-        isAnyTlsProxyType(String(proxy.type ?? '')) ||
-        isBlockedRegionNodeName(name) ||
-        !matches(name)
-      ) {
-        continue
+  const buildOrdered = (excludeNames?: ReadonlySet<string>): ProxyRecord[] => {
+    const included = new Set<string>()
+    const ordered: ProxyRecord[] = []
+    const trailingUnsampled: ProxyRecord[] = []
+    const hasSamples = Boolean(delayMs && delayMs.size > 0)
+    const delayOf = (proxy: ProxyRecord): number =>
+      delayMs?.get(proxyName(proxy)) ?? Number.POSITIVE_INFINITY
+    const take = (matches: (name: string) => boolean): void => {
+      const segment: ProxyRecord[] = []
+      for (const proxy of proxies) {
+        const name = proxyName(proxy)
+        if (
+          !name ||
+          included.has(name) ||
+          isAnyTlsProxyType(String(proxy.type ?? '')) ||
+          isBlockedRegionNodeName(name) ||
+          excludeNames?.has(name) ||
+          !matches(name)
+        ) {
+          continue
+        }
+        included.add(name)
+        segment.push(proxy)
       }
-      included.add(name)
-      segment.push(proxy)
+      if (!hasSamples) {
+        ordered.push(...segment)
+        return
+      }
+      const sampled = segment.filter((proxy) => delayMs?.has(proxyName(proxy)))
+      const unsampled = segment.filter((proxy) => !delayMs?.has(proxyName(proxy)))
+      sampled.sort((a, b) => {
+        const da = delayOf(a)
+        const db = delayOf(b)
+        return da === db ? 0 : da < db ? -1 : 1
+      })
+      ordered.push(...sampled)
+      trailingUnsampled.push(...unsampled)
     }
-    if (!hasSamples) {
-      ordered.push(...segment)
-      return
+    for (const region of regionPriority) {
+      take((name) => nodeMatchesRegion(name, region))
     }
-    const sampled = segment.filter((proxy) => delayMs?.has(proxyName(proxy)))
-    const unsampled = segment.filter((proxy) => !delayMs?.has(proxyName(proxy)))
-    sampled.sort((a, b) => {
-      const da = delayOf(a)
-      const db = delayOf(b)
-      return da === db ? 0 : da < db ? -1 : 1
-    })
-    ordered.push(...sampled)
-    trailingUnsampled.push(...unsampled)
+    take(() => true)
+    return [...ordered, ...trailingUnsampled]
   }
-  for (const region of regionPriority) {
-    take((name) => nodeMatchesRegion(name, region))
+
+  if (blockedNodeNames && blockedNodeNames.size > 0) {
+    const filtered = buildOrdered(blockedNodeNames)
+    if (filtered.length > 0) {
+      return filtered
+    }
   }
-  take(() => true)
-  return [...ordered, ...trailingUnsampled]
+  return buildOrdered()
 }
 
 export function buildSparkleFastProviderDocument(input: {
   proxies: ProxyRecord[]
   regionPriority: string[]
   delayMs?: NodeDelayMap
+  blockedNodeNames?: ReadonlySet<string>
 }): { proxies: ProxyRecord[] } {
   return {
-    proxies: orderProxiesByRegionPriority(input.proxies, input.regionPriority, input.delayMs)
+    proxies: orderProxiesByRegionPriority(
+      input.proxies,
+      input.regionPriority,
+      input.delayMs,
+      input.blockedNodeNames
+    )
   }
 }
 

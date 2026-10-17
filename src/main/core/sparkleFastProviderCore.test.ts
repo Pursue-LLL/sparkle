@@ -94,4 +94,27 @@ describe('sparkleFastProviderCore', () => {
       ['🇯🇵 日本 02', '🇯🇵 日本 03'],
     )
   })
+
+  it('excludes nodes confirmed as Gemini region-blocked while falling back if all are blocked', () => {
+    const blocked = new Set(['🇯🇵 日本 02', '🇹🇼 台湾 02'])
+    const { proxies } = buildSparkleFastProviderDocument({
+      proxies: [...NODES],
+      regionPriority: ['日本', '台湾'],
+      blockedNodeNames: blocked
+    })
+    assert.deepEqual(
+      proxies.map((proxy) => proxy.name),
+      ['🇯🇵 日本 03', '🇹🇼 台湾 03', 'KR-VPS-Reality']
+    )
+
+    const allBlocked = new Set([
+      '🇯🇵 日本 02',
+      '🇯🇵 日本 03',
+      '🇹🇼 台湾 02',
+      '🇹🇼 台湾 03',
+      'KR-VPS-Reality'
+    ])
+    const fallback = orderProxiesByRegionPriority([...NODES], ['日本', '台湾'], undefined, allBlocked)
+    assert.equal(fallback.length, 5)
+  })
 })
