@@ -35,7 +35,8 @@
 
 ---
 
-> **2026-10-17 最新**：**BUG-2026-10-17-001 @1.30.71** · `自动选择` 选中「名为日本/韩国/美国、实被 Google 送中（`vXmutd="ZZ"` / `google.cn`）」节点导致 `gemini.google.com` 报「目前不支持你所在的地区」：mihomo 探测仅看 `HTTP 200` 状态码无法识别应用层地区锁 → 新增 `sparkleGeminiProbeCore.ts` + `sparkleGeminiProbe.ts` 流式校验 `vXmutd` 国家码 + `autoSelectStickyPin` 固定前拦截 + `sparkle-fast` 自动剔除送中节点并热重载（网络抖动 fail-open 绝不误杀）· 单测 250/250 · ESLint 0 warning
+> **2026-11-02 最新**：**BUG-2026-11-02-001 CODE-DONE @1.30.71 git** · `tagss.pro` 报「Sorry, you have been blocked」：机场节点缺 `udp: true` → 浏览器 HTTP/3(UDP 443) 与 WebRTC STUN 回落 `DIRECT`，与 TCP 的台湾节点形成双出口 IP 分裂 → 新增 `quicTrafficRuleInjection.ts` 在规则链最前端注入 UDP 443 / `stun.cloudflare.com` 的 `REJECT`（浏览器按 RFC 9114 回退 HTTP/2 over TCP）· 运行态热修 + 全局 Override 持久化 · 干净浏览器实测拿到 `cf_clearance` · 单测 253/253 · **未装包（asar 仍为旧构建）**
+> **2026-10-17 上一版**：**BUG-2026-10-17-001 @1.30.71** · `自动选择` 选中「名为日本/韩国/美国、实被 Google 送中（`vXmutd="ZZ"` / `google.cn`）」节点导致 `gemini.google.com` 报「目前不支持你所在的地区」：mihomo 探测仅看 `HTTP 200` 状态码无法识别应用层地区锁 → 新增 `sparkleGeminiProbeCore.ts` + `sparkleGeminiProbe.ts` 流式校验 `vXmutd` 国家码 + `autoSelectStickyPin` 固定前拦截 + `sparkle-fast` 自动剔除送中节点并热重载（网络抖动 fail-open 绝不误杀）· 单测 250/250 · ESLint 0 warning
 > **2026-10-16 上一版**：**BUG-2026-10-16-001 INSTALLED @1.30.71** · macOS Mail 收 Gmail SSL `-9806`：Gmail IMAP/SMTP 走通用 `自动选择` 节点，部分机场封 993/465 → 新增 `📧 邮件专用` + `sparkle-mail` provider（Sparkle 主进程 993/465 TLS 双通探测 + 前置邮件域名规则）；mihomo 不可用 IMAPS 作 url-test 目标 · 单测 + `_ARCH`/`VERSION_LOG` 同步
 > **2026-10-15 13:24 上一版**：**BUG-2026-10-14-001 INSTALLED @1.30.71 3b60710**（CDHash `d19fd1a1`）· `自动选择` 粘性固定与单点复测保活（连续 2 次轮询稳定即 `PUT` 固定、丢固定时单点独立 Gemini 复测过滤并发体检假超时、10 分钟防抖冷却、孤儿锁清理）+ `sparkle-fast` 体检统一对齐 `Gemini + lazy:true` 并在订阅刷新时同步热重载 + 主商业 provider 开启 `lazy:true` + 冷启动沿用磁盘快照防残缺样本重排 · 单测 236/236 · ESLint 0 warning
 > **2026-09-15 后续7**：**BUG-2026-09-15-007** · AI 工具长流被"选点抖动"打断：url-test 组 60s 无迟滞切换（api2 实测在新/日/美/台间乱跳）→ 加 **`tolerance=200ms` 迟滞 + `interval=300` + `lazy`**；failover 目标改为 **只挑 ≤`proxySwitchMaxTargetDelayMs`(500ms)**；切换触发 `proxyTimeoutThreshold` 5000→**2000**；区域优先级改 **新加坡→台湾→日本→韩国→美国**
@@ -89,6 +90,21 @@
 > **2026-08-05 16:20 上一版**：**PARTIAL @1.30.15 已装** · bypass planned ✅ · R2 executed ❌ · bytes 144500 未降
 > **2026-08-05 早版**：8/5 夜跑 16×Included · prod 1.30.1 · Plane B 半闭环
 > **2026-08-04 上一版**：Marathon HY2-only @1.30.1 · MTIC-v2 @1.30.0
+
+---
+
+### BUG-2026-11-02-001 · `tagss.pro` 报「Sorry, you have been blocked」：节点缺 UDP 支持 → HTTP/3 与 STUN 回落 `DIRECT` → TCP/UDP 双出口 IP 分裂被 Cloudflare 拦截 · **CODE-DONE @1.30.71 git（运行态热修已验证 · 未装包）**
+
+| 字段 | 内容 |
+| --- | --- |
+| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-02 11:30 CST 用户访问 `tagss.pro` 被 Cloudflare 阻断）；代码修复：`d008713`（2026-11-02 14:26 CST）；运行态生效：14:33 热加载 + 全局 Override 持久化；**未装包**（`/Applications/Sparkle.app/Contents/Resources/app.asar` 内 `grep -c quicTrafficRuleInjection` = 0）。 |
+| **症状** | Arc 浏览器访问 `https://tagss.pro` 显示 Cloudflare「Sorry, you have been blocked / 安全验证」。Arc 历史库实测时间线：`11:30:19` 首次进入「安全验证」质询页 → `11:30:23` 标题变为「Attention Required! \| Cloudflare」，**4 秒内质询失败**。同期 `curl https://tagss.pro` 返回 `HTTP/2 403` + `cf-mitigated: challenge`。 |
+| **根因（协议层）** | ① 主订阅 `profiles/1a11e783a18-proxies.yaml` 的 Trojan 节点**均无 `udp: true`**，mihomo 判定节点不支持 UDP；② 浏览器对 `tagss.pro` 同时发起 TCP(443) 与 UDP(443, HTTP/3) 及 UDP(3478, WebRTC STUN)，内核日志 `core-2026-11-2.log:35952/35955/35960` 显示 **TCP 走 `🐟 漏网之鱼 → 🚀 节点选择 → 🇨🇳 台湾 V1`，UDP 全部 `doesn't match any rule using DIRECT`**；③ 同一会话出现两套出口 IP（台湾机房 IP + 本地大陆宽带 IP），Cloudflare 判定代理伪造/自动化异常，质询直接失败。旁证：`stun.l.google.com:19302` 同样 6 次 `DIRECT`（WebRTC 泄漏未收敛）。 |
+| **放大因素（非确定性）** | `11:30:23.290` 沉浸式翻译插件向 `ai.immersivetranslate.com` 发起请求，与页面跳变同秒；Turnstile 对质询页 DOM 完整性敏感。**该因素未被证伪，仅被消除**：修复后用干净 Chrome 配置（无扩展、非自动化）实测可过盾并拿到 `cf_clearance`，说明网络层已干净，扩展影响需用无痕窗口对照确认。 |
+| **本次根治方案** | ① 新增 `src/main/core/quicTrafficRuleInjection.ts`：`AND,((DST-PORT,443),(NETWORK,UDP)),REJECT` + `DOMAIN-SUFFIX,stun.cloudflare.com,REJECT`，幂等、空规则数组安全；② `factory.ts:306` 在所有规则改写函数之后、写盘之前注入（避免被 `removeNonSubscriptionProxyGroups` / `rewriteMissingRuleProxyGroupTargets` 洗掉；`REJECT` 属 `RULE_BUILTIN_TARGETS` 不会被改写）；③ `package.json` 登记 `quicTrafficRuleInjection.test.ts` 进 `test:node-quality`（253/253 PASS）；④ 未装包期间的持久化：磁盘 `work/config.yaml` 写回 + 全局 Override `override/sparkle-quic-guard.js`（脚本异常时 `runOverrideScript` 兜底返回原配置，不会中断生成）。 |
+| **物理证据** | ① 运行态命中：`core-2026-11-2.log` 自 `14:49:13` 起共 **666 条** `match AND(((DstPort,443) && (Network,udp))) using REJECT`；② 规则语法：`mihomo -t` → `test is successful`；③ 端到端：15:14:54 干净 Chrome 打开 `tagss.pro`，历史记录标题 `TAG Internet`，Cookies 出现 `.tagss.pro cf_clearance`（Cloudflare 放行凭证，仅质询通过才下发）。 |
+| **防再翻车铁律** | 1. **改文件 ≠ 改运行态**：上一轮仅凭 `work/config.yaml` 被覆盖就断言"修复 0% 生效"，实际内核内存仍持有 14:33 加载的规则（`reload` 后配置再生不一定触发内核重载）。判定生效必须看**内核日志命中**，不能只看磁盘文件。<br>2. **代理节点缺 `udp: true` 时，任何 UDP 业务都会静默回落 `DIRECT`**：新增依赖 UDP 的能力前，先确认节点是否支持，否则等于把真实 IP 直连出去。<br>3. **Cloudflare 拦截页是"结果"不是"证据"**：`cf-mitigated: challenge` 只说明质询下发，失败原因需用「TCP/UDP 出口是否一致 + 浏览器是否被扩展篡改 + 出口 IP 信誉」三条分别验证，禁止单因归因。 |
+| **未完成项** | 重装固化（停 root 权限 `sparkle-service` 需管理员密码，未擅自执行）；装包后应删除 `override/sparkle-quic-guard.js` 并复跑 UDP 443 探测 + 无痕窗口验证。 |
 
 ---
 

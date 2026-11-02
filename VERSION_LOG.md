@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-11-02 QUIC / STUN 泄漏防护：消除 TCP·UDP 双出口 IP 分裂（CODE-DONE @1.30.71 git · 运行态已验证 · 未装包）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | Arc 访问 `https://tagss.pro` 报 Cloudflare「Sorry, you have been blocked」：`11:30:19` 进入「安全验证」→ `11:30:23` 变「Attention Required! \| Cloudflare」，4 秒内质询失败 |
+| 根因 | 主订阅 Trojan 节点无 `udp: true` → mihomo 对 UDP 回落 `DIRECT`。内核日志显示 TCP 走 `🐟 漏网之鱼 → 🚀 节点选择 → 🇨🇳 台湾 V1`，而 UDP 443（HTTP/3）与 UDP 3478（`stun.cloudflare.com`）全部 `doesn't match any rule using DIRECT` → 同一会话出现台湾 IP 与大陆宽带 IP 两套出口，Cloudflare 判定异常 |
+| 实现 | ① 新增 `quicTrafficRuleInjection.ts`：`AND,((DST-PORT,443),(NETWORK,UDP)),REJECT` + `DOMAIN-SUFFIX,stun.cloudflare.com,REJECT`，幂等且空规则安全；② `factory.ts:306` 在全部规则改写之后、写盘之前注入（`REJECT` 属内置目标，不会被 `rewriteMissingRuleProxyGroupTargets` 改写）；③ 浏览器按 RFC 9114 自动回退 HTTP/2 over TCP，出口单一 |
+| 单测 | `quicTrafficRuleInjection.test.ts`（并入 `pnpm run test:node-quality`，253/253 PASS）· `typecheck` / `eslint` 全绿 |
+| 运行态验证 | `mihomo -t` 语法通过；`core-2026-11-2.log` 自 `14:49:13` 起 666 条 `match AND(((DstPort,443) && (Network,udp))) using REJECT`；15:14:54 干净 Chrome 打开 `tagss.pro` 得到标题 `TAG Internet` 与 `.tagss.pro cf_clearance` |
+| 未装包说明 | `/Applications/Sparkle.app` 仍是旧构建（asar 内 `grep -c quicTrafficRuleInjection` = 0）。当前生效依靠「磁盘 `work/config.yaml` 写回 + 全局 Override `override/sparkle-quic-guard.js`」；重装后应删除该 Override 改由代码接管（停 root 权限 `sparkle-service` 需管理员密码，脚本 `pnpm run agent:upgrade:mac`） |
+| 已知未覆盖 | `stun.l.google.com:19302` 等非 Cloudflare STUN 仍走 `DIRECT`（WebRTC 场景）；国内站点 HTTP/3 一并降级 TCP，功能可用但首屏可能略慢 |
+
 ## 2026-10-17 `自动选择` Gemini 真实地区解锁校验与「送中」节点自动剔除（@1.30.71）
 
 | 项 | 内容 |
