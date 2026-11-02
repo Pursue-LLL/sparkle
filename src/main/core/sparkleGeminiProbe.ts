@@ -36,10 +36,10 @@ import {
   type GeminiRegionProbeRecord
 } from './sparkleGeminiProbeCore'
 import {
-  computeMailNodeFingerprint,
   MAIL_PROBE_LISTENER_PORT,
   type MailProxyRecord
 } from './sparkleMailProviderCore'
+import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { withLocalProbeChannelLock } from './sparkleMailProbe'
 
 const CACHE_FILENAME = 'sparkle-gemini-nodes.json'
@@ -399,7 +399,7 @@ export async function verifyNodeGeminiRegion(
   const cache = await loadSparkleGeminiRegionCache()
   const proxies = await resolveCurrentProfileProxies()
   const matchedProxy = proxies.find((p) => String(p.name ?? '').trim() === trimmed)
-  const cacheKey = matchedProxy ? computeMailNodeFingerprint(matchedProxy) : trimmed
+  const cacheKey = matchedProxy ? computeProxyNodeFingerprint(matchedProxy) : trimmed
 
   const existing = cache.get(cacheKey) ?? cache.get(trimmed)
   if (existing) {
@@ -473,7 +473,7 @@ export async function bootstrapSparkleGeminiRegionAudit(): Promise<void> {
     const fingerprintByName = new Map<string, string>()
     for (const p of proxies) {
       const n = String(p.name ?? '').trim()
-      if (n) fingerprintByName.set(n, computeMailNodeFingerprint(p))
+      if (n) fingerprintByName.set(n, computeProxyNodeFingerprint(p))
     }
 
     const unverifiedAliveNames = leaves

@@ -93,6 +93,22 @@
 
 ---
 
+### BUG-2026-11-02-002 · magpie 的 agy 请求报 `User location is not supported`：`自动选择` 按延迟把流量钉在新加坡节点，而 gemini.com 探测测不出 cloudcode-pa 地域拒绝 · **CODE-DONE @1.30.71 git（未装包）**
+
+| 字段 | 内容 |
+| --- | --- |
+| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-02 15:43 / 16:07 / 16:08 / 17:57 CST 多次 400）；代码修复：本次（git，未装包）。 |
+| **症状** | magpie 的 `antigravity/gemini-3.8-flash` 返回 `400 {"error":{"message":"Antigravity: User location is not supported for the API use."}}`；`~/.config/magpie/usage.jsonl` 与 Sparkle core 日志同秒对应。 |
+| **证据链** | ① 规则：`work/config.yaml:305` `DOMAIN-KEYWORD,cloudcode-pa,自动选择`；② 连接：`core-2026-11-2.log` 17:57:59 `[TCP] ...(magpie) --> daily-cloudcode-pa.googleapis.com:443 match DomainKeyword(cloudcode-pa) using 自动选择[新加坡-优化2-GPT]`；③ 应用层：`usage.jsonl` 17:57:58 `status=400` 两条，同一节点；④ 出口 IP 实测：按同一规则请求 IP 回显得到 `66.90.98.146`（Singapore / FDCservers，ip-api 标记 `proxy:true, hosting:true`）。 |
+| **根因（三层叠加）** | ① **选路层**：`自动选择` 是 fallback（`defaultAutoSwitchProxy.ts:205`），成员来自 `sparkle-fast` provider，按地区优先级分段 + 段内延迟升序（`sparkleFastProviderCore.ts:20-30`）；当日池内台湾/日本/韩国只有 `02` 节点且无延迟样本（垫到队尾），新加坡-优化2 以 325ms 成为首选，`autoSelectStickyPin` 再把它钉死。<br>② **探测层**：健康检查 URL 是 `https://gemini.google.com`，而 Gemini 网页对这类出口返回 200（探测缓存 `{eligible:true, countryCode:"SG"}`）；官方地区表（antigravity.google/docs/faq）本身就把 Singapore 列为支持地区 → 「Gemini 网页可达」「国家码合法」两条都不足以证明 Code Assist 可用。<br>③ **协议层**：`daily-cloudcode-pa` 的地域校验发生在认证之后——无凭证请求实测返回 `HTTP 401 CREDENTIALS_MISSING`，不存在可用的无凭证探测端点，因此任何 HTTP 探活都天然测不到这个 400。 |
+| **归因实测** | 2026-11-02 当日 antigravity 请求按节点统计：新加坡-优化2-GPT / 新加坡-优化-GPT **6 次全部 400（100%）**；台湾 V1 / I0 **3831 次成功、13 次 400（0.34%）**；`自动选择` 15:40→17:50 换点 9 次。 |
+| **修复** | ① 新组 `🎯 agy 专用`（`select`，`use: sparkle-agy`，不参与自动漂移）；② 新 provider `sparkle-agy-proxies.yaml` **只写通过真实 agy 请求（HTTP 200）的节点**——`sparkleAgyProbe.ts` 借 magpie 本地网关 `127.0.0.1:3425` 逐节点发 1-token 请求（200=可用 / 400 `location is not supported`=不可用 / 404·405=中止 / 429·超时=不下结论），结果持久化到 `sparkle-agy-nodes.json`；③ `antigravityRuleInjection.ts` 三条规则目标改指 `🎯 agy 专用`（组缺席回退 `自动选择`，旧目标规则原地改写不重复追加）；④ `postCoreBootstrap` 启动巡检 + 30min 轮询（TTL 12h/6h），magpie 未启动时跳过；⑤ 订阅刷新时 `provider.ts` 热重载 `sparkle-agy`。 |
+| **验证** | `pnpm run test:node-quality` **267/267 PASS**（新增 `sparkleAgyProviderCore.test.ts`，重写 `antigravityRuleInjection.test.ts`）· `typecheck:node` 0 · 改动文件 eslint 0 · `mihomo -t` 对 `select + use: sparkle-agy` 形态 `test is successful` · 旧指纹函数合并为 `proxyNodeFingerprintCore.ts`（邮件 / Gemini / agy 三处共用）。**未装包，运行态未验证。** |
+| **防再翻车铁律** | 1. **"目标站 HTTP 200 可达" ≠ "业务 API 可用"**：Google 对 Gemini 网页与 Code Assist API 使用的是两套地区/风险判定。<br>2. **地域校验在认证之后时，无凭证探测必须判定为"测不出"，不能当作"通过"**（本次 401 已证明）。<br>3. **fallback + 粘性固定会把"延迟最低"变成"长期唯一出口"**：一旦该出口被服务端拒绝，故障是持续性的而非偶发。<br>4. **一个组解决的是"隔离 + 可切换 + 稳定出口"，不能凭空造出可用 IP**；若机场全部出口被判机房代理，只能换线路/上干净 VPS。 |
+| **合规提示** | Google 官方 FAQ 明确：用第三方软件（Claude Code / OpenCode 等）挂 Antigravity 登录违反 ToS，可能导致账号停用；该风险不因本修复消除。 |
+
+---
+
 ### BUG-2026-11-02-001 · `tagss.pro` 报「Sorry, you have been blocked」：节点缺 UDP 支持 → HTTP/3 与 STUN 回落 `DIRECT` → TCP/UDP 双出口 IP 分裂被 Cloudflare 拦截 · **CODE-DONE @1.30.71 git（运行态热修已验证 · 未装包）**
 
 | 字段 | 内容 |

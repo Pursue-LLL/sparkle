@@ -7,10 +7,12 @@ import {
   isAutoSwitchingGroupType,
   isCursorDedicatedGroupName,
   prependCursorDedicatedDirectOption,
+  AGY_DEDICATED_GROUP_NAME,
   HONG_KONG_DELAY_TEST_URL,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
+import { buildAgyGroupConfig } from './sparkleAgyProviderCore'
 import {
   buildMailGroupConfig,
   buildMailProbeHiddenGroupConfig,
@@ -26,7 +28,8 @@ const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
   ...LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   HONG_KONG_FILTER_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
-  MAIL_PROBE_HIDDEN_GROUP_NAME
+  MAIL_PROBE_HIDDEN_GROUP_NAME,
+  AGY_DEDICATED_GROUP_NAME
 ])
 
 /** mihomo provider filter — Hong Kong leaf nodes (provider mode). */
@@ -319,6 +322,7 @@ export function ensureCustomProxyGroups(
   const hkGroup = buildHongKongGroupConfig(leafProxyNames, profileId)
   const mailGroup = buildMailGroupConfig(leafProxyNames, profileId)
   const mailProbeGroup = buildMailProbeHiddenGroupConfig(profileId)
+  const agyGroup = buildAgyGroupConfig(leafProxyNames, profileId)
 
   if (hkGroup) {
     injected.push(hkGroup)
@@ -328,6 +332,9 @@ export function ensureCustomProxyGroups(
   }
   if (mailProbeGroup) {
     injected.push(mailProbeGroup)
+  }
+  if (agyGroup) {
+    injected.push(agyGroup)
   }
   ensureMailProbeListener(profile, profileId)
 
@@ -367,6 +374,7 @@ export function resolveFailoverProxyGroup(
       group.name !== 'GLOBAL' &&
       group.name !== HONG_KONG_FILTER_GROUP_NAME &&
       group.name !== MAIL_DEDICATED_GROUP_NAME &&
+      group.name !== AGY_DEDICATED_GROUP_NAME &&
       group.name !== MAIL_PROBE_HIDDEN_GROUP_NAME
   )
 }

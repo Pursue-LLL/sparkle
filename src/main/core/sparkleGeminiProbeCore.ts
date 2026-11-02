@@ -3,7 +3,8 @@
 // [POS] 识别「HTTP 200 但被 Google GeoIP 判定为送中/不支持地区（如 vXmutd="ZZ"/"CN"/"HK" 或 google.cn）」的假存活节点。
 // 纯函数模块（无 I/O 与 Electron 依赖），便于单元测试。
 
-import { computeMailNodeFingerprint, type MailProxyRecord } from './sparkleMailProviderCore'
+import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
+import type { MailProxyRecord } from './sparkleMailProviderCore'
 
 /**
  * Google Gemini 明确锁区或送中的 ISO 地区码集合：
@@ -107,7 +108,7 @@ export function resolveGeminiBlockedNodeNames(
     if (!name) {
       continue
     }
-    const record = cache.get(computeMailNodeFingerprint(proxy)) ?? cache.get(name)
+    const record = cache.get(computeProxyNodeFingerprint(proxy)) ?? cache.get(name)
     if (record && record.eligible === false) {
       blocked.add(name)
     }

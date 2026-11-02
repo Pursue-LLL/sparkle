@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-11-02 `🎯 agy 专用` 组：cloudcode-pa 只能按**真实 agy 请求**筛节点（CODE-DONE @1.30.71 git · 未装包）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | magpie 的 `antigravity/gemini-3.8-flash` 间歇报 `400 Antigravity: User location is not supported for the API use.`；同刻 core 日志 `daily-cloudcode-pa.googleapis.com:443 ... using 自动选择[新加坡-优化2-GPT]`；`usage.jsonl` 同秒记录 400 |
+| 根因 | ① `自动选择` 是 fallback，按地区优先级 + 延迟取首个存活节点：`sparkle-fast-delays.json` 里新加坡-优化2 仅 325ms（池内最快），台湾/日本/韩国只有 `02` 节点且无延迟样本被垫到队尾 → 新加坡长期占据首位并被 `autoSelectStickyPin` 钉死；② 现有 `gemini.google.com` 探测**测不出**这个问题：该节点探测缓存为 `{eligible:true, countryCode:"SG"}`，而官方地区表本身就把 Singapore 列为支持地区，国家维度无法区分；③ 唯一可靠判据是带账号凭证请求 `daily-cloudcode-pa`——无凭证实测返回 `HTTP 401 CREDENTIALS_MISSING`，地域校验在认证之后 |
+| 实测归因（2026-11-02） | 按节点统计当日 agy 请求：新加坡-优化2 / 优化-GPT **6 次请求全部 400（100%）**；台湾节点 **3831 次请求仅 13 次 400（0.34%）**；`自动选择` 在 15:40→17:50 之间换点 9 次（每次换点即换出口 IP） |
+| 实现 | ① 新增 `sparkleAgyProviderCore.ts`（纯函数：节点指纹、地区排序、只保留 verified 的 provider 文档、`classifyAgyProbeResponse`）；② 新增 `sparkleAgyProbe.ts`：借 magpie 本地网关 `127.0.0.1:3425` 对每个节点发 1-token 真实请求（200=可用、400 `location is not supported`=不可用、404/405=中止巡检），结果写 `sparkle-agy-nodes.json` 并生成 `sparkle-agy-proxies.yaml`；③ 新组 `🎯 agy 专用`（`select`，`use: sparkle-agy`），provider 只含已验证可用节点；④ `antigravityRuleInjection.ts` 三条规则目标改为 `🎯 agy 专用`（组缺席时回退 `自动选择`，并改写上一版遗留的目标规则而不是重复追加）；⑤ `postCoreBootstrap` 启动巡检 + 30min 轮询（TTL 12h 可用 / 6h 不可用），magpie 未启动或无 antigravity 模型时直接跳过 |
+| 单测 | `sparkleAgyProviderCore.test.ts`（响应分类 / 地区排序 / 冷启动 / 全灭兜底 / 组构建）· `antigravityRuleInjection.test.ts`（目标切换 / 旧规则改写 / 幂等）· `pnpm run test:node-quality` **267/267 PASS** · `typecheck:node` 0 · 改动文件 eslint 0 · `mihomo -t` 校验 `select + use: sparkle-agy` 形态 `test is successful` |
+| 已知边界 | 巡检需要能切到每个候选节点，而 mihomo 只能切到 provider 内的节点 → 巡检窗口内 provider 会临时扩为全量候选（不改当前选择，线上出口不变），巡检结束再收敛；无任何可用节点时保留候选池，避免空 provider 让整份配置加载失败 |
+| 未完成项 | 未装包（`/Applications/Sparkle.app` 仍是旧构建）；装包后需 `pnpm run verify:agygeo` 复核规则目标与 provider 文件，并跑一轮真实巡检确认 `[SparkleAgyProbe]` 日志 |
+
 ## 2026-11-02 QUIC / STUN 泄漏防护：消除 TCP·UDP 双出口 IP 分裂（CODE-DONE @1.30.71 git · 运行态已验证 · 未装包）
 
 | 项 | 内容 |
