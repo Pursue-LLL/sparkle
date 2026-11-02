@@ -1,0 +1,393 @@
+// [INPUT] 当前订阅节点 · `🎯 agy 专用` 组 · magpie 本地网关 127.0.0.1:3425 · sparkle-agy-nodes.json
+// [OUTPUT] loadSparkleAgyProbeCache · bootstrapSparkleAgyProvider · startSparkleAgyProbeLoop
+// [POS] 用**真实 agy 请求**给节点定性：200 = 可用，400 `User location is not supported` = 不可用。
+// 为什么不能像 Gemini 探测那样直接打目标站：cloudcode-pa 的地域校验在认证之后，
+// 无凭证请求只会返回 401 CREDENTIALS_MISSING（已实测），无法区分「地区被拒」与「未认证」。
+// 因此只能借 magpie（持有账号凭证）发一次 1-token 请求，结果写入缓存并驱动 sparkle-agy provider。
+
+import http from 'node:http'
+import { performance } from 'node:perf_hooks'
+import { readFile, writeFile } from 'fs/promises'
+import path from 'path'
+import { getAppConfig, getProfile, getProfileConfig } from '../config'
+import { dataDir, profilesDir } from '../utils/dirs'
+import { appendAppLog } from '../utils/log'
+import { stringifyYaml } from '../utils/yaml'
+import { AGY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { mihomoChangeProxy, mihomoGroupDetail, mihomoUpdateProxyProviders } from './mihomoApi'
+import { extractProxies } from './provider'
+import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
+import { resolveEffectiveRegionPriority } from './regionPriority'
+import {
+  AGY_NODE_PROVIDER_FILENAME,
+  AGY_NODE_PROVIDER_ID,
+  buildSparkleAgyProviderDocument,
+  classifyAgyProbeResponse,
+  type AgyNodeProbeRecord,
+  type AgyProbeVerdict,
+  type AgyProxyRecord
+} from './sparkleAgyProviderCore'
+
+const CACHE_FILENAME = 'sparkle-agy-nodes.json'
+const USABLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const UNUSABLE_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+/** 轮询间隔只决定"多久检查一次有没有过期节点"，真正的重测频率由上面两个 TTL 控制。 */
+const AUDIT_INTERVAL_MS = 30 * 60 * 1000
+
+const MAGPIE_BASE_URL = 'http://127.0.0.1:3425'
+const MAGPIE_API_KEY = 'magpie'
+const MAGPIE_MODEL_PREFIX = 'antigravity/'
+const PROBE_TIMEOUT_MS = 20_000
+/** 整轮巡检预算：超时节点会逐个吃掉探测超时，不能让「临时扩大 provider」的窗口无限拉长。 */
+const AUDIT_BUDGET_MS = 8 * 60 * 1000
+
+type MagpieResponse =
+  | { kind: 'response'; status: number; body: string }
+  /** 本地网关没起来（magpie 未启动）——继续测没有任何意义。 */
+  | { kind: 'unreachable' }
+  /** 单个节点的请求超时——只代表这个节点慢，不代表必须中止整轮巡检。 */
+  | { kind: 'timeout' }
+
+interface AgyProbeOutcome {
+  verdict: AgyProbeVerdict
+  rttMs: number
+  fatal: boolean
+}
+
+function cacheFilePath(): string {
+  return path.join(dataDir(), CACHE_FILENAME)
+}
+
+function isCacheRecordFresh(record: AgyNodeProbeRecord, nowMs: number): boolean {
+  const ttl = record.usable ? USABLE_CACHE_TTL_MS : UNUSABLE_CACHE_TTL_MS
+  return nowMs - record.checkedAt < ttl
+}
+
+export async function loadSparkleAgyProbeCache(
+  nowMs: number = Date.now()
+): Promise<Map<string, AgyNodeProbeRecord>> {
+  try {
+    const raw = JSON.parse(await readFile(cacheFilePath(), 'utf8')) as Record<
+      string,
+      AgyNodeProbeRecord
+    >
+    const map = new Map<string, AgyNodeProbeRecord>()
+    for (const [key, val] of Object.entries(raw)) {
+      if (
+        val &&
+        typeof val.usable === 'boolean' &&
+        typeof val.rttMs === 'number' &&
+        typeof val.checkedAt === 'number' &&
+        isCacheRecordFresh(val, nowMs)
+      ) {
+        map.set(key, val)
+      }
+    }
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
+async function saveSparkleAgyProbeCache(
+  cache: ReadonlyMap<string, AgyNodeProbeRecord>
+): Promise<void> {
+  const serialized = Object.fromEntries(cache.entries())
+  await writeFile(cacheFilePath(), JSON.stringify(serialized, null, 2), 'utf8')
+}
+
+function requestMagpie(
+  urlPath: string,
+  payload?: unknown,
+  timeoutMs: number = PROBE_TIMEOUT_MS
+): Promise<MagpieResponse> {
+  return new Promise((resolve) => {
+    const url = new URL(`${MAGPIE_BASE_URL}${urlPath}`)
+    const body = payload === undefined ? undefined : JSON.stringify(payload)
+    let settled = false
+    const timeoutState: { timer?: NodeJS.Timeout } = {}
+
+    const finish = (value: MagpieResponse): void => {
+      if (settled) {
+        return
+      }
+      settled = true
+      if (timeoutState.timer) {
+        clearTimeout(timeoutState.timer)
+      }
+      resolve(value)
+    }
+
+    const request = http.request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: `${url.pathname}${url.search}`,
+        method: body === undefined ? 'GET' : 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${MAGPIE_API_KEY}`,
+          'content-length': String(Buffer.byteLength(body ?? ''))
+        }
+      },
+      (response) => {
+        let text = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk: string) => {
+          // 只需要看得到错误信息，正文超长时截断避免占内存。
+          if (text.length < 8192) {
+            text += chunk.slice(0, 8192 - text.length)
+          }
+        })
+        response.on('end', () =>
+          finish({ kind: 'response', status: response.statusCode ?? 0, body: text })
+        )
+        response.on('error', () => finish({ kind: 'unreachable' }))
+      }
+    )
+
+    timeoutState.timer = setTimeout(() => {
+      request.destroy()
+      finish({ kind: 'timeout' })
+    }, timeoutMs)
+
+    request.on('error', (error: NodeJS.ErrnoException) => {
+      finish(
+        error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND'
+          ? { kind: 'unreachable' }
+          : { kind: 'timeout' }
+      )
+    })
+
+    if (body !== undefined) {
+      request.write(body)
+    }
+    request.end()
+  })
+}
+
+/** 从 magpie 的 OpenAI 兼容接口里挑一个 antigravity 模型（优先最便宜的 flash）。 */
+async function discoverAgyModel(): Promise<string | null> {
+  const response = await requestMagpie('/v1/models', undefined, 5000)
+  if (response.kind !== 'response' || response.status !== 200) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(response.body) as { data?: Array<{ id?: string }> }
+    const ids = (parsed.data ?? [])
+      .map((model) => String(model.id ?? '').trim())
+      .filter((id) => id.startsWith(MAGPIE_MODEL_PREFIX))
+    return ids.find((id) => id.includes('flash')) ?? ids[0] ?? null
+  } catch {
+    return null
+  }
+}
+
+async function probeSingleNode(node: string, model: string): Promise<AgyProbeOutcome> {
+  const switched = await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, node).catch(() => false)
+  if (!switched) {
+    // 典型原因：该节点已被订阅移除，或组尚未生成 —— 跳过它，不要因为单个节点中止整轮巡检。
+    return { verdict: 'unknown', rttMs: 0, fatal: false }
+  }
+
+  const startMs = performance.now()
+  const response = await requestMagpie('/v1/chat/completions', {
+    model,
+    messages: [{ role: 'user', content: 'ping' }],
+    max_tokens: 1,
+    stream: false
+  })
+  const rttMs = Math.max(1, Math.round(performance.now() - startMs))
+
+  if (response.kind === 'unreachable') {
+    return { verdict: 'unknown', rttMs: 0, fatal: true }
+  }
+  if (response.kind === 'timeout') {
+    return { verdict: 'unknown', rttMs, fatal: false }
+  }
+  const verdict = classifyAgyProbeResponse(response.status, response.body)
+  return { verdict, rttMs, fatal: verdict === 'fatal' }
+}
+
+function countUsable(
+  cache: ReadonlyMap<string, AgyNodeProbeRecord>,
+  proxies: readonly AgyProxyRecord[]
+): number {
+  return proxies.filter(
+    (proxy) => cache.get(computeProxyNodeFingerprint(proxy))?.usable === true
+  ).length
+}
+
+async function writeProviderFromCache(
+  proxies: readonly AgyProxyRecord[],
+  regionPriority: readonly string[],
+  cache?: ReadonlyMap<string, AgyNodeProbeRecord>
+): Promise<string[]> {
+  const document = buildSparkleAgyProviderDocument({
+    proxies,
+    regionPriority,
+    probeCache: cache
+  })
+  if (document.proxies.length === 0) {
+    return []
+  }
+  await writeFile(
+    path.join(profilesDir(), AGY_NODE_PROVIDER_FILENAME),
+    stringifyYaml(document),
+    'utf8'
+  )
+  return document.proxies
+    .map((proxy) => String(proxy.name ?? '').trim())
+    .filter((name) => name.length > 0)
+}
+
+/** 当前固定节点仍在可用集合内时不打扰用户的手动选择，否则落到首选节点。 */
+async function ensureAgySelection(ordered: readonly string[]): Promise<void> {
+  const preferred = ordered[0]
+  if (!preferred) {
+    return
+  }
+  try {
+    const detail = await mihomoGroupDetail(AGY_DEDICATED_GROUP_NAME)
+    const now = String(detail?.now ?? '').trim()
+    if (now && ordered.includes(now)) {
+      return
+    }
+    await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, preferred)
+  } catch {
+    // 组尚未生成（首次配置生成前）时忽略，下一轮巡检会补上。
+  }
+}
+
+async function reloadProvider(ordered: readonly string[], selectPreferred: boolean): Promise<void> {
+  if (ordered.length === 0) {
+    return
+  }
+  try {
+    await mihomoUpdateProxyProviders(AGY_NODE_PROVIDER_ID)
+  } catch {
+    return
+  }
+  if (selectPreferred) {
+    await ensureAgySelection(ordered)
+  }
+}
+
+let probeInFlight = false
+
+export async function bootstrapSparkleAgyProvider(): Promise<void> {
+  if (probeInFlight) {
+    return
+  }
+  probeInFlight = true
+  try {
+    const { current } = await getProfileConfig()
+    if (!current || current === 'default') {
+      return
+    }
+    const profile = await getProfile(current)
+    const proxies = extractProxies(profile) as AgyProxyRecord[]
+    if (proxies.length === 0) {
+      return
+    }
+
+    const { proxySwitchPriority = [] } = await getAppConfig()
+    const regionPriority = resolveEffectiveRegionPriority(proxySwitchPriority)
+    const cache = await loadSparkleAgyProbeCache()
+
+    // 先用缓存恢复上次的可用集合，保证启动后 agy 立刻有出口。
+    const cachedUsable = countUsable(cache, proxies)
+    if (cachedUsable > 0) {
+      const restored = await writeProviderFromCache(proxies, regionPriority, cache)
+      await reloadProvider(restored, true)
+      await appendAppLog(`[SparkleAgyProbe]: restored ${cachedUsable} verified nodes from cache\n`)
+    }
+
+    const pending = proxies.filter((proxy) => {
+      if (!String(proxy.name ?? '').trim()) {
+        return false
+      }
+      const record = cache.get(computeProxyNodeFingerprint(proxy))
+      return !record || !isCacheRecordFresh(record, Date.now())
+    })
+    if (pending.length === 0) {
+      return
+    }
+
+    // 只有确实需要巡检时才联系 magpie，避免每轮空转。
+    const model = await discoverAgyModel()
+    if (!model) {
+      await appendAppLog(
+        '[SparkleAgyProbe]: magpie gateway unreachable or exposes no antigravity model, skip audit\n'
+      )
+      return
+    }
+
+    // 巡检要逐个切到候选节点，而 mihomo 只能切到 provider 里存在的节点：
+    // 先把全量候选写进 provider（此时不改当前选择，线上出口保持不变），巡检结束再收敛回已验证集合。
+    const expanded = await writeProviderFromCache(proxies, regionPriority, undefined)
+    await reloadProvider(expanded, false)
+
+    let probed = 0
+    let usable = 0
+    let aborted = false
+    const auditStartedAt = Date.now()
+
+    for (const proxy of pending) {
+      if (Date.now() - auditStartedAt > AUDIT_BUDGET_MS) {
+        aborted = true
+        break
+      }
+      const name = String(proxy.name ?? '').trim()
+      const outcome = await probeSingleNode(name, model)
+      if (outcome.fatal) {
+        aborted = true
+        break
+      }
+      if (outcome.verdict === 'unknown') {
+        continue
+      }
+      cache.set(computeProxyNodeFingerprint(proxy), {
+        usable: outcome.verdict === 'usable',
+        rttMs: outcome.rttMs,
+        checkedAt: Date.now()
+      })
+      probed += 1
+      if (outcome.verdict === 'usable') {
+        usable += 1
+      }
+    }
+
+    if (probed > 0) {
+      await saveSparkleAgyProbeCache(cache)
+    }
+    // 无论本轮是否得到新结论，都要把 provider 收敛回「已验证可用集合」（巡检前临时扩过）
+    const ordered = await writeProviderFromCache(proxies, regionPriority, cache)
+    await reloadProvider(ordered, true)
+
+    if (probed === 0) {
+      return
+    }
+    await appendAppLog(
+      `[SparkleAgyProbe]: probed=${probed} usable=${usable} pool=${ordered.length}${aborted ? ' aborted' : ''}\n`
+    )
+  } catch (error) {
+    await appendAppLog(
+      `[SparkleAgyProbe]: error=${error instanceof Error ? error.message : String(error)}\n`
+    )
+  } finally {
+    probeInFlight = false
+  }
+}
+
+let agyProbeTimer: NodeJS.Timeout | undefined
+
+export function startSparkleAgyProbeLoop(): void {
+  if (agyProbeTimer) {
+    return
+  }
+  agyProbeTimer = setInterval(() => {
+    bootstrapSparkleAgyProvider().catch(() => undefined)
+  }, AUDIT_INTERVAL_MS)
+  agyProbeTimer.unref()
+}

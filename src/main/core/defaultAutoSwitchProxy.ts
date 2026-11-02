@@ -7,6 +7,7 @@ import {
   isCursorDedicatedGroupName,
   isNestedAutoSwitchSelection,
   isSparkleAutoSelectSubGroup,
+  isAgyDedicatedGroupName,
   isHongKongFilterGroupName,
   isMailDedicatedGroupName,
   isMailProbeHiddenGroupName,
@@ -309,6 +310,7 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
       isSparkleAutoSelectSubGroup(group.name) ||
       isHongKongFilterGroupName(group.name) ||
       isMailDedicatedGroupName(group.name) ||
+      isAgyDedicatedGroupName(group.name) ||
       isMailProbeHiddenGroupName(group.name)
     ) {
       continue

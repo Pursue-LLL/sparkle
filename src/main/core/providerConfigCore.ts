@@ -7,7 +7,8 @@ import {
 } from './vpsProviderSplitCore'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import { MAIL_NODE_PROVIDER_ID } from './sparkleMailProviderCore'
-import { MAIL_DELAY_TEST_URL } from './cursorProxyGroup'
+import { AGY_NODE_PROVIDER_ID } from './sparkleAgyProviderCore'
+import { GEMINI_REACHABILITY_PROBE_URL, MAIL_DELAY_TEST_URL } from './cursorProxyGroup'
 import {
   AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
   AUTO_SELECT_GEMINI_PROBE_URL
@@ -82,6 +83,20 @@ export function buildBaseConfigWithProviders(
     'health-check': {
       enable: commercialHealthCheck.enable,
       url: MAIL_DELAY_TEST_URL,
+      interval: commercialHealthCheck.interval,
+      timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
+      lazy: true
+    }
+  }
+
+  // agy 组的可用性来自真实 agy 请求探测（sparkle-agy-nodes.json），
+  // 这里的 health-check 只用于面板上显示延迟，不参与选路（组类型是 select）。
+  baseConfig['proxy-providers'][AGY_NODE_PROVIDER_ID] = {
+    type: 'file',
+    path: resolveProviderPath(AGY_NODE_PROVIDER_ID),
+    'health-check': {
+      enable: commercialHealthCheck.enable,
+      url: GEMINI_REACHABILITY_PROBE_URL,
       interval: commercialHealthCheck.interval,
       timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
       lazy: true

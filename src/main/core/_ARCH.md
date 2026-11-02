@@ -21,7 +21,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `proxyProbeHistoryCore.ts` | 节点探测样本的唯一取数口径：按组实际探测地址读 `extra[url]`（忽略 http/https 差异，同一目标的多份记录按时间合并而非只取其一），不再读混杂各地址样本的顶层 `history`；`poolProxyInstances` 合并同一节点多份样本；渲染进程经 `@sparkle-core` 引用 |
 | `proxyDelayVerdictCore.ts` | 延迟展示的单一判定规则（ok / flaky=不稳定 / failed / untested）：在 `judgeProxyForUrl` 取到的单一探测地址样本上，窗口内一次都没成功才判超时，最近失败但近期成功过判不稳定；`judgeOtherProbeUrls` 给出其它探测地址上的表现；代理页、详情浮窗、两处托盘、复测共用 |
 | `providerLeafProbeCore.ts` / `providerLeafProbe.ts` | 冷启动低并发（4）逐点拨测：`sparkle-fast` 启动探测 + 地区组预热后复测最近一次样本不是成功的节点（超时/不稳定/未测，总时长上限 150s），取代 provider 级并发体检 |
-| `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `autoSelectStickyPin` 粘性固定 → `sparkleMailProbe` 邮件端口探测（异步）→ `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
+| `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `autoSelectStickyPin` 粘性固定 → `sparkleMailProbe` 邮件端口探测（异步）→ `sparkleAgyProbe` agy 可用性巡检（异步）→ `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
 | `coreReadinessGate.ts` / `coreReadinessGateCore.ts` | 冷启动 Readiness Contract：sidecar → profile 检查 → startCore → API → 数据面探测 |
 | `coreLifecycle.ts` / `coreLifecycleCore.ts` | core 就绪后 fake-ip flush（cold / manual restart 后卫生） |
 | `probeWarmupCore.ts` / `probeWarmupState.ts` | 内核启动后批量测速窗口标志（`postCoreBootstrap` 开始/结束，5 分钟兜底）；经 `probeWarmupChanged` 事件与 `getProbeWarmupActive` IPC 推给代理页，窗口内无可信样本的节点显示 loading |
@@ -52,7 +52,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `regionalAutoSelectGroupsCore.ts` / `regionalUrlTestWarmup.ts` / `regionalUrlTestWarmupCore.ts` | `Sparkle-<地区>` 组构建（排除 AnyTLS，无可用节点的地区不建组）与启动预热 |
 | `autoSelectAnyTlsExclusionCore.ts` | url-test 自动选择组剔除 AnyTLS |
 | `regionPriority.ts` | 地区优先级（台湾 → 日本 → 韩国 → 新加坡 → 美国） |
-| `customProxyGroups.ts` / `profileGroupNormalize.ts` | 自定义组（Cursor 专用、香港过滤、📧 邮件专用、隐藏探测组 `__sparkle_mail_probe__`）注入与订阅主选择组归一 |
+| `customProxyGroups.ts` / `profileGroupNormalize.ts` | 自定义组（Cursor 专用、香港过滤、📧 邮件专用、🎯 agy 专用、隐藏探测组 `__sparkle_mail_probe__`）注入与订阅主选择组归一 |
 
 ### 邮件专用组（macOS Mail / 海外 IMAP·SMTP）
 
@@ -64,6 +64,16 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `cursorProxyGroup.ts` | `MAIL_DEDICATED_GROUP_NAME` · `MAIL_DELAY_TEST_URL`（`https://mail.google.com`）· `resolveDelayTestUrl` 分支 |
 
 **设计约束（实测）**：mihomo `url-test` 的 `url` **不能**设为 `https://imap.gmail.com:993`——底层 HTTP 客户端无法解析 IMAP Banner，会误判全节点超时；443 探测也无法筛掉「仅封邮件端口」的机场节点，故 Sparkle 主进程做真实 993/465 TLS 探测，组内日常保活才用 `mail.google.com`。
+
+### Antigravity / Code Assist 专用组（magpie · agy）
+
+| 文件 | 职责 |
+| ---- | ---- |
+| `sparkleAgyProviderCore.ts` | `sparkle-agy` provider 文件生成（纯函数）：只收录通过**真实 agy 请求（HTTP 200）**的节点；节点指纹 `proxyNodeFingerprintCore.ts`；`classifyAgyProbeResponse`（200=可用 / 400 `location is not supported`=不可用 / 404·405=中止 / 其它=不下结论）；组配置 `buildAgyGroupConfig`（`select` + `use: sparkle-agy`） |
+| `sparkleAgyProbe.ts` | 内核就绪后借 magpie 本地网关 `127.0.0.1:3425` 逐节点发 1-token 真实请求，结果写 `sparkle-agy-nodes.json` 并重写 `sparkle-agy-proxies.yaml` + `mihomoUpdateProxyProviders('sparkle-agy')`；TTL 12h 可用 / 6h 不可用，30min 轮询检查是否过期，magpie 未启动直接跳过 |
+| `antigravityRuleInjection.ts` | 前置规则：`DOMAIN-KEYWORD,cloudcode-pa` / `aicode.googleapis.com` / `generativelanguage.googleapis.com` → `🎯 agy 专用`（组缺席回退 `自动选择`） |
+
+**设计约束（实测）**：`daily-cloudcode-pa` 的地域校验在认证之后——无凭证请求返回 `HTTP 401 CREDENTIALS_MISSING`，因此 `gemini.google.com` 流式探测（`sparkleGeminiProbe`）在原理上无法筛出「网页可用但 Code Assist 被拒」的节点；只能借持有账号凭证的 magpie 做端到端判定。巡检需要切换到候选节点，而 mihomo 只能切到 provider 内节点，故巡检窗口内 provider 临时扩为全量候选（不改当前选择），结束后收敛。
 
 ### Cursor 专用组与规则
 

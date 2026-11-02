@@ -33,6 +33,9 @@ export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 export const MAIL_DEDICATED_GROUP_NAME = '📧 邮件专用' as const
 export const MAIL_PROBE_HIDDEN_GROUP_NAME = '__sparkle_mail_probe__' as const
 
+/** Antigravity / Code Assist（cloudcode-pa）专用出口组：只收真实 agy 请求验证通过的节点。 */
+export const AGY_DEDICATED_GROUP_NAME = '🎯 agy 专用' as const
+
 /** Cursor 专用组 provider 模式的 VPS 过滤器：只收 Reality / HY2 叶子。 */
 export const CURSOR_VPS_PROVIDER_FILTER = '(?i)-VPS-(Reality|HY2)$'
 
@@ -101,6 +104,10 @@ export function isHongKongFilterGroupName(groupName: string): boolean {
 
 export function isMailDedicatedGroupName(groupName: string): boolean {
   return groupName === MAIL_DEDICATED_GROUP_NAME
+}
+
+export function isAgyDedicatedGroupName(groupName: string): boolean {
+  return groupName === AGY_DEDICATED_GROUP_NAME
 }
 
 export function isMailProbeHiddenGroupName(groupName: string): boolean {

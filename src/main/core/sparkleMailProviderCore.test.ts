@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   buildSparkleMailProviderDocument,
-  computeMailNodeFingerprint,
   orderMailProxies,
   type MailNodeProbeRecord,
 } from './sparkleMailProviderCore'
+import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 
 const SAMPLE_NODES = [
   { name: '🇹🇼 台湾 01', type: 'anytls', server: 'tw.tls.yytls.top', port: 27005 },
@@ -18,17 +18,17 @@ const SAMPLE_NODES = [
 describe('sparkleMailProviderCore', () => {
   it('computes deterministic node fingerprints', () => {
     assert.equal(
-      computeMailNodeFingerprint(SAMPLE_NODES[2]),
+      computeProxyNodeFingerprint(SAMPLE_NODES[2]),
       '🇹🇼 台湾 02|hysteria2|v6o0sl.quic.yydzx.xyz|15001-16000',
     )
   })
 
   it('strictly keeps only verified alive=true nodes when probeCache has alive entries', () => {
     const cache = new Map<string, MailNodeProbeRecord>([
-      [computeMailNodeFingerprint(SAMPLE_NODES[1]), { alive: false, rttMs: 0, checkedAt: 1000 }],
-      [computeMailNodeFingerprint(SAMPLE_NODES[2]), { alive: true, rttMs: 420, checkedAt: 1000 }],
-      [computeMailNodeFingerprint(SAMPLE_NODES[3]), { alive: true, rttMs: 310, checkedAt: 1000 }],
-      [computeMailNodeFingerprint(SAMPLE_NODES[4]), { alive: true, rttMs: 180, checkedAt: 1000 }],
+      [computeProxyNodeFingerprint(SAMPLE_NODES[1]), { alive: false, rttMs: 0, checkedAt: 1000 }],
+      [computeProxyNodeFingerprint(SAMPLE_NODES[2]), { alive: true, rttMs: 420, checkedAt: 1000 }],
+      [computeProxyNodeFingerprint(SAMPLE_NODES[3]), { alive: true, rttMs: 310, checkedAt: 1000 }],
+      [computeProxyNodeFingerprint(SAMPLE_NODES[4]), { alive: true, rttMs: 180, checkedAt: 1000 }],
     ])
 
     const { proxies } = buildSparkleMailProviderDocument({
@@ -56,7 +56,7 @@ describe('sparkleMailProviderCore', () => {
   it('never returns an empty list if non-AnyTLS nodes exist even when all cached entries are dead', () => {
     const cache = new Map<string, MailNodeProbeRecord>(
       SAMPLE_NODES.map((node) => [
-        computeMailNodeFingerprint(node),
+        computeProxyNodeFingerprint(node),
         { alive: false, rttMs: 0, checkedAt: 1000 },
       ]),
     )

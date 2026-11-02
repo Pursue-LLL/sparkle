@@ -1,5 +1,5 @@
 // [INPUT] 当前订阅节点 · 地区优先级 · 真实邮件端口（IMAPS 993 + SMTPS 465）探测缓存
-// [OUTPUT] MAIL_NODE_PROVIDER_ID · computeMailNodeFingerprint · orderMailProxies · buildSparkleMailProviderDocument
+// [OUTPUT] MAIL_NODE_PROVIDER_ID · orderMailProxies · buildSparkleMailProviderDocument
 // [POS] `📧 邮件专用` 的专属 provider 文件生成逻辑：
 // 只保留通过了 `imap.gmail.com:993` 与 `smtp.gmail.com:465` 双端口 TLS 握手与 Banner 校验的节点；
 // 若首次冷启动尚无已验证节点，则排除已知封禁端口节点与 AnyTLS，并优先将 Hysteria2/VLESS 候选节点排在前面兜底，避免空 provider 报错。
@@ -11,6 +11,7 @@ import {
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
 import { isAnyTlsProxyType } from './autoSelectAnyTlsExclusionCore'
+import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { isBlockedRegionNodeName, nodeMatchesRegion } from './regionPriority'
 
 export const MAIL_NODE_PROVIDER_ID = 'sparkle-mail' as const
@@ -36,15 +37,6 @@ function proxyType(proxy: MailProxyRecord): string {
   return String(proxy.type ?? '').trim().toLowerCase()
 }
 
-/** 节点唯一指纹：用于持久化缓存 993+465 实测结果，当订阅节点服务器或端口变更时自动失效重测。 */
-export function computeMailNodeFingerprint(proxy: MailProxyRecord): string {
-  const name = proxyName(proxy)
-  const type = proxyType(proxy)
-  const server = String(proxy.server ?? '').trim()
-  const port = String(proxy.port ?? proxy.ports ?? '').trim()
-  return `${name}|${type}|${server}|${port}`
-}
-
 /** 冷启动尚未完成首次全量探测时，优先把不封邮件端口的 Hysteria2 / VLESS 直连协议排在前面。 */
 export function isPreferredMailCandidateType(proxy: MailProxyRecord): boolean {
   const type = proxyType(proxy)
@@ -56,8 +48,8 @@ function sortSegmentByRttOrType(
   probeCache?: MailNodeProbeCache
 ): MailProxyRecord[] {
   return [...segment].sort((a, b) => {
-    const recA = probeCache?.get(computeMailNodeFingerprint(a))
-    const recB = probeCache?.get(computeMailNodeFingerprint(b))
+    const recA = probeCache?.get(computeProxyNodeFingerprint(a))
+    const recB = probeCache?.get(computeProxyNodeFingerprint(b))
     const rttA = recA?.alive ? recA.rttMs : Number.POSITIVE_INFINITY
     const rttB = recB?.alive ? recB.rttMs : Number.POSITIVE_INFINITY
     if (rttA !== rttB) {
@@ -138,14 +130,14 @@ export function orderMailProxies(
   }
 
   const verifiedAlive = eligible.filter(
-    (proxy) => probeCache?.get(computeMailNodeFingerprint(proxy))?.alive === true
+    (proxy) => probeCache?.get(computeProxyNodeFingerprint(proxy))?.alive === true
   )
   if (verifiedAlive.length > 0) {
     return orderCandidatesByRegion(verifiedAlive, regionPriority, probeCache)
   }
 
   const notConfirmedDead = eligible.filter(
-    (proxy) => probeCache?.get(computeMailNodeFingerprint(proxy))?.alive !== false
+    (proxy) => probeCache?.get(computeProxyNodeFingerprint(proxy))?.alive !== false
   )
   const fallbackPool = notConfirmedDead.length > 0 ? notConfirmedDead : eligible
   return orderCandidatesByRegion(fallbackPool, regionPriority, probeCache)

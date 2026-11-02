@@ -284,6 +284,28 @@ async function generateProfileImpl(): Promise<void> {
   } catch {
     // best-effort：写失败沿用上一份 sparkle-mail 文件
   }
+  try {
+    const { buildSparkleAgyProviderDocument, AGY_NODE_PROVIDER_FILENAME } = await import(
+      './sparkleAgyProviderCore'
+    )
+    const { loadSparkleAgyProbeCache } = await import('./sparkleAgyProbe')
+    const agyProbeCache = await loadSparkleAgyProbeCache()
+    const agyDocument = buildSparkleAgyProviderDocument({
+      proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
+      regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
+      probeCache: agyProbeCache.size ? agyProbeCache : undefined
+    })
+    // 空 provider 会让 mihomo 拒绝加载整份配置：宁可沿用上一份，也不要写空文件。
+    if (agyDocument.proxies.length > 0) {
+      writeFileSync(
+        path.join(profilesDir(), AGY_NODE_PROVIDER_FILENAME),
+        stringifyYaml(agyDocument),
+        'utf8'
+      )
+    }
+  } catch {
+    // best-effort：写失败沿用上一份 sparkle-agy 文件
+  }
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)
   const { cursorBidiOptimize = true, cursorProxyAppPathPrefixes } = await getAppConfig()

@@ -27,7 +27,6 @@ import { extractProxies } from './provider'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import {
   buildSparkleMailProviderDocument,
-  computeMailNodeFingerprint,
   isPreferredMailCandidateType,
   MAIL_NODE_PROVIDER_FILENAME,
   MAIL_NODE_PROVIDER_ID,
@@ -36,6 +35,7 @@ import {
   type MailNodeProbeRecord,
   type MailProxyRecord
 } from './sparkleMailProviderCore'
+import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 
 const CACHE_FILENAME = 'sparkle-mail-nodes.json'
 const ALIVE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
@@ -273,7 +273,7 @@ export async function bootstrapSparkleMailProvider(): Promise<void> {
     )
 
     const cachedAliveCount = eligible.filter(
-      (proxy) => cache.get(computeMailNodeFingerprint(proxy))?.alive === true
+      (proxy) => cache.get(computeProxyNodeFingerprint(proxy))?.alive === true
     ).length
     if (cachedAliveCount > 0) {
       await writeSparkleMailProviderFromCache(proxies, regionPriority, cache)
@@ -284,7 +284,7 @@ export async function bootstrapSparkleMailProvider(): Promise<void> {
     }
 
     const unprobed = eligible.filter(
-      (proxy) => !cache.has(computeMailNodeFingerprint(proxy))
+      (proxy) => !cache.has(computeProxyNodeFingerprint(proxy))
     )
     if (unprobed.length === 0) {
       return
@@ -297,7 +297,7 @@ export async function bootstrapSparkleMailProvider(): Promise<void> {
     for (const proxy of preferredUnprobed) {
       const name = String(proxy.name ?? '').trim()
       const res = await probeSingleNodeMailPorts(name)
-      cache.set(computeMailNodeFingerprint(proxy), {
+      cache.set(computeProxyNodeFingerprint(proxy), {
         alive: res.alive,
         rttMs: res.rttMs,
         checkedAt: Date.now()
@@ -322,7 +322,7 @@ export async function bootstrapSparkleMailProvider(): Promise<void> {
     for (const proxy of remainingUnprobed) {
       const name = String(proxy.name ?? '').trim()
       const res = await probeSingleNodeMailPorts(name)
-      cache.set(computeMailNodeFingerprint(proxy), {
+      cache.set(computeProxyNodeFingerprint(proxy), {
         alive: res.alive,
         rttMs: res.rttMs,
         checkedAt: Date.now()
