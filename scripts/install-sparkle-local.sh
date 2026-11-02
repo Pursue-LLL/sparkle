@@ -88,7 +88,9 @@ if pgrep -f "sparkle-service service run" >/dev/null 2>&1; then
   log "Stopping sparkle-service..."
   killall sparkle-service 2>/dev/null || true
   pkill -9 -f "sparkle-service service run" 2>/dev/null || true
-  osascript -e 'do shell script "killall -9 sparkle-service 2>/dev/null || true" with administrator privileges' 2>/dev/null || true
+  if [[ "${SPARKLE_NONINTERACTIVE:-0}" != "1" ]]; then
+    osascript -e 'do shell script "killall -9 sparkle-service 2>/dev/null || true" with administrator privileges' 2>/dev/null || true
+  fi
   sleep 1
 fi
 
