@@ -24,9 +24,9 @@ import {
   buildSparkleAgyProviderDocument,
   classifyAgyProbeResponse,
   type AgyNodeProbeRecord,
-  type AgyProbeVerdict,
   type AgyProxyRecord
 } from './sparkleAgyProviderCore'
+import { runAgyAudit, type AgyAuditOutcome } from './sparkleAgyProbeCore'
 
 const CACHE_FILENAME = 'sparkle-agy-nodes.json'
 const USABLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
@@ -47,12 +47,6 @@ type MagpieResponse =
   | { kind: 'unreachable' }
   /** 单个节点的请求超时——只代表这个节点慢，不代表必须中止整轮巡检。 */
   | { kind: 'timeout' }
-
-interface AgyProbeOutcome {
-  verdict: AgyProbeVerdict
-  rttMs: number
-  fatal: boolean
-}
 
 function cacheFilePath(): string {
   return path.join(dataDir(), CACHE_FILENAME)
@@ -183,7 +177,7 @@ async function discoverAgyModel(): Promise<string | null> {
   }
 }
 
-async function probeSingleNode(node: string, model: string): Promise<AgyProbeOutcome> {
+async function probeSingleNode(node: string, model: string): Promise<AgyAuditOutcome> {
   const switched = await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, node).catch(() => false)
   if (!switched) {
     // 典型原因：该节点已被订阅移除，或组尚未生成 —— 跳过它，不要因为单个节点中止整轮巡检。
@@ -328,48 +322,23 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
     const expanded = await writeProviderFromCache(proxies, regionPriority, undefined)
     await reloadProvider(expanded, false)
 
-    let probed = 0
-    let usable = 0
-    let aborted = false
-    const auditStartedAt = Date.now()
+    const audit = await runAgyAudit(
+      { pending, cache, budgetMs: AUDIT_BUDGET_MS },
+      { probeNode: (nodeName) => probeSingleNode(nodeName, model) }
+    )
 
-    for (const proxy of pending) {
-      if (Date.now() - auditStartedAt > AUDIT_BUDGET_MS) {
-        aborted = true
-        break
-      }
-      const name = String(proxy.name ?? '').trim()
-      const outcome = await probeSingleNode(name, model)
-      if (outcome.fatal) {
-        aborted = true
-        break
-      }
-      if (outcome.verdict === 'unknown') {
-        continue
-      }
-      cache.set(computeProxyNodeFingerprint(proxy), {
-        usable: outcome.verdict === 'usable',
-        rttMs: outcome.rttMs,
-        checkedAt: Date.now()
-      })
-      probed += 1
-      if (outcome.verdict === 'usable') {
-        usable += 1
-      }
-    }
-
-    if (probed > 0) {
+    if (audit.probed > 0) {
       await saveSparkleAgyProbeCache(cache)
     }
     // 无论本轮是否得到新结论，都要把 provider 收敛回「已验证可用集合」（巡检前临时扩过）
     const ordered = await writeProviderFromCache(proxies, regionPriority, cache)
     await reloadProvider(ordered, true)
 
-    if (probed === 0) {
+    if (audit.probed === 0) {
       return
     }
     await appendAppLog(
-      `[SparkleAgyProbe]: probed=${probed} usable=${usable} pool=${ordered.length}${aborted ? ' aborted' : ''}\n`
+      `[SparkleAgyProbe]: probed=${audit.probed} usable=${audit.usable} pool=${ordered.length}${audit.aborted ? ' aborted' : ''}\n`
     )
   } catch (error) {
     await appendAppLog(
