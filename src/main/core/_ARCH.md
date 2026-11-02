@@ -87,6 +87,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `tunStartupGuard.ts` / `tunStartupGuardCore.ts` | 识别 TUN adapter 监听成功 / 权限错误日志 |
 | `vpsDirectBypass.ts` | VPS 服务器 IP 直连规则与 TUN / sniffer 排除 |
 | `hongKongTrafficRuleInjection.ts` / `mailTrafficRuleInjection.ts` / `antigravityRuleInjection.ts` | 香港 / 海外邮件客户端 / Antigravity 前置分流规则 |
+| `quicTrafficRuleInjection.ts` | QUIC / STUN 泄漏防护前置规则：`AND,((DST-PORT,443),(NETWORK,UDP)),REJECT` 阻断 HTTP/3，`DOMAIN-SUFFIX,stun.cloudflare.com,REJECT` 阻断 WebRTC 探测；节点不支持 UDP 时浏览器 UDP 会回退 `DIRECT`，导致 TCP/UDP 出口 IP 分裂触发 Cloudflare WAF 拦截 |
 
 ## 启动数据流
 
