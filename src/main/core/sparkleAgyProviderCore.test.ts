@@ -7,6 +7,7 @@ import {
   buildAgyGroupConfig,
   buildSparkleAgyProviderDocument,
   classifyAgyProbeResponse,
+  collectEligibleAgyProxies,
   orderAgyProxies,
   type AgyNodeProbeRecord,
   type AgyProxyRecord
@@ -51,6 +52,22 @@ describe('classifyAgyProbeResponse', () => {
   it('flags 404/405 as fatal (magpie model/route mismatch)', () => {
     assert.equal(classifyAgyProbeResponse(404, 'not found'), 'fatal')
     assert.equal(classifyAgyProbeResponse(405, 'method not allowed'), 'fatal')
+  })
+})
+
+describe('collectEligibleAgyProxies', () => {
+  it('drops AnyTLS, Hong Kong nodes and duplicate names', () => {
+    const result = collectEligibleAgyProxies([
+      ...NODES,
+      { name: '美国LA-优化2-GPT', type: 'vmess', server: 'duplicate.example', port: 1 },
+      { name: '  ', type: 'vmess', server: 'blank.example', port: 2 }
+    ])
+    assert.deepEqual(names(result), [
+      '新加坡-优化2-GPT',
+      '美国LA-优化2-GPT',
+      '美国LA-优化3-GPT',
+      '🇯🇵 日本 02'
+    ])
   })
 })
 
