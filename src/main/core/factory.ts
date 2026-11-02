@@ -41,6 +41,7 @@ import {
 import { injectHongKongTrafficRules } from './hongKongTrafficRuleInjection'
 import { injectMailTrafficRules } from './mailTrafficRuleInjection'
 import { injectAntigravityTrafficRules } from './antigravityRuleInjection'
+import { injectQuicTrafficRules } from './quicTrafficRuleInjection'
 import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import { ensureVpsDirectBypass } from './vpsDirectBypass'
@@ -302,6 +303,8 @@ async function generateProfileImpl(): Promise<void> {
   // 早于此处注入会被 guard 误拦（时序 bug 已实测）。
   injectAntigravityTrafficRules(profile)
   await logGenerateProfileStep('antigravity_geo_rules', stepStartedAtMs)
+  injectQuicTrafficRules(profile)
+  await logGenerateProfileStep('quic_traffic_rules', stepStartedAtMs)
 
   runtimeConfig = profile
   runtimeConfigStr = stringifyYaml(profile)
