@@ -18,8 +18,8 @@ interface Props {
   visible: boolean
 }
 
-const TOOLTIP_WIDTH = 248
-const SPARK_W = 200
+const TOOLTIP_WIDTH = 264
+const SPARK_W = 216
 const BAR_H = 28
 const LABEL_H = 14
 const CHART_H = BAR_H + LABEL_H
@@ -171,8 +171,11 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, probeUrl, anchorEl, visibl
         variant="secondary"
         className="relative z-1 overflow-hidden rounded-lg shadow-overlay border border-separator/30"
       >
-        <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2">
-          <span className="text-xs font-semibold flag-emoji truncate flex-1 leading-snug">
+        <div className="flex items-start justify-between gap-2 px-3 pt-2.5 pb-2">
+          <span
+            className="text-xs font-semibold flag-emoji break-words [overflow-wrap:anywhere] flex-1 leading-snug"
+            title={proxy.name}
+          >
             {proxy.name}
           </span>
           <Chip color={headerChip.color} variant="soft" size="sm" className="shrink-0">
@@ -306,7 +309,10 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, probeUrl, anchorEl, visibl
           {group?.now && !group?.fixed && (
             <>
               <span className="text-[10px] text-muted">当前选择</span>
-              <span className="text-[10px] flag-emoji text-muted justify-self-end truncate">
+              <span
+                className="text-[10px] flag-emoji text-muted justify-self-end text-right break-words [overflow-wrap:anywhere]"
+                title={group.now}
+              >
                 {group.now}
               </span>
             </>
@@ -314,7 +320,10 @@ const ProxyDetailTooltip: React.FC<Props> = ({ proxy, probeUrl, anchorEl, visibl
           {group?.fixed && (
             <>
               <span className="text-[10px] text-muted">固定选择</span>
-              <span className="text-[10px] flag-emoji text-muted justify-self-end truncate">
+              <span
+                className="text-[10px] flag-emoji text-muted justify-self-end text-right break-words [overflow-wrap:anywhere]"
+                title={group.fixed}
+              >
                 {group.fixed}
               </span>
             </>
