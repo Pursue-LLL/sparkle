@@ -23,6 +23,7 @@ import {
   AGY_NODE_PROVIDER_ID,
   buildSparkleAgyProviderDocument,
   classifyAgyProbeResponse,
+  collectEligibleAgyProxies,
   type AgyNodeProbeRecord,
   type AgyProxyRecord
 } from './sparkleAgyProviderCore'
@@ -297,10 +298,7 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
       await appendAppLog(`[SparkleAgyProbe]: restored ${cachedUsable} verified nodes from cache\n`)
     }
 
-    const pending = proxies.filter((proxy) => {
-      if (!String(proxy.name ?? '').trim()) {
-        return false
-      }
+    const pending = collectEligibleAgyProxies(proxies).filter((proxy) => {
       const record = cache.get(computeProxyNodeFingerprint(proxy))
       return !record || !isCacheRecordFresh(record, Date.now())
     })

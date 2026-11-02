@@ -59,19 +59,28 @@ function proxyName(proxy: AgyProxyRecord): string {
   return String(proxy.name ?? '').trim()
 }
 
+/** 单个节点是否可能进 agy 池：命名有效、非 AnyTLS、非香港（香港不在 Antigravity 地区可用表内）。 */
+export function isEligibleAgyNode(proxy: AgyProxyRecord): boolean {
+  const name = proxyName(proxy)
+  if (!name || isAnyTlsProxyType(String(proxy.type ?? ''))) {
+    return false
+  }
+  return !isBlockedRegionNodeName(name)
+}
+
 /**
  * 候选池：去重 + 剔除 AnyTLS（Sparkle 全局约定）+ 剔除香港
  * （香港不在 Antigravity 的地区可用表内，进池只会白白浪费一次探测）。
  */
-function collectEligible(proxies: readonly AgyProxyRecord[]): AgyProxyRecord[] {
+export function collectEligibleAgyProxies(proxies: readonly AgyProxyRecord[]): AgyProxyRecord[] {
   const seen = new Set<string>()
   const eligible: AgyProxyRecord[] = []
   for (const proxy of proxies) {
-    const name = proxyName(proxy)
-    if (!name || seen.has(name) || isAnyTlsProxyType(String(proxy.type ?? ''))) {
+    if (!isEligibleAgyNode(proxy)) {
       continue
     }
-    if (isBlockedRegionNodeName(name)) {
+    const name = proxyName(proxy)
+    if (seen.has(name)) {
       continue
     }
     seen.add(name)
@@ -133,7 +142,7 @@ export function orderAgyProxies(
   regionPriority: readonly string[],
   probeCache?: AgyNodeProbeCache
 ): AgyProxyRecord[] {
-  const eligible = collectEligible(proxies)
+  const eligible = collectEligibleAgyProxies(proxies)
   if (eligible.length === 0) {
     return []
   }
