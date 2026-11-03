@@ -31,6 +31,21 @@ export interface AgyAuditResult {
   aborted: boolean
 }
 
+/**
+ * 连续"全灭"轮次的退避：实测 Google 的拒绝是带冷却窗口的，
+ * 越密集重试窗口越长，所以全灭后要主动拉长下一轮间隔（1×/2×/3× 封顶）。
+ */
+export function resolveAgyAuditBackoffMs(
+  intervalMs: number,
+  consecutiveEmptyRounds: number
+): number {
+  if (consecutiveEmptyRounds <= 0) {
+    return 0
+  }
+  const multiplier = Math.min(consecutiveEmptyRounds, 3)
+  return intervalMs * multiplier
+}
+
 export async function runAgyAudit(
   input: AgyAuditInput,
   deps: AgyAuditDeps
