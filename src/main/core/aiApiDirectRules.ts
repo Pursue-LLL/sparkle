@@ -1,7 +1,7 @@
 /**
- * [INPUT] 生成中的 mihomo profile
- * [OUTPUT] 默认直连规则：AI API 端点在没有其它规则时走 DIRECT
- * [POS] 只补默认值，绝不覆盖覆写/订阅的意图——覆写在 factory 里先生效，故此处必须"缺才加"。
+ * [INPUT] MihomoConfig profile（generateProfile 的规则注入阶段，覆写已先生效）
+ * [OUTPUT] ensureAiApiDirectRules: 为未命中任何规则的目标域名补 DIRECT 默认
+ * [POS] 默认直连规则的唯一出口。只补缺省、遇规则即让路，保证 覆写 > 订阅 > 内置默认。
  */
 
 /**

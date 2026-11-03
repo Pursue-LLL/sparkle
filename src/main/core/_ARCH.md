@@ -114,6 +114,12 @@ startCore (manager.ts)
        └ NETWORK_MONITOR_STARTUP_GRACE_MS 后 warmupRegionalUrlTestGroups
 ```
 
+## 规则优先级（覆写 > 内置默认 > 订阅）
+
+`generateProfile` 先应用覆写（`overrideProfile`：全局 + 单订阅，支持 YAML deepMerge 与 JS 脚本），再跑各注入步骤；注入的前置规则会排在订阅规则之前，因此内置默认必须"缺才加"：目标域名已有任何规则命中（按 mihomo 语义判断 `DOMAIN` / `DOMAIN-SUFFIX` / `DOMAIN-KEYWORD`）时，`aiApiDirectRules` 一律让路，不改写、不重复。
+
+`~/Library/Application Support/sparkle/work/config.yaml` 是 `generateProfile` 的**生成物**（内核启动 / 切换订阅 / 改设置都会整份重写），禁止手改；持久改动只有两条路：改注入代码，或写覆写。
+
 ## App 配置路径
 
 | 路径 | 内容 |
