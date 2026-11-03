@@ -31,9 +31,15 @@ import { runAgyAudit, type AgyAuditOutcome } from './sparkleAgyProbeCore'
 
 const CACHE_FILENAME = 'sparkle-agy-nodes.json'
 const USABLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
-const UNUSABLE_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+/**
+ * 不可用结论只保持 30 分钟：实测这种 400 是**时变**的（同节点 20 分钟内 400 → 200），
+ * 缓存太久会让节点被误判封死半天。
+ */
+const UNUSABLE_CACHE_TTL_MS = 30 * 60 * 1000
 /** 轮询间隔只决定"多久检查一次有没有过期节点"，真正的重测频率由上面两个 TTL 控制。 */
-const AUDIT_INTERVAL_MS = 30 * 60 * 1000
+const AUDIT_INTERVAL_MS = 15 * 60 * 1000
+/** 单轮最多探测多少个节点：避免一次把几十个请求打给 magpie/Google 触发风控。 */
+const MAX_PROBES_PER_AUDIT = 8
 
 const MAGPIE_BASE_URL = 'http://127.0.0.1:3425'
 const MAGPIE_API_KEY = 'magpie'
@@ -298,10 +304,19 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
       await appendAppLog(`[SparkleAgyProbe]: restored ${cachedUsable} verified nodes from cache\n`)
     }
 
-    const pending = collectEligibleAgyProxies(proxies).filter((proxy) => {
-      const record = cache.get(computeProxyNodeFingerprint(proxy))
-      return !record || !isCacheRecordFresh(record, Date.now())
-    })
+    const nowMs = Date.now()
+    const pending = collectEligibleAgyProxies(proxies)
+      .filter((proxy) => {
+        const record = cache.get(computeProxyNodeFingerprint(proxy))
+        return !record || !isCacheRecordFresh(record, nowMs)
+      })
+      // 先测最久没测过的（含从未测过的），保证被阻塞的节点也能在几轮内轮到。
+      .sort((a, b) => {
+        const ra = cache.get(computeProxyNodeFingerprint(a))?.checkedAt ?? 0
+        const rb = cache.get(computeProxyNodeFingerprint(b))?.checkedAt ?? 0
+        return ra - rb
+      })
+      .slice(0, MAX_PROBES_PER_AUDIT)
     if (pending.length === 0) {
       return
     }
