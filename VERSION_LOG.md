@@ -14,7 +14,7 @@
 | 单测 | `sparkleMailActivityCore.test.ts`（活动链/窗口/时间戳）· `sparkleMailProviderCore.test.ts`（成员变化）· `autoSelectStickyPinCore.test.ts`（5 分钟复核节流）· `regionalUrlTestWarmupCore.test.ts`（活动组过滤/收集）· `pnpm run test:node-quality` **287/287 PASS** · `typecheck` node/web 0 · 改动文件 eslint 0 |
 | 已知边界 | 邮件当前节点探测只在“有活动/最近 30 分钟用过”时执行；完全不用邮件不探测。邮件 provider 仍由现有 60 分钟全量补测刷新缓存过期节点；本次未改变全量探测节奏。 |
 
-## 2026-11-03 分组展示顺序统一：自动选择 → 专用组 → 地区组 → 其余（CODE-DONE @1.30.71 git · 待装包）
+## 2026-11-03 分组展示顺序统一：自动选择 → 专用组 → 地区组 → 其余（LIVE @1.30.71 · 已装包）
 
 | 项 | 内容 |
 |---|---|
@@ -22,6 +22,7 @@
 | 实现 | 新增 `proxyGroupOrder.ts`（纯函数 `orderProxyGroups`）：写盘前按固定档位稳定排序 —— `自动选择`(0) → 三个专用组 `🎯 Cursor 专用` / `📧 邮件专用` / `🎯 agy 专用`（隐藏组 `__sparkle_mail_probe__` 紧随邮件组）→ `Sparkle-<地区>` → 其余；同档位按原索引排序，保证订阅组之间的相对顺序不变 |
 | 接线 | `factory.ts` 在 `auto_switch_groups` 步骤之后调用（此时所有组已构建、`removeNonSubscriptionProxyGroups` 与自动切换组归一已完成） |
 | 单测 | `proxyGroupOrder.test.ts` 3 例（档位顺序 / 档位内稳定 / 幂等 + 空列表），`tsx --test` 3/3 PASS |
+| 线上验证 | 装包后 `work/config.yaml`（13:14 再生）顺序为：`自动选择` → `🎯 Cursor 专用` → `📧 邮件专用` → `__sparkle_mail_probe__` → `🎯 agy 专用` → `Sparkle-台湾/日本/韩国/新加坡/美国/香港` → `🚀 节点选择` 及其余订阅组；PostCoreBootstrap `mihomo API ready`，`:7890` 出网正常 |
 | 已知边界 | 只改展示顺序，不改组成员、规则目标与 `mihomoGroups` 解析；`Sparkle-<地区>` 以命名前缀识别，新增地区组自动归位 |
 
 ## 2026-11-03 `opencode` / `commandcode` API 端点默认直连（CODE-DONE @1.30.71 git · 已装包）
