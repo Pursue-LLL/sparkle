@@ -13,15 +13,15 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | 文件 | 职责 |
 | ---- | ---- |
 | `manager.ts` | core 进程 start / stop / restart；service 模式走签名 API；`startCore` 在 `generateProfile` 与 `checkProfileWithRetry` 之后才停旧核 |
-| `mihomoApi.ts` | mihomo REST 封装；delay 经 `mihomoProbeCoordinator` 并发槽；provider 叶子节点（不在 `/proxies`）经 `mihomoProviderLeafDelay` 单点拨测，不触发 provider 级体检/重载；`mihomoChangeProxy` 对 Cursor 专用组仅放行 `manual` / `bootstrap` |
+| `mihomoApi.ts` | mihomo REST 封装；delay 经 `mihomoProbeCoordinator` 并发槽；provider 叶子节点（不在 `/proxies`）经 `mihomoProviderLeafDelay` 单点拨测，不触发 provider 级体检/重载；`mihomoChangeProxy` 对 Cursor 专用组仅放行 `manual` / `bootstrap`；`subscribeMihomoLogs` 提供进程内日志订阅（邮件按需探测等活动判定使用） |
 | `mihomoControllerReadyCore.ts` | controller 就绪探测 `GET /version`（service 模式走签名请求）；独立成模块以避免 rolldown 把 `mihomoApi` 动态 import 错绑到 `index.js`（会导致 `runPostCoreBootstrap` 永不执行） |
 | `mihomoProbeCoordinator.ts` | 全局 mihomo delay 并发槽（最多 2，等待上限 30s） |
 | `mihomoProxyDelayCore.ts` | `isMihomoApiResourceNotFoundError` · `resolveProviderNameForLeaf` · `MihomoDelayPurpose` |
 | `mihomoGroupMembersCore.ts` | 组成员解析；同名节点在多个 provider 的样本经 `poolProxyInstances` 合并 |
 | `proxyProbeHistoryCore.ts` | 节点探测样本的唯一取数口径：按组实际探测地址读 `extra[url]`（忽略 http/https 差异，同一目标的多份记录按时间合并而非只取其一），不再读混杂各地址样本的顶层 `history`；`poolProxyInstances` 合并同一节点多份样本；渲染进程经 `@sparkle-core` 引用 |
 | `proxyDelayVerdictCore.ts` | 延迟展示的单一判定规则（ok / flaky=不稳定 / failed / untested）：在 `judgeProxyForUrl` 取到的单一探测地址样本上，窗口内一次都没成功才判超时，最近失败但近期成功过判不稳定；`judgeOtherProbeUrls` 给出其它探测地址上的表现；代理页、详情浮窗、两处托盘、复测共用 |
-| `providerLeafProbeCore.ts` / `providerLeafProbe.ts` | 冷启动低并发（4）逐点拨测：`sparkle-fast` 启动探测 + 地区组预热后复测最近一次样本不是成功的节点（超时/不稳定/未测，总时长上限 150s），取代 provider 级并发体检 |
-| `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `autoSelectStickyPin` 粘性固定 → `sparkleMailProbe` 邮件端口探测（异步）→ `sparkleAgyProbe` agy 可用性巡检（异步）→ `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热 |
+| `providerLeafProbeCore.ts` / `providerLeafProbe.ts` | 冷启动低并发（4）逐点拨测：`sparkle-fast` 启动探测 + 地区组预热发生时复测最近一次样本不是成功的节点（超时/不稳定/未测，总时长上限 150s），取代 provider 级并发体检 |
+| `postCoreBootstrap.ts` | core 就绪后单一入口：`sparkle-fast` 延迟序 → `autoSelectStickyPin` 粘性固定 → `sparkleMailProbe` 邮件端口探测（异步）→ `sparkleAgyProbe` agy 可用性巡检（异步）→ `initProfileUpdater` → Cursor 专用默认节点 → 地区 url-test 预热（仅活动/选中的组；未使用时不预热） |
 | `coreReadinessGate.ts` / `coreReadinessGateCore.ts` | 冷启动 Readiness Contract：sidecar → profile 检查 → startCore → API → 数据面探测 |
 | `coreLifecycle.ts` / `coreLifecycleCore.ts` | core 就绪后 fake-ip flush（cold / manual restart 后卫生） |
 | `probeWarmupCore.ts` / `probeWarmupState.ts` | 内核启动后批量测速窗口标志（`postCoreBootstrap` 开始/结束，5 分钟兜底）；经 `probeWarmupChanged` 事件与 `getProbeWarmupActive` IPC 推给代理页，窗口内无可信样本的节点显示 loading |
@@ -47,9 +47,9 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `sparkleFastProviderCore.ts` | `自动选择` 的 `sparkle-fast` provider 文件生成（纯函数）：按 `proxySwitchPriority` 地区分段平铺，剔除 AnyTLS / 香港 / 已确认 Gemini 锁区或送中节点（`blockedNodeNames`）；传入非空 `delayMs` 时，有样本（存活）节点按地区分段 + 段内延迟升序排在前，无样本（超时/未测）节点按地区序统一垫在文件末尾；BUG-2026-10-09-001 / BUG-2026-10-14-001 / BUG-2026-10-17-001 |
 | `sparkleGeminiProbeCore.ts` / `sparkleGeminiProbe.ts` | Gemini 真实地区解锁流式探测与缓存（`sparkle-gemini-nodes.json`）：通过本地隐藏探测监听器 `127.0.0.1:17899`（与邮件探测共享 `withLocalProbeChannelLock` 串行互斥锁）流式读取 `https://gemini.google.com/app` 前部 `WIZ_global_data.vXmutd` 地区码，将返回 `ZZ`/`CN`/`HK`/`MO`/`RU`/`BY`/`KP`/`IR`/`SY`/`CU` 或 `www.google.cn` 的“送中/锁区”节点剔除出 `sparkle-fast-proxies.yaml` 并热重载；网络超时绝不误判为锁区 |
 | `sparkleFastLatencyOrderCore.ts` / `sparkleFastLatencyOrder.ts` | 延迟序运行时：Core 把 provider 探测历史折算成「节点→延迟」、校验完整探测覆盖率（≥80%）并做迟滞判定（≥50ms 且 ≥30% 才换首选）；运行时在内核就绪后若磁盘已有延迟快照则直接沿用（仅在原固定节点不存活时解除固定），免除冷启动重复全量拨测与重载；每 30 分钟复查且不解除固定；实测结果落盘 `sparkle-fast-delays.json`，订阅刷新重建 provider 时用作排序依据 |
-| `autoSelectStickyPinCore.ts` / `autoSelectStickyPin.ts` | `自动选择` 粘性固定：Core 决策（fallback 选出的 `now` 连续稳定 2 次轮询即固定；原固定被清除时先触发单点独立复测过滤并发体检误杀，10 分钟冷却防死守抖动节点；固定节点已不在组内则解除）；运行时每 3 秒 `GET /proxies/自动选择`（不触发 lazy 体检），固定前确认 Gemini 存活且地区解锁（`verifyNodeGeminiRegion`），若发现送中/锁区节点立即拒绝或解除固定并从 `sparkle-fast` 剔除，主动解锁同步重置记忆，日志 `[AutoSelectSticky]: pinned X (left Y)` / `restored X` |
+| `autoSelectStickyPinCore.ts` / `autoSelectStickyPin.ts` | `自动选择` 粘性固定：Core 决策（fallback 选出的 `now` 连续稳定 2 次轮询即固定；原固定被清除时先触发单点独立复测过滤并发体检误杀，10 分钟冷却防死守抖动节点；固定节点已不在组内则解除）；运行时每 3 秒 `GET /proxies/自动选择`（不触发 lazy 体检），固定前确认 Gemini 存活且地区解锁（`verifyNodeGeminiRegion`），固定期间锁区复核按 5 分钟节流/节点变化立即复核，避免每 3 秒解析订阅文件；若发现送中/锁区节点立即拒绝或解除固定并从 `sparkle-fast` 剔除，主动解锁同步重置记忆，日志 `[AutoSelectSticky]: pinned X (left Y)` / `restored X` |
 | `defaultAutoSwitchProxy.ts` | `自动选择` = `type:fallback`（`use:[sparkle-fast]`，Gemini 探测 `interval:300` / `timeout:5000` / `lazy:true`）；`Sparkle-<地区>` = 仅手动选择的 `type:url-test`（`interval:300` + `tolerance:2000` + `lazy:true`，BUG-2026-09-15-007），不被 `自动选择` 引用 |
-| `regionalAutoSelectGroupsCore.ts` / `regionalUrlTestWarmup.ts` / `regionalUrlTestWarmupCore.ts` | `Sparkle-<地区>` 组构建（排除 AnyTLS，无可用节点的地区不建组）与启动预热 |
+| `regionalAutoSelectGroupsCore.ts` / `regionalUrlTestWarmup.ts` / `regionalUrlTestWarmupCore.ts` | `Sparkle-<地区>` 组构建（排除 AnyTLS，无可用节点的地区不建组）与按需启动预热：只预热活动连接链路或当前被选中的组，未使用不扫描 |
 | `autoSelectAnyTlsExclusionCore.ts` | url-test 自动选择组剔除 AnyTLS |
 | `regionPriority.ts` | 地区优先级（台湾 → 日本 → 韩国 → 新加坡 → 美国） |
 | `customProxyGroups.ts` / `profileGroupNormalize.ts` | 自定义组（Cursor 专用、香港过滤、📧 邮件专用、🎯 agy 专用、隐藏探测组 `__sparkle_mail_probe__`）注入与订阅主选择组归一 |
@@ -59,7 +59,10 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | 文件 | 职责 |
 | ---- | ---- |
 | `sparkleMailProviderCore.ts` | `sparkle-mail` provider 文件生成（纯函数）：仅收录通过 **IMAPS 993 + SMTPS 465** 双端口 TLS 握手与 Banner 校验的节点（缓存见 `sparkle-mail-nodes.json`）；冷启动无缓存时先排除 AnyTLS，优先 Hysteria2/VLESS 候选兜底，**禁止空 provider**；组配置 `buildMailGroupConfig`、隐藏探测组与 `listeners`（`127.0.0.1:17899` → `__sparkle_mail_probe__`） |
-| `sparkleMailProbe.ts` | 内核就绪后通过隐藏 mixed 监听器对订阅叶子逐点探测 `imap.gmail.com:993`（`* OK`）与 `smtp.gmail.com:465`（`220`），结果写入 `sparkle-mail-proxies.yaml` 并 `mihomoUpdateProxyProviders('sparkle-mail')`；先测 Hysteria2/VLESS 等优先候选，其余后台补测；每小时复查 |
+| `sparkleMailPortProbe.ts` | 邮件 993/465 与 Gemini 地区探测共用的本地隐藏监听器通道：`withLocalProbeChannelLock` 串行切换 `__sparkle_mail_probe__` 节点，`probeSingleNodeMailPorts` 做单节点 IMAPS `* OK` + SMTPS `220` Banner 校验 |
+| `sparkleMailProbe.ts` | 内核就绪后通过隐藏 mixed 监听器对订阅叶子逐点探测 `imap.gmail.com:993`（`* OK`）与 `smtp.gmail.com:465`（`220`），结果写入 `sparkle-mail-proxies.yaml`；provider 成员集合发生变化时才 `mihomoUpdateProxyProviders('sparkle-mail')` 热重载（不再只在 `newly_alive>0` 时重载）；先测 Hysteria2/VLESS 等优先候选，其余后台补测；每小时复查缓存过期节点 |
+| `sparkleMailCurrentNodeProbe.ts` | 按需保护 `📧 邮件专用` 当前节点：邮件组最近有活动（`/connections` 链路或内核日志出现该组）才复测当前节点 993/465；失败立即标记 dead、写 provider 并在成员变化时热重载；完全未使用邮件时 0 次端口探测 |
+| `sparkleMailActivityCore.ts` | 邮件活动判定纯函数：`connectionChainsIncludeGroup` · `nextMailActivityAtMs` · `isMailGroupRecentlyActive`（30 分钟观察窗口） |
 | `mailTrafficRuleInjection.ts` | 前置规则：`imap.gmail.com` / `smtp.gmail.com` / `pop.gmail.com` / `googlemail.com` / Outlook·iCloud·Yahoo 收发域名 → `📧 邮件专用`（**不**劫持 `gmail.com` 网页或国内邮箱） |
 | `cursorProxyGroup.ts` | `MAIL_DEDICATED_GROUP_NAME` · `MAIL_DELAY_TEST_URL`（`https://mail.google.com`）· `resolveDelayTestUrl` 分支 |
 
@@ -94,7 +97,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `network.ts` / `networkPublicDnsCore.ts` | 网卡与系统 DNS 管理；TUN 启动时设公共 DNS |
 | `dnsFallbackIntegrity.ts` | DNS fallback 完整性 |
 | `corporateDnsCore.ts` / `corporateDirectRules.ts` / `corporateDefaultInterface.ts` | 公司内网 DNS / 直连规则 / 默认网卡 |
-| `aiApiDirectRules.ts` | 默认直连规则：`api.commandcode.ai` / `opencode.ai`（含 `models.opencode.ai`）在**没有任何规则命中**时前置 `DIRECT`（实测 p50 快 0.32s / 0.65s）；覆写或订阅已用 `DOMAIN` / `DOMAIN-SUFFIX` / `DOMAIN-KEYWORD` 对这些域名表过态则完全尊重，不改写、不重复 |
+| `aiApiDirectRules.ts` | 默认直连规则：`AI_API_DIRECT_HOSTS`（当前 `api.commandcode.ai` / `opencode.ai`，含其子域）未被任何规则提及时前置 `DIRECT`（实测 p50 快 0.32s / 0.65s）；覆写或订阅用 `DOMAIN` / `DOMAIN-SUFFIX` / `DOMAIN-KEYWORD` 提过同一域名、父域或其子域就完全让路（不改写、不重复）。新增域名只改该常量，单测按清单生成期望值 |
 | `tunStartupGuard.ts` / `tunStartupGuardCore.ts` | 识别 TUN adapter 监听成功 / 权限错误日志 |
 | `vpsDirectBypass.ts` | VPS 服务器 IP 直连规则与 TUN / sniffer 排除 |
 | `hongKongTrafficRuleInjection.ts` / `mailTrafficRuleInjection.ts` / `antigravityRuleInjection.ts` / `aiApiDirectRules.ts` | 香港 / 海外邮件客户端 / Antigravity / AI API 直连前置分流规则 |
