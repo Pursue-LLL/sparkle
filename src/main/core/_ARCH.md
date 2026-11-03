@@ -94,7 +94,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `network.ts` / `networkPublicDnsCore.ts` | 网卡与系统 DNS 管理；TUN 启动时设公共 DNS |
 | `dnsFallbackIntegrity.ts` | DNS fallback 完整性 |
 | `corporateDnsCore.ts` / `corporateDirectRules.ts` / `corporateDefaultInterface.ts` | 公司内网 DNS / 直连规则 / 默认网卡 |
-| `aiApiDirectRules.ts` | 前置直连规则：`api.commandcode.ai` / `opencode.ai`（含 `models.opencode.ai`）→ `DIRECT`（实测比走代理快 0.4~1.0s，且订阅规则若指向代理组会被改写） |
+| `aiApiDirectRules.ts` | 默认直连规则：`api.commandcode.ai` / `opencode.ai`（含 `models.opencode.ai`）在**没有任何规则**时前置 `DIRECT`（实测 p50 快 0.32s / 0.65s）；覆写或订阅已给该域名写过规则则完全尊重，不改写、不重复 |
 | `tunStartupGuard.ts` / `tunStartupGuardCore.ts` | 识别 TUN adapter 监听成功 / 权限错误日志 |
 | `vpsDirectBypass.ts` | VPS 服务器 IP 直连规则与 TUN / sniffer 排除 |
 | `hongKongTrafficRuleInjection.ts` / `mailTrafficRuleInjection.ts` / `antigravityRuleInjection.ts` / `aiApiDirectRules.ts` | 香港 / 海外邮件客户端 / Antigravity / AI API 直连前置分流规则 |
