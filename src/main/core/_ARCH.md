@@ -53,6 +53,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | `autoSelectAnyTlsExclusionCore.ts` | url-test 自动选择组剔除 AnyTLS |
 | `regionPriority.ts` | 地区优先级（台湾 → 日本 → 韩国 → 新加坡 → 美国） |
 | `customProxyGroups.ts` / `profileGroupNormalize.ts` | 自定义组（Cursor 专用、香港过滤、📧 邮件专用、🎯 agy 专用、隐藏探测组 `__sparkle_mail_probe__`）注入与订阅主选择组归一 |
+| `proxyGroupOrder.ts` | 分组展示顺序（写盘前统一）：`自动选择` → 三个专用组（Cursor / 邮件 / agy，隐藏探测组紧随邮件组）→ `Sparkle-<地区>` → 其余；同档位保持原有相对顺序，只重排不改内容 |
 
 ### 邮件专用组（macOS Mail / 海外 IMAP·SMTP）
 
@@ -60,8 +61,8 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 | ---- | ---- |
 | `sparkleMailProviderCore.ts` | `sparkle-mail` provider 文件生成（纯函数）：仅收录通过 **IMAPS 993 + SMTPS 465** 双端口 TLS 握手与 Banner 校验的节点（缓存见 `sparkle-mail-nodes.json`）；冷启动无缓存时先排除 AnyTLS，优先 Hysteria2/VLESS 候选兜底，**禁止空 provider**；组配置 `buildMailGroupConfig`、隐藏探测组与 `listeners`（`127.0.0.1:17899` → `__sparkle_mail_probe__`） |
 | `sparkleMailPortProbe.ts` | 邮件 993/465 与 Gemini 地区探测共用的本地隐藏监听器通道：`withLocalProbeChannelLock` 串行切换 `__sparkle_mail_probe__` 节点，`probeSingleNodeMailPorts` 做单节点 IMAPS `* OK` + SMTPS `220` Banner 校验 |
-| `sparkleMailProbe.ts` | 内核就绪后通过隐藏 mixed 监听器对订阅叶子逐点探测 `imap.gmail.com:993`（`* OK`）与 `smtp.gmail.com:465`（`220`），结果写入 `sparkle-mail-proxies.yaml`；provider 成员集合发生变化时才 `mihomoUpdateProxyProviders('sparkle-mail')` 热重载（不再只在 `newly_alive>0` 时重载）；先测 Hysteria2/VLESS 等优先候选，其余后台补测；每小时复查缓存过期节点 |
-| `sparkleMailCurrentNodeProbe.ts` | 按需保护 `📧 邮件专用` 当前节点：邮件组最近有活动（`/connections` 链路或内核日志出现该组）才复测当前节点 993/465；失败立即标记 dead、写 provider 并在成员变化时热重载；完全未使用邮件时 0 次端口探测 |
+| `sparkleMailProbe.ts` | 内核就绪后通过隐藏 mixed 监听器对订阅叶子逐点探测 `imap.gmail.com:993`（`* OK`）与 `smtp.gmail.com:465`（`220`），结果写入 `sparkle-mail-proxies.yaml`；provider 成员集合发生变化时才 `mihomoUpdateProxyProviders('sparkle-mail')` 热重载（不再只在 `newly_alive>0` 时重载），热重载失败保留 pending 由后续探测重试；先测 Hysteria2/VLESS 等优先候选，其余后台补测；每小时复查缓存过期节点 |
+| `sparkleMailCurrentNodeProbe.ts` | 按需保护 `📧 邮件专用` 当前节点：邮件组最近有活动（`/connections` 链路或内核日志出现该组/收发域名）才复测当前节点 993/465；日志出现拨号失败后 30s 提前触发一次，另有 5 分钟周期兜底；失败立即标记 dead、写 provider 并在成员变化时热重载；完全未使用邮件时 0 次端口探测 |
 | `sparkleMailActivityCore.ts` | 邮件活动判定纯函数：`connectionChainsIncludeGroup` · `nextMailActivityAtMs` · `isMailGroupRecentlyActive`（30 分钟观察窗口） |
 | `mailTrafficRuleInjection.ts` | 前置规则：`imap.gmail.com` / `smtp.gmail.com` / `pop.gmail.com` / `googlemail.com` / Outlook·iCloud·Yahoo 收发域名 → `📧 邮件专用`（**不**劫持 `gmail.com` 网页或国内邮箱） |
 | `cursorProxyGroup.ts` | `MAIL_DEDICATED_GROUP_NAME` · `MAIL_DELAY_TEST_URL`（`https://mail.google.com`）· `resolveDelayTestUrl` 分支 |

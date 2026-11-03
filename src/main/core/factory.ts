@@ -43,6 +43,7 @@ import { injectMailTrafficRules } from './mailTrafficRuleInjection'
 import { injectAntigravityTrafficRules } from './antigravityRuleInjection'
 import { injectQuicTrafficRules } from './quicTrafficRuleInjection'
 import { ensureSelectGroupsDefaultToAutoSwitch } from './defaultAutoSwitchProxy'
+import { orderProxyGroups } from './proxyGroupOrder'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import { ensureVpsDirectBypass } from './vpsDirectBypass'
 import { injectCursorDomainRules } from './cursorRuleInjection'
@@ -237,6 +238,7 @@ async function generateProfileImpl(): Promise<void> {
     await appendAppLog(formatAutoSelectAnyTlsExclusionLogLine(anyTlsExclusion))
   }
   await logGenerateProfileStep('auto_switch_groups', stepStartedAtMs)
+  orderProxyGroups(profile)
   try {
     const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } = await import(
       './sparkleFastProviderCore'
