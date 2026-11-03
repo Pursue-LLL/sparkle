@@ -47,6 +47,7 @@ import { resolveEffectiveRegionPriority } from './regionPriority'
 import { ensureVpsDirectBypass } from './vpsDirectBypass'
 import { injectCursorDomainRules } from './cursorRuleInjection'
 import { ensureCorporateDirectRules, ensureCorporateDnsPolicy } from './corporateDirectRules'
+import { ensureAiApiDirectRules } from './aiApiDirectRules'
 import { ensureFakeIpRoutingIntegrity } from './fakeIpRoutingIntegrity'
 import { ensureDnsFallbackIntegrity, ensureTunStrictRoute } from './dnsFallbackIntegrity'
 import { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } from './vlessVisionMuxGuardCore'
@@ -314,6 +315,7 @@ async function generateProfileImpl(): Promise<void> {
   }
   await logGenerateProfileStep('cursor_rules', stepStartedAtMs)
   ensureCorporateDirectRules(profile)
+  ensureAiApiDirectRules(profile)
   await ensureCorporateDnsPolicy(profile)
   await logGenerateProfileStep('corporate_dns', stepStartedAtMs)
   ensureFakeIpRoutingIntegrity(profile)
