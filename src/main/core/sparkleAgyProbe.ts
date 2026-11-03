@@ -335,9 +335,16 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
     if (audit.probed === 0) {
       return
     }
+    const verified = countUsable(cache, proxies)
     await appendAppLog(
-      `[SparkleAgyProbe]: probed=${audit.probed} usable=${audit.usable} pool=${ordered.length}${audit.aborted ? ' aborted' : ''}\n`
+      `[SparkleAgyProbe]: probed=${audit.probed} usable=${audit.usable} verified=${verified} pool=${ordered.length}${audit.aborted ? ' aborted' : ''}\n`
     )
+    if (verified === 0) {
+      // 全灭时保留候选池只是为了避免空 provider 让整份配置加载失败，并不代表 agy 能用。
+      await appendAppLog(
+        '[SparkleAgyProbe]: WARN no node passed the real agy check; agy traffic will still hit 400 (line/exit blocked by Google)\n'
+      )
+    }
   } catch (error) {
     await appendAppLog(
       `[SparkleAgyProbe]: error=${error instanceof Error ? error.message : String(error)}\n`
