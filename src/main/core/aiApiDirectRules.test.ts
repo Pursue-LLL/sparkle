@@ -18,40 +18,39 @@ describe('aiApiDirectRules', () => {
 
     ensureAiApiDirectRules(profile)
 
-    const rules = rulesOf(profile)
-    assert.deepEqual(rules, [COMMANDCODE_RULE, OPENCODE_RULE, 'GEOIP,CN,🎯 全球直连', MATCH_RULE])
-    // 关键顺序不变量：直连规则必须先于 MATCH 命中。
-    assert.ok(rules.indexOf(OPENCODE_RULE) < rules.indexOf(MATCH_RULE))
+    assert.deepEqual(rulesOf(profile), [COMMANDCODE_RULE, OPENCODE_RULE, 'GEOIP,CN,🎯 全球直连', MATCH_RULE])
   })
 
-  it('leaves an override rule untouched and adds no duplicate', () => {
+  it('lets a DOMAIN-SUFFIX override win without adding a duplicate', () => {
     const overrideRule = 'DOMAIN-SUFFIX,opencode.ai,🚀 节点选择'
-    const profile = {
-      rules: [overrideRule, MATCH_RULE]
-    } as unknown as MihomoConfig
+    const profile = { rules: [overrideRule, MATCH_RULE] } as unknown as MihomoConfig
 
     ensureAiApiDirectRules(profile)
 
-    const rules = rulesOf(profile)
-    assert.deepEqual(rules, [COMMANDCODE_RULE, overrideRule, MATCH_RULE])
-    assert.equal(rules.filter((rule) => rule.includes('opencode.ai')).length, 1)
+    assert.deepEqual(rulesOf(profile), [COMMANDCODE_RULE, overrideRule, MATCH_RULE])
   })
 
-  it('fills only the domain that has no rule yet', () => {
+  it('treats DOMAIN and DOMAIN-KEYWORD overrides as a decision too', () => {
+    for (const overrideRule of ['DOMAIN,opencode.ai,🎯 agy 专用', 'DOMAIN-KEYWORD,opencode,🎯 agy 专用']) {
+      const profile = { rules: [overrideRule, MATCH_RULE] } as unknown as MihomoConfig
+
+      ensureAiApiDirectRules(profile)
+
+      assert.deepEqual(rulesOf(profile), [COMMANDCODE_RULE, overrideRule, MATCH_RULE])
+    }
+  })
+
+  it('still fills the endpoint nobody mentioned', () => {
     const overrideRule = 'DOMAIN-SUFFIX,api.commandcode.ai,🎯 agy 专用'
-    const profile = {
-      rules: [overrideRule, MATCH_RULE]
-    } as unknown as MihomoConfig
+    const profile = { rules: [overrideRule, MATCH_RULE] } as unknown as MihomoConfig
 
     ensureAiApiDirectRules(profile)
 
     assert.deepEqual(rulesOf(profile), [OPENCODE_RULE, overrideRule, MATCH_RULE])
   })
 
-  it('keeps unrelated rules and is idempotent', () => {
-    const profile = {
-      rules: ['DOMAIN-SUFFIX,example.com,🚀 节点选择', MATCH_RULE]
-    } as unknown as MihomoConfig
+  it('ignores unrelated rules, stays idempotent, and survives a profile without rules', () => {
+    const profile = { rules: ['DOMAIN-SUFFIX,example.com,🚀 节点选择', MATCH_RULE] } as unknown as MihomoConfig
 
     ensureAiApiDirectRules(profile)
     const once = [...rulesOf(profile)]
@@ -64,13 +63,9 @@ describe('aiApiDirectRules', () => {
       'DOMAIN-SUFFIX,example.com,🚀 节点选择',
       MATCH_RULE
     ])
-  })
 
-  it('survives a profile without rules', () => {
-    const profile = {} as MihomoConfig
-
-    ensureAiApiDirectRules(profile)
-
-    assert.deepEqual(rulesOf(profile), [COMMANDCODE_RULE, OPENCODE_RULE])
+    const empty = {} as MihomoConfig
+    ensureAiApiDirectRules(empty)
+    assert.deepEqual(rulesOf(empty), [COMMANDCODE_RULE, OPENCODE_RULE])
   })
 })
