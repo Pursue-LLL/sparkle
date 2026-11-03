@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-11-03 自动组按需探测：邮件当前节点 993/465 failover + 地区预热按需（CODE-DONE @1.30.71 git · 未装包）
+
+| 项 | 内容 |
+|---|---|
+| 背景 | 6 个 `Sparkle-*` 地区组本身已是 `url-test` + `lazy:true`，节点整体死亡会由 mihomo 300s 体检自动切换；真正的缺口是 `📧 邮件专用` 的 993/465 故障不会被 443 体检发现，且启动时会无条件预热全部地区组 |
+| 实现 | ① 新增 `sparkleMailPortProbe.ts`：把邮件端口探测/共享探测通道锁从 `sparkleMailProbe.ts` 拆出；② 新增 `sparkleMailCurrentNodeProbe.ts`：邮件组最近有活动（`/connections` 链路或内核日志出现该组/收发域名）才复测当前节点 993/465；日志出现拨号失败后 30s 提前触发一次、5 分钟周期兜底；失败立即标记 dead、写 provider 并在成员变化时热重载；未使用邮件时 0 次端口探测；③ `sparkleMailProbe.ts` 的 provider 重载条件从 `newly_alive>0` 改为“成员集合变化”，修复死节点已写出但内核仍用旧列表；④ `autoSelectStickyPin` 固定节点的 Gemini 地区复核从每 3 秒降为“节点变化立即 + 每 5 分钟”，避免每 3 秒解析订阅 YAML；⑤ 地区组启动预热只预热活动连接链路或当前被选中的组，未使用不预热；⑥ `mihomoApi` 新增 `subscribeMihomoLogs` 供按需活动判定 |
+| 单测 | `sparkleMailActivityCore.test.ts`（活动链/窗口/时间戳）· `sparkleMailProviderCore.test.ts`（成员变化）· `autoSelectStickyPinCore.test.ts`（5 分钟复核节流）· `regionalUrlTestWarmupCore.test.ts`（活动组过滤/收集）· `pnpm run test:node-quality` **287/287 PASS** · `typecheck` node/web 0 · 改动文件 eslint 0 |
+| 已知边界 | 邮件当前节点探测只在“有活动/最近 30 分钟用过”时执行；完全不用邮件不探测。邮件 provider 仍由现有 60 分钟全量补测刷新缓存过期节点；本次未改变全量探测节奏。 |
+
+## 2026-11-03 分组展示顺序统一：自动选择 → 专用组 → 地区组 → 其余（CODE-DONE @1.30.71 git · 待装包）
+
+| 项 | 内容 |
+|---|---|
+| 问题 | `proxy-groups` 的顺序由"注入顺序 + 订阅顺序"决定：实测线上 `Sparkle-台湾/日本/韩国/新加坡/美国` 排在 `自动选择` 之前，`Sparkle-香港` 夹在 Cursor 专用与邮件专用之间，专用组被地区组打散，代理页阅读顺序与重要性不一致 |
+| 实现 | 新增 `proxyGroupOrder.ts`（纯函数 `orderProxyGroups`）：写盘前按固定档位稳定排序 —— `自动选择`(0) → 三个专用组 `🎯 Cursor 专用` / `📧 邮件专用` / `🎯 agy 专用`（隐藏组 `__sparkle_mail_probe__` 紧随邮件组）→ `Sparkle-<地区>` → 其余；同档位按原索引排序，保证订阅组之间的相对顺序不变 |
+| 接线 | `factory.ts` 在 `auto_switch_groups` 步骤之后调用（此时所有组已构建、`removeNonSubscriptionProxyGroups` 与自动切换组归一已完成） |
+| 单测 | `proxyGroupOrder.test.ts` 3 例（档位顺序 / 档位内稳定 / 幂等 + 空列表），`tsx --test` 3/3 PASS |
+| 已知边界 | 只改展示顺序，不改组成员、规则目标与 `mihomoGroups` 解析；`Sparkle-<地区>` 以命名前缀识别，新增地区组自动归位 |
+
 ## 2026-11-03 `opencode` / `commandcode` API 端点默认直连（CODE-DONE @1.30.71 git · 已装包）
 
 | 项 | 内容 |
