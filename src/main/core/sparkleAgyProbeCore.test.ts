@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import { runAgyAudit, type AgyAuditOutcome } from './sparkleAgyProbeCore'
+import { resolveAgyAuditBackoffMs, runAgyAudit, type AgyAuditOutcome } from './sparkleAgyProbeCore'
 import type { AgyNodeProbeRecord, AgyProxyRecord } from './sparkleAgyProviderCore'
 
 const NODES: AgyProxyRecord[] = [
@@ -94,5 +94,20 @@ describe('runAgyAudit', () => {
       { probeNode: async () => outcomeOf('usable') }
     )
     assert.deepEqual(result, { probed: 0, usable: 0, aborted: false })
+  })
+})
+
+describe('resolveAgyAuditBackoffMs', () => {
+  const INTERVAL = 15 * 60 * 1000
+
+  it('does not back off after a round with at least one usable node', () => {
+    assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 0), 0)
+  })
+
+  it('grows the skip window on consecutive empty rounds and caps at 3x', () => {
+    assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 1), INTERVAL * 1)
+    assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 2), INTERVAL * 2)
+    assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 3), INTERVAL * 3)
+    assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 9), INTERVAL * 3)
   })
 })

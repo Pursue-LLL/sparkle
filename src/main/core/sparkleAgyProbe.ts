@@ -27,7 +27,7 @@ import {
   type AgyNodeProbeRecord,
   type AgyProxyRecord
 } from './sparkleAgyProviderCore'
-import { runAgyAudit, type AgyAuditOutcome } from './sparkleAgyProbeCore'
+import { runAgyAudit, resolveAgyAuditBackoffMs, type AgyAuditOutcome } from './sparkleAgyProbeCore'
 
 const CACHE_FILENAME = 'sparkle-agy-nodes.json'
 const USABLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
@@ -275,9 +275,12 @@ async function reloadProvider(ordered: readonly string[], selectPreferred: boole
 }
 
 let probeInFlight = false
+/** 连续全灭轮次 → 用于指数退避，避免在 Google 的冷却窗口里越试越久。 */
+let consecutiveEmptyRounds = 0
+let agyAuditSkipUntilMs = 0
 
 export async function bootstrapSparkleAgyProvider(): Promise<void> {
-  if (probeInFlight) {
+  if (probeInFlight || Date.now() < agyAuditSkipUntilMs) {
     return
   }
   probeInFlight = true
@@ -350,9 +353,11 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
     if (audit.probed === 0) {
       return
     }
+    consecutiveEmptyRounds = audit.usable === 0 ? consecutiveEmptyRounds + 1 : 0
+    agyAuditSkipUntilMs = Date.now() + resolveAgyAuditBackoffMs(AUDIT_INTERVAL_MS, consecutiveEmptyRounds)
     const verified = countUsable(cache, proxies)
     await appendAppLog(
-      `[SparkleAgyProbe]: probed=${audit.probed} usable=${audit.usable} verified=${verified} pool=${ordered.length}${audit.aborted ? ' aborted' : ''}\n`
+      `[SparkleAgyProbe]: probed=${audit.probed} usable=${audit.usable} verified=${verified} pool=${ordered.length}${audit.aborted ? ' aborted' : ''} empty_rounds=${consecutiveEmptyRounds}\n`
     )
     if (verified === 0) {
       // 全灭时保留候选池只是为了避免空 provider 让整份配置加载失败，并不代表 agy 能用。
