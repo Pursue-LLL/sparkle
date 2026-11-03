@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-11-03 `opencode` / `commandcode` API 端点默认直连（CODE-DONE @1.30.71 git · 已装包）
+
+| 项 | 内容 |
+|---|---|
+| 背景 | opencode 的模型请求由本地 magpie 网关转发到 `api.commandcode.ai`，opencode 自身还会连 `opencode.ai` / `models.opencode.ai`；这些域名在订阅里没有专属规则，落到 `MATCH,🐟 漏网之鱼`（当时为 `新加坡-优化2-GPT`），每次 TLS 都要多付一跳国际链路 |
+| 实测（2026-11-03 10:44–11:41） | 同机同端点各 6 次 `curl` 端到端首字节（p50）：`api.commandcode.ai` 993ms → 672/775ms；`opencode.ai` 1582ms → 930/971ms。直连可行性用 `IP_BOUND_IF` 绑 en0 绕过 TUN 验证：出口 IP `218.240.178.5`（本地联通）vs 节点 `66.90.98.146`；mihomo 内核日志对该探测零记录（未被 TUN 截获）；到 Cloudflare 边缘 RTT 224~259ms（对照国内 8ms、`1.1.1.1:443` 直连失败） |
+| 实现 | ① 新增 `aiApiDirectRules.ts`：对 `api.commandcode.ai` / `opencode.ai` 在**没有任何规则命中**时前置 `DOMAIN-SUFFIX,…,DIRECT`；② 命中判断按 mihomo 语义实现（`DOMAIN` 精确 / `DOMAIN-SUFFIX` 后缀 / `DOMAIN-KEYWORD` 包含），覆写或订阅一旦表过态就完全让路（不改写、不重复）；③ `factory.ts` 在 `ensureCorporateDirectRules` 之后接入，QUIC 拦截仍在最前 |
+| 单测 | `aiApiDirectRules.test.ts`（前置顺序 / SUFFIX·DOMAIN·KEYWORD 三种覆写写法 / 部分覆盖 / 幂等 / 空 rules）5 例 PASS；`typecheck:node` 0；改动文件 eslint 0；`pnpm run agent:upgrade:mac` exit 0（DistFreshness 判定 commit drift → 全量重建），装后 `work/config.yaml` 仅各一条规则，内核日志 `match DomainSuffix(...) using DIRECT` |
+| 已知边界 | 直连**无回落**：Cloudflare 边缘偶发不可用（实测 `172.67.69.147` 曾 6s 超时恢复；同机 `ifconfig.me` / `api.ipify.org` 直连被 reset/refused），需要回落时由覆写把这两个域名指回代理组；`RULE-SET` / `GEOSITE` 等动态规则源不参与"是否命中"的判断 |
+
 ## 2026-11-02 `🎯 agy 专用` 组：cloudcode-pa 只能按**真实 agy 请求**筛节点（CODE-DONE @1.30.71 git · 未装包）
 
 | 项 | 内容 |
