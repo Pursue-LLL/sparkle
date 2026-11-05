@@ -2,7 +2,7 @@
 //         mihomoApi::mihomoGroups/mihomoProxyProviders/mihomoUnfixedProxy/mihomoGroupDelay/mihomoCloseConnections (POS: mihomo 控制器访问层) ·
 //         utils/log::appendAppLog (POS: 应用程序运行日志追加写入)
 // [OUTPUT] reconcileAutoSwitchGroupsOnStartup · reconcileAutoSwitchGroupsNow · startAutoSwitchGroupIntegrityWatchdog · stopAutoSwitchGroupIntegrityWatchdog: 自动切换组零死锁运行时守护服务
-// [POS] 自动切换组（URLTest / 地区自动组）零死锁守护运行层。负责启动与配置刷新时的纯净解钉、周期性死锁自愈熔断看门狗，确保自动切换组永不死锁。
+// [POS] 自动切换组（URLTest / 地区自动组 / 自动选择）零死锁守护运行层。负责启动与配置刷新时的纯净解钉、周期性死锁自愈熔断看门狗，确保自动切换组永不死锁。
 
 import { appendAppLog } from '../utils/log'
 import {

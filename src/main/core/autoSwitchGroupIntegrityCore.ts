@@ -1,6 +1,6 @@
 // [INPUT] defaultAutoSwitchProxy::AUTO_SELECT_GROUP_NAME (POS: 自动选择与地区 url-test 配置基准)
 // [OUTPUT] isAutoSwitchGroup · reconcileStartupAutoSwitchGroups · detectDeadlockAutoSwitchGroups: 自动切换组零死锁纯函数决策层
-// [POS] 自动切换组（URLTest / 地区自动组）零死锁核心决策层。杜绝 cache.db 启动恢复将自动组默认锁死，并在固定节点失活（dead）或孤儿（orphan）时自动决策熔断解钉。
+// [POS] 自动切换组（URLTest / 地区自动组 / 自动选择）零死锁核心决策层。杜绝 cache.db 启动恢复将自动组默认锁死，并在固定节点失活（dead）或孤儿（orphan）时自动决策熔断解钉。
 
 import { AUTO_SELECT_GROUP_NAME } from './defaultAutoSwitchProxy'
 
