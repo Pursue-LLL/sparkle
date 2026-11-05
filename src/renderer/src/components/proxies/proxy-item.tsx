@@ -43,9 +43,8 @@ const isGroup = (
 }
 
 function delayColor(delay: number, flaky: boolean): 'primary' | 'success' | 'warning' | 'danger' {
-  if (flaky) return 'warning'
   if (delay === -1) return 'primary'
-  if (delay === 0) return 'danger'
+  if (delay === 0) return flaky ? 'warning' : 'danger'
   if (delay < 500) return 'success'
   return 'warning'
 }
@@ -58,11 +57,12 @@ function delayText(delay: number): string {
 
 interface ProxyDelayControlProps {
   delay: number
+  historicalDelay?: number
   sampleTime?: string
   loading: boolean
   /** 预热窗口内没有可信样本（未测或超时）：显示 loading 而不是「测试」/「超时」。 */
   warmingUp: boolean
-  /** 不稳定：最近一次失败但近期成功过，沿用上次成功的延迟并标明成功时间，不显示「超时」。 */
+  /** 不稳定：最近一次失败但近期成功过，如实显示「超时」并标明上次成功时间与历史延迟。 */
   flaky: boolean
   onDelay: () => void
   buttonClassName: string
@@ -71,6 +71,7 @@ interface ProxyDelayControlProps {
 
 const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   delay,
+  historicalDelay,
   sampleTime,
   loading,
   warmingUp,
@@ -98,9 +99,9 @@ const ProxyDelayControl: React.FC<ProxyDelayControlProps> = ({
   const tooltip = useMemo(
     () =>
       flaky
-        ? formatFlakyDelayTooltip(delay, sampleTime, ageNowMs)
+        ? formatFlakyDelayTooltip(historicalDelay ?? delay, sampleTime, ageNowMs)
         : formatProxyDelayTooltip(delay, sampleTime, ageNowMs, 'zh'),
-    [ageNowMs, delay, flaky, sampleTime]
+    [ageNowMs, delay, flaky, historicalDelay, sampleTime]
   )
 
   const button = (
@@ -352,6 +353,7 @@ const ProxyItem: React.FC<Props> = (props) => {
                   ) : (
                     <ProxyDelayControl
                       delay={delay}
+                      historicalDelay={verdict.kind === 'flaky' ? verdict.delay : undefined}
                       sampleTime={delaySampleTime}
                       loading={loading}
                       warmingUp={warmingUp}
@@ -400,6 +402,7 @@ const ProxyItem: React.FC<Props> = (props) => {
                     ) : (
                       <ProxyDelayControl
                         delay={delay}
+                        historicalDelay={verdict.kind === 'flaky' ? verdict.delay : undefined}
                         sampleTime={delaySampleTime}
                         loading={loading}
                         warmingUp={warmingUp}

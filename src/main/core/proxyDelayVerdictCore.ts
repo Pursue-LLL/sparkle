@@ -1,8 +1,8 @@
 // [INPUT] mihomo 节点在某个探测地址上的 history（按时间升序，delay≤0 表示该次探测失败）
 // [OUTPUT] judgeProxyDelay · judgeProxyForUrl · judgeOtherProbeUrls · effectiveProxyDelay
 // [POS] 延迟展示的单一判定规则（渲染进程经 @sparkle-core 引用）：
-// 近期样本窗口里一次都没成功才判「超时」；最近一次失败但窗口内成功过，判「不稳定」并沿用上次成功的延迟，
-// 避免时好时坏的节点或批量探测的误报被当成节点已死。
+// 最新一次探测成功时返回真实延迟；最新一次失败或超时时有效延迟严格为 0（超时），近期成功过判「不稳定」并保留上次成功样本供历史审计，
+// 保证当前状态 100% 真实反映最新测试结果，绝不借用历史数据冒充当前有效延迟。
 
 import {
   isSameProbeUrl,
@@ -75,12 +75,12 @@ export function judgeOtherProbeUrls(
   return others
 }
 
-/** 折算成排序/展示用的数值：>0 延迟 · 0 超时 · -1 未测。 */
+/** 折算成排序/展示用的数值：>0 真实延迟 · 0 超时/失败 · -1 未测。最近一次失败严格归 0，绝不拿旧数据冒充。 */
 export function effectiveProxyDelay(verdict: ProxyDelayVerdict): number {
   switch (verdict.kind) {
     case 'ok':
-    case 'flaky':
       return verdict.delay
+    case 'flaky':
     case 'failed':
       return 0
     case 'untested':

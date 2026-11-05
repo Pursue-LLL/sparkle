@@ -25,17 +25,19 @@ describe('proxyDelayVerdictCore', () => {
     assert.equal(effectiveProxyDelay(verdict), 251)
   })
 
-  it('does not call a single failure a timeout when the node just succeeded', () => {
+  it('identifies flaky node on latest failure and treats effective delay as 0 timeout', () => {
     const verdict = judgeProxyDelay([entry(6, 280), entry(1, 0)], NOW)
     assert.equal(verdict.kind, 'flaky')
-    assert.equal(effectiveProxyDelay(verdict), 280)
+    assert.equal(effectiveProxyDelay(verdict), 0)
+    assert.equal(verdict.kind === 'flaky' ? verdict.delay : 0, 280)
   })
 
-  it('keeps calling a node unstable while its recent window still contains a success', () => {
-    // 线上形态：美国 I1 最近连续失败，但窗口内成功过、重测也能通——不能叫「超时」
+  it('keeps calling a node unstable while its recent window still contains a success but returns 0 current delay', () => {
+    // 真实权威：最近一次测试失败即返回 0（超时），但保留历史成功样本供 tooltip 追溯
     const verdict = judgeProxyDelay([entry(14, 0), entry(11, 564), entry(8, 0), entry(5, 0), entry(2, 0), entry(1, 0)], NOW)
     assert.equal(verdict.kind, 'flaky')
-    assert.equal(effectiveProxyDelay(verdict), 564)
+    assert.equal(effectiveProxyDelay(verdict), 0)
+    assert.equal(verdict.kind === 'flaky' ? verdict.delay : 0, 564)
     assert.equal(verdict.kind === 'flaky' ? verdict.sampledAt : '', entry(11, 564).time)
   })
 
