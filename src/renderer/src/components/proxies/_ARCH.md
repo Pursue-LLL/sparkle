@@ -17,7 +17,7 @@
 | 文件 | 职责 |
 |------|------|
 | `proxy-item.tsx` | 节点卡片；测速按钮；条件绑定 hover/touch → 详情弹窗（agy 组不绑定、改用 `agy-delay-control.tsx`）；对已锁定节点支持点击卡片/图钉一键解钉（Toggle Off）恢复自动优选 |
-| `proxy-item.tsx` 延迟显示 | 经 `judgeProxyForUrl(proxy, probeUrl)` 判定，`probeUrl` 为该组实际探测地址（`自动选择`/地区组为 Gemini，香港为 grok，`📧 邮件专用` 为 `mail.google.com`）：最近一次失败但近期成功过判「不稳定」，显示上次成功的延迟 + 「N分前成功」，窗口内一次都没成功才显示「超时」。`📧 邮件专用` 的 993/465 真实故障切换由主进程按需探测（`sparkleMailCurrentNodeProbe.ts`）负责；本页 `probeUrl` 只用于延迟显示与手动测速 |
+| `proxy-item.tsx` 延迟显示 | 经 `judgeProxyForUrl(proxy, probeUrl)` 判定：最新一次失败诚实显示「超时」，近期成功过在悬停与小标提供「N分前成功」客观溯源，绝不把旧延迟当成当前有效数值展示；`📧 邮件专用` 的 993/465 真实故障切换由主进程按需探测负责 |
 | `agy-delay-control.tsx` | `🎯 agy 专用` 组的延迟展示：只显示**真实 agy 请求实测**（`AgyProbeSample.rttMs` + 距上次实测时间），没有样本显示「未测」；该组组头显示「agy 实测」、隐藏 group 手动测速按钮、不渲染 mihomo 详情弹窗/柱图，避免用 gstatic 网络 RTT 冒充 agy 响应时间 |
 | `probe-warmup-chip.tsx` | 页头「测速预热中」提示；状态来自 `@renderer/hooks/use-probe-warmup`，窗口内 `proxy-item.tsx` 对无可信样本的节点显示 loading 而非「测试」/「超时」 |
 | `proxy-detail-tooltip.tsx` | Portal 浮层：展示完整节点名（不省略，支持自适应折行）、该组探测地址上的测速柱图、探测地址、其它探测地址上的表现（区分「只对该地址不通」与「整个节点不通」）与存活状态 |
