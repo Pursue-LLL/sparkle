@@ -54,7 +54,7 @@ describe('aiApiDirectRules', () => {
     ensureAiApiDirectRules(profile)
 
     assert.deepEqual(rulesOf(profile), [
-      `DOMAIN-SUFFIX,${AI_API_DIRECT_HOSTS[0]},DIRECT`,
+      ...defaultsExcept('opencode.ai'),
       narrowRule,
       MATCH_RULE
     ])

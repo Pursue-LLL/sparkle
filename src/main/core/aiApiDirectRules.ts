@@ -5,12 +5,18 @@
  */
 
 /**
- * 两个端点只承载 AI API 流量，劫持它们不影响普通网站。
- * 同机同端点各 6 次采样（curl 端到端首字节 p50）：api.commandcode.ai 993ms → 672ms；
- * opencode.ai 1582ms → 930ms（代理为新加坡节点，直连出口为本地联通）。
+ * 这些端点只承载 AI API 与开发辅助流量，直连不影响普通网站。
+ * 同机同端点采样（curl 端到端首字节 p50 / TTFB，直连出口为本地联通）：
+ * - api.commandcode.ai: 993ms → 672ms
+ * - opencode.ai: 1582ms → 930ms
+ * - open-design.ai (含 amr-link / amr-api): 1294ms → 1007ms（TLS 握手 231ms）
  * 新增域名只改这里：单测按此清单生成期望值。
  */
-export const AI_API_DIRECT_HOSTS = ['api.commandcode.ai', 'opencode.ai'] as const
+export const AI_API_DIRECT_HOSTS = [
+  'api.commandcode.ai',
+  'opencode.ai',
+  'open-design.ai'
+] as const
 
 /** 只识别常见的三种域名类规则；RULE-SET / GEOSITE 等动态规则源不参与判断。 */
 const DOMAIN_RULE_TYPES: ReadonlySet<string> = new Set([
