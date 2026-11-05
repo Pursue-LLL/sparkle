@@ -14,9 +14,8 @@ describe('autoSwitchGroupIntegrityCore - isAutoSwitchGroup', () => {
     assert.equal(isAutoSwitchGroup({ name: 'Auto - Speed', type: 'URLTest' }), true)
   })
 
-  it('excludes 自动选择 (delegated to autoSelectStickyPin)', () => {
-    assert.equal(isAutoSwitchGroup({ name: '自动选择', type: 'Fallback' }), false)
-    assert.equal(isAutoSwitchGroup({ name: '自动选择', type: 'URLTest' }), false)
+  it('identifies 自动选择 as an auto switch group', () => {
+    assert.equal(isAutoSwitchGroup({ name: '自动选择', type: 'Fallback' }), true)
   })
 
   it('excludes Selector groups', () => {
@@ -114,6 +113,28 @@ describe('autoSwitchGroupIntegrityCore - detectDeadlockAutoSwitchGroups', () => 
       kind: 'unfix',
       group: 'Sparkle-台湾',
       fixedNode: '台湾-优化2-GPT',
+      reason: 'dead-pinned-node'
+    })
+  })
+
+  it('unfixes 自动选择 immediately when its pinned node is dead', () => {
+    const groups: AutoSwitchGroupSnapshot[] = [
+      {
+        name: '自动选择',
+        type: 'Fallback',
+        now: '台湾-优化3',
+        fixed: '台湾-优化3',
+        all: ['台湾-优化3', '🇹🇼 台湾 02'],
+        testUrl: 'https://gemini.google.com'
+      }
+    ]
+
+    const actions = detectDeadlockAutoSwitchGroups(groups, (node) => node !== '台湾-优化3')
+    assert.equal(actions.length, 1)
+    assert.deepEqual(actions[0], {
+      kind: 'unfix',
+      group: '自动选择',
+      fixedNode: '台湾-优化3',
       reason: 'dead-pinned-node'
     })
   })
