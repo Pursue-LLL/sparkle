@@ -1,3 +1,7 @@
+// [INPUT] @renderer/utils/proxy-delay-sample-age（POS: 延迟样本年龄/提示文案） · @sparkle-core/proxyDelayVerdictCore（POS: 延迟判定） ·
+//         @renderer/utils/agy-probe-display（POS: agy 实测秒级文案/色调） · ./agy-delay-control（POS: agy 真实延迟 Chip）
+// [OUTPUT] ProxyItem: 节点卡片（选择、手动测速、固定、详情弹窗、agy 实测 Chip）
+// [POS] 代理页节点卡片：普通组走 mihomo 延迟样本，`🎯 agy 专用` 走真实 agy 请求实测且不渲染 mihomo 详情弹窗。
 import { Button, Card, CardBody, Tooltip } from '@heroui/react'
 import { notify } from '@renderer/utils/notification'
 import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
@@ -13,6 +17,7 @@ import {
 import { effectiveProxyDelay, judgeProxyForUrl } from '@sparkle-core/proxyDelayVerdictCore'
 import { mihomoUnfixedProxy } from '@renderer/utils/ipc'
 import { useProbeWarmup } from '@renderer/hooks/use-probe-warmup'
+import AgyDelayControl from './agy-delay-control'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
 
 interface Props {
@@ -27,6 +32,8 @@ interface Props {
   probeUrl: string
   onSelect: (group: string, proxy: string) => void
   selected: boolean
+  /** agy 组专用：undefined = 不是 agy 组；null = agy 组但尚无实测样本。 */
+  agyProbe?: AgyProbeSample | null
 }
 
 const isGroup = (
@@ -151,7 +158,8 @@ const ProxyItem: React.FC<Props> = (props) => {
     proxy,
     selected,
     onSelect,
-    onProxyDelay
+    onProxyDelay,
+    agyProbe
   } = props
   const shouldShowGroupSelectedProxy =
     showGroupSelectedProxy && isGroup(proxy) && Boolean(proxy.now)
@@ -289,6 +297,10 @@ const ProxyItem: React.FC<Props> = (props) => {
             touchTriggeredRef.current = false
             return
           }
+          if (fixed) {
+            void mihomoUnfixedProxy(group.name).then(() => mutateProxies())
+            return
+          }
           onSelect(group.name, proxy.name)
         }}
         isPressable
@@ -335,15 +347,19 @@ const ProxyItem: React.FC<Props> = (props) => {
                       <FaMapPin className="text-xs le" />
                     </Button>
                   )}
-                  <ProxyDelayControl
-                    delay={delay}
-                    sampleTime={delaySampleTime}
-                    loading={loading}
-                    warmingUp={warmingUp}
-                    flaky={flaky}
-                    onDelay={onDelay}
-                    buttonClassName="h-8 w-8 min-w-8 p-0 text-xs"
-                  />
+                  {agyProbe !== undefined ? (
+                    <AgyDelayControl sample={agyProbe} />
+                  ) : (
+                    <ProxyDelayControl
+                      delay={delay}
+                      sampleTime={delaySampleTime}
+                      loading={loading}
+                      warmingUp={warmingUp}
+                      flaky={flaky}
+                      onDelay={onDelay}
+                      buttonClassName="h-8 w-8 min-w-8 p-0 text-xs"
+                    />
+                  )}
                 </div>
               </>
             ) : (
@@ -379,16 +395,20 @@ const ProxyItem: React.FC<Props> = (props) => {
                     </div>
                   )}
                   <div className="flex items-center">
-                    <ProxyDelayControl
-                      delay={delay}
-                      sampleTime={delaySampleTime}
-                      loading={loading}
-                      warmingUp={warmingUp}
-                      flaky={flaky}
-                      onDelay={onDelay}
-                      buttonClassName="h-full w-8 min-w-8 p-0 text-sm"
-                      textClassName="text-sm"
-                    />
+                    {agyProbe !== undefined ? (
+                      <AgyDelayControl sample={agyProbe} />
+                    ) : (
+                      <ProxyDelayControl
+                        delay={delay}
+                        sampleTime={delaySampleTime}
+                        loading={loading}
+                        warmingUp={warmingUp}
+                        flaky={flaky}
+                        onDelay={onDelay}
+                        buttonClassName="h-full w-8 min-w-8 p-0 text-sm"
+                        textClassName="text-sm"
+                      />
+                    )}
                   </div>
                 </div>
               </>
@@ -396,7 +416,7 @@ const ProxyItem: React.FC<Props> = (props) => {
           </div>
         </CardBody>
       </Card>
-      {showProxyDetailTooltip && (
+      {showProxyDetailTooltip && agyProbe === undefined && (
         <ProxyDetailTooltip
           proxy={proxy}
           probeUrl={probeUrl}
