@@ -167,6 +167,17 @@ export async function reloadMihomoProfileProviders(
   } catch {
     // sparkle-agy 未启用时不阻断主订阅 provider 热重载
   }
+  try {
+    const { reloadMihomoProfileProvidersNow } = await import('./autoSwitchGroupIntegrity').then(
+      (m) => ({ reloadMihomoProfileProvidersNow: m.reconcileAutoSwitchGroupsNow }),
+      () => ({ reloadMihomoProfileProvidersNow: undefined })
+    )
+    if (reloadMihomoProfileProvidersNow) {
+      await reloadMihomoProfileProvidersNow()
+    }
+  } catch {
+    // 订阅刷新时的对齐容错
+  }
 }
 
 /**

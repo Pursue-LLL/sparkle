@@ -1,3 +1,10 @@
+// [INPUT] mihomoApi::mihomoGroups/mihomoChangeProxy/mihomoGetConnections/mihomoGroupDelay (POS: mihomo 控制器访问层) ·
+//         sparkleFastLatencyOrder::bootstrapSparkleFastLatencyOrder (POS: sparkle-fast 延迟序) ·
+//         sparkleMailProbe/sparkleMailCurrentNodeProbe (POS: 邮件 provider 全量探测/当前节点按需复测) ·
+//         regionalUrlTestWarmup (POS: 地区组按需预热)
+// [OUTPUT] runPostCoreBootstrap
+// [POS] 内核就绪后的单一启动编排入口：延迟序、粘性固定、邮件探测、agy 巡检、订阅更新、Cursor 默认节点、地区组按需预热。
+
 import { appendAppLog } from '../utils/log'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
 import { probeMihomoControllerVersion } from './mihomoControllerReadyCore'
@@ -59,6 +66,17 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
 
 async function runPostReadyServices(): Promise<void> {
   try {
+    const { reconcileAutoSwitchGroupsOnStartup, startAutoSwitchGroupIntegrityWatchdog } =
+      await import('./autoSwitchGroupIntegrity')
+    await reconcileAutoSwitchGroupsOnStartup()
+    startAutoSwitchGroupIntegrityWatchdog()
+  } catch (error) {
+    await appendAppLog(
+      `[AutoSwitchIntegrity]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`
+    )
+  }
+
+  try {
     const { bootstrapSparkleFastLatencyOrder, startSparkleFastLatencyOrderLoop } = await import(
       './sparkleFastLatencyOrder'
     )
@@ -88,6 +106,16 @@ async function runPostReadyServices(): Promise<void> {
       const { bootstrapSparkleMailProvider, startSparkleMailProbeLoop } = await import(
         './sparkleMailProbe'
       )
+      try {
+        const { startSparkleMailCurrentNodeProbeLoop } = await import(
+          './sparkleMailCurrentNodeProbe'
+        )
+        startSparkleMailCurrentNodeProbeLoop()
+      } catch (error) {
+        await appendAppLog(
+          `[SparkleMailProbe]: current node probe start failed: ${error instanceof Error ? error.message : String(error)}\n`
+        )
+      }
       await bootstrapSparkleMailProvider()
       startSparkleMailProbeLoop()
     } catch (error) {
@@ -115,7 +143,9 @@ async function runPostReadyServices(): Promise<void> {
   const { startAutoSelectStickyPin } = await import('./autoSelectStickyPin')
   startAutoSelectStickyPin()
 
-  const { mihomoGroups, mihomoChangeProxy, mihomoGroupDelay } = await import('./mihomoApi')
+  const { mihomoGroups, mihomoChangeProxy, mihomoGetConnections, mihomoGroupDelay } = await import(
+    './mihomoApi'
+  )
 
   const { initProfileUpdater } = await import('./profileUpdater')
   initProfileUpdater()
@@ -135,16 +165,28 @@ async function runPostReadyServices(): Promise<void> {
   setTimeout(() => {
     void (async () => {
       try {
-        const { warmupRegionalUrlTestGroups } = await import('./regionalUrlTestWarmup')
-        const warmed = await warmupRegionalUrlTestGroups({ mihomoGroups, mihomoGroupDelay })
+        const { collectActiveRegionalGroupNames, warmupRegionalUrlTestGroups } = await import(
+          './regionalUrlTestWarmup'
+        )
+        const groups = await mihomoGroups()
+        const connections = await mihomoGetConnections().catch(() => undefined)
+        const activeGroupNames = collectActiveRegionalGroupNames(groups, connections)
+        const warmed = await warmupRegionalUrlTestGroups(
+          { mihomoGroups, mihomoGroupDelay },
+          activeGroupNames
+        )
         if (warmed > 0) {
           await appendAppLog(
             `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`,
           )
+          // 地区组预热是组内并发测速，易产生误报；对最近一次样本不是成功的节点（超时/不稳定/未测）做一次低并发复测。
+          const { verifyUnconfirmedFailures } = await import('./providerLeafProbe')
+          await verifyUnconfirmedFailures()
+        } else {
+          await appendAppLog(
+            `[PostCoreBootstrap]: regional url-test warmup skipped active_groups=${activeGroupNames.size}\n`,
+          )
         }
-        // 地区组预热是组内并发测速，易产生误报；对最近一次样本不是成功的节点（超时/不稳定/未测）做一次低并发复测。
-        const { verifyUnconfirmedFailures } = await import('./providerLeafProbe')
-        await verifyUnconfirmedFailures()
       } catch (error) {
         await appendAppLog(
           `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`,
