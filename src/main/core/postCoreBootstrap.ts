@@ -1,9 +1,10 @@
 // [INPUT] mihomoApi::mihomoGroups/mihomoChangeProxy/mihomoGetConnections/mihomoGroupDelay (POS: mihomo 控制器访问层) ·
+//         autoSwitchGroupIntegrity::reconcileAutoSwitchGroupsOnStartup/startAutoSwitchGroupIntegrityWatchdog (POS: 自动切换组零死锁守护运行层) ·
 //         sparkleFastLatencyOrder::bootstrapSparkleFastLatencyOrder (POS: sparkle-fast 延迟序) ·
 //         sparkleMailProbe/sparkleMailCurrentNodeProbe (POS: 邮件 provider 全量探测/当前节点按需复测) ·
 //         regionalUrlTestWarmup (POS: 地区组按需预热)
-// [OUTPUT] runPostCoreBootstrap
-// [POS] 内核就绪后的单一启动编排入口：延迟序、粘性固定、邮件探测、agy 巡检、订阅更新、Cursor 默认节点、地区组按需预热。
+// [OUTPUT] runPostCoreBootstrap: 内核就绪后的单一启动编排入口
+// [POS] 内核就绪后的单一启动编排入口。自动组零死锁对齐与守护、延迟序、粘性固定、邮件探测、agy 巡检、订阅更新、Cursor 默认节点、地区组按需预热。
 
 import { appendAppLog } from '../utils/log'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
