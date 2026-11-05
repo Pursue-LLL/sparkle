@@ -24,13 +24,15 @@ export type AutoSwitchIntegrityAction =
 
 /**
  * 判定一个策略组是否属于「自动选路/自动切换组」。
- * - URLTest 组原生契约是根据延迟自动选优，绝不允许被默认锁定；
- * - `自动选择` 组是 Fallback 且由专用的 `autoSelectStickyPin` 独立看管，此处不重复干预；
- * - 其余所有 URLTest 或 Sparkle 自动地区组均属于自动选路组。
+ * - `自动选择` 组是 Fallback 自动选优组，同样属于自动切换组；
+ * - URLTest 组原生契约是根据延迟自动选优，绝不允许被默认死锁；
+ * - 其余所有 URLTest 或 Sparkle 自动地区组均属于自动选路组；
+ * - Selector 等手动选择组不属于自动切换组。
  */
 export function isAutoSwitchGroup(group: { name: string; type?: string }): boolean {
-  if (group.name === AUTO_SELECT_GROUP_NAME) {
-    return false
+  const name = (group.name ?? '').trim()
+  if (name === AUTO_SELECT_GROUP_NAME) {
+    return true
   }
   const normalizedType = (group.type ?? '').trim().toLowerCase()
   return normalizedType === 'urltest' || normalizedType === 'url-test'
