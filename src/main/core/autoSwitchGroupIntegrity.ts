@@ -24,13 +24,15 @@ const WATCHDOG_INTERVAL_MS = 10_000
 let watchdogTimer: NodeJS.Timeout | null = null
 let watchdogRunning = false
 
-function mapToGroupSnapshots(groups: ControllerGroupDetail[]): AutoSwitchGroupSnapshot[] {
+function mapToGroupSnapshots(groups: ControllerMixedGroup[]): AutoSwitchGroupSnapshot[] {
   return groups.map((g) => ({
     name: g.name,
     type: g.type,
     now: g.now ?? '',
     fixed: g.fixed ?? '',
-    all: g.all ?? [],
+    all: (g.all ?? []).map((item: unknown) =>
+      typeof item === 'string' ? item : ((item as { name?: string })?.name ?? '')
+    ),
     testUrl: g.testUrl
   }))
 }
