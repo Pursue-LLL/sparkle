@@ -49,7 +49,8 @@ function describeVerdict(verdict: ProxyDelayVerdict): { text: string; color: Del
     case 'ok':
       return { text: `${verdict.delay}ms`, color: getDelayChipColor(verdict.delay) }
     case 'flaky':
-      return { text: `${verdict.delay}ms · 不稳定`, color: 'warning' }
+      // 本次已失败：当前状态如实写「超时」，历史成功值明确标注为「上次成功」，不与当前状态混淆
+      return { text: `超时 · 上次成功 ${verdict.delay}ms`, color: 'warning' }
     case 'failed':
       return { text: '超时', color: 'danger' }
     case 'untested':
