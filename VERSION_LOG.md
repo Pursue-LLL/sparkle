@@ -3,6 +3,19 @@
 > **基线用途**：Agent 迭代以本文档 **最新可用条目** 为 SSOT，避免能力回退、重复踩坑、反复返工。  
 > **关联**：`BUGFIX_LOG.md`（缺陷明细）· `scripts/_ARCH.md`（Agent 升级入口）
 
+
+---
+
+## 2026-11-11 自动切换统一：运行时配置对账重载 + 国内直连基线 + 故障转移引擎 + 分组策略表（代码已完成 · 未装包）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | ① 许多国内软件走了代理（TUN 连接 `rule: Match`、链路 `自动选择`）；② `Sparkle-台湾` 节点超时很久不自动切换，要手动换 |
+| 根因 | ① 服务模式保留的旧内核只载入 131 条规则，磁盘配置已有 3788 条：订阅刷新只热重载 provider，从不让内核采用新规则；订阅 base 一度没有规则也没有国内基线。② url-test 的复测对 Gemini 仍通过，真实流量却持续超时；内核对「连续拨号失败」只打 warning 并复测，不会换节点；固定节点失活本由内核原生处理（URLTest 仅在固定节点存活时遵循 `fixed`，Fallback 清除失活固定），旧 10 秒看门狗的前提不成立 |
+| 实现 | `runtimeConfigSync`：规则 / 分组 / provider 指纹变化即整配置重载（`PUT /configs?force=true`，失败不重启内核），启动时再用 `GET /rules` 条数对账；`cnDirectBaseline`：订阅无国内感知规则时在 `MATCH` 前补 `GEOSITE,CN` / `GEOIP,CN` → `DIRECT`；`autoSwitchPinRelease` 取代看门狗，按生命周期释放固定（启动 / 整重载 `all`，订阅刷新 `orphans`）；`autoSwitchPolicy` 单一策略表（谁来切节点只声明一次，源码扫描测试防漏填）；`groupFailover*`：订阅独立告警流，同一组 180 s 内两次计数告警（30 s 去重）即为 `Sparkle-<地区>` url-test 组改选最近探测成功且延迟最低的节点，失败节点隔离 10 分钟、保留期满交还内核，用户固定的节点不动；`mihomoApi` 拆出 `mihomoStreams`，`factory` / `profile` / `sparkleGeminiProbe` 按职责拆分；删除 `updateProvider` 与未引用的 `sparkleAgyMagpieClient` |
+| 验证 | 隔离 mihomo（3788 条规则、26 组、5 provider，TUN 关闭）连续整配置重载 8 次耗时 13–39 ms，1323 次新建连接探测 0 失败（不含真实 TUN / DNS）；`mihomo -t` 通过；真实 mihomo v1.19.32 上 `/logs?level=warning` 收到告警帧且被解析器识别，URLTest 组 `PUT` 固定 / `DELETE` 解除 / 非成员 400 与引擎假设一致；2026-11-11 11:15–11:41 的 21 条真实告警折算出 6 次转移（回归夹具）；对线上只读快照干跑，6 个 `Sparkle-*` url-test 组入选、其余分组均不入选；`test:node-quality` 420/420；typecheck node + web 0；ESLint 0 |
+| 已知边界 | 未装包，运行中的内核仍是旧配置；磁盘与内核规则条数相同但内容不同的旧内核无法被条数对账发现；故障转移要同一组两次独立故障才动作，且依赖内核的告警文案（升级内核后需复核）；整网中断时候选节点的最近探测均失败，引擎不会盲切；远端 push 被 `dist.zip`（234 MB，历史提交 `82193a93`）拦截，需改写历史，未处理 |
+
 ---
 
 ## 2026-11-10 合并订阅 base 无规则导致 Google 直连撞墙（MATCH 兜底）
