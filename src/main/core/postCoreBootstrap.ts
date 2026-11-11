@@ -1,10 +1,11 @@
 // [INPUT] mihomoApi::mihomoGroups/mihomoChangeProxy/mihomoGetConnections/mihomoGroupDelay (POS: mihomo 控制器访问层) ·
-//         autoSwitchGroupIntegrity::reconcileAutoSwitchGroupsOnStartup/startAutoSwitchGroupIntegrityWatchdog (POS: 自动切换组零死锁守护运行层) ·
+//         runtimeConfigSync::syncRuntimeConfigToCore (POS: 运行时配置对齐执行层) ·
+//         autoSwitchPinRelease::releaseAutoSwitchPins (POS: 自动切换组固定释放执行层) ·
 //         sparkleFastLatencyOrder::bootstrapSparkleFastLatencyOrder (POS: sparkle-fast 延迟序) ·
 //         sparkleMailProbe/sparkleMailCurrentNodeProbe (POS: 邮件 provider 全量探测/当前节点按需复测) ·
 //         regionalUrlTestWarmup (POS: 地区组按需预热)
 // [OUTPUT] runPostCoreBootstrap: 内核就绪后的单一启动编排入口
-// [POS] 内核就绪后的单一启动编排入口。自动组零死锁对齐与守护、延迟序、粘性固定、邮件探测、agy 巡检、订阅更新、Cursor 默认节点、地区组按需预热。
+// [POS] 内核就绪后的单一启动编排入口。运行时配置对齐与自动组固定释放、延迟序、粘性固定、邮件探测、agy 巡检、订阅更新、Cursor 默认节点、地区组按需预热。
 
 import { appendAppLog } from '../utils/log'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
@@ -66,14 +67,17 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
 }
 
 async function runPostReadyServices(): Promise<void> {
+  // 服务模式下内核可能由更早的会话保留：先让它采用磁盘上的最新配置（整配置重载已含固定释放），
+  // 再执行依赖规则 / 分组的后续步骤。
   try {
-    const { reconcileAutoSwitchGroupsOnStartup, startAutoSwitchGroupIntegrityWatchdog } =
-      await import('./autoSwitchGroupIntegrity')
-    await reconcileAutoSwitchGroupsOnStartup()
-    startAutoSwitchGroupIntegrityWatchdog()
+    const { syncRuntimeConfigToCore } = await import('./runtimeConfigSync')
+    if (!(await syncRuntimeConfigToCore())) {
+      const { releaseAutoSwitchPins } = await import('./autoSwitchPinRelease')
+      await releaseAutoSwitchPins('all')
+    }
   } catch (error) {
     await appendAppLog(
-      `[AutoSwitchIntegrity]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`
+      `[PostCoreBootstrap]: runtime config sync failed: ${error instanceof Error ? error.message : String(error)}\n`
     )
   }
 

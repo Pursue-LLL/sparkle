@@ -5,10 +5,6 @@ export {
   getCurrentProfileItem,
   getProfileItem,
   getProfileConfig,
-  getFileStr,
-  getFilePreviewStr,
-  setFileStr,
-  saveFileStrWithElevation,
   setProfileConfig,
   addProfileItem,
   removeProfileItem,
@@ -19,6 +15,12 @@ export {
   changeCurrentProfile,
   updateProfileItem
 } from './profile'
+export {
+  getFileStr,
+  getFilePreviewStr,
+  setFileStr,
+  saveFileStrWithElevation
+} from './profileFiles'
 export {
   getOverrideConfig,
   setOverrideConfig,

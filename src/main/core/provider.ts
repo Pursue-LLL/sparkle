@@ -1,4 +1,4 @@
-import { writeFile, rm, rename } from 'fs/promises'
+import { writeFile, rm } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 import { stringifyYaml } from '../utils/yaml'
@@ -17,50 +17,6 @@ function getProviderFilePath(profileId: string): string {
  */
 function getProviderConfigPath(profileId: string): string {
   return path.relative(mihomoWorkDir(), getProviderFilePath(profileId))
-}
-
-/**
- * 备份 provider 文件
- */
-async function backupProvider(profileId: string): Promise<void> {
-  const filePath = getProviderFilePath(profileId)
-  const backupPath = `${filePath}.bak`
-  if (existsSync(filePath)) {
-    await rename(filePath, backupPath)
-  }
-}
-
-/**
- * 恢复 provider 文件
- */
-async function restoreProvider(profileId: string): Promise<void> {
-  const filePath = getProviderFilePath(profileId)
-  const backupPath = `${filePath}.bak`
-  if (existsSync(backupPath)) {
-    await rename(backupPath, filePath)
-  }
-}
-
-/**
- * 清理备份文件
- */
-async function cleanupBackup(profileId: string): Promise<void> {
-  const backupPath = `${getProviderFilePath(profileId)}.bak`
-  if (existsSync(backupPath)) {
-    await rm(backupPath)
-  }
-}
-
-/**
- * 验证 proxies 配置格式
- */
-function validateProxies(proxies: unknown[]): boolean {
-  if (!Array.isArray(proxies)) return false
-  return proxies.every((proxy) => {
-    if (typeof proxy !== 'object' || proxy === null) return false
-    const p = proxy as Record<string, unknown>
-    return typeof p.name === 'string' && typeof p.type === 'string'
-  })
 }
 
 import {
@@ -121,7 +77,6 @@ async function removeProviderFile(profileId: string): Promise<void> {
   if (existsSync(filePath)) {
     await rm(filePath)
   }
-  await cleanupBackup(profileId)
 }
 
 /**
@@ -144,7 +99,7 @@ export async function setupProfileProviders(
   return { commercial, vps }
 }
 
-/** Hot-reload mihomo proxy-provider files after disk write (commercial + optional VPS split + sparkle-fast). */
+/** 热刷新 proxy-provider 节点文件（订阅主 / 可选 VPS / sparkle-*），随后释放因节点变动成为孤儿的自动组固定。 */
 export async function reloadMihomoProfileProviders(
   profileId: string,
   hasVpsProvider: boolean
@@ -173,17 +128,8 @@ export async function reloadMihomoProfileProviders(
   } catch {
     // sparkle-grok 未启用时不阻断主订阅 provider 热重载
   }
-  try {
-    const { reloadMihomoProfileProvidersNow } = await import('./autoSwitchGroupIntegrity').then(
-      (m) => ({ reloadMihomoProfileProvidersNow: m.reconcileAutoSwitchGroupsNow }),
-      () => ({ reloadMihomoProfileProvidersNow: undefined })
-    )
-    if (reloadMihomoProfileProvidersNow) {
-      await reloadMihomoProfileProvidersNow()
-    }
-  } catch {
-    // 订阅刷新时的对齐容错
-  }
+  const { releaseAutoSwitchPins } = await import('./autoSwitchPinRelease')
+  await releaseAutoSwitchPins('orphans')
 }
 
 /**
@@ -208,54 +154,6 @@ export function generateBaseConfigWithProvider(
 }
 
 /**
- * 热更新 proxy-provider（不断连，不重启内核）
- */
-export async function updateProvider(
-  profileId: string,
-  config: MihomoConfig
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const proxies = extractProxies(config)
-
-    if (!validateProxies(proxies)) {
-      return { success: false, error: 'Invalid proxies format' }
-    }
-
-    const { vps } = partitionLeafProxies(proxies)
-    const vpsProviderId = resolveVpsProviderId(profileId)
-    const backupVps =
-      vps.length > 0 || existsSync(getProviderFilePath(vpsProviderId))
-
-    await backupProvider(profileId)
-    if (backupVps) {
-      await backupProvider(vpsProviderId)
-    }
-
-    await setupProfileProviders(profileId, proxies)
-    await reloadMihomoProfileProviders(profileId, vps.length > 0)
-
-    await cleanupBackup(profileId)
-    if (backupVps) {
-      await cleanupBackup(vpsProviderId)
-    }
-
-    return { success: true }
-  } catch (error) {
-    const vpsProviderId = resolveVpsProviderId(profileId)
-    const backupVps = existsSync(`${getProviderFilePath(vpsProviderId)}.bak`)
-    await restoreProvider(profileId)
-    if (backupVps) {
-      await restoreProvider(vpsProviderId)
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    }
-  }
-}
-
-/**
  * 删除 provider 文件
  */
 export async function deleteProvider(profileId: string): Promise<void> {
@@ -268,7 +166,4 @@ export async function deleteProvider(profileId: string): Promise<void> {
   if (existsSync(vpsProxiesPath)) {
     await rm(vpsProxiesPath)
   }
-
-  await cleanupBackup(profileId)
-  await cleanupBackup(resolveVpsProviderId(profileId))
 }
