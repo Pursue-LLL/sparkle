@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { AGY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
-import { AUTO_SELECT_GROUP_NAME } from './defaultAutoSwitchProxy'
+import { AGY_DEDICATED_GROUP_NAME, AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
 import { injectAntigravityTrafficRules } from './antigravityRuleInjection'
 
 const GENERIC_GOOGLEAPIS_RULE = 'DOMAIN-SUFFIX,googleapis.com,🔍 Google'

@@ -19,10 +19,10 @@ import {
   type FixedNodeRegionCheckMemory,
   type StickyPinMemory
 } from './autoSelectStickyPinCore'
+import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
 import {
   AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
-  AUTO_SELECT_GEMINI_PROBE_URL,
-  AUTO_SELECT_GROUP_NAME
+  AUTO_SELECT_GEMINI_PROBE_URL
 } from './defaultAutoSwitchProxy'
 import {
   mihomoChangeProxy,
