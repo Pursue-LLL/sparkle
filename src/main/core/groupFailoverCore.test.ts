@@ -7,6 +7,7 @@ import {
   parseDialFailureGroup,
   planFailover,
   recordDialFailure,
+  toFailoverSnapshot,
   type DialFailureState,
   type FailoverContext,
   type FailoverGroupSnapshot,
@@ -280,5 +281,35 @@ describe('planFailover', () => {
       context()
     )
     assert.equal(onChatgpt.kind, 'switch')
+  })
+})
+
+describe('toFailoverSnapshot', () => {
+  it('maps a controller group and marks nested groups by their own member list', () => {
+    const history = [{ time: '2026-11-11T04:00:00.000Z', delay: 80 }]
+    const extra = { 'https://x.com': { alive: true, history } }
+    const controllerGroup = {
+      name: 'Sparkle-香港',
+      type: 'URLTest',
+      now: 'HK-1',
+      fixed: 'HK-1',
+      testUrl: 'https://x.com',
+      all: [
+        { name: 'HK-1', type: 'Vless', alive: true, history, extra },
+        { name: 'nested', type: 'Selector', alive: true, history: [], extra: {}, all: ['HK-1'] }
+      ]
+    } as unknown as ControllerMixedGroup
+
+    assert.deepEqual(toFailoverSnapshot(controllerGroup), {
+      name: 'Sparkle-香港',
+      type: 'URLTest',
+      now: 'HK-1',
+      fixed: 'HK-1',
+      testUrl: 'https://x.com',
+      members: [
+        { name: 'HK-1', isGroup: false, alive: true, history, extra },
+        { name: 'nested', isGroup: true, alive: true, history: [], extra: {} }
+      ]
+    })
   })
 })
