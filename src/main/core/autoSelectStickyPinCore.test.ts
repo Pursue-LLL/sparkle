@@ -2,8 +2,12 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   decideStickyPin,
+  FIXED_NODE_REGION_RECHECK_MS,
+  INITIAL_FIXED_NODE_REGION_CHECK_MEMORY,
   INITIAL_STICKY_PIN_MEMORY,
+  recordFixedNodeRegionCheck,
   recordRestoredStickyPin,
+  shouldRecheckFixedNodeRegion,
   STICKY_PIN_RESTORE_COOLDOWN_MS,
   type AutoSelectGroupSnapshot,
   type StickyPinMemory
@@ -95,5 +99,30 @@ describe('autoSelectStickyPinCore', () => {
     assert.deepEqual(decideStickyPin(group({ type: 'URLTest' }), stable).action, { kind: 'none' })
     assert.deepEqual(decideStickyPin(group({ now: 'DIRECT' }), stable).action, { kind: 'none' })
     assert.deepEqual(decideStickyPin(group({ now: '' }), stable).action, { kind: 'none' })
+  })
+
+  it('rechecks the fixed node region only on node change or after the throttle window', () => {
+    assert.equal(
+      shouldRecheckFixedNodeRegion('', INITIAL_FIXED_NODE_REGION_CHECK_MEMORY, 1000),
+      false
+    )
+    assert.equal(
+      shouldRecheckFixedNodeRegion('A', INITIAL_FIXED_NODE_REGION_CHECK_MEMORY, 1000),
+      true
+    )
+
+    const checkedAtA = recordFixedNodeRegionCheck('A', 1000)
+    assert.equal(
+      shouldRecheckFixedNodeRegion('A', checkedAtA, 1000 + FIXED_NODE_REGION_RECHECK_MS - 1),
+      false
+    )
+    assert.equal(
+      shouldRecheckFixedNodeRegion('A', checkedAtA, 1000 + FIXED_NODE_REGION_RECHECK_MS),
+      true
+    )
+    assert.equal(
+      shouldRecheckFixedNodeRegion('B', checkedAtA, 1000 + FIXED_NODE_REGION_RECHECK_MS - 1),
+      true
+    )
   })
 })

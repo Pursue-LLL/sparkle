@@ -1,36 +1,28 @@
-// [INPUT] 当前订阅节点 · 隐藏探测通道 127.0.0.1:17899 (__sparkle_mail_probe__) · sparkle-mail-nodes.json
-// [OUTPUT] loadSparkleMailProbeCache · writeSparkleMailProviderFromCache · bootstrapSparkleMailProvider · startSparkleMailProbeLoop
-// [POS] 对订阅节点执行真实 `imap.gmail.com:993`（IMAPS `* OK`）与 `smtp.gmail.com:465`（SMTPS `220`）TLS 握手与协议 Banner 校验，
-// 将 100% 确认双通的节点写入 `sparkle-mail-proxies.yaml` 并热重载 `📧 邮件专用` 组。
+// [INPUT] sparkleMailPortProbe::probeSingleNodeMailPorts (POS: 单节点 993/465 TLS Banner 校验) ·
+//         sparkleMailProviderCore::buildSparkleMailProviderDocument (POS: sparkle-mail provider 文档生成) ·
+//         当前订阅节点 · sparkle-mail-nodes.json
+// [OUTPUT] loadSparkleMailProbeCache · saveSparkleMailProbeCache · writeSparkleMailProviderFromCache · ensureMailProviderReloaded · reloadAndWarmMailGroup · bootstrapSparkleMailProvider · loadCurrentMailProxies · runSparkleMailProbeExclusive · startSparkleMailProbeLoop
+// [POS] 邮件 provider 的全量探测与同步：对订阅叶子执行真实 993/465 校验，把结果写入 `sparkle-mail-proxies.yaml`；成员集合变化时热重载 `📧 邮件专用`，
+// 热重载失败保留 pending 由后续按需/每小时探测重试。
 
 import { readFile, writeFile } from 'fs/promises'
-import net from 'node:net'
-import tls from 'node:tls'
-import { performance } from 'node:perf_hooks'
 import path from 'path'
 import { getAppConfig, getProfile, getProfileConfig } from '../config'
 import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
-import { stringifyYaml } from '../utils/yaml'
+import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { isAnyTlsProxyType } from './autoSelectAnyTlsExclusionCore'
-import {
-  MAIL_DEDICATED_GROUP_NAME,
-  MAIL_DELAY_TEST_URL,
-  MAIL_PROBE_HIDDEN_GROUP_NAME
-} from './cursorProxyGroup'
-import {
-  mihomoChangeProxy,
-  mihomoGroupDelay,
-  mihomoUpdateProxyProviders
-} from './mihomoApi'
+import { MAIL_DEDICATED_GROUP_NAME, MAIL_DELAY_TEST_URL } from './cursorProxyGroup'
+import { mihomoGroupDelay, mihomoUpdateProxyProviders } from './mihomoApi'
 import { extractProxies } from './provider'
 import { resolveEffectiveRegionPriority } from './regionPriority'
+import { probeSingleNodeMailPorts } from './sparkleMailPortProbe'
 import {
   buildSparkleMailProviderDocument,
   isPreferredMailCandidateType,
+  mailProviderMembershipChanged,
   MAIL_NODE_PROVIDER_FILENAME,
   MAIL_NODE_PROVIDER_ID,
-  MAIL_PROBE_LISTENER_PORT,
   type MailNodeProbeCache,
   type MailNodeProbeRecord,
   type MailProxyRecord
@@ -41,15 +33,11 @@ const CACHE_FILENAME = 'sparkle-mail-nodes.json'
 const ALIVE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const DEAD_CACHE_TTL_MS = 6 * 60 * 60 * 1000
 const RECHECK_INTERVAL_MS = 60 * 60 * 1000
-const PORT_PROBE_TIMEOUT_MS = 3500
 
-const IMAP_HOST = 'imap.gmail.com'
-const IMAP_PORT = 993
-const IMAP_BANNER_PREFIX = '* OK'
-
-const SMTP_HOST = 'smtp.gmail.com'
-const SMTP_PORT = 465
-const SMTP_BANNER_PREFIX = '220'
+/** provider 文件已变但内核热重载尚未成功；后续按需/每小时探测继续重试，避免死节点留在 live provider。 */
+let providerReloadPending = false
+/** 只记录第一次连续失败，避免内核长期不可达时每 5 分钟刷日志。 */
+let providerReloadFailing = false
 
 function cacheFilePath(): string {
   return path.join(dataDir(), CACHE_FILENAME)
@@ -90,133 +78,37 @@ export async function loadSparkleMailProbeCache(
   }
 }
 
-async function saveSparkleMailProbeCache(
+export async function saveSparkleMailProbeCache(
   cache: ReadonlyMap<string, MailNodeProbeRecord>
 ): Promise<void> {
   const serialized = Object.fromEntries(cache.entries())
   await writeFile(cacheFilePath(), JSON.stringify(serialized, null, 2), 'utf8')
 }
 
-/** 通过本地隐藏探测监听器 `127.0.0.1:17899` 对目标邮件端口执行 HTTP CONNECT + TLS 握手 + 首行协议 Banner 校验。 */
-function probeTlsBannerViaLocalListener(
-  host: string,
-  port: number,
-  expectedBannerPrefix: string,
-  timeoutMs: number = PORT_PROBE_TIMEOUT_MS
-): Promise<{ ok: boolean; rttMs: number }> {
-  return new Promise((resolve) => {
-    const startMs = performance.now()
-    let settled = false
-    let rawSocket: net.Socket | null = null
-    let tlsSocket: tls.TLSSocket | null = null
-
-    const finish = (ok: boolean): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      try {
-        tlsSocket?.destroy()
-      } catch {
-        // ignore socket cleanup errors
-      }
-      try {
-        rawSocket?.destroy()
-      } catch {
-        // ignore socket cleanup errors
-      }
-      resolve({ ok, rttMs: Math.max(1, Math.round(performance.now() - startMs)) })
-    }
-
-    const timer = setTimeout(() => finish(false), timeoutMs)
-
-    rawSocket = net.connect(MAIL_PROBE_LISTENER_PORT, '127.0.0.1')
-    rawSocket.once('error', () => finish(false))
-    rawSocket.once('connect', () => {
-      rawSocket?.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n`)
-      let connectBuf = ''
-      const onConnectData = (chunk: Buffer): void => {
-        connectBuf += chunk.toString('utf8')
-        const headerEnd = connectBuf.indexOf('\r\n\r\n')
-        if (headerEnd === -1) {
-          if (connectBuf.length > 2048) finish(false)
-          return
-        }
-        rawSocket?.removeListener('data', onConnectData)
-        const statusLine = connectBuf.slice(0, connectBuf.indexOf('\r\n'))
-        if (!statusLine.includes(' 200 ')) {
-          finish(false)
-          return
-        }
-
-        tlsSocket = tls.connect({
-          socket: rawSocket!,
-          servername: host,
-          rejectUnauthorized: true
-        })
-        tlsSocket.once('error', () => finish(false))
-        tlsSocket.once('data', (bannerChunk: Buffer) => {
-          const banner = bannerChunk.toString('utf8').trim()
-          finish(banner.startsWith(expectedBannerPrefix))
-        })
-      }
-      rawSocket?.on('data', onConnectData)
-    })
-  })
-}
-
-let probeChannelTail: Promise<void> = Promise.resolve()
-
-/**
- * 进程级互斥锁：本地隐藏探测监听器 `127.0.0.1:17899`（`__sparkle_mail_probe__`）为单通道，
- * 邮件端口探测与 Gemini 地区内容探测共享该通道时必须串行切换节点，防止并发串台。
- */
-export async function withLocalProbeChannelLock<T>(
-  nodeName: string,
-  task: () => Promise<T>
-): Promise<T> {
-  const prev = probeChannelTail
-  let release!: () => void
-  probeChannelTail = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  await prev
-  try {
-    await mihomoChangeProxy(MAIL_PROBE_HIDDEN_GROUP_NAME, nodeName)
-    return await task()
-  } finally {
-    release()
+export async function loadCurrentMailProxies(): Promise<MailProxyRecord[]> {
+  const { current } = await getProfileConfig()
+  if (!current || current === 'default') {
+    return []
   }
+  const currentProfile = await getProfile(current)
+  return extractProxies(currentProfile) as MailProxyRecord[]
 }
 
-/** 实测单个节点的 `imap.gmail.com:993`（收件）与 `smtp.gmail.com:465`（发件）是否双通。 */
-async function probeSingleNodeMailPorts(nodeName: string): Promise<{ alive: boolean; rttMs: number }> {
+export interface MailProviderWriteResult {
+  count: number
+  membershipChanged: boolean
+}
+
+async function readMailProviderMembers(): Promise<string[]> {
   try {
-    return await withLocalProbeChannelLock(nodeName, async () => {
-      const imapRes = await probeTlsBannerViaLocalListener(
-        IMAP_HOST,
-        IMAP_PORT,
-        IMAP_BANNER_PREFIX
-      )
-      if (!imapRes.ok) {
-        return { alive: false, rttMs: 0 }
-      }
-
-      const smtpRes = await probeTlsBannerViaLocalListener(
-        SMTP_HOST,
-        SMTP_PORT,
-        SMTP_BANNER_PREFIX
-      )
-      if (!smtpRes.ok) {
-        return { alive: false, rttMs: 0 }
-      }
-
-      return {
-        alive: true,
-        rttMs: Math.round((imapRes.rttMs + smtpRes.rttMs) / 2)
-      }
-    })
+    const doc = parseYaml<{ proxies?: MailProxyRecord[] }>(
+      await readFile(providerFilePath(), 'utf8')
+    )
+    return (doc.proxies ?? [])
+      .map((proxy) => String(proxy.name ?? '').trim())
+      .filter((name) => name.length > 0)
   } catch {
-    return { alive: false, rttMs: 0 }
+    return []
   }
 }
 
@@ -224,39 +116,89 @@ export async function writeSparkleMailProviderFromCache(
   proxies: MailProxyRecord[],
   regionPriority: readonly string[],
   probeCache?: MailNodeProbeCache
-): Promise<number> {
+): Promise<MailProviderWriteResult> {
   const doc = buildSparkleMailProviderDocument({
     proxies,
     regionPriority,
     probeCache
   })
+  const nextMembers = doc.proxies
+    .map((proxy) => String(proxy.name ?? '').trim())
+    .filter((name) => name.length > 0)
+  const previousMembers = await readMailProviderMembers()
+  const membershipChanged = mailProviderMembershipChanged(previousMembers, nextMembers)
   await writeFile(providerFilePath(), stringifyYaml(doc), 'utf8')
-  return doc.proxies.length
+  if (membershipChanged) {
+    providerReloadPending = true
+  }
+  return {
+    count: nextMembers.length,
+    membershipChanged
+  }
 }
 
-async function reloadAndWarmMailGroup(): Promise<void> {
+export async function reloadAndWarmMailGroup(): Promise<void> {
   try {
     await mihomoUpdateProxyProviders(MAIL_NODE_PROVIDER_ID)
+    providerReloadPending = false
+    providerReloadFailing = false
+  } catch (error) {
+    providerReloadPending = true
+    if (!providerReloadFailing) {
+      providerReloadFailing = true
+      await appendAppLog(
+        `[SparkleMailProbe]: provider reload failed err=${error instanceof Error ? error.message : String(error)}\n`
+      )
+    }
+    return
+  }
+  try {
     await mihomoGroupDelay(MAIL_DEDICATED_GROUP_NAME, MAIL_DELAY_TEST_URL)
   } catch {
     // best-effort warmup
   }
 }
 
-let probeInFlight = false
-
-export async function bootstrapSparkleMailProvider(): Promise<void> {
-  if (probeInFlight) {
+/** 只有 provider 文件成员变化且上一次热重载失败时才重试；成功一次后为空操作。 */
+export async function ensureMailProviderReloaded(): Promise<void> {
+  if (!providerReloadPending) {
     return
   }
-  probeInFlight = true
+  await reloadAndWarmMailGroup()
+}
+
+let mailProbeTail: Promise<void> = Promise.resolve()
+
+/** 串行执行邮件 provider 探测/写盘/重载，避免全量补测与当前节点复测互相覆盖缓存。 */
+export function runSparkleMailProbeExclusive(task: () => Promise<void>): Promise<void> {
+  const run = mailProbeTail.then(
+    () => task(),
+    () => task()
+  )
+  mailProbeTail = run.then(
+    () => undefined,
+    () => undefined
+  )
+  return run
+}
+
+let bootstrapQueued = false
+
+export async function bootstrapSparkleMailProvider(): Promise<void> {
+  if (bootstrapQueued) {
+    return
+  }
+  bootstrapQueued = true
   try {
-    const { current } = await getProfileConfig()
-    if (!current || current === 'default') {
-      return
-    }
-    const currentProfile = await getProfile(current)
-    const proxies = extractProxies(currentProfile) as MailProxyRecord[]
+    await runSparkleMailProbeExclusive(runBootstrapSparkleMailProvider)
+  } finally {
+    bootstrapQueued = false
+  }
+}
+
+async function runBootstrapSparkleMailProvider(): Promise<void> {
+  try {
+    const proxies = await loadCurrentMailProxies()
     if (proxies.length === 0) {
       return
     }
@@ -276,10 +218,10 @@ export async function bootstrapSparkleMailProvider(): Promise<void> {
       (proxy) => cache.get(computeProxyNodeFingerprint(proxy))?.alive === true
     ).length
     if (cachedAliveCount > 0) {
-      await writeSparkleMailProviderFromCache(proxies, regionPriority, cache)
-      await reloadAndWarmMailGroup()
+      const { count } = await writeSparkleMailProviderFromCache(proxies, regionPriority, cache)
+      await ensureMailProviderReloaded()
       await appendAppLog(
-        `[SparkleMailProbe]: loaded ${cachedAliveCount} verified mail nodes from cache\n`
+        `[SparkleMailProbe]: loaded ${cachedAliveCount} verified mail nodes from cache active_pool=${count}\n`
       )
     }
 
@@ -309,10 +251,8 @@ export async function bootstrapSparkleMailProvider(): Promise<void> {
 
     if (preferredUnprobed.length > 0) {
       await saveSparkleMailProbeCache(cache)
-      const count = await writeSparkleMailProviderFromCache(proxies, regionPriority, cache)
-      if (newlyAlive > 0 || cachedAliveCount === 0) {
-        await reloadAndWarmMailGroup()
-      }
+      const { count } = await writeSparkleMailProviderFromCache(proxies, regionPriority, cache)
+      await ensureMailProviderReloaded()
       await appendAppLog(
         `[SparkleMailProbe]: fast-tier probed=${preferredUnprobed.length} newly_alive=${newlyAlive} active_pool=${count}\n`
       )
@@ -334,10 +274,8 @@ export async function bootstrapSparkleMailProvider(): Promise<void> {
 
     if (remainingUnprobed.length > 0) {
       await saveSparkleMailProbeCache(cache)
-      const count = await writeSparkleMailProviderFromCache(proxies, regionPriority, cache)
-      if (bgAlive > 0) {
-        await reloadAndWarmMailGroup()
-      }
+      const { count } = await writeSparkleMailProviderFromCache(proxies, regionPriority, cache)
+      await ensureMailProviderReloaded()
       await appendAppLog(
         `[SparkleMailProbe]: full-tier probed=${remainingUnprobed.length} newly_alive=${bgAlive} active_pool=${count}\n`
       )
@@ -346,8 +284,6 @@ export async function bootstrapSparkleMailProvider(): Promise<void> {
     await appendAppLog(
       `[SparkleMailProbe]: error=${error instanceof Error ? error.message : String(error)}\n`
     )
-  } finally {
-    probeInFlight = false
   }
 }
 

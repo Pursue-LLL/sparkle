@@ -1,3 +1,7 @@
+// [INPUT] cursorProxyGroup::isSparkleAutoSelectSubGroup (POS: Sparkle 组名判定) · mihomo `/connections` 链路 · mihomo 组列表
+// [OUTPUT] collectActiveWarmupGroupNames · warmupRegionalUrlTestGroupsCore · RegionalUrlTestWarmupApi
+// [POS] 地区 url-test 组的按需预热：只测活动连接链路或当前被上层选中的组，未使用不发起测速。
+
 import { isSparkleAutoSelectSubGroup, resolveDelayTestUrl } from './cursorProxyGroup'
 import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'
 
@@ -19,11 +23,37 @@ export function assertRegionalUrlTestWarmupApi(
   }
 }
 
+/** 只收集正在承载流量或已被上层选中的 Sparkle 地区组；未使用的组不预热。 */
+export function collectActiveWarmupGroupNames(
+  groups: readonly Pick<ControllerMixedGroup, 'name' | 'now'>[],
+  connections: ControllerConnections | undefined
+): Set<string> {
+  const active = new Set<string>()
+  for (const connection of connections?.connections ?? []) {
+    for (const chain of connection.chains ?? []) {
+      if (isSparkleAutoSelectSubGroup(chain)) {
+        active.add(chain)
+      }
+    }
+  }
+  for (const group of groups) {
+    if (isSparkleAutoSelectSubGroup(group.now)) {
+      active.add(group.now)
+    }
+  }
+  return active
+}
+
 export async function warmupRegionalUrlTestGroupsCore(
-  api: RegionalUrlTestWarmupApi
+  api: RegionalUrlTestWarmupApi,
+  activeGroupNames: ReadonlySet<string>
 ): Promise<RegionalUrlTestWarmupResult> {
   assertRegionalUrlTestWarmupApi(api)
   const { mihomoGroups, mihomoGroupDelay } = api
+
+  if (activeGroupNames.size === 0) {
+    return { warmed: 0, failures: [] }
+  }
 
   const groups = await mihomoGroups()
   if (!groups?.length) {
@@ -33,7 +63,7 @@ export async function warmupRegionalUrlTestGroupsCore(
   let warmed = 0
   const failures: Array<{ group: string; error: string }> = []
   for (const group of groups) {
-    if (!isSparkleAutoSelectSubGroup(group.name)) {
+    if (!isSparkleAutoSelectSubGroup(group.name) || !activeGroupNames.has(group.name)) {
       continue
     }
     if (group.type !== 'URLTest') {

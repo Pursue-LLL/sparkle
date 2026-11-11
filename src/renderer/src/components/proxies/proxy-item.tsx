@@ -1,7 +1,8 @@
 // [INPUT] @renderer/utils/proxy-delay-sample-age（POS: 延迟样本年龄/提示文案） · @sparkle-core/proxyDelayVerdictCore（POS: 延迟判定） ·
-//         @renderer/utils/agy-probe-display（POS: agy 实测秒级文案/色调） · ./agy-delay-control（POS: agy 真实延迟 Chip）
-// [OUTPUT] ProxyItem: 节点卡片（选择、手动测速、固定、详情弹窗、agy 实测 Chip）
-// [POS] 代理页节点卡片：普通组走 mihomo 延迟样本，`🎯 agy 专用` 走真实 agy 请求实测且不渲染 mihomo 详情弹窗。
+//         @renderer/utils/agy-probe-display（POS: agy 实测秒级文案/色调） · ./agy-delay-control（POS: agy 真实延迟 Chip） ·
+//         ./grok-delay-control（POS: grok 真实请求 Chip）
+// [OUTPUT] ProxyItem: 节点卡片（选择、手动测速、固定、详情弹窗、agy/grok 实测 Chip）
+// [POS] 代理页节点卡片：普通组走 mihomo 延迟样本；`🎯 agy 专用` / `grok 专用` 走主进程真实请求快照，且不渲染 mihomo 详情弹窗。
 import { Button, Card, CardBody, Tooltip } from '@heroui/react'
 import { notify } from '@renderer/utils/notification'
 import { formatUnknownErrorForUi } from '@renderer/utils/format-unknown-error'
@@ -18,6 +19,7 @@ import { effectiveProxyDelay, judgeProxyForUrl } from '@sparkle-core/proxyDelayV
 import { mihomoUnfixedProxy } from '@renderer/utils/ipc'
 import { useProbeWarmup } from '@renderer/hooks/use-probe-warmup'
 import AgyDelayControl from './agy-delay-control'
+import GrokDelayControl from './grok-delay-control'
 import ProxyDetailTooltip from './proxy-detail-tooltip'
 
 interface Props {
@@ -34,6 +36,8 @@ interface Props {
   selected: boolean
   /** agy 组专用：undefined = 不是 agy 组；null = agy 组但尚无实测样本。 */
   agyProbe?: AgyProbeSample | null
+  /** grok 组专用：undefined = 不是 grok 组；null = grok 组但尚无实测样本。 */
+  grokProbe?: GrokProbeSample | null
 }
 
 const isGroup = (
@@ -160,7 +164,8 @@ const ProxyItem: React.FC<Props> = (props) => {
     selected,
     onSelect,
     onProxyDelay,
-    agyProbe
+    agyProbe,
+    grokProbe
   } = props
   const shouldShowGroupSelectedProxy =
     showGroupSelectedProxy && isGroup(proxy) && Boolean(proxy.now)
@@ -350,6 +355,8 @@ const ProxyItem: React.FC<Props> = (props) => {
                   )}
                   {agyProbe !== undefined ? (
                     <AgyDelayControl sample={agyProbe} />
+                  ) : grokProbe !== undefined ? (
+                    <GrokDelayControl sample={grokProbe} />
                   ) : (
                     <ProxyDelayControl
                       delay={delay}
@@ -399,6 +406,8 @@ const ProxyItem: React.FC<Props> = (props) => {
                   <div className="flex items-center">
                     {agyProbe !== undefined ? (
                       <AgyDelayControl sample={agyProbe} />
+                    ) : grokProbe !== undefined ? (
+                      <GrokDelayControl sample={grokProbe} />
                     ) : (
                       <ProxyDelayControl
                         delay={delay}
@@ -419,7 +428,7 @@ const ProxyItem: React.FC<Props> = (props) => {
           </div>
         </CardBody>
       </Card>
-      {showProxyDetailTooltip && agyProbe === undefined && (
+      {showProxyDetailTooltip && agyProbe === undefined && grokProbe === undefined && (
         <ProxyDetailTooltip
           proxy={proxy}
           probeUrl={probeUrl}

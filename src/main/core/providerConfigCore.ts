@@ -8,7 +8,11 @@ import {
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import { MAIL_NODE_PROVIDER_ID } from './sparkleMailProviderCore'
 import { AGY_NODE_PROVIDER_ID } from './sparkleAgyProviderCore'
-import { GEMINI_REACHABILITY_PROBE_URL, MAIL_DELAY_TEST_URL } from './cursorProxyGroup'
+import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
+import {
+  GEMINI_REACHABILITY_PROBE_URL,
+  MAIL_DELAY_TEST_URL
+} from './cursorProxyGroup'
 import {
   AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
   AUTO_SELECT_GEMINI_PROBE_URL
@@ -101,6 +105,14 @@ export function buildBaseConfigWithProviders(
       timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
       lazy: true
     }
+  }
+
+  // grok 专用组是 select + 应用层探针（sparkleGrokProbe）：稳态只复核当前节点，
+  // provider 不做周期体检，避免池内节点被反复全量探测（这正是"找到一个就停"的前提）。
+  baseConfig['proxy-providers'][GROK_NODE_PROVIDER_ID] = {
+    type: 'file',
+    path: resolveProviderPath(GROK_NODE_PROVIDER_ID),
+    'health-check': { enable: false }
   }
 
   if (vps.length > 0) {

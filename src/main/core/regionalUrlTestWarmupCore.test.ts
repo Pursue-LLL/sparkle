@@ -8,6 +8,7 @@ import {
 } from './cursorProxyGroup'
 import {
   assertRegionalUrlTestWarmupApi,
+  collectActiveWarmupGroupNames,
   warmupRegionalUrlTestGroupsCore
 } from './regionalUrlTestWarmupCore'
 
@@ -65,7 +66,7 @@ describe('regionalUrlTestWarmupCore', () => {
         delayed.push({ group, url: url ?? '' })
         return {}
       }
-    })
+    }, new Set(['Sparkle-新加坡', 'Sparkle-日本', CURSOR_AUTO_SELECT_GROUP_NAME]))
 
     assert.equal(result.warmed, 3)
     assert.equal(result.failures.length, 0)
@@ -74,5 +75,65 @@ describe('regionalUrlTestWarmupCore', () => {
       { group: 'Sparkle-日本', url: GEMINI_REACHABILITY_PROBE_URL },
       { group: CURSOR_AUTO_SELECT_GROUP_NAME, url: CURSOR_DELAY_TEST_URL },
     ])
+  })
+
+  it('skips inactive regional groups and does nothing when no group is in use', async () => {
+    const delayed: string[] = []
+    const api = {
+      mihomoGroups: async () => [
+        {
+          name: 'Sparkle-台湾',
+          type: 'URLTest',
+          all: [],
+          now: '',
+          history: [],
+          alive: true
+        }
+      ] as unknown as ControllerMixedGroup[],
+      mihomoGroupDelay: async (group) => {
+        delayed.push(group)
+        return {}
+      }
+    }
+
+    const skipped = await warmupRegionalUrlTestGroupsCore(api, new Set(['Sparkle-日本']))
+    assert.equal(skipped.warmed, 0)
+    assert.deepEqual(delayed, [])
+
+    const none = await warmupRegionalUrlTestGroupsCore(api, new Set())
+    assert.equal(none.warmed, 0)
+    assert.deepEqual(delayed, [])
+  })
+
+  it('collects only regional groups from active connection chains or current selections', () => {
+    const groups = [
+      { name: '🚀 节点选择', now: 'Sparkle-台湾' },
+      { name: '🎯 Cursor 专用', now: 'DIRECT' },
+      { name: '自动选择', now: '日本-优化' }
+    ] as unknown as ControllerMixedGroup[]
+    const connections = {
+      downloadTotal: 0,
+      uploadTotal: 0,
+      memory: 0,
+      connections: [
+        {
+          id: '1',
+          metadata: {} as ControllerConnectionDetail['metadata'],
+          upload: 0,
+          download: 0,
+          start: '',
+          chains: ['🚀 节点选择', 'Sparkle-日本', '日本-优化'],
+          rule: '',
+          rulePayload: '',
+          isActive: true
+        }
+      ]
+    } as ControllerConnections
+
+    assert.deepEqual(
+      [...collectActiveWarmupGroupNames(groups, connections)].sort(),
+      ['Sparkle-台湾', 'Sparkle-日本'].sort()
+    )
+    assert.deepEqual([...collectActiveWarmupGroupNames(groups, undefined)], ['Sparkle-台湾'])
   })
 })

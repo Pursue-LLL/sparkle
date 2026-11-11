@@ -128,6 +128,20 @@ async function runPostReadyServices(): Promise<void> {
 
   void (async () => {
     try {
+      const { bootstrapSparkleGrokProvider, startSparkleGrokProbeLoop } = await import(
+        './sparkleGrokProbe'
+      )
+      await bootstrapSparkleGrokProvider()
+      startSparkleGrokProbeLoop()
+    } catch (error) {
+      await appendAppLog(
+        `[SparkleGrokProbe]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`
+      )
+    }
+  })()
+
+  void (async () => {
+    try {
       const { bootstrapSparkleAgyProvider, startSparkleAgyProbeLoop } = await import(
         './sparkleAgyProbe'
       )
@@ -166,12 +180,12 @@ async function runPostReadyServices(): Promise<void> {
   setTimeout(() => {
     void (async () => {
       try {
-        const { collectActiveRegionalGroupNames, warmupRegionalUrlTestGroups } = await import(
+        const { collectActiveWarmupGroupNames, warmupRegionalUrlTestGroups } = await import(
           './regionalUrlTestWarmup'
         )
         const groups = await mihomoGroups()
         const connections = await mihomoGetConnections().catch(() => undefined)
-        const activeGroupNames = collectActiveRegionalGroupNames(groups, connections)
+        const activeGroupNames = collectActiveWarmupGroupNames(groups, connections)
         const warmed = await warmupRegionalUrlTestGroups(
           { mihomoGroups, mihomoGroupDelay },
           activeGroupNames

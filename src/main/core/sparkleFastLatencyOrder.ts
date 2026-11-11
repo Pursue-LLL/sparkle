@@ -1,10 +1,10 @@
-// [INPUT] mihomo provider 探测历史 · sparkle-fast-proxies.yaml · sparkle-fast-delays.json · proxySwitchPriority
+// [INPUT] sparkleFastDelaySnapshotCore (POS: 延迟快照指纹/覆盖率/序列化) · sparkleFastLatencyOrderCore (POS: 历史折算与迟滞) · sparkleFastProviderCore (POS: provider 排序) · mihomo provider 探测历史 · sparkle-fast-proxies.yaml · proxySwitchPriority
 // [OUTPUT] bootstrapSparkleFastLatencyOrder · loadSparkleFastDelaySnapshot · startSparkleFastLatencyOrderLoop
 // [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变，无样本节点全局垫底），并让 mihomo 重读 provider。
-// 每轮实测延迟落盘为快照；生成配置重写 sparkle-fast 时读取快照，避免订阅刷新后退回「未测延迟」的订阅顺序。
+// 启动时先看内存成功样本覆盖率；不足再看磁盘 v2 快照（provider 指纹一致且覆盖 ≥80% 才沿用）；仍不足则逐点补测后重排。
+// 每轮实测延迟按 v2 落盘；生成配置重写 sparkle-fast 时读取快照，避免订阅刷新后退回「未测延迟」的订阅顺序。
 // 文件序只决定「下一次选节点」选谁：`自动选择` 固定（autoSelectStickyPin）后，存活的当前节点不受重排影响。
 // 仅启动阶段且原固定节点不在实测存活表内时解除固定；周期复查绝不解除，避免存活节点被换掉。
-// 启动时若磁盘已有快照则直接沿用，仅首次无快照无样本时才低并发逐点拨测再重排；周期复查仅当新首选明显更快才换文件序。
 // 重排会重载 provider 并清空其探测记录，发生重排后立即逐点补测，让 fallback 的存活判断与下一轮排序有新样本。
 
 import { readFile, writeFile } from 'fs/promises'
@@ -23,8 +23,14 @@ import {
 import { probeProviderLeavesGently } from './providerLeafProbe'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import {
+  hasSufficientSnapshotCoverage,
+  parseSparkleFastDelaySnapshot,
+  serializeSparkleFastDelaySnapshot,
+  snapshotCoverage,
+  type ProxyRecord
+} from './sparkleFastDelaySnapshotCore'
+import {
   collectNodeDelays,
-  hasPreferredUrlSamples,
   hasSameNodeOrder,
   shouldAdoptLatencyOrder
 } from './sparkleFastLatencyOrderCore'
@@ -35,8 +41,6 @@ import {
   type NodeDelayMap
 } from './sparkleFastProviderCore'
 
-type ProxyRecord = Record<string, unknown>
-
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 
 const DELAY_SNAPSHOT_FILENAME = 'sparkle-fast-delays.json'
@@ -45,11 +49,16 @@ function delaySnapshotPath(): string {
   return path.join(dataDir(), DELAY_SNAPSHOT_FILENAME)
 }
 
-/** 读取上一轮实测延迟快照；缺失或损坏时视为尚无样本。 */
-export async function loadSparkleFastDelaySnapshot(): Promise<NodeDelayMap> {
+/**
+ * 读取上一轮实测延迟快照。只有 provider 配置指纹一致时才返回样本；
+ * 旧格式、配置变化、文件名漂移都会返回空表，迫使调用方重新探测。
+ */
+export async function loadSparkleFastDelaySnapshot(
+  currentProxies: readonly ProxyRecord[]
+): Promise<NodeDelayMap> {
   try {
-    const raw = JSON.parse(await readFile(delaySnapshotPath(), 'utf8')) as Record<string, number>
-    return new Map(Object.entries(raw).filter(([, delay]) => Number.isFinite(delay) && delay > 0))
+    const raw = await readFile(delaySnapshotPath(), 'utf8')
+    return parseSparkleFastDelaySnapshot(raw, currentProxies)
   } catch {
     return new Map()
   }
@@ -57,13 +66,20 @@ export async function loadSparkleFastDelaySnapshot(): Promise<NodeDelayMap> {
 
 /** provider 有实测样本时以其为准并写入快照；样本被清空（如 provider 刚重载）时退回快照。 */
 async function resolveSparkleFastDelayMap(
-  providerProxies: Parameters<typeof collectNodeDelays>[0]
+  providerProxies: Parameters<typeof collectNodeDelays>[0],
+  currentProxies: readonly ProxyRecord[]
 ): Promise<NodeDelayMap> {
+  const fingerprintProxies =
+    currentProxies.length > 0 ? currentProxies : (providerProxies as unknown as ProxyRecord[])
   const measured = collectNodeDelays(providerProxies, AUTO_SELECT_GEMINI_PROBE_URL)
   if (measured.size === 0) {
-    return loadSparkleFastDelaySnapshot()
+    return loadSparkleFastDelaySnapshot(fingerprintProxies)
   }
-  await writeFile(delaySnapshotPath(), JSON.stringify(Object.fromEntries(measured)), 'utf8')
+  await writeFile(
+    delaySnapshotPath(),
+    serializeSparkleFastDelaySnapshot(fingerprintProxies, measured),
+    'utf8'
+  )
   return measured
 }
 
@@ -97,15 +113,14 @@ async function refillProviderSamplesAfterReorder(): Promise<void> {
  */
 async function applyLatencyOrder(force: boolean): Promise<boolean> {
   const provider = (await mihomoProxyProviders()).providers[FAST_NODE_PROVIDER_ID]
-  const delays = await resolveSparkleFastDelayMap(provider?.proxies ?? [])
+  const filePath = path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME)
+  const current = (parseYaml<{ proxies?: ProxyRecord[] }>(await readFile(filePath, 'utf8'))
+    .proxies ?? []) as ProxyRecord[]
+  const delays = await resolveSparkleFastDelayMap(provider?.proxies ?? [], current)
   if (delays.size === 0) {
     await appendAppLog('[SparkleFastOrder]: skipped, no probe samples yet\n')
     return false
   }
-
-  const filePath = path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME)
-  const current = (parseYaml<{ proxies?: ProxyRecord[] }>(await readFile(filePath, 'utf8'))
-    .proxies ?? []) as ProxyRecord[]
   const { proxySwitchPriority = [] } = await getAppConfig()
   const { loadGeminiBlockedNodeNames } = await import('./sparkleGeminiProbe')
   const blockedNodeNames = await loadGeminiBlockedNodeNames(current)
@@ -117,7 +132,10 @@ async function applyLatencyOrder(force: boolean): Promise<boolean> {
   })
   const nextFirst = String(ordered[0]?.name ?? '')
   const sameOrder = hasSameNodeOrder(current, ordered)
-  if (!force && (sameOrder || !shouldAdoptLatencyOrder(String(current[0]?.name), nextFirst, delays))) {
+  if (
+    !force &&
+    (sameOrder || !shouldAdoptLatencyOrder(String(current[0]?.name), nextFirst, delays))
+  ) {
     return false
   }
 
@@ -134,23 +152,44 @@ async function applyLatencyOrder(force: boolean): Promise<boolean> {
   return !sameOrder
 }
 
+async function readCurrentSparkleFastProxies(): Promise<ProxyRecord[]> {
+  try {
+    const filePath = path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME)
+    const document = parseYaml<{ proxies?: ProxyRecord[] }>(await readFile(filePath, 'utf8'))
+    return document.proxies ?? []
+  } catch {
+    return []
+  }
+}
+
 /**
  * API 就绪后的启动处理：
- * - 若磁盘已有延迟快照（factory.ts 生成配置时已按快照排好 sparkle-fast-proxies.yaml）且内存尚未完成全量探测，
- *   直接沿用快照顺序并仅检查当前固定节点是否存活，避免冷启动重复全量拨测与重载；
- * - 若首次运行既无快照也无内存样本，才执行一次低并发拨测并重排。
+ * - 内存里已有 ≥80% Gemini 样本：直接按现有历史重排；
+ * - 否则只有磁盘快照与当前 provider 配置指纹一致且覆盖率 ≥80% 时才沿用；
+ * - 快照缺失、配置变化或覆盖不足时强制逐点补测，不能拿残缺快照跳过探测。
  */
 export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
   const provider = (await mihomoProxyProviders()).providers[FAST_NODE_PROVIDER_ID]
-  if (!hasPreferredUrlSamples(provider?.proxies ?? [], AUTO_SELECT_GEMINI_PROBE_URL)) {
-    const snapshot = await loadSparkleFastDelaySnapshot()
-    if (snapshot.size > 0) {
+  const providerProxies = provider?.proxies ?? []
+  const currentProxies = await readCurrentSparkleFastProxies()
+  const fingerprintProxies =
+    currentProxies.length > 0 ? currentProxies : (providerProxies as unknown as ProxyRecord[])
+  const memorySamples = collectNodeDelays(providerProxies, AUTO_SELECT_GEMINI_PROBE_URL)
+  if (!hasSufficientSnapshotCoverage(fingerprintProxies, memorySamples)) {
+    const snapshot = await loadSparkleFastDelaySnapshot(fingerprintProxies)
+    if (hasSufficientSnapshotCoverage(fingerprintProxies, snapshot)) {
+      const coverage = snapshotCoverage(fingerprintProxies, snapshot)
       await releaseAutoSelectPinIfUnhealthy(snapshot)
       await appendAppLog(
-        `[SparkleFastOrder]: bootstrap using disk snapshot samples=${snapshot.size}\n`
+        `[SparkleFastOrder]: bootstrap using disk snapshot samples=${snapshot.size} covered=${coverage.covered}/${coverage.total}\n`
       )
       return
     }
+    const memoryCoverage = snapshotCoverage(fingerprintProxies, memorySamples)
+    const diskCoverage = snapshotCoverage(fingerprintProxies, snapshot)
+    await appendAppLog(
+      `[SparkleFastOrder]: bootstrap samples insufficient memory=${memorySamples.size} disk=${snapshot.size} covered=${diskCoverage.covered}/${diskCoverage.total} action=probe\n`
+    )
     try {
       // 逐点低并发拨测：整个 provider 同时体检会把正常节点测成超时，进而被排到段尾。
       await probeProviderLeavesGently(FAST_NODE_PROVIDER_ID)
@@ -159,6 +198,9 @@ export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
         `[SparkleFastOrder]: probe failed: ${error instanceof Error ? error.message : String(error)}\n`
       )
     }
+    await appendAppLog(
+      `[SparkleFastOrder]: probe complete memory_before=${memoryCoverage.covered}/${memoryCoverage.total}\n`
+    )
   }
   if (await applyLatencyOrder(true)) {
     await refillProviderSamplesAfterReorder()

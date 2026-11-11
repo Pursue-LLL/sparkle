@@ -1,3 +1,8 @@
+// [INPUT] @renderer/hooks/use-groups（POS: 代理组数据源） · @renderer/hooks/use-agy-probe-snapshot（POS: agy 真实请求快照） ·
+//         @renderer/hooks/use-grok-probe-snapshot（POS: grok 真实请求快照） · @renderer/utils/ipc（POS: 主进程能力桥） ·
+//         @sparkle-core/proxyDelayVerdictCore（POS: 延迟判定） · @sparkle-core/cursorProxyGroup（POS: 专用组名）
+// [OUTPUT] Proxies: 代理组页面（分组渲染、节点选择、手动测速、agy/grok 实测展示、设置抽屉）
+// [POS] 代理页容器：计算每组的 probeUrl、按组类型下发 agy/grok 快照、组合 GroupHeader / ProxyItem / 设置抽屉。
 import { Button, Card, CardBody, Chip } from '@heroui/react'
 import { buildStamp } from '@renderer/utils/init'
 import { Avatar } from '@heroui-v3/react'
@@ -18,8 +23,14 @@ import ProxySettingDrawer from '@renderer/components/proxies/proxy-setting-drawe
 import { IoIosArrowBack } from 'react-icons/io'
 import { MdDoubleArrow, MdOutlineSpeed, MdTune } from 'react-icons/md'
 import { useGroups } from '@renderer/hooks/use-groups'
+import { useAgyProbeSnapshot } from '@renderer/hooks/use-agy-probe-snapshot'
+import { useGrokProbeSnapshot } from '@renderer/hooks/use-grok-probe-snapshot'
 import ProbeWarmupChip from '@renderer/components/proxies/probe-warmup-chip'
 import { effectiveProxyDelay, judgeProxyForUrl } from '@sparkle-core/proxyDelayVerdictCore'
+import {
+  AGY_DEDICATED_GROUP_NAME,
+  GROK_DEDICATED_GROUP_NAME
+} from '@sparkle-core/cursorProxyGroup'
 import CollapseInput from '@renderer/components/base/collapse-input'
 import { includesIgnoreCase } from '@renderer/utils/includes'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
@@ -33,6 +44,19 @@ import {
 } from '@renderer/utils/cursor-proxy-groups'
 
 type ProxyLike = ControllerProxiesDetail | ControllerGroupDetail
+
+/** 延迟口径：普通组走 mihomo 样本；agy / grok 走主进程真实请求快照。 */
+type GroupProbeMode = 'mihomo' | 'agy' | 'grok'
+
+function resolveGroupProbeMode(groupName: string): GroupProbeMode {
+  if (groupName === AGY_DEDICATED_GROUP_NAME) {
+    return 'agy'
+  }
+  if (groupName === GROK_DEDICATED_GROUP_NAME) {
+    return 'grok'
+  }
+  return 'mihomo'
+}
 
 const EMPTY_PROXIES: ProxyLike[] = []
 
@@ -60,6 +84,8 @@ interface GroupHeaderProps {
   index: number
   group: ControllerMixedGroup
   probeUrl: string
+  /** agy / grok 组：面板不展示 mihomo 网络延迟，改用真实请求实测。 */
+  probeMode: GroupProbeMode
   isOpen: boolean
   isLast: boolean
   groupDisplayLayout: 'hidden' | 'single' | 'double'
@@ -75,6 +101,7 @@ const GroupHeader = memo(function GroupHeader({
   index,
   group,
   probeUrl,
+  probeMode,
   isOpen,
   isLast,
   groupDisplayLayout,
@@ -85,7 +112,15 @@ const GroupHeader = memo(function GroupHeader({
   onScrollToProxy,
   onGroupDelay
 }: GroupHeaderProps) {
-  const probeLabel = formatDelayTestUrlDisplay(probeUrl)
+  let probeLabel = `探针 ${formatDelayTestUrlDisplay(probeUrl)}`
+  let probeTitle = `探针地址: ${probeUrl}`
+  if (probeMode === 'agy') {
+    probeLabel = 'agy 实测'
+    probeTitle = 'agy 真实请求实测（每 3 分钟自动复测当前节点）'
+  } else if (probeMode === 'grok') {
+    probeLabel = 'grok 实测'
+    probeTitle = 'grok.com 真实请求实测（每 60 秒复核当前节点，失败自动切换）'
+  }
   return (
     <div className={`w-full pt-2 ${isLast && !isOpen ? 'pb-2' : ''} px-2`}>
       <Card as="div" isPressable fullWidth onPress={() => onToggle(index, isOpen)}>
@@ -137,9 +172,9 @@ const GroupHeader = memo(function GroupHeader({
                     )}
                     <span
                       className="truncate min-w-0"
-                      title={`探针地址: ${probeUrl}`}
+                      title={probeTitle}
                     >
-                      探针 {probeLabel}
+                      {probeLabel}
                     </span>
                   </div>
                 )}
@@ -162,15 +197,17 @@ const GroupHeader = memo(function GroupHeader({
                 <Button variant="light" size="sm" isIconOnly onPress={() => onScrollToProxy(index)}>
                   <FaLocationCrosshairs className="text-lg text-foreground-500" />
                 </Button>
-                <Button
-                  variant="light"
-                  isLoading={delaying}
-                  size="sm"
-                  isIconOnly
-                  onPress={() => onGroupDelay(index)}
-                >
-                  <MdOutlineSpeed className="text-lg text-foreground-500" />
-                </Button>
+                {probeMode === 'mihomo' && (
+                  <Button
+                    variant="light"
+                    isLoading={delaying}
+                    size="sm"
+                    isIconOnly
+                    onPress={() => onGroupDelay(index)}
+                  >
+                    <MdOutlineSpeed className="text-lg text-foreground-500" />
+                  </Button>
+                )}
               </div>
               <IoIosArrowBack
                 className={`transition duration-200 ml-2 h-8 text-lg text-foreground-500 flex items-center ${
@@ -201,6 +238,8 @@ const Proxies: React.FC = () => {
   const { controledMihomoConfig } = useControledMihomoConfig()
   const { mode = 'rule' } = controledMihomoConfig || {}
   const { groups = [], mutate } = useGroups()
+  const agyProbeSnapshot = useAgyProbeSnapshot()
+  const grokProbeSnapshot = useGrokProbeSnapshot()
   const { appConfig } = useAppConfig()
   const {
     proxyDisplayLayout = 'double',
@@ -660,6 +699,7 @@ const Proxies: React.FC = () => {
           index={index}
           group={g[index]}
           probeUrl={getGroupProbeUrlRef.current(g[index])}
+          probeMode={resolveGroupProbeMode(g[index].name)}
           isOpen={isOpen[index]}
           isLast={index === g.length - 1}
           groupDisplayLayout={groupDisplayLayoutRef.current}
@@ -708,6 +748,16 @@ const Proxies: React.FC = () => {
           showGroupSelectedProxy={showGroupSelected}
           showProxyDetailTooltip={showTooltip}
           selected={proxy.name === grps[groupIndex].now}
+          agyProbe={
+            grps[groupIndex].name === AGY_DEDICATED_GROUP_NAME
+              ? (agyProbeSnapshot[proxy.name] ?? null)
+              : undefined
+          }
+          grokProbe={
+            grps[groupIndex].name === GROK_DEDICATED_GROUP_NAME
+              ? (grokProbeSnapshot[proxy.name] ?? null)
+              : undefined
+          }
         />
       )
     }
@@ -730,7 +780,7 @@ const Proxies: React.FC = () => {
     ) : (
       <div>Never See This</div>
     )
-  }, [])
+  }, [agyProbeSnapshot, grokProbeSnapshot])
 
   return (
     <BasePage

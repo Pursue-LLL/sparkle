@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   buildSparkleMailProviderDocument,
+  mailProviderMembershipChanged,
   orderMailProxies,
   type MailNodeProbeRecord,
 } from './sparkleMailProviderCore'
@@ -70,5 +71,14 @@ describe('sparkleMailProviderCore', () => {
       proxies.some((proxy) => proxy.type === 'anytls'),
       false,
     )
+  })
+
+  it('detects membership changes but ignores pure order changes', () => {
+    assert.equal(mailProviderMembershipChanged(['A', 'B'], ['B', 'A']), false)
+    assert.equal(mailProviderMembershipChanged(['A', 'B'], ['A', 'B']), false)
+    assert.equal(mailProviderMembershipChanged(['A', 'B'], ['A']), true)
+    assert.equal(mailProviderMembershipChanged(['A'], ['A', 'B']), true)
+    assert.equal(mailProviderMembershipChanged([], ['A']), true)
+    assert.equal(mailProviderMembershipChanged([], []), false)
   })
 })

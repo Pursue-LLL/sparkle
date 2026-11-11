@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import { resolveAgyAuditBackoffMs, runAgyAudit, type AgyAuditOutcome } from './sparkleAgyProbeCore'
+import {
+  AGY_PIN_UNKNOWN_STREAK_LIMIT,
+  resolveAgyAuditBackoffMs,
+  runAgyAudit,
+  shouldRepairAgyPin,
+  type AgyAuditOutcome
+} from './sparkleAgyProbeCore'
 import type { AgyNodeProbeRecord, AgyProxyRecord } from './sparkleAgyProviderCore'
 
 const NODES: AgyProxyRecord[] = [
@@ -36,7 +42,7 @@ describe('runAgyAudit', () => {
     )
 
     assert.deepEqual(probed, ['新加坡-优化2-GPT', '美国LA-优化2-GPT', '🇯🇵 日本 02'])
-    assert.deepEqual(result, { probed: 2, usable: 1, aborted: false })
+    assert.deepEqual(result, { probed: 2, usable: 1, aborted: false, usableNode: '美国LA-优化2-GPT' })
     assert.deepEqual(cache.get(computeProxyNodeFingerprint(NODES[0]!)), {
       usable: false,
       rttMs: 210,
@@ -48,6 +54,62 @@ describe('runAgyAudit', () => {
       checkedAt: 1000
     })
     // 无法定性的节点绝不写缓存，避免把健康节点误标成不可用。
+    assert.equal(cache.has(computeProxyNodeFingerprint(NODES[2]!)), false)
+  })
+
+  it('stops on the first usable node when stopOnUsable is set', async () => {
+    const cache = new Map<string, AgyNodeProbeRecord>()
+    const probed: string[] = []
+
+    const result = await runAgyAudit(
+      { pending: NODES, cache, budgetMs: 60_000, stopOnUsable: true },
+      {
+        probeNode: async (node) => {
+          probed.push(node)
+          return outcomeOf('usable', 320)
+        }
+      }
+    )
+
+    assert.deepEqual(probed, ['新加坡-优化2-GPT'])
+    assert.deepEqual(result, { probed: 1, usable: 1, aborted: false, usableNode: '新加坡-优化2-GPT' })
+    assert.equal(cache.size, 1)
+  })
+
+  it('keeps scanning unusable nodes until a usable one is found', async () => {
+    const cache = new Map<string, AgyNodeProbeRecord>()
+    const probed: string[] = []
+
+    const result = await runAgyAudit(
+      { pending: NODES, cache, budgetMs: 60_000, stopOnUsable: true },
+      {
+        probeNode: async (node) => {
+          probed.push(node)
+          return node === '🇯🇵 日本 02' ? outcomeOf('usable', 900) : outcomeOf('unusable', 120)
+        }
+      }
+    )
+
+    assert.deepEqual(probed, ['新加坡-优化2-GPT', '美国LA-优化2-GPT', '🇯🇵 日本 02'])
+    assert.deepEqual(result, { probed: 3, usable: 1, aborted: false, usableNode: '🇯🇵 日本 02' })
+  })
+
+  it('records every attempted node (including undecided timeouts) for repair progress', async () => {
+    const cache = new Map<string, AgyNodeProbeRecord>()
+    const attempted = new Map<string, number>()
+
+    await runAgyAudit(
+      { pending: NODES, cache, budgetMs: 60_000, attempted },
+      {
+        now: () => 1000,
+        probeNode: async (node) =>
+          node === '🇯🇵 日本 02' ? outcomeOf('unknown') : outcomeOf('usable')
+      }
+    )
+
+    assert.equal(attempted.get(computeProxyNodeFingerprint(NODES[0]!)), 1000)
+    assert.equal(attempted.get(computeProxyNodeFingerprint(NODES[2]!)), 1000)
+    // 超时仍然不写缓存（避免误判节点死亡），只是记录「试过了」。
     assert.equal(cache.has(computeProxyNodeFingerprint(NODES[2]!)), false)
   })
 
@@ -67,7 +129,12 @@ describe('runAgyAudit', () => {
     )
 
     assert.deepEqual(probed, ['新加坡-优化2-GPT', '美国LA-优化2-GPT'])
-    assert.deepEqual(result, { probed: 1, usable: 1, aborted: true })
+    assert.deepEqual(result, {
+      probed: 1,
+      usable: 1,
+      aborted: true,
+      usableNode: '新加坡-优化2-GPT'
+    })
   })
 
   it('stops when the audit budget is exhausted and keeps earlier verdicts', async () => {
@@ -85,7 +152,12 @@ describe('runAgyAudit', () => {
       }
     )
 
-    assert.deepEqual(result, { probed: 1, usable: 1, aborted: true })
+    assert.deepEqual(result, {
+      probed: 1,
+      usable: 1,
+      aborted: true,
+      usableNode: '新加坡-优化2-GPT'
+    })
   })
 
   it('handles an empty pending list', async () => {
@@ -93,12 +165,31 @@ describe('runAgyAudit', () => {
       { pending: [], cache: new Map(), budgetMs: 1000 },
       { probeNode: async () => outcomeOf('usable') }
     )
-    assert.deepEqual(result, { probed: 0, usable: 0, aborted: false })
+    assert.deepEqual(result, { probed: 0, usable: 0, aborted: false, usableNode: null })
+  })
+})
+
+describe('shouldRepairAgyPin', () => {
+  it('repairs immediately when there is no pin or the retried probe still says unusable', () => {
+    assert.equal(shouldRepairAgyPin({ pinVerdict: null, unknownStreak: 0 }), true)
+    assert.equal(shouldRepairAgyPin({ pinVerdict: 'unusable', unknownStreak: 0 }), true)
+  })
+
+  it('tolerates one timeout round and repairs on consecutive timeouts', () => {
+    assert.equal(shouldRepairAgyPin({ pinVerdict: 'unknown', unknownStreak: 1 }), false)
+    assert.equal(
+      shouldRepairAgyPin({ pinVerdict: 'unknown', unknownStreak: AGY_PIN_UNKNOWN_STREAK_LIMIT }),
+      true
+    )
+  })
+
+  it('never repairs while the pin is usable', () => {
+    assert.equal(shouldRepairAgyPin({ pinVerdict: 'usable', unknownStreak: 0 }), false)
   })
 })
 
 describe('resolveAgyAuditBackoffMs', () => {
-  const INTERVAL = 15 * 60 * 1000
+  const INTERVAL = 3 * 60 * 1000
 
   it('does not back off after a round with at least one usable node', () => {
     assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 0), 0)

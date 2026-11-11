@@ -1,7 +1,7 @@
 // [INPUT] `自动选择` 组在 mihomo 的状态（type / now / fixed / all）· 上一轮观察记忆 · 当前时间戳
-// [OUTPUT] decideStickyPin · recordRestoredStickyPin · INITIAL_STICKY_PIN_MEMORY · STICKY_PIN_STABLE_POLLS · STICKY_PIN_RESTORE_COOLDOWN_MS
-// [POS] `自动选择` 粘性决策：fallback 选出的存活节点连续稳定后固定下来，之后只有该节点真挂掉才会换。
-// 纯函数模块，便于单测。
+// [OUTPUT] decideStickyPin · recordRestoredStickyPin · shouldRecheckFixedNodeRegion · recordFixedNodeRegionCheck · INITIAL_STICKY_PIN_MEMORY · INITIAL_FIXED_NODE_REGION_CHECK_MEMORY · STICKY_PIN_STABLE_POLLS · STICKY_PIN_RESTORE_COOLDOWN_MS · FIXED_NODE_REGION_RECHECK_MS
+// [POS] `自动选择` 粘性决策 + 固定节点地区复核节流：fallback 选出的存活节点连续稳定后固定下来，之后只有该节点真挂掉才会换；
+// 地区复核只在节点变化或 5 分钟窗口到期时触发。纯函数模块，便于单测。
 //
 // 为什么要固定：原生 fallback 无迟滞，排在前面的节点一次探测失败即被放弃、恢复后立刻回切，
 // 同一个存活节点会被反复换掉。固定后 mihomo 在该节点存活时一直使用它。
@@ -20,6 +20,9 @@ export const STICKY_PIN_STABLE_POLLS = 2
 /** 同一节点因单点复测恢复固定后的冷却窗口：窗口内再次丢固定视为节点不稳，不再救回。 */
 export const STICKY_PIN_RESTORE_COOLDOWN_MS = 10 * 60 * 1000
 
+/** 固定节点的 Gemini 地区复核间隔：无需每 3 秒读订阅文件，节点变化时立即复核。 */
+export const FIXED_NODE_REGION_RECHECK_MS = 5 * 60 * 1000
+
 const FALLBACK_GROUP_TYPE = 'Fallback'
 
 export interface AutoSelectGroupSnapshot {
@@ -35,6 +38,11 @@ export interface StickyPinMemory {
   lastRestoredAtMs: number
   candidate: string
   stablePolls: number
+}
+
+export interface FixedNodeRegionCheckMemory {
+  node: string
+  checkedAtMs: number
 }
 
 export type StickyPinAction =
@@ -54,6 +62,11 @@ export const INITIAL_STICKY_PIN_MEMORY: StickyPinMemory = {
   lastRestoredAtMs: 0,
   candidate: '',
   stablePolls: 0
+}
+
+export const INITIAL_FIXED_NODE_REGION_CHECK_MEMORY: FixedNodeRegionCheckMemory = {
+  node: '',
+  checkedAtMs: 0
 }
 
 function withCooldownPreserved(
@@ -133,4 +146,25 @@ export function decideStickyPin(
     action: { kind: 'none' },
     memory: withCooldownPreserved(memory, { candidate: group.now, stablePolls })
   }
+}
+
+export function shouldRecheckFixedNodeRegion(
+  fixed: string,
+  memory: FixedNodeRegionCheckMemory,
+  nowMs: number = Date.now()
+): boolean {
+  if (fixed === '') {
+    return false
+  }
+  if (fixed !== memory.node || memory.checkedAtMs <= 0) {
+    return true
+  }
+  return nowMs - memory.checkedAtMs >= FIXED_NODE_REGION_RECHECK_MS
+}
+
+export function recordFixedNodeRegionCheck(
+  fixed: string,
+  nowMs: number = Date.now()
+): FixedNodeRegionCheckMemory {
+  return { node: fixed, checkedAtMs: nowMs }
 }

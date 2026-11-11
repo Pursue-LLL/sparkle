@@ -1,8 +1,9 @@
-// [INPUT] mihomo provider 节点（history / extra[url].history）
+// [INPUT] mihomo provider 节点（history / extra[url].history） · sparkleFastDelaySnapshotCore (POS: 快照覆盖率阈值)
 // [OUTPUT] collectNodeDelays · hasPreferredUrlSamples · hasSameNodeOrder · shouldAdoptLatencyOrder
-// [POS] 把 mihomo 探测历史折算成「节点名 → 延迟」，供 sparkle-fast 段内按延迟排序。
+// [POS] 把 mihomo 成功探测历史折算成「节点名 → 延迟」，供 sparkle-fast 段内按延迟排序；覆盖率阈值与快照层共用。
 // 纯函数模块，便于单测。
 
+import { MIN_PREFERRED_PROBE_COVERAGE_RATIO } from './sparkleFastDelaySnapshotCore'
 import type { NodeDelayMap } from './sparkleFastProviderCore'
 
 /** 取最近若干次成功探测的中位数，抑制单次抖动。 */
@@ -32,9 +33,6 @@ function isProbeAlive(proxy: ProviderNodeProbe, preferredUrl: string): boolean {
   const preferred = proxy.extra?.[preferredUrl]
   return preferred ? preferred.alive : proxy.alive
 }
-
-/** 判定内存探测已就绪所需的最小探测覆盖比例，防止冷启动初期少量节点刚测完就触发残缺样本重排。 */
-const MIN_PREFERRED_PROBE_COVERAGE_RATIO = 0.8
 
 /**
  * 是否已有针对指定探测地址（如 Gemini）的完整探测样本：

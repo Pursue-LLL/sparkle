@@ -33,6 +33,9 @@ export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 export const MAIL_DEDICATED_GROUP_NAME = '📧 邮件专用' as const
 export const MAIL_PROBE_HIDDEN_GROUP_NAME = '__sparkle_mail_probe__' as const
 
+/** Grok 专用出口组：select + 应用层探针选一个固定节点，避免 url-test 全量排名。 */
+export const GROK_DEDICATED_GROUP_NAME = 'grok 专用' as const
+
 /** Antigravity / Code Assist（cloudcode-pa）专用出口组：只收真实 agy 请求验证通过的节点。 */
 export const AGY_DEDICATED_GROUP_NAME = '🎯 agy 专用' as const
 
@@ -70,8 +73,10 @@ export const DEFAULT_GENERAL_DELAY_TEST_URL = 'https://www.gstatic.com/generate_
 export const GEMINI_REACHABILITY_PROBE_URL = 'https://gemini.google.com' as const
 /** Regional Sparkle 自动选择 url-test groups probe ChatGPT reachability, not generic 204. */
 export const AUTO_SELECT_DELAY_TEST_URL = 'https://chatgpt.com' as const
-/** Hong Kong url-test group probes Grok reachability for Stripe/X/Grok traffic. */
-export const HONG_KONG_DELAY_TEST_URL = 'https://grok.com' as const
+/** Grok 专用组探针：Cloudflare 对不可信出口回 403 challenge，只有 200 才代表真能打开 Grok。 */
+export const GROK_DELAY_TEST_URL = 'https://grok.com' as const
+/** Hong Kong url-test group serves X/Twitter/Stripe — probe X, the traffic it actually carries. */
+export const HONG_KONG_DELAY_TEST_URL = 'https://x.com' as const
 /** Mail dedicated url-test group measures RTT among IMAPS/SMTPS-verified nodes. */
 export const MAIL_DELAY_TEST_URL = 'https://mail.google.com' as const
 
@@ -88,9 +93,10 @@ export function isSparkleRegionalAutoSelectGroup(groupName: string): boolean {
   return (
     groupName.startsWith(REGION_AUTO_SELECT_PREFIX) &&
     !isSparkleCursorAutoSelectGroup(groupName) &&
-    // Dedicated HK group and the 优选 picker share the `Sparkle-` prefix but are
-    // managed on their own — they must not be treated as regional sub-groups.
-    !isHongKongFilterGroupName(groupName)
+    // Dedicated HK / Grok groups share the `Sparkle-` prefix but are managed on
+    // their own — they must not be treated as regional sub-groups.
+    !isHongKongFilterGroupName(groupName) &&
+    !isGrokDedicatedGroupName(groupName)
   )
 }
 
@@ -100,6 +106,10 @@ export function isSparkleAutoSelectSubGroup(groupName: string): boolean {
 
 export function isHongKongFilterGroupName(groupName: string): boolean {
   return groupName === 'Sparkle-香港' || groupName === '🇭🇰 香港节点'
+}
+
+export function isGrokDedicatedGroupName(groupName: string): boolean {
+  return groupName === GROK_DEDICATED_GROUP_NAME
 }
 
 export function isMailDedicatedGroupName(groupName: string): boolean {
@@ -140,6 +150,9 @@ export function resolveDelayTestUrl(options?: {
   }
   if (options?.groupName && isHongKongFilterGroupName(options.groupName)) {
     return options.groupTestUrl || HONG_KONG_DELAY_TEST_URL
+  }
+  if (options?.groupName && isGrokDedicatedGroupName(options.groupName)) {
+    return options.groupTestUrl || GROK_DELAY_TEST_URL
   }
   if (options?.groupName && isMailDedicatedGroupName(options.groupName)) {
     return options.groupTestUrl || MAIL_DELAY_TEST_URL

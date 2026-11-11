@@ -1,212 +1,298 @@
-// [INPUT] 当前订阅节点 · `🎯 agy 专用` 组 · magpie 本地网关 127.0.0.1:3425 · sparkle-agy-nodes.json
-// [OUTPUT] loadSparkleAgyProbeCache · bootstrapSparkleAgyProvider · startSparkleAgyProbeLoop
-// [POS] 用**真实 agy 请求**给节点定性：200 = 可用，400 `User location is not supported` = 不可用。
-// 为什么不能像 Gemini 探测那样直接打目标站：cloudcode-pa 的地域校验在认证之后，
-// 无凭证请求只会返回 401 CREDENTIALS_MISSING（已实测），无法区分「地区被拒」与「未认证」。
-// 因此只能借 magpie（持有账号凭证）发一次 1-token 请求，结果写入缓存并驱动 sparkle-agy provider。
+// [INPUT] 当前订阅节点 · `🎯 agy 专用` 组 · 官方 agy CLI（keychain 登录） · 探测专用干净目录 · 探测缓存（sparkleAgyProbeCache）
+// [OUTPUT] bootstrapSparkleAgyProvider · startSparkleAgyProbeLoop · getSparkleAgyProbeSnapshot
+// [POS] 用官方 agy CLI 的真实请求给节点定性：200 = 可用，400 `User location is not supported` = 不可用。
+// 干净目录不加载用户的 skills / MCP / 全局规则（34k → 6.9k input），同时保留官方客户端的全部请求特征。
+// 归因约束：agy 每次探测都是新进程，切组后由 mihomo 的新连接接管；仍保留 mihomoCloseConnections 清掉旧连接。
 
-import http from 'node:http'
+import { spawn } from 'node:child_process'
+import { constants } from 'node:fs'
 import { performance } from 'node:perf_hooks'
-import { readFile, writeFile } from 'fs/promises'
+import { homedir } from 'node:os'
+import { copyFile, mkdir, readdir, stat, unlink, writeFile } from 'fs/promises'
 import path from 'path'
 import { getAppConfig, getProfile, getProfileConfig } from '../config'
 import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { stringifyYaml } from '../utils/yaml'
 import { AGY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
-import { mihomoChangeProxy, mihomoGroupDetail, mihomoUpdateProxyProviders } from './mihomoApi'
+import { loadSparkleAgyProbeCache, saveSparkleAgyProbeCache } from './sparkleAgyProbeCache'
+import {
+  mihomoChangeProxy,
+  mihomoCloseConnections,
+  mihomoGroupDetail,
+  mihomoUpdateProxyProviders
+} from './mihomoApi'
 import { extractProxies } from './provider'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import {
   AGY_NODE_PROVIDER_FILENAME,
   AGY_NODE_PROVIDER_ID,
+  buildAgyProbeSnapshot,
   buildSparkleAgyProviderDocument,
   classifyAgyProbeResponse,
-  collectEligibleAgyProxies,
+  orderAgyRepairProxies,
+  type AgyNodeProbeCache,
   type AgyNodeProbeRecord,
+  type AgyProbeVerdict,
   type AgyProxyRecord
 } from './sparkleAgyProviderCore'
-import { runAgyAudit, resolveAgyAuditBackoffMs, type AgyAuditOutcome } from './sparkleAgyProbeCore'
+import {
+  resolveAgyAuditBackoffMs,
+  runAgyAudit,
+  shouldRepairAgyPin,
+  type AgyAuditOutcome
+} from './sparkleAgyProbeCore'
 
-const CACHE_FILENAME = 'sparkle-agy-nodes.json'
-const USABLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const AGY_BIN = path.join(homedir(), '.local/bin/agy')
+const AGY_PROBE_MODEL = 'gemini-3.8-flash-low'
 /**
- * 不可用结论只保持 30 分钟：实测这种 400 是**时变**的（同节点 20 分钟内 400 → 200），
- * 缓存太久会让节点被误判封死半天。
+ * 探测专用数据目录：只保留官方 CLI 的最小状态（登录走钥匙串，不受目录影响）。
+ * 不能复用 ~/.gemini/antigravity-cli —— 那里会加载用户的 skills / MCP / 全局规则，
+ * 单次 print 的 input 从 6.9k 膨胀到 34k（实测）。
  */
-const UNUSABLE_CACHE_TTL_MS = 30 * 60 * 1000
-/** 轮询间隔只决定"多久检查一次有没有过期节点"，真正的重测频率由上面两个 TTL 控制。 */
-const AUDIT_INTERVAL_MS = 15 * 60 * 1000
-/** 单轮最多探测多少个节点：避免一次把几十个请求打给 magpie/Google 触发风控。 */
-const MAX_PROBES_PER_AUDIT = 8
+const AGY_PROBE_DIR = path.join(dataDir(), 'agy-probe')
+/** 探测会话只用于进程内的一次性请求；保留 24h 便于排查，之后清掉，避免每天 ~22MB 的 DB 累积。 */
+const AGY_PROBE_CONVERSATION_TTL_MS = 24 * 60 * 60 * 1000
 
-const MAGPIE_BASE_URL = 'http://127.0.0.1:3425'
-const MAGPIE_API_KEY = 'magpie'
-const MAGPIE_MODEL_PREFIX = 'antigravity/'
-const PROBE_TIMEOUT_MS = 20_000
-/** 整轮巡检预算：超时节点会逐个吃掉探测超时，不能让「临时扩大 provider」的窗口无限拉长。 */
-const AUDIT_BUDGET_MS = 8 * 60 * 1000
-
-type MagpieResponse =
+/** 原生 agy 探测结果：与 requestMagpie 的返回同形，供 probeSingleNode 复用。 */
+type NativeAgyResponse =
   | { kind: 'response'; status: number; body: string }
-  /** 本地网关没起来（magpie 未启动）——继续测没有任何意义。 */
   | { kind: 'unreachable' }
-  /** 单个节点的请求超时——只代表这个节点慢，不代表必须中止整轮巡检。 */
   | { kind: 'timeout' }
 
-function cacheFilePath(): string {
-  return path.join(dataDir(), CACHE_FILENAME)
-}
+/**
+ * pin（当前钉住的节点）就地复测周期：只发 1 个 1-token 请求、不切组、不断流。
+ * 可用缓存 TTL 是 12h（sparkleAgyProbeCache），30 分钟一轮已有 24 倍余量；
+ * 5 分钟一轮纯属浪费官方账号配额（实测 6.9k input/次）。
+ */
+const PIN_CHECK_INTERVAL_MS = 30 * 60 * 1000
+/** 单轮修复扫描最多探测多少个节点：避免一次把过多请求打给 Google 触发风控。 */
+const MAX_PROBES_PER_REPAIR = 6
+/** 修复扫描预算：超时节点会逐个吃掉探测超时，不能让「候选节点轮转」的窗口无限拉长。 */
+const REPAIR_BUDGET_MS = 5 * 60 * 1000
+/**
+ * 探测超时：agy CLI 冷启动 + 模型排队可能超过 30s；pin 给足 90s，修复扫描给 60s。
+ * 慢 ≠ 坏；超时只记 unknown，不把节点判死。
+ */
+const PIN_PROBE_TIMEOUT_MS = 90_000
+const REPAIR_PROBE_TIMEOUT_MS = 60_000
 
-function isCacheRecordFresh(record: AgyNodeProbeRecord, nowMs: number): boolean {
-  const ttl = record.usable ? USABLE_CACHE_TTL_MS : UNUSABLE_CACHE_TTL_MS
-  return nowMs - record.checkedAt < ttl
-}
-
-export async function loadSparkleAgyProbeCache(
-  nowMs: number = Date.now()
-): Promise<Map<string, AgyNodeProbeRecord>> {
+/** 组当前实际生效的节点；组尚未生成时返回 null（此时任何探测结论都不可归因）。 */
+async function currentAgySelection(): Promise<string | null> {
   try {
-    const raw = JSON.parse(await readFile(cacheFilePath(), 'utf8')) as Record<
-      string,
-      AgyNodeProbeRecord
-    >
-    const map = new Map<string, AgyNodeProbeRecord>()
-    for (const [key, val] of Object.entries(raw)) {
-      if (
-        val &&
-        typeof val.usable === 'boolean' &&
-        typeof val.rttMs === 'number' &&
-        typeof val.checkedAt === 'number' &&
-        isCacheRecordFresh(val, nowMs)
-      ) {
-        map.set(key, val)
-      }
-    }
-    return map
+    const detail = await mihomoGroupDetail(AGY_DEDICATED_GROUP_NAME)
+    const now = String(detail?.now ?? '').trim()
+    return now.length > 0 ? now : null
   } catch {
-    return new Map()
+    return null
   }
 }
 
-async function saveSparkleAgyProbeCache(
-  cache: ReadonlyMap<string, AgyNodeProbeRecord>
-): Promise<void> {
-  const serialized = Object.fromEntries(cache.entries())
-  await writeFile(cacheFilePath(), JSON.stringify(serialized, null, 2), 'utf8')
+/** 切组之前的连接全部走旧出口，切完必须清掉，否则新请求可能复用旧出口。 */
+async function closeAgyConnections(): Promise<void> {
+  await mihomoCloseConnections(AGY_DEDICATED_GROUP_NAME)
 }
 
-function requestMagpie(
-  urlPath: string,
-  payload?: unknown,
-  timeoutMs: number = PROBE_TIMEOUT_MS
-): Promise<MagpieResponse> {
-  return new Promise((resolve) => {
-    const url = new URL(`${MAGPIE_BASE_URL}${urlPath}`)
-    const body = payload === undefined ? undefined : JSON.stringify(payload)
-    let settled = false
-    const timeoutState: { timer?: NodeJS.Timeout } = {}
+/** 模块内记录上一次观察到的选择：外部（订阅刷新后 provider 收敛）改过选择也必须断一次旧连接。 */
+let lastObservedSelection: string | null = null
 
-    const finish = (value: MagpieResponse): void => {
+function rememberSelection(node: string | null): void {
+  lastObservedSelection = node
+}
+
+/**
+ * 清理探测目录里的历史会话：探测是一次性请求，保留 24h 足够排查；
+ * 不清理的话每次 print 都会新建一个 ~448KB 的 SQLite（每天约 22MB）。
+ */
+async function pruneAgyProbeConversations(cliDir: string): Promise<void> {
+  const conversationsDir = path.join(cliDir, 'conversations')
+  let entries: string[]
+  try {
+    entries = await readdir(conversationsDir)
+  } catch {
+    return
+  }
+  const cutoff = Date.now() - AGY_PROBE_CONVERSATION_TTL_MS
+  await Promise.all(
+    entries
+      .filter((name) => /\.db(?:-(?:wal|shm))?$/.test(name))
+      .map(async (name) => {
+        const filePath = path.join(conversationsDir, name)
+        try {
+          const info = await stat(filePath)
+          if (info.mtimeMs < cutoff) {
+            await unlink(filePath)
+          }
+        } catch {
+          // 清理是 best-effort，失败不影响探测。
+        }
+      })
+  )
+}
+
+/** 探测目录只初始化一次；失败也继续 spawn，由 agy 自行创建目录。 */
+let agyProbeDirReady: Promise<void> | null = null
+
+function ensureAgyProbeDir(): Promise<void> {
+  if (agyProbeDirReady) {
+    return agyProbeDirReady
+  }
+  agyProbeDirReady = (async () => {
+    const cliDir = path.join(AGY_PROBE_DIR, 'antigravity-cli')
+    await mkdir(cliDir, { recursive: true })
+    // 复用主目录的 installation_id：同一台机器不应因为探测目录多出一个“新设备”。
+    try {
+      await copyFile(
+        path.join(homedir(), '.gemini/antigravity-cli/installation_id'),
+        path.join(cliDir, 'installation_id'),
+        constants.COPYFILE_EXCL
+      )
+    } catch {
+      // 已存在或主目录没有该文件：保持现状即可。
+    }
+    await pruneAgyProbeConversations(cliDir)
+  })().catch(() => undefined)
+  return agyProbeDirReady
+}
+
+async function requestNativeAgy(model: string, timeoutMs: number): Promise<NativeAgyResponse> {
+  await ensureAgyProbeDir()
+  return new Promise((resolve) => {
+    const printTimeoutSec = Math.max(15, Math.floor(timeoutMs / 1000) - 5)
+    const env = { ...process.env }
+    delete env.GEMINI_API_KEY
+    delete env.GOOGLE_GEMINI_BASE_URL
+    delete env.GOOGLE_API_KEY
+    delete env.CLOUD_CODE_URL
+    let child
+    try {
+      child = spawn(
+        AGY_BIN,
+        [
+          '--gemini_dir',
+          AGY_PROBE_DIR,
+          '--print',
+          'Reply with exactly: OK',
+          '--model',
+          model || AGY_PROBE_MODEL,
+          '--print-timeout',
+          `${printTimeoutSec}s`,
+          '--output-format',
+          'text'
+        ],
+        { env, stdio: ['ignore', 'pipe', 'pipe'] }
+      )
+    } catch {
+      resolve({ kind: 'unreachable' })
+      return
+    }
+
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+
+    const finish = (value: NativeAgyResponse): void => {
       if (settled) {
         return
       }
       settled = true
-      if (timeoutState.timer) {
-        clearTimeout(timeoutState.timer)
-      }
+      clearTimeout(timer)
       resolve(value)
     }
 
-    const request = http.request(
-      {
-        hostname: url.hostname,
-        port: url.port,
-        path: `${url.pathname}${url.search}`,
-        method: body === undefined ? 'GET' : 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${MAGPIE_API_KEY}`,
-          'content-length': String(Buffer.byteLength(body ?? ''))
-        }
-      },
-      (response) => {
-        let text = ''
-        response.setEncoding('utf8')
-        response.on('data', (chunk: string) => {
-          // 只需要看得到错误信息，正文超长时截断避免占内存。
-          if (text.length < 8192) {
-            text += chunk.slice(0, 8192 - text.length)
-          }
-        })
-        response.on('end', () =>
-          finish({ kind: 'response', status: response.statusCode ?? 0, body: text })
-        )
-        response.on('error', () => finish({ kind: 'unreachable' }))
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // 进程可能已经退出，忽略即可。
       }
-    )
-
-    timeoutState.timer = setTimeout(() => {
-      request.destroy()
       finish({ kind: 'timeout' })
     }, timeoutMs)
 
-    request.on('error', (error: NodeJS.ErrnoException) => {
-      finish(
-        error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND'
-          ? { kind: 'unreachable' }
-          : { kind: 'timeout' }
-      )
+    child.stdout?.on('data', (chunk: Buffer) => {
+      if (stdout.length < 16384) {
+        stdout += chunk.toString()
+      }
     })
-
-    if (body !== undefined) {
-      request.write(body)
-    }
-    request.end()
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (stderr.length < 16384) {
+        stderr += chunk.toString()
+      }
+    })
+    child.on('error', () => finish({ kind: 'unreachable' }))
+    child.on('close', (code) => {
+      const body = `${stdout}\n${stderr}`
+      if (/User location is not supported/i.test(body)) {
+        finish({ kind: 'response', status: 400, body })
+        return
+      }
+      if (code === 0) {
+        finish({ kind: 'response', status: 200, body })
+        return
+      }
+      if (/FAILED_PRECONDITION|PERMISSION_DENIED|not logged|sign in|authentication/i.test(body)) {
+        finish({ kind: 'response', status: 403, body })
+        return
+      }
+      finish({ kind: 'response', status: 500, body })
+    })
   })
 }
 
-/** 从 magpie 的 OpenAI 兼容接口里挑一个 antigravity 模型（优先最便宜的 flash）。 */
-async function discoverAgyModel(): Promise<string | null> {
-  const response = await requestMagpie('/v1/models', undefined, 5000)
-  if (response.kind !== 'response' || response.status !== 200) {
-    return null
-  }
+/**
+ * 单节点探测。归因保证：
+ * 1. 组选择被外部改动过 → 先断旧连接；
+ * 2. 目标不是当前选择 → 切组后立刻断连接；
+ * 3. 断连接失败 → 返回 unknown，绝不把结果写到该节点头上。
+ */
+async function probeSingleNode(
+  node: string,
+  model: string,
+  timeoutMs: number
+): Promise<AgyAuditOutcome> {
   try {
-    const parsed = JSON.parse(response.body) as { data?: Array<{ id?: string }> }
-    const ids = (parsed.data ?? [])
-      .map((model) => String(model.id ?? '').trim())
-      .filter((id) => id.startsWith(MAGPIE_MODEL_PREFIX))
-    return ids.find((id) => id.includes('flash')) ?? ids[0] ?? null
+    const selection = await currentAgySelection()
+    if (selection === null) {
+      return { verdict: 'unknown', rttMs: 0, fatal: false }
+    }
+    if (selection !== lastObservedSelection) {
+      await closeAgyConnections()
+      rememberSelection(selection)
+    }
+    if (selection !== node) {
+      const switched = await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, node).catch(() => false)
+      if (!switched) {
+        // 典型原因：该节点已被订阅移除，或组尚未生成 —— 跳过它，不要因为单个节点中止整轮巡检。
+        return { verdict: 'unknown', rttMs: 0, fatal: false }
+      }
+      await closeAgyConnections()
+      rememberSelection(node)
+    }
   } catch {
-    return null
-  }
-}
-
-async function probeSingleNode(node: string, model: string): Promise<AgyAuditOutcome> {
-  const switched = await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, node).catch(() => false)
-  if (!switched) {
-    // 典型原因：该节点已被订阅移除，或组尚未生成 —— 跳过它，不要因为单个节点中止整轮巡检。
     return { verdict: 'unknown', rttMs: 0, fatal: false }
   }
 
   const startMs = performance.now()
-  const response = await requestMagpie('/v1/chat/completions', {
-    model,
-    messages: [{ role: 'user', content: 'ping' }],
-    max_tokens: 1,
-    stream: false
-  })
+  const response = await requestNativeAgy(model, timeoutMs)
   const rttMs = Math.max(1, Math.round(performance.now() - startMs))
 
   if (response.kind === 'unreachable') {
+    recordAgyAttempt(node, 'failed', 'agy CLI 无法启动')
     return { verdict: 'unknown', rttMs: 0, fatal: true }
   }
   if (response.kind === 'timeout') {
+    recordAgyAttempt(node, 'failed', '超时')
     return { verdict: 'unknown', rttMs, fatal: false }
   }
   const verdict = classifyAgyProbeResponse(response.status, response.body)
+  if (verdict === 'usable') {
+    recordAgyAttempt(node, 'usable')
+  } else if (verdict === 'unusable') {
+    recordAgyAttempt(node, 'unusable', '地区不支持')
+  } else {
+    recordAgyAttempt(node, 'failed', `HTTP ${response.status}`)
+  }
   return { verdict, rttMs, fatal: verdict === 'fatal' }
 }
 
@@ -219,68 +305,196 @@ function countUsable(
   ).length
 }
 
-async function writeProviderFromCache(
+function providerNames(documentProxies: readonly AgyProxyRecord[]): string[] {
+  return documentProxies
+    .map((proxy) => String(proxy.name ?? '').trim())
+    .filter((name) => name.length > 0)
+}
+
+function sameMemberSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+  const set = new Set(right)
+  return left.every((name) => set.has(name))
+}
+
+/** 重载 provider 时 mihomo 可能因成员消失改写组选择；选择一变就必须断旧连接。 */
+async function reloadAgyProvider(): Promise<void> {
+  const before = await currentAgySelection()
+  await mihomoUpdateProxyProviders(AGY_NODE_PROVIDER_ID)
+  const after = await currentAgySelection()
+  if (after !== before) {
+    rememberSelection(after)
+    await closeAgyConnections().catch(() => undefined)
+  }
+}
+
+/**
+ * 把 `sparkle-agy` provider 收敛到目标集合：
+ * 成员集合没变就不写盘、不热重载 —— 避免每轮都打断 provider（重载可能重置组选择）。
+ */
+async function convergeAgyProvider(
   proxies: readonly AgyProxyRecord[],
   regionPriority: readonly string[],
-  cache?: ReadonlyMap<string, AgyNodeProbeRecord>
+  probeCache: AgyNodeProbeCache | undefined
 ): Promise<string[]> {
-  const document = buildSparkleAgyProviderDocument({
-    proxies,
-    regionPriority,
-    probeCache: cache
-  })
-  if (document.proxies.length === 0) {
+  const document = buildSparkleAgyProviderDocument({ proxies, regionPriority, probeCache })
+  const names = providerNames(document.proxies)
+  if (names.length === 0) {
     return []
   }
+
+  const detail = await mihomoGroupDetail(AGY_DEDICATED_GROUP_NAME).catch(() => undefined)
+  if (sameMemberSet(names, detail?.all ?? [])) {
+    return names
+  }
+
   await writeFile(
     path.join(profilesDir(), AGY_NODE_PROVIDER_FILENAME),
     stringifyYaml(document),
     'utf8'
   )
-  return document.proxies
-    .map((proxy) => String(proxy.name ?? '').trim())
-    .filter((name) => name.length > 0)
+  await reloadAgyProvider()
+  return names
 }
 
-/** 当前固定节点仍在可用集合内时不打扰用户的手动选择，否则落到首选节点。 */
-async function ensureAgySelection(ordered: readonly string[]): Promise<void> {
-  const preferred = ordered[0]
-  if (!preferred) {
-    return
-  }
-  try {
-    const detail = await mihomoGroupDetail(AGY_DEDICATED_GROUP_NAME)
-    const now = String(detail?.now ?? '').trim()
-    if (now && ordered.includes(now)) {
-      return
-    }
-    await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, preferred)
-  } catch {
-    // 组尚未生成（首次配置生成前）时忽略，下一轮巡检会补上。
-  }
-}
-
-async function reloadProvider(ordered: readonly string[], selectPreferred: boolean): Promise<void> {
+/** 切换选择并让旧出口立即失效；当前已经是目标节点时不做任何动作。 */
+async function selectAgyNode(ordered: readonly string[], preferred?: string | null): Promise<void> {
   if (ordered.length === 0) {
     return
   }
-  try {
-    await mihomoUpdateProxyProviders(AGY_NODE_PROVIDER_ID)
-  } catch {
+  const target = preferred && ordered.includes(preferred) ? preferred : ordered[0]
+  const before = await currentAgySelection()
+  if (before === target) {
     return
   }
-  if (selectPreferred) {
-    await ensureAgySelection(ordered)
+  const switched = await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, target).catch(() => false)
+  if (!switched) {
+    return
   }
+  rememberSelection(target)
+  await closeAgyConnections().catch(() => undefined)
 }
 
 let probeInFlight = false
 /** 连续全灭轮次 → 用于指数退避，避免在 Google 的冷却窗口里越试越久。 */
 let consecutiveEmptyRounds = 0
-let agyAuditSkipUntilMs = 0
+/** 只拦修复扫描；pin 就地复测必须保持固定节奏，否则节点坏了也发现不了。 */
+let repairSkipUntilMs = 0
+let pinUnknownStreak = 0
+let agyState: 'healthy' | 'repairing' | 'exhausted' = 'healthy'
+
+/** 代理页展示用的内存快照：只包含「最近一次真实 agy 请求成功」的节点，避免回读磁盘/重建订阅。 */
+const agyProbeSnapshot = new Map<string, AgyProbeSample>()
+
+/** 最近一次真实探测的结论（含失败），用于把"未测"与"探测失败"区分开。 */
+const agyLastAttempts = new Map<
+  string,
+  { state: 'usable' | 'unusable' | 'failed'; reason?: string; checkedAt: number }
+>()
+
+function recordAgyAttempt(
+  node: string,
+  state: 'usable' | 'unusable' | 'failed',
+  reason?: string
+): void {
+  const name = node.trim()
+  if (!name) {
+    return
+  }
+  agyLastAttempts.set(name, { state, reason, checkedAt: Date.now() })
+}
+
+/** 修复扫描的「本轮已试」记录：超时不会写缓存，必须单独记时间，否则下一轮会重复同一批节点。 */
+const agyRepairAttempts = new Map<string, number>()
+
+const REPAIR_ATTEMPT_RETENTION_MS = 60 * 60 * 1000
+
+function pruneRepairAttempts(nowMs: number): void {
+  for (const [fingerprint, attemptedAt] of agyRepairAttempts) {
+    if (nowMs - attemptedAt > REPAIR_ATTEMPT_RETENTION_MS) {
+      agyRepairAttempts.delete(fingerprint)
+    }
+  }
+}
+
+export function getSparkleAgyProbeSnapshot(): AgyProbeSnapshot {
+  return Object.fromEntries(agyProbeSnapshot)
+}
+
+function syncAgyProbeSnapshot(
+  cache: ReadonlyMap<string, AgyNodeProbeRecord>,
+  proxies: readonly AgyProxyRecord[]
+): void {
+  const next = new Map<string, AgyProbeSample>()
+
+  for (const [name, sample] of Object.entries(buildAgyProbeSnapshot(proxies, cache))) {
+    next.set(name, { ...sample, state: 'usable' })
+  }
+
+  // 已确认锁区（400 location）的节点：有记录就展示真实结论，而不是笼统的"未测"。
+  for (const proxy of proxies) {
+    const name = String(proxy.name ?? '').trim()
+    if (!name) {
+      continue
+    }
+    const record = cache.get(computeProxyNodeFingerprint(proxy))
+    if (!record || record.usable) {
+      continue
+    }
+    const current = next.get(name)
+    if (!current || record.checkedAt >= current.checkedAt) {
+      next.set(name, {
+        rttMs: record.rttMs,
+        checkedAt: record.checkedAt,
+        state: 'unusable',
+        reason: '地区不支持'
+      })
+    }
+  }
+
+  // 最近一次探测失败（超时/网络/CLI 不可用）：比已有样本新才覆盖。
+  for (const [name, attempt] of agyLastAttempts) {
+    if (attempt.state === 'usable') {
+      continue
+    }
+    const current = next.get(name)
+    if (current && attempt.checkedAt < current.checkedAt) {
+      continue
+    }
+    next.set(name, {
+      rttMs: 0,
+      checkedAt: attempt.checkedAt,
+      state: attempt.state,
+      reason: attempt.reason
+    })
+  }
+
+  agyProbeSnapshot.clear()
+  for (const [name, sample] of next) {
+    agyProbeSnapshot.set(name, sample)
+  }
+}
+
+function recordPinOutcome(
+  cache: Map<string, AgyNodeProbeRecord>,
+  proxy: AgyProxyRecord,
+  outcome: AgyAuditOutcome
+): boolean {
+  const fingerprint = computeProxyNodeFingerprint(proxy)
+  const previous = cache.get(fingerprint)
+  const usable = outcome.verdict === 'usable'
+  cache.set(fingerprint, {
+    usable,
+    rttMs: outcome.rttMs,
+    checkedAt: Date.now()
+  })
+  return !previous || previous.usable !== usable
+}
 
 export async function bootstrapSparkleAgyProvider(): Promise<void> {
-  if (probeInFlight || Date.now() < agyAuditSkipUntilMs) {
+  if (probeInFlight) {
     return
   }
   probeInFlight = true
@@ -298,73 +512,136 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
     const { proxySwitchPriority = [] } = await getAppConfig()
     const regionPriority = resolveEffectiveRegionPriority(proxySwitchPriority)
     const cache = await loadSparkleAgyProbeCache()
+    syncAgyProbeSnapshot(cache, proxies)
 
-    // 先用缓存恢复上次的可用集合，保证启动后 agy 立刻有出口。
-    const cachedUsable = countUsable(cache, proxies)
-    if (cachedUsable > 0) {
-      const restored = await writeProviderFromCache(proxies, regionPriority, cache)
-      await reloadProvider(restored, true)
-      await appendAppLog(`[SparkleAgyProbe]: restored ${cachedUsable} verified nodes from cache\n`)
-    }
-
-    const nowMs = Date.now()
-    const pending = collectEligibleAgyProxies(proxies)
-      .filter((proxy) => {
-        const record = cache.get(computeProxyNodeFingerprint(proxy))
-        return !record || !isCacheRecordFresh(record, nowMs)
-      })
-      // 先测最久没测过的（含从未测过的），保证被阻塞的节点也能在几轮内轮到。
-      .sort((a, b) => {
-        const ra = cache.get(computeProxyNodeFingerprint(a))?.checkedAt ?? 0
-        const rb = cache.get(computeProxyNodeFingerprint(b))?.checkedAt ?? 0
-        return ra - rb
-      })
-      .slice(0, MAX_PROBES_PER_AUDIT)
-    if (pending.length === 0) {
+    // 组未生成（无候选节点）时既没有可探测的出口，也不能热重载一个不存在的 provider。
+    const group = await mihomoGroupDetail(AGY_DEDICATED_GROUP_NAME).catch(() => undefined)
+    if (!group) {
       return
     }
 
-    // 只有确实需要巡检时才联系 magpie，避免每轮空转。
-    const model = await discoverAgyModel()
-    if (!model) {
+    const model = AGY_PROBE_MODEL
+
+    const pinName = String(group.now ?? '').trim() || null
+    const pinProxy = pinName
+      ? proxies.find((proxy) => String(proxy.name ?? '').trim() === pinName)
+      : undefined
+
+    // ① pin 就地复测：不切组、不关连接、不影响正在进行的会话。
+    // 400 可能是账号轮转造成的：同节点再确认一次，两次都 400 才认定节点被拒；
+    // 超时不复测，按轮次累计（上游整体变慢时不能把生产出口每 3 分钟拖去扫一遍）。
+    let pinVerdict: AgyProbeVerdict | null = null
+    if (pinName && pinProxy) {
+      let outcome = await probeSingleNode(pinName, model, PIN_PROBE_TIMEOUT_MS)
+      if (outcome.fatal) {
+        return
+      }
+      if (outcome.verdict === 'unusable') {
+        outcome = await probeSingleNode(pinName, model, PIN_PROBE_TIMEOUT_MS)
+        if (outcome.fatal) {
+          return
+        }
+      }
+      if (outcome.verdict !== 'unknown') {
+        const changed = recordPinOutcome(cache, pinProxy, outcome)
+        if (changed) {
+          await saveSparkleAgyProbeCache(cache)
+        }
+      }
+      syncAgyProbeSnapshot(cache, proxies)
+      pinVerdict = outcome.verdict
+      pinUnknownStreak = outcome.verdict === 'unknown' ? pinUnknownStreak + 1 : 0
+    } else {
+      pinUnknownStreak = 0
+    }
+
+    const verifiedCount = countUsable(cache, proxies)
+    const needsRepair = shouldRepairAgyPin({ pinVerdict, unknownStreak: pinUnknownStreak })
+
+    if (!needsRepair) {
+      // pin 实测可用才收敛 provider：不健康时保持现状，交给下面的修复扫描。
+      const ordered = await convergeAgyProvider(proxies, regionPriority, cache)
+      await selectAgyNode(ordered, pinName)
+      consecutiveEmptyRounds = 0
+      repairSkipUntilMs = 0
+      if (agyState !== 'healthy') {
+        await appendAppLog(
+          `[SparkleAgyProbe]: pin ${pinName ?? 'n/a'} healthy again, pool=${ordered.length}\n`
+        )
+        agyState = 'healthy'
+      }
+      return
+    }
+
+    if (Date.now() < repairSkipUntilMs) {
+      return
+    }
+
+    if (agyState !== 'repairing') {
       await appendAppLog(
-        '[SparkleAgyProbe]: magpie gateway unreachable or exposes no antigravity model, skip audit\n'
+        `[SparkleAgyProbe]: pin ${pinName ?? 'n/a'} verdict=${pinVerdict ?? 'none'} streak=${pinUnknownStreak} verified=${verifiedCount} model=${model}, repair start\n`
       )
-      return
+      agyState = 'repairing'
     }
 
-    // 巡检要逐个切到候选节点，而 mihomo 只能切到 provider 里存在的节点：
-    // 先把全量候选写进 provider（此时不改当前选择，线上出口保持不变），巡检结束再收敛回已验证集合。
-    const expanded = await writeProviderFromCache(proxies, regionPriority, undefined)
-    await reloadProvider(expanded, false)
-
+    // ② 修复扫描：先扩 provider 让所有候选都能被切到（此时不改选择，线上出口不变）。
+    const expanded = await convergeAgyProvider(proxies, regionPriority, undefined)
+    if (expanded.length === 0) {
+      return
+    }
+    pruneRepairAttempts(Date.now())
+    const candidates = orderAgyRepairProxies(
+      proxies,
+      regionPriority,
+      cache,
+      MAX_PROBES_PER_REPAIR,
+      Date.now(),
+      agyRepairAttempts
+    ).filter((proxy) => String(proxy.name ?? '').trim() !== pinName)
     const audit = await runAgyAudit(
-      { pending, cache, budgetMs: AUDIT_BUDGET_MS },
-      { probeNode: (nodeName) => probeSingleNode(nodeName, model) }
+      {
+        pending: candidates,
+        cache,
+        budgetMs: REPAIR_BUDGET_MS,
+        stopOnUsable: true,
+        attempted: agyRepairAttempts
+      },
+      { probeNode: (nodeName) => probeSingleNode(nodeName, model, REPAIR_PROBE_TIMEOUT_MS) }
     )
 
     if (audit.probed > 0) {
       await saveSparkleAgyProbeCache(cache)
     }
-    // 无论本轮是否得到新结论，都要把 provider 收敛回「已验证可用集合」（巡检前临时扩过）
-    const ordered = await writeProviderFromCache(proxies, regionPriority, cache)
-    await reloadProvider(ordered, true)
+    // 失败（unknown）不写缓存，但必须反映到 UI，避免整页"未测"造成误解。
+    syncAgyProbeSnapshot(cache, proxies)
 
-    if (audit.probed === 0) {
+    // 巡检跨了几分钟，期间可能已经切订阅：用旧 profile 的节点写 provider 会污染新配置。
+    const latest = await getProfileConfig()
+    if (latest.current !== current) {
       return
     }
-    consecutiveEmptyRounds = audit.usable === 0 ? consecutiveEmptyRounds + 1 : 0
-    agyAuditSkipUntilMs = Date.now() + resolveAgyAuditBackoffMs(AUDIT_INTERVAL_MS, consecutiveEmptyRounds)
-    const verified = countUsable(cache, proxies)
-    await appendAppLog(
-      `[SparkleAgyProbe]: probed=${audit.probed} usable=${audit.usable} verified=${verified} pool=${ordered.length}${audit.aborted ? ' aborted' : ''} empty_rounds=${consecutiveEmptyRounds}\n`
-    )
-    if (verified === 0) {
-      // 全灭时保留候选池只是为了避免空 provider 让整份配置加载失败，并不代表 agy 能用。
+
+    const ordered = await convergeAgyProvider(proxies, regionPriority, cache)
+    if (audit.usableNode) {
+      await selectAgyNode(ordered, audit.usableNode)
+      consecutiveEmptyRounds = 0
+      repairSkipUntilMs = 0
+      agyState = 'healthy'
       await appendAppLog(
-        '[SparkleAgyProbe]: WARN no node passed the real agy check; agy traffic will still hit 400 (line/exit blocked by Google)\n'
+        `[SparkleAgyProbe]: repaired pin ${pinName ?? 'n/a'} -> ${audit.usableNode} probed=${audit.probed} usable=${audit.usable} pool=${ordered.length}\n`
       )
+      return
     }
+
+    // 全灭：保持原 pin（没有证据表明别的节点更好），并拉长下一轮修复间隔。
+    await selectAgyNode(ordered, pinName)
+    consecutiveEmptyRounds += 1
+    repairSkipUntilMs =
+      Date.now() + resolveAgyAuditBackoffMs(PIN_CHECK_INTERVAL_MS, consecutiveEmptyRounds)
+    agyState = 'exhausted'
+    await appendAppLog(
+      `[SparkleAgyProbe]: WARN no node passed the real agy check (probed=${audit.probed}); keep ${pinName ?? 'none'} empty_rounds=${consecutiveEmptyRounds}\n`
+    )
   } catch (error) {
     await appendAppLog(
       `[SparkleAgyProbe]: error=${error instanceof Error ? error.message : String(error)}\n`
@@ -382,6 +659,6 @@ export function startSparkleAgyProbeLoop(): void {
   }
   agyProbeTimer = setInterval(() => {
     bootstrapSparkleAgyProvider().catch(() => undefined)
-  }, AUDIT_INTERVAL_MS)
+  }, PIN_CHECK_INTERVAL_MS)
   agyProbeTimer.unref()
 }

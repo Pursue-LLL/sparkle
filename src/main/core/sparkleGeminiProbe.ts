@@ -1,4 +1,4 @@
-// [INPUT] 当前订阅节点 · 隐藏探测通道 127.0.0.1:17899 (__sparkle_mail_probe__) · sparkle-gemini-nodes.json
+// [INPUT] sparkleMailPortProbe::withLocalProbeChannelLock (POS: 邮件/Gemini 共享探测通道) · 当前订阅节点 · sparkle-gemini-nodes.json
 // [OUTPUT] loadSparkleGeminiRegionCache · loadGeminiBlockedNodeNames · verifyNodeGeminiRegion · bootstrapSparkleGeminiRegionAudit · startSparkleGeminiRegionAuditLoop
 // [POS] 识别「HTTP 200 但被 Google GeoIP 判定为送中/不支持地区（如 vXmutd="ZZ"/"CN"/"HK" 或 google.cn）」的节点，
 // 将确认锁区/送中的节点从 `sparkle-fast-proxies.yaml`（`自动选择`）中剔除并热重载。
@@ -40,7 +40,7 @@ import {
   type MailProxyRecord
 } from './sparkleMailProviderCore'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import { withLocalProbeChannelLock } from './sparkleMailProbe'
+import { withLocalProbeChannelLock } from './sparkleMailPortProbe'
 
 const CACHE_FILENAME = 'sparkle-gemini-nodes.json'
 const ELIGIBLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
@@ -355,7 +355,7 @@ export async function rebuildAndReloadSparkleFastProvider(): Promise<void> {
     const { proxySwitchPriority = [] } = await getAppConfig()
     const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
     const [delaySnapshot, blockedNodeNames] = await Promise.all([
-      loadSparkleFastDelaySnapshot(),
+      loadSparkleFastDelaySnapshot(proxies),
       loadGeminiBlockedNodeNames(proxies)
     ])
     const doc = buildSparkleFastProviderDocument({

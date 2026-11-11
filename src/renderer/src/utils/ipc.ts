@@ -37,6 +37,16 @@ export async function mihomoGroups(): Promise<ControllerMixedGroup[]> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('mihomoGroups'))
 }
 
+/** agy 真实请求实测快照（节点名 → rtt/时间）；面板只展示这个口径，不拿 gstatic 延迟冒充。 */
+export async function getSparkleAgyProbeSnapshot(): Promise<AgyProbeSnapshot> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getSparkleAgyProbeSnapshot'))
+}
+
+/** grok 真实请求实测快照（节点名 → HTTP 状态/真实 rtt）；`grok 专用` 只展示这个口径。 */
+export async function getSparkleGrokProbeSnapshot(): Promise<GrokProbeSnapshot> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getSparkleGrokProbeSnapshot'))
+}
+
 export async function mihomoProxyProviders(): Promise<ControllerProxyProviders> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('mihomoProxyProviders'))
 }

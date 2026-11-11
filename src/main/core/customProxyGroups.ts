@@ -9,15 +9,13 @@ import {
   prependCursorDedicatedDirectOption,
   AGY_DEDICATED_GROUP_NAME,
   HONG_KONG_DELAY_TEST_URL,
+  GROK_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
 import { buildAgyGroupConfig } from './sparkleAgyProviderCore'
-import {
-  buildMailGroupConfig,
-  buildMailProbeHiddenGroupConfig,
-  ensureMailProbeListener
-} from './sparkleMailProviderCore'
+import { buildMailGroupConfig, buildMailProbeHiddenGroupConfig, ensureMailProbeListener } from './sparkleMailProviderCore'
+import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 import { resolveVpsProviderId } from './vpsProviderSplitCore'
 
 /** Sparkle-injected HK filter group — members rebuilt on every generateProfile(). */
@@ -27,6 +25,7 @@ const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
   CURSOR_DEDICATED_GROUP_NAME,
   ...LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   HONG_KONG_FILTER_GROUP_NAME,
+  GROK_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME,
   AGY_DEDICATED_GROUP_NAME
@@ -275,7 +274,7 @@ function buildHongKongGroupConfig(
   leafNames: string[],
   profileId: string | undefined
 ): ProxyGroupConfig | null {
-  // 香港组按规则路由 x.com/Stripe 流量，必须自动挑"能开 Grok"的活节点——
+  // 香港组按规则路由 x.com / Stripe 流量，必须自动挑延迟最低的活节点——
   // select 组会永远钉在第一个成员（哪怕超时），因此这里必须是 url-test（支持手动固定）。
   if (profileId) {
     return {
@@ -302,6 +301,34 @@ function buildHongKongGroupConfig(
 }
 
 /**
+ * Grok 专用组：`select` + 应用层探针（sparkleGrokProbe）。
+ * 不再用 url-test 全量排名——稳态只复核当前节点，失败才按池内顺序找下一个，找到即停。
+ * 成员来自 `sparkle-grok` provider（只含实测 200 的节点，任意地区）。
+ */
+function buildGrokGroupConfig(
+  leafNames: string[],
+  profileId: string | undefined
+): ProxyGroupConfig | null {
+  if (profileId) {
+    return {
+      name: GROK_DEDICATED_GROUP_NAME,
+      type: 'select',
+      use: [GROK_NODE_PROVIDER_ID]
+    }
+  }
+
+  const members = [...new Set(leafNames)]
+  if (members.length === 0) {
+    return null
+  }
+  return {
+    name: GROK_DEDICATED_GROUP_NAME,
+    type: 'select',
+    proxies: members
+  }
+}
+
+/**
  * Inject / refresh Sparkle-owned Selector groups. Subscription groups are kept as-is.
  * With proxy-provider profiles, leaf nodes are resolved via use+filter (not raw proxies names).
  */
@@ -320,12 +347,16 @@ export function ensureCustomProxyGroups(
     buildCursorGroupConfig(leafProxyNames, subscriptionGroupNames, existingGroups, profileId)
   ]
   const hkGroup = buildHongKongGroupConfig(leafProxyNames, profileId)
+  const grokGroup = buildGrokGroupConfig(leafProxyNames, profileId)
   const mailGroup = buildMailGroupConfig(leafProxyNames, profileId)
   const mailProbeGroup = buildMailProbeHiddenGroupConfig(profileId)
   const agyGroup = buildAgyGroupConfig(leafProxyNames, profileId)
 
   if (hkGroup) {
     injected.push(hkGroup)
+  }
+  if (grokGroup) {
+    injected.push(grokGroup)
   }
   if (mailGroup) {
     injected.push(mailGroup)

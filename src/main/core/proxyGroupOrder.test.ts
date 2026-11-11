@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   AGY_DEDICATED_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
+  GROK_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
@@ -27,6 +28,7 @@ describe('proxyGroupOrder', () => {
         group('🐟 漏网之鱼'),
         group(AUTO_SELECT_GROUP_NAME),
         group(CURSOR_DEDICATED_GROUP_NAME),
+        group(GROK_DEDICATED_GROUP_NAME),
         group('Sparkle-香港'),
         group(MAIL_DEDICATED_GROUP_NAME)
       ]
@@ -37,6 +39,7 @@ describe('proxyGroupOrder', () => {
     assert.deepEqual(namesOf(profile), [
       AUTO_SELECT_GROUP_NAME,
       CURSOR_DEDICATED_GROUP_NAME,
+      GROK_DEDICATED_GROUP_NAME,
       MAIL_DEDICATED_GROUP_NAME,
       AGY_DEDICATED_GROUP_NAME,
       'Sparkle-台湾',
