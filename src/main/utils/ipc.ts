@@ -167,11 +167,11 @@ async function patchAppConfigWithServiceSync(patch: Partial<AppConfig>): Promise
   if (shouldReloadProfileForAppConfigPatch(patch)) {
     try {
       const { generateProfile } = await import('../core/factory')
-      const { reloadMihomoConfigFromDisk } = await import('../core/mihomoApi')
+      const { syncRuntimeConfigToCore } = await import('../core/runtimeConfigSync')
       await generateProfile()
-      await reloadMihomoConfigFromDisk()
+      const reloaded = await syncRuntimeConfigToCore({ force: true })
       void appendAppLog(
-        `[AppConfig]: cursorProxyAppPathPrefixes profile regenerated prefixes=${JSON.stringify(nextConfig.cursorProxyAppPathPrefixes ?? [])}\n`
+        `[AppConfig]: cursorProxyAppPathPrefixes profile regenerated reloaded=${reloaded} prefixes=${JSON.stringify(nextConfig.cursorProxyAppPathPrefixes ?? [])}\n`
       )
     } catch (error) {
       void appendAppLog(`[AppConfig]: cursorProxyAppPathPrefixes profile reload failed, ${error}\n`)

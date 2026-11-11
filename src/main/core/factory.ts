@@ -3,25 +3,18 @@ import {
   getProfileConfig,
   getProfile,
   getProfileStr,
-  getProfileItem,
-  getOverride,
-  getOverrideItem,
-  getOverrideConfig,
   getAppConfig
 } from '../config'
 import {
   mihomoProfileWorkDir,
   mihomoWorkConfigPath,
-  mihomoWorkDir,
-  overridePath,
-  profilesDir
+  mihomoWorkDir
 } from '../utils/dirs'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { copyFile, mkdir, readdir, writeFile } from 'fs/promises'
 import { deepMerge } from '../utils/merge'
 import { logBuildDriftAtStartup } from './buildDriftCore'
-import vm from 'vm'
-import { existsSync, writeFileSync } from 'fs'
+import { existsSync } from 'fs'
 import path from 'path'
 import {
   extractProxies,
@@ -36,6 +29,10 @@ import {
   rewriteMissingRuleProxyGroupTargets
 } from './profileGroupNormalize'
 import { ensureCustomProxyGroups } from './customProxyGroups'
+import { ensureCnDirectBaseline } from './cnDirectBaseline'
+import { cleanProfile, dedupeProxyGroupProviderUse } from './runtimeConfigSanitize'
+import { overrideProfile } from './overrideProfile'
+import { writeSparkleProviderFiles } from './sparkleProviderFiles'
 import {
   formatAutoSelectAnyTlsExclusionLogLine,
   type ProxyCatalogEntry,
@@ -248,97 +245,7 @@ async function generateProfileImpl(): Promise<void> {
       .join('; ')
     await appendAppLog(`[Factory]: dropped unknown group members: ${summary}\n`)
   }
-  try {
-    const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } = await import(
-      './sparkleFastProviderCore'
-    )
-    const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
-    const { loadGeminiBlockedNodeNames } = await import('./sparkleGeminiProbe')
-    const fastInputProxies = extractProxies(currentProfile) as unknown as Array<
-      Record<string, unknown>
-    >
-    const [delaySnapshot, blockedNodeNames] = await Promise.all([
-      loadSparkleFastDelaySnapshot(fastInputProxies),
-      loadGeminiBlockedNodeNames(fastInputProxies)
-    ])
-    writeFileSync(
-      path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME),
-      stringifyYaml(
-        buildSparkleFastProviderDocument({
-          proxies: fastInputProxies,
-          regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
-          delayMs: delaySnapshot.size ? delaySnapshot : undefined,
-          blockedNodeNames
-        })
-      ),
-      'utf8'
-    )
-  } catch {
-    // best-effort：写失败沿用上一份 sparkle-fast 文件
-  }
-  try {
-    const { buildSparkleMailProviderDocument, MAIL_NODE_PROVIDER_FILENAME } = await import(
-      './sparkleMailProviderCore'
-    )
-    const { loadSparkleMailProbeCache } = await import('./sparkleMailProbe')
-    const mailProbeCache = await loadSparkleMailProbeCache()
-    writeFileSync(
-      path.join(profilesDir(), MAIL_NODE_PROVIDER_FILENAME),
-      stringifyYaml(
-        buildSparkleMailProviderDocument({
-          proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
-          regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
-          probeCache: mailProbeCache.size ? mailProbeCache : undefined
-        })
-      ),
-      'utf8'
-    )
-  } catch {
-    // best-effort：写失败沿用上一份 sparkle-mail 文件
-  }
-  try {
-    const { buildSparkleAgyProviderDocument, AGY_NODE_PROVIDER_FILENAME } = await import(
-      './sparkleAgyProviderCore'
-    )
-    const { loadSparkleAgyProbeCache } = await import('./sparkleAgyProbeCache')
-    const agyProbeCache = await loadSparkleAgyProbeCache()
-    const agyDocument = buildSparkleAgyProviderDocument({
-      proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
-      regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
-      probeCache: agyProbeCache.size ? agyProbeCache : undefined
-    })
-    // 空 provider 会让 mihomo 拒绝加载整份配置：宁可沿用上一份，也不要写空文件。
-    if (agyDocument.proxies.length > 0) {
-      writeFileSync(
-        path.join(profilesDir(), AGY_NODE_PROVIDER_FILENAME),
-        stringifyYaml(agyDocument),
-        'utf8'
-      )
-    }
-  } catch {
-    // best-effort：写失败沿用上一份 sparkle-agy 文件
-  }
-  try {
-    const { buildSparkleGrokProviderDocument, GROK_NODE_PROVIDER_FILENAME } = await import(
-      './sparkleGrokProviderCore'
-    )
-    const { loadSparkleGrokProbeCache } = await import('./sparkleGrokProbe')
-    const grokProbeCache = await loadSparkleGrokProbeCache()
-    const grokDocument = buildSparkleGrokProviderDocument({
-      proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
-      probeCache: grokProbeCache.size ? grokProbeCache : undefined
-    })
-    // 空 provider 会让 mihomo 拒绝加载整份配置：没有节点时沿用上一份文件。
-    if (grokDocument.proxies.length > 0) {
-      writeFileSync(
-        path.join(profilesDir(), GROK_NODE_PROVIDER_FILENAME),
-        stringifyYaml(grokDocument),
-        'utf8'
-      )
-    }
-  } catch {
-    // best-effort：写失败沿用上一份 sparkle-grok 文件
-  }
+  await writeSparkleProviderFiles(currentProfile, proxySwitchPriority)
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)
   const { cursorBidiOptimize = true, cursorProxyAppPathPrefixes } = await getAppConfig()
@@ -359,6 +266,10 @@ async function generateProfileImpl(): Promise<void> {
   // 早于此处注入会被 guard 误拦（时序 bug 已实测）。
   injectAntigravityTrafficRules(profile)
   await logGenerateProfileStep('antigravity_geo_rules', stepStartedAtMs)
+  if (ensureCnDirectBaseline(profile)) {
+    await appendAppLog('[Factory]: subscription has no CN rules, appended CN direct baseline\n')
+  }
+  await logGenerateProfileStep('cn_direct_baseline', stepStartedAtMs)
   const matchFallback = ensureMatchFallbackRule(profile)
   if (matchFallback) {
     await appendAppLog(`[Factory]: appended MATCH fallback -> ${matchFallback}\n`)
@@ -384,252 +295,6 @@ async function generateProfileImpl(): Promise<void> {
   )
 }
 
-async function cleanProfile(
-  profile: MihomoConfig,
-  controlDns: boolean,
-  controlSniff: boolean
-): Promise<void> {
-  if (!['info', 'debug'].includes(profile['log-level'])) {
-    profile['log-level'] = 'info'
-  }
-
-  configureLanSettings(profile)
-  cleanBooleanConfigs(profile)
-  cleanNumberConfigs(profile)
-  cleanStringConfigs(profile)
-  cleanAuthenticationConfig(profile)
-  cleanTunConfig(profile)
-  cleanDnsConfig(profile, controlDns)
-  cleanSnifferConfig(profile, controlSniff)
-  cleanProxyConfigs(profile)
-}
-
-interface ProxyGroupConfig {
-  name: string
-  type: string
-  proxies?: string[]
-  use?: string[]
-}
-
-function dedupeProxyGroupProviderUse(profile: MihomoConfig): void {
-  const groups = profile['proxy-groups'] as ProxyGroupConfig[] | undefined
-  if (!groups) return
-  for (const group of groups) {
-    if (group.use && Array.isArray(group.use)) {
-      group.use = [...new Set(group.use)]
-    }
-  }
-}
-
-function cleanBooleanConfigs(profile: MihomoConfig): void {
-  if (profile.ipv6 !== false) {
-    delete (profile as Partial<MihomoConfig>).ipv6
-  }
-
-  const booleanConfigs = [
-    'unified-delay',
-    'tcp-concurrent',
-    'geodata-mode',
-    'geo-auto-update',
-    'disable-keep-alive'
-  ]
-
-  booleanConfigs.forEach((key) => {
-    if (!profile[key]) delete (profile as Partial<MihomoConfig>)[key]
-  })
-
-  if (!profile.profile) return
-
-  const { 'store-selected': hasStoreSelected, 'store-fake-ip': hasStoreFakeIp } = profile.profile
-
-  if (!hasStoreSelected && !hasStoreFakeIp) {
-    delete (profile as Partial<MihomoConfig>).profile
-  } else {
-    const profileConfig = profile.profile as MihomoProfileConfig
-    if (!hasStoreSelected) delete profileConfig['store-selected']
-    if (!hasStoreFakeIp) delete profileConfig['store-fake-ip']
-  }
-}
-
-function cleanNumberConfigs(profile: MihomoConfig): void {
-  if (!profile['disable-keep-alive']) {
-    if (profile['keep-alive-idle'] == null || profile['keep-alive-idle'] === 0) {
-      profile['keep-alive-idle'] = 3600
-    }
-    if (profile['keep-alive-interval'] == null || profile['keep-alive-interval'] === 0) {
-      profile['keep-alive-interval'] = 60
-    }
-  }
-
-  ;[
-    'port',
-    'socks-port',
-    'redir-port',
-    'tproxy-port',
-    'mixed-port'
-  ].forEach((key) => {
-    if (profile[key] === 0) delete (profile as Partial<MihomoConfig>)[key]
-  })
-}
-
-function cleanStringConfigs(profile: MihomoConfig): void {
-  const partialProfile = profile as Partial<MihomoConfig>
-
-  if (profile.mode === 'rule') delete partialProfile.mode
-
-  const emptyStringConfigs = ['interface-name', 'secret', 'global-client-fingerprint']
-  emptyStringConfigs.forEach((key) => {
-    if (profile[key] === '') delete partialProfile[key]
-  })
-
-  if (profile['external-controller'] === '') {
-    delete partialProfile['external-controller']
-    delete partialProfile['external-ui']
-    delete partialProfile['external-ui-url']
-    delete partialProfile['external-controller-cors']
-  } else if (profile['external-ui'] === '') {
-    delete partialProfile['external-ui']
-    delete partialProfile['external-ui-url']
-  }
-}
-
-function configureLanSettings(profile: MihomoConfig): void {
-  const partialProfile = profile as Partial<MihomoConfig>
-
-  if (profile['allow-lan'] === false) {
-    delete partialProfile['lan-allowed-ips']
-    delete partialProfile['lan-disallowed-ips']
-    return
-  }
-
-  if (!profile['allow-lan']) {
-    delete partialProfile['allow-lan']
-    delete partialProfile['lan-allowed-ips']
-    delete partialProfile['lan-disallowed-ips']
-    return
-  }
-
-  const allowedIps = profile['lan-allowed-ips']
-  if (allowedIps?.length === 0) {
-    delete partialProfile['lan-allowed-ips']
-  } else if (allowedIps && !allowedIps.some((ip: string) => ip.startsWith('127.0.0.1/'))) {
-    allowedIps.push('127.0.0.1/8')
-  }
-
-  if (profile['lan-disallowed-ips']?.length === 0) {
-    delete partialProfile['lan-disallowed-ips']
-  }
-}
-
-function cleanAuthenticationConfig(profile: MihomoConfig): void {
-  if (profile.authentication?.length === 0) {
-    const partialProfile = profile as Partial<MihomoConfig>
-    delete partialProfile.authentication
-    delete partialProfile['skip-auth-prefixes']
-  }
-}
-
-function cleanTunConfig(profile: MihomoConfig): void {
-  if (!profile.tun?.enable) {
-    delete (profile as Partial<MihomoConfig>).tun
-    return
-  }
-
-  const tunConfig = profile.tun as MihomoTunConfig
-
-  if (tunConfig['auto-route'] !== false) {
-    delete tunConfig['auto-route']
-  }
-  if (tunConfig['auto-detect-interface'] !== false) {
-    delete tunConfig['auto-detect-interface']
-  }
-
-  const tunBooleanConfigs = ['auto-redirect', 'strict-route', 'disable-icmp-forwarding']
-  tunBooleanConfigs.forEach((key) => {
-    if (!tunConfig[key]) delete tunConfig[key]
-  })
-
-  if (tunConfig.device === '') {
-    delete tunConfig.device
-  } else if (
-    process.platform === 'darwin' &&
-    tunConfig.device &&
-    !tunConfig.device.startsWith('utun')
-  ) {
-    delete tunConfig.device
-  }
-
-  if (tunConfig['dns-hijack']?.length === 0) delete tunConfig['dns-hijack']
-  if (tunConfig['route-exclude-address']?.length === 0) delete tunConfig['route-exclude-address']
-}
-
-function cleanDnsConfig(profile: MihomoConfig, controlDns: boolean): void {
-  if (!controlDns) return
-  if (!profile.dns?.enable) {
-    delete (profile as Partial<MihomoConfig>).dns
-    return
-  }
-
-  const dnsConfig = profile.dns as MihomoDNSConfig
-  const dnsArrayConfigs = [
-    'fake-ip-range',
-    'fake-ip-range6',
-    'fake-ip-filter',
-    'proxy-server-nameserver',
-    'direct-nameserver',
-    'nameserver'
-  ]
-
-  dnsArrayConfigs.forEach((key) => {
-    if (dnsConfig[key]?.length === 0) delete dnsConfig[key]
-  })
-
-  if (dnsConfig['respect-rules'] === false || dnsConfig['proxy-server-nameserver']?.length === 0) {
-    delete dnsConfig['respect-rules']
-  }
-
-  if (dnsConfig['nameserver-policy'] && Object.keys(dnsConfig['nameserver-policy']).length === 0) {
-    delete dnsConfig['nameserver-policy']
-  }
-  if (
-    dnsConfig['proxy-server-nameserver-policy'] &&
-    Object.keys(dnsConfig['proxy-server-nameserver-policy']).length === 0
-  ) {
-    delete dnsConfig['proxy-server-nameserver-policy']
-  }
-
-}
-
-function cleanSnifferConfig(profile: MihomoConfig, controlSniff: boolean): void {
-  if (!controlSniff) return
-  if (!profile.sniffer?.enable) {
-    delete (profile as Partial<MihomoConfig>).sniffer
-  }
-}
-
-function cleanProxyConfigs(profile: MihomoConfig): void {
-  const partialProfile = profile as Partial<MihomoConfig>
-  const arrayConfigs = ['proxies', 'proxy-groups', 'rules']
-  const objectConfigs = ['proxy-providers', 'rule-providers']
-
-  arrayConfigs.forEach((key) => {
-    if (Array.isArray(profile[key]) && profile[key]?.length === 0) {
-      delete partialProfile[key]
-    }
-  })
-
-  objectConfigs.forEach((key) => {
-    const value = profile[key]
-    if (
-      value === null ||
-      value === undefined ||
-      (value && typeof value === 'object' && Object.keys(value).length === 0)
-    ) {
-      delete partialProfile[key]
-    }
-  })
-}
-
 async function prepareProfileWorkDir(current: string | undefined): Promise<void> {
   const targetDir = mihomoProfileWorkDir(current)
   const sourceDir = mihomoWorkDir()
@@ -649,93 +314,6 @@ async function prepareProfileWorkDir(current: string | undefined): Promise<void>
       .filter((file) => file.isFile() && /(?:db|dat)$/i.test(file.name))
       .map((file) => copy(file.name))
   )
-}
-
-async function overrideProfile(
-  current: string | undefined,
-  profile: MihomoConfig
-): Promise<MihomoConfig> {
-  const { items = [] } = (await getOverrideConfig()) || {}
-  const globalOverride = items.filter((item) => item.global).map((item) => item.id)
-  const { override = [] } = (await getProfileItem(current)) || {}
-  for (const ov of new Set(globalOverride.concat(override))) {
-    const item = await getOverrideItem(ov)
-    const content = await getOverride(ov, item?.ext || 'js')
-    switch (item?.ext) {
-      case 'js':
-        profile = await runOverrideScript(profile, content, item)
-        break
-      case 'yaml': {
-        let patch = parseYaml<Partial<MihomoConfig>>(content)
-        if (typeof patch !== 'object') patch = {}
-        profile = deepMerge(profile, patch, true)
-        break
-      }
-    }
-  }
-  return profile
-}
-
-async function runOverrideScript(
-  profile: MihomoConfig,
-  script: string,
-  item: OverrideItem
-): Promise<MihomoConfig> {
-  const log = (type: string, data: string, flag = 'a'): void => {
-    writeFileSync(overridePath(item.id, 'log'), `[${type}] ${data}\n`, {
-      encoding: 'utf-8',
-      flag
-    })
-  }
-  try {
-    const b64d = (str: string): string => Buffer.from(str, 'base64').toString('utf-8')
-    const b64e = (data: Buffer | string): string =>
-      (Buffer.isBuffer(data) ? data : Buffer.from(String(data))).toString('base64')
-    const ctx = {
-      console: Object.freeze({
-        log: (...args: unknown[]) => log('log', args.map(format).join(' ')),
-        info: (...args: unknown[]) => log('info', args.map(format).join(' ')),
-        error: (...args: unknown[]) => log('error', args.map(format).join(' ')),
-        debug: (...args: unknown[]) => log('debug', args.map(format).join(' '))
-      }),
-      fetch,
-      yaml: { parse: parseYaml, stringify: stringifyYaml },
-      b64d,
-      b64e,
-      Buffer
-    }
-    vm.createContext(ctx)
-    log('info', '开始执行脚本', 'w')
-    vm.runInContext(script, ctx)
-    const promise = vm.runInContext(
-      `(async () => {
-        const result = main(${JSON.stringify(profile)})
-        if (result instanceof Promise) return await result
-        return result
-      })()`,
-      ctx
-    )
-    const newProfile = await promise
-    if (typeof newProfile !== 'object') {
-      throw new Error('脚本返回值必须是对象')
-    }
-    log('info', '脚本执行成功')
-    return newProfile
-  } catch (e) {
-    log('exception', `脚本执行失败：${e}`)
-    return profile
-  }
-}
-
-function format(data: unknown): string {
-  if (data instanceof Error) {
-    return `${data.name}: ${data.message}\n${data.stack}`
-  }
-  try {
-    return JSON.stringify(data)
-  } catch {
-    return String(data)
-  }
 }
 
 export async function getRuntimeConfigStr(): Promise<string> {
