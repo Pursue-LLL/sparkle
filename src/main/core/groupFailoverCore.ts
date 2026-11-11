@@ -1,6 +1,6 @@
 // [INPUT] autoSwitchPolicy::isUrlTestGroupType (POS: 分组策略表) ·
 //         proxyDelayVerdictCore::judgeProxyForUrl (POS: 延迟判定唯一规则) · proxyProbeHistoryCore::ProbeSource
-// [OUTPUT] parseDialFailureGroup · recordDialFailure · planFailover · 阈值常量
+// [OUTPUT] parseDialFailureGroup · recordDialFailure · toFailoverSnapshot · planFailover · 阈值常量
 // [POS] 故障转移的纯决策层（无 IO）。内核对一个组「连续拨号失败」时只会打一条 warning 告警并复测一次；
 //       url-test 组的复测常常照旧通过，节点仍被选中而真实流量持续超时。这里把告警折算成「该组节点持续不可用」的判定，
 //       并在组内挑出最近一次探测成功、延迟最低的替代节点。
@@ -57,6 +57,24 @@ export interface FailoverGroupSnapshot {
   fixed?: string
   testUrl?: string
   members: readonly FailoverMemberSnapshot[]
+}
+
+/** 控制器分组快照 → 决策输入；`all` 字段只存在于子组，叶子节点没有。 */
+export function toFailoverSnapshot(group: ControllerMixedGroup): FailoverGroupSnapshot {
+  return {
+    name: group.name,
+    type: group.type,
+    now: group.now,
+    fixed: group.fixed,
+    testUrl: group.testUrl,
+    members: group.all.map((member) => ({
+      name: member.name,
+      isGroup: 'all' in member,
+      alive: member.alive,
+      history: member.history,
+      extra: member.extra
+    }))
+  }
 }
 
 export interface FailoverContext {

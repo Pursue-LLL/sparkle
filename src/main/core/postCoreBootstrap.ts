@@ -163,8 +163,14 @@ async function runPostReadyServices(): Promise<void> {
   const { startAutoSelectStickyPin } = await import('./autoSelectStickyPin')
   startAutoSelectStickyPin()
 
-  const { startGroupFailover } = await import('./groupFailover')
-  startGroupFailover()
+  try {
+    const { startGroupFailover } = await import('./groupFailover')
+    startGroupFailover()
+  } catch (error) {
+    await appendAppLog(
+      `[GroupFailover]: start failed: ${error instanceof Error ? error.message : String(error)}\n`
+    )
+  }
 
   const { mihomoGroups, mihomoChangeProxy, mihomoGetConnections, mihomoGroupDelay } = await import(
     './mihomoApi'

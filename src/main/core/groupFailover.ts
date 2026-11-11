@@ -5,7 +5,7 @@
 //       作用范围由 autoSwitchPolicy 决定；内核启停重连后告警流自动恢复，因此每次应用启动只需调用一次。
 
 import { appendAppLog } from '../utils/log'
-import type { FailoverGroupSnapshot } from './groupFailoverCore'
+import { toFailoverSnapshot } from './groupFailoverCore'
 import { createGroupFailoverEngine } from './groupFailoverEngine'
 import {
   mihomoChangeProxy,
@@ -14,28 +14,11 @@ import {
   subscribeMihomoAlerts
 } from './mihomoApi'
 
-function toSnapshot(group: ControllerMixedGroup): FailoverGroupSnapshot {
-  return {
-    name: group.name,
-    type: group.type,
-    now: group.now,
-    fixed: group.fixed,
-    testUrl: group.testUrl,
-    members: group.all.map((member) => ({
-      name: member.name,
-      isGroup: 'all' in member,
-      alive: member.alive,
-      history: member.history,
-      extra: member.extra
-    }))
-  }
-}
-
 const engine = createGroupFailoverEngine({
   subscribeAlerts: subscribeMihomoAlerts,
   loadGroup: async (name) => {
     const group = (await mihomoGroups()).find((item) => item.name === name)
-    return group && toSnapshot(group)
+    return group && toFailoverSnapshot(group)
   },
   pinNode: (group, node) => mihomoChangeProxy(group, node, { source: 'auto' }),
   unpinNode: async (group) => {
