@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { CURSOR_DEDICATED_GROUP_NAME, CURSOR_DEDICATED_DIRECT_PROXY, LEGACY_CURSOR_DEDICATED_GROUP_NAME, prependCursorDedicatedDirectOption } from './cursorProxyGroup'
+import { CURSOR_DEDICATED_GROUP_NAME, CURSOR_DEDICATED_DIRECT_PROXY, GROK_DEDICATED_GROUP_NAME, LEGACY_CURSOR_DEDICATED_GROUP_NAME, prependCursorDedicatedDirectOption } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME, ensureCustomProxyGroups, resolveFailoverProxyGroup } from './customProxyGroups'
+import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 
 function groupNames(profile: MihomoConfig): string[] {
   return ((profile['proxy-groups'] as { name: string }[] | undefined) ?? []).map(
@@ -131,9 +132,51 @@ describe('customProxyGroups', () => {
       (group) => group.name === HONG_KONG_FILTER_GROUP_NAME
     )
     assert.equal(hkGroup?.type, 'url-test')
-    // HK 组按规则路由 x.com/Stripe，探针 = grok.com（挑能开 Grok 的活节点）。
-    assert.equal(hkGroup?.url, 'https://grok.com')
+    // HK 组按规则路由 x.com/Stripe，探针 = x.com（它实际承载的流量）。
+    assert.equal(hkGroup?.url, 'https://x.com')
     assert.equal(hkGroup?.filter, '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong')
+  })
+
+  it('builds Grok group as select over the verified provider (app probe picks one)', () => {
+    const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+
+    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
+
+    const grokGroup = ((profile['proxy-groups'] as {
+      name: string
+      type?: string
+      use?: string[]
+      filter?: string
+    }[]) ?? []).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
+
+    assert.equal(grokGroup?.type, 'select')
+    assert.deepEqual(grokGroup?.use, [GROK_NODE_PROVIDER_ID])
+    // 不限地区：任何真正返回 200 的节点都可以被探针选中。
+    assert.equal(grokGroup?.filter, undefined)
+  })
+
+  it('builds Grok group from every leaf in inline mode', () => {
+    const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+
+    ensureCustomProxyGroups(profile, ['HK-01', 'JP-01', 'HK-01', 'US-01'])
+
+    const grokGroup = ((profile['proxy-groups'] as {
+      name: string
+      type?: string
+      proxies?: string[]
+    }[]) ?? []).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
+
+    assert.equal(grokGroup?.type, 'select')
+    assert.deepEqual(grokGroup?.proxies, ['HK-01', 'JP-01', 'US-01'])
+  })
+
+  it('keeps Grok group even when there is no Hong Kong node', () => {
+    const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+
+    ensureCustomProxyGroups(profile, ['JP-01', 'US-01'])
+
+    assert.ok(!groupNames(profile).includes(HONG_KONG_FILTER_GROUP_NAME))
+    assert.ok(groupNames(profile).includes(GROK_DEDICATED_GROUP_NAME))
   })
 
   it('excludes auto-hop groups from Cursor group members', () => {

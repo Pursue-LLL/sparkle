@@ -30,6 +30,8 @@ import {
 } from './provider'
 import {
   collectSubscriptionGroupNames,
+  dropUnknownGroupMembers,
+  ensureMatchFallbackRule,
   removeNonSubscriptionProxyGroups,
   rewriteMissingRuleProxyGroupTargets
 } from './profileGroupNormalize'
@@ -38,7 +40,7 @@ import {
   formatAutoSelectAnyTlsExclusionLogLine,
   type ProxyCatalogEntry,
 } from './autoSelectAnyTlsExclusionCore'
-import { injectHongKongTrafficRules } from './hongKongTrafficRuleInjection'
+import { injectDedicatedTrafficRules } from './dedicatedTrafficRuleInjection'
 import { injectMailTrafficRules } from './mailTrafficRuleInjection'
 import { injectAntigravityTrafficRules } from './antigravityRuleInjection'
 import { injectQuicTrafficRules } from './quicTrafficRuleInjection'
@@ -212,7 +214,7 @@ async function generateProfileImpl(): Promise<void> {
     .filter((entry): entry is ProxyCatalogEntry => entry !== null)
   const providerProfileId = current && current !== 'default' ? current : undefined
   const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
-  injectHongKongTrafficRules(profile)
+  injectDedicatedTrafficRules(profile)
   injectMailTrafficRules(profile)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {
     cursorDedicatedGroupRenameNotified = true
@@ -239,6 +241,13 @@ async function generateProfileImpl(): Promise<void> {
   }
   await logGenerateProfileStep('auto_switch_groups', stepStartedAtMs)
   orderProxyGroups(profile)
+  const droppedGroupMembers = dropUnknownGroupMembers(profile, leafProxyNames)
+  if (droppedGroupMembers.length > 0) {
+    const summary = droppedGroupMembers
+      .map(({ group, dropped }) => `${group}->[${dropped.join(',')}]`)
+      .join('; ')
+    await appendAppLog(`[Factory]: dropped unknown group members: ${summary}\n`)
+  }
   try {
     const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } = await import(
       './sparkleFastProviderCore'
@@ -249,7 +258,7 @@ async function generateProfileImpl(): Promise<void> {
       Record<string, unknown>
     >
     const [delaySnapshot, blockedNodeNames] = await Promise.all([
-      loadSparkleFastDelaySnapshot(),
+      loadSparkleFastDelaySnapshot(fastInputProxies),
       loadGeminiBlockedNodeNames(fastInputProxies)
     ])
     writeFileSync(
@@ -291,7 +300,7 @@ async function generateProfileImpl(): Promise<void> {
     const { buildSparkleAgyProviderDocument, AGY_NODE_PROVIDER_FILENAME } = await import(
       './sparkleAgyProviderCore'
     )
-    const { loadSparkleAgyProbeCache } = await import('./sparkleAgyProbe')
+    const { loadSparkleAgyProbeCache } = await import('./sparkleAgyProbeCache')
     const agyProbeCache = await loadSparkleAgyProbeCache()
     const agyDocument = buildSparkleAgyProviderDocument({
       proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
@@ -308,6 +317,27 @@ async function generateProfileImpl(): Promise<void> {
     }
   } catch {
     // best-effort：写失败沿用上一份 sparkle-agy 文件
+  }
+  try {
+    const { buildSparkleGrokProviderDocument, GROK_NODE_PROVIDER_FILENAME } = await import(
+      './sparkleGrokProviderCore'
+    )
+    const { loadSparkleGrokProbeCache } = await import('./sparkleGrokProbe')
+    const grokProbeCache = await loadSparkleGrokProbeCache()
+    const grokDocument = buildSparkleGrokProviderDocument({
+      proxies: extractProxies(currentProfile) as unknown as Array<Record<string, unknown>>,
+      probeCache: grokProbeCache.size ? grokProbeCache : undefined
+    })
+    // 空 provider 会让 mihomo 拒绝加载整份配置：没有节点时沿用上一份文件。
+    if (grokDocument.proxies.length > 0) {
+      writeFileSync(
+        path.join(profilesDir(), GROK_NODE_PROVIDER_FILENAME),
+        stringifyYaml(grokDocument),
+        'utf8'
+      )
+    }
+  } catch {
+    // best-effort：写失败沿用上一份 sparkle-grok 文件
   }
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)
@@ -329,6 +359,11 @@ async function generateProfileImpl(): Promise<void> {
   // 早于此处注入会被 guard 误拦（时序 bug 已实测）。
   injectAntigravityTrafficRules(profile)
   await logGenerateProfileStep('antigravity_geo_rules', stepStartedAtMs)
+  const matchFallback = ensureMatchFallbackRule(profile)
+  if (matchFallback) {
+    await appendAppLog(`[Factory]: appended MATCH fallback -> ${matchFallback}\n`)
+  }
+  await logGenerateProfileStep('match_fallback', stepStartedAtMs)
   injectQuicTrafficRules(profile)
   await logGenerateProfileStep('quic_traffic_rules', stepStartedAtMs)
 

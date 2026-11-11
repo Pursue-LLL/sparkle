@@ -1,15 +1,22 @@
-// [INPUT] mihomo `自动选择` 组状态 · sparkle-fast provider 探测结果与单点拨测
+// [INPUT] autoSelectStickyPinCore::decideStickyPin/shouldRecheckFixedNodeRegion (POS: 粘性固定与地区复核节流决策) ·
+//         sparkleGeminiProbe::verifyNodeGeminiRegion (POS: Gemini 地区码校验) ·
+//         mihomoApi::mihomoGroupDetail/mihomoChangeProxy/mihomoUnfixedProxy (POS: mihomo 控制器访问层) ·
+//         sparkle-fast provider 探测结果与单点拨测
 // [OUTPUT] startAutoSelectStickyPin · notifyAutoSelectUnfixed
 // [POS] 轮询 `自动选择`：fallback 选出的存活节点稳定后固定下来，让它只在该节点真挂掉时才换；
 // 固定被 mihomo 清除时先做单点独立复测（过滤并发体检偶发超时误报）；清理孤儿固定。
 // 决策在 autoSelectStickyPinCore；这里只负责轮询与调用 controller。
-// 轮询 `GET /proxies/{group}` 不触发 lazy 体检，不会改变空闲组不探测的行为。
+// 轮询 `GET /proxies/{group}` 不触发 lazy 体检；固定节点的 Gemini 地区复核按 5 分钟节流，避免每 3 秒解析订阅文件。
 
 import { appendAppLog } from '../utils/log'
 import {
   decideStickyPin,
+  INITIAL_FIXED_NODE_REGION_CHECK_MEMORY,
   INITIAL_STICKY_PIN_MEMORY,
+  recordFixedNodeRegionCheck,
   recordRestoredStickyPin,
+  shouldRecheckFixedNodeRegion,
+  type FixedNodeRegionCheckMemory,
   type StickyPinMemory
 } from './autoSelectStickyPinCore'
 import {
@@ -33,6 +40,7 @@ const POLL_INTERVAL_MS = 3000
 let pollTimer: NodeJS.Timeout | undefined
 let polling = false
 let memory: StickyPinMemory = INITIAL_STICKY_PIN_MEMORY
+let fixedRegionCheckMemory: FixedNodeRegionCheckMemory = INITIAL_FIXED_NODE_REGION_CHECK_MEMORY
 let lastPinned = ''
 let stateGeneration = 0
 
@@ -43,6 +51,7 @@ export function notifyAutoSelectUnfixed(group: string): void {
   }
   stateGeneration += 1
   memory = INITIAL_STICKY_PIN_MEMORY
+  fixedRegionCheckMemory = INITIAL_FIXED_NODE_REGION_CHECK_MEMORY
   lastPinned = ''
 }
 
@@ -89,11 +98,15 @@ async function pollOnce(): Promise<void> {
   }
 
   const { action } = decision
-  if (group.fixed) {
+  if (!group.fixed) {
+    fixedRegionCheckMemory = INITIAL_FIXED_NODE_REGION_CHECK_MEMORY
+  } else if (shouldRecheckFixedNodeRegion(group.fixed, fixedRegionCheckMemory)) {
+    fixedRegionCheckMemory = recordFixedNodeRegionCheck(group.fixed)
     const regionCheck = await verifyNodeGeminiRegion(group.fixed)
     if (regionCheck.definitive && !regionCheck.eligible) {
       await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
       memory = INITIAL_STICKY_PIN_MEMORY
+      fixedRegionCheckMemory = INITIAL_FIXED_NODE_REGION_CHECK_MEMORY
       await appendAppLog(
         `[AutoSelectSticky]: unfixed region-restricted node ${group.fixed} (region=${regionCheck.countryCode})\n`
       )
@@ -103,6 +116,7 @@ async function pollOnce(): Promise<void> {
 
   if (action.kind === 'unfix') {
     await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
+    fixedRegionCheckMemory = INITIAL_FIXED_NODE_REGION_CHECK_MEMORY
     await appendAppLog(`[AutoSelectSticky]: released orphan pin ${action.orphan}\n`)
     return
   }
@@ -127,6 +141,7 @@ async function pollOnce(): Promise<void> {
     if (!latest.fixed && latest.all.includes(action.node)) {
       await mihomoChangeProxy(AUTO_SELECT_GROUP_NAME, action.node)
       memory = recordRestoredStickyPin(action.node, Date.now())
+      fixedRegionCheckMemory = recordFixedNodeRegionCheck(action.node)
       lastPinned = action.node
       await appendAppLog(`[AutoSelectSticky]: restored ${action.node} after single probe blip\n`)
     }
@@ -149,6 +164,7 @@ async function pollOnce(): Promise<void> {
     if (!latest.fixed && latest.now === action.node && latest.all.includes(action.node)) {
       await mihomoChangeProxy(AUTO_SELECT_GROUP_NAME, action.node)
       memory = { ...memory, pinned: action.node }
+      fixedRegionCheckMemory = recordFixedNodeRegionCheck(action.node)
       const left = lastPinned && lastPinned !== action.node ? ` (left ${lastPinned})` : ''
       lastPinned = action.node
       await appendAppLog(`[AutoSelectSticky]: pinned ${action.node}${left}\n`)

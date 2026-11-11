@@ -6,7 +6,7 @@
 
 | 文件 | 职责 |
 |------|------|
-| `types/` | 全局 TypeScript 类型（`app.d.ts` · `types.d.ts`） |
+| `types/` | 全局 TypeScript 类型（`app.d.ts` · `types.d.ts` · `controller.d.ts`，含跨进程 `AgyProbeSample`（rttMs / checkedAt / state：usable|unusable|failed / reason）与 `AgyProbeSnapshot`） |
 | `buildStamp.ts` | **生成物**：`SPARKLE_BUILD_STAMP`（`YYYY.MMDD.HHMM`）+ `SPARKLE_SEMVER`；由 `scripts/write-build-stamp.ts` 写入，禁止手改 |
 
 ## 数据流

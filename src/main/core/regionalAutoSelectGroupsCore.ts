@@ -1,6 +1,6 @@
 // [INPUT] 地区 · provider id / 节点名 / 节点目录 · 探测参数
 // [OUTPUT] buildRegionalAutoSelectGroupName · buildRegionalUrlTestGroup
-// [POS] `Sparkle-<地区>` 手动选择用的地区组（url-test，排除 AnyTLS）；没有可用节点的地区不建组。
+// [POS] `Sparkle-<地区>` 供用户在父组手动选择的地区组（url-test，组内自动切换；排除 AnyTLS）；没有可用节点的地区不建组。
 // 不被 `自动选择` 引用。纯函数模块，便于单测。
 
 import {

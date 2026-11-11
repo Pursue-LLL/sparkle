@@ -13,7 +13,10 @@ import { AUTO_SELECT_GROUP_NAME } from './defaultAutoSwitchProxy'
 const ANTIGRAVITY_TRAFFIC_RULE_BASES = [
   'DOMAIN-KEYWORD,cloudcode-pa',
   'DOMAIN-SUFFIX,aicode.googleapis.com',
-  'DOMAIN-SUFFIX,generativelanguage.googleapis.com'
+  'DOMAIN-SUFFIX,generativelanguage.googleapis.com',
+  // agy CLI 启动时的 Eligibility check 走这里；走通用出口在当前订阅下会 SSL EOF，
+  // 导致整轮探测全部 unknown（代理页表现为"全都未测"）。
+  'DOMAIN,www.googleapis.com'
 ] as const
 
 /** 规则可能被上一版目标组写过，改写而不是重复追加。 */

@@ -75,6 +75,9 @@ fi
 
 pnpm run write-build-stamp
 
+log "Cleaning out/ (stale chunk hashes break asar packaging)..."
+rm -rf "$ROOT/out"
+
 pnpm exec electron-vite build
 
 log "Stage-A bundle gate (out/main, fail-fast before electron-builder)..."

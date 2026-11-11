@@ -11,7 +11,9 @@ export const GENERAL_PROXY_GROUP_NAME = '🚀 节点选择' as const
 export const CURSOR_DELAY_TEST_URL = 'https://api2.cursor.sh' as const
 export const DEFAULT_GENERAL_DELAY_TEST_URL = 'https://www.gstatic.com/generate_204' as const
 export const AUTO_SELECT_DELAY_TEST_URL = 'https://chatgpt.com' as const
-export const HONG_KONG_DELAY_TEST_URL = 'https://grok.com' as const
+export const GROK_DEDICATED_GROUP_NAME = 'grok 专用' as const
+export const GROK_DELAY_TEST_URL = 'https://grok.com' as const
+export const HONG_KONG_DELAY_TEST_URL = 'https://x.com' as const
 export const CURSOR_AUTO_SELECT_GROUP_NAME = 'Sparkle-自动-Cursor' as const
 
 const REGION_AUTO_SELECT_PREFIX = 'Sparkle-' as const
@@ -25,12 +27,17 @@ function isSparkleRegionalAutoSelectGroup(groupName: string): boolean {
   return (
     groupName.startsWith(REGION_AUTO_SELECT_PREFIX) &&
     !isSparkleCursorAutoSelectGroup(groupName) &&
-    !isHongKongFilterGroupName(groupName)
+    !isHongKongFilterGroupName(groupName) &&
+    !isGrokDedicatedGroupName(groupName)
   )
 }
 
 function isHongKongFilterGroupName(groupName: string): boolean {
   return groupName === HONG_KONG_FILTER_GROUP_NAME || groupName === '🇭🇰 香港节点'
+}
+
+function isGrokDedicatedGroupName(groupName: string): boolean {
+  return groupName === GROK_DEDICATED_GROUP_NAME
 }
 
 export function isCursorDedicatedGroupName(groupName: string): boolean {
@@ -52,6 +59,9 @@ export function resolveDelayTestUrl(groupName?: string, groupTestUrl?: string): 
   }
   if (groupName && isHongKongFilterGroupName(groupName)) {
     return groupTestUrl || HONG_KONG_DELAY_TEST_URL
+  }
+  if (groupName && isGrokDedicatedGroupName(groupName)) {
+    return groupTestUrl || GROK_DELAY_TEST_URL
   }
   return groupTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL
 }

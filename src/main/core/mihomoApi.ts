@@ -1,3 +1,8 @@
+// [INPUT] factory::getRuntimeConfig/loadRuntimeConfigFromDisk (POS: runtime 配置生成/落盘) ·
+//         service/api (POS: service 模式签名请求) · mihomo unix socket / controller
+// [OUTPUT] mihomo REST/WS 封装 · subscribeMihomoLogs · mihomoGetConnections · mihomoGroupDetail · mihomoChangeProxy/mihomoUnfixedProxy · delay/provider 单点拨测
+// [POS] mihomo 控制器访问层：统一封装 REST、WebSocket 日志/连接流、延迟探测与选点/解固定操作。
+
 import axios, { AxiosInstance } from 'axios'
 import { getAppConfig, getControledMihomoConfig } from '../config'
 import { mainWindow } from '..'
@@ -307,6 +312,8 @@ const DEFAULT_DELAY_TEST_TIMEOUT_MS = 10000
 
 export interface MihomoDelayOptions {
   timeoutMs?: number
+  /** 期望的 HTTP 状态码（如 '200'）；用于把 403 挑战页判为不可用，未传则不校验状态。 */
+  expectedStatus?: string
 }
 
 async function resolveDelayTestTimeoutMs(
@@ -331,12 +338,19 @@ export async function mihomoProviderLeafDelay(
   providerName: string,
   proxy: string,
   url: string,
-  timeoutMs: number
+  timeoutMs: number,
+  expectedStatus?: string
 ): Promise<ControllerProxiesDelay> {
   const instance = await getAxios()
   return await instance.get(
     `/providers/proxies/${encodeURIComponent(providerName)}/${encodeURIComponent(proxy)}/healthcheck`,
-    { params: { url, timeout: timeoutMs } }
+    {
+      params: {
+        url,
+        timeout: timeoutMs,
+        ...(expectedStatus ? { expected: expectedStatus } : {})
+      }
+    }
   )
 }
 
@@ -351,7 +365,11 @@ async function mihomoProxyDelayUnchecked(
   const instance = await getAxios()
   try {
     return await instance.get(`/proxies/${encodeURIComponent(proxy)}/delay`, {
-      params: { url: probeUrl, timeout: timeoutMs }
+      params: {
+        url: probeUrl,
+        timeout: timeoutMs,
+        ...(options?.expectedStatus ? { expected: options.expectedStatus } : {})
+      }
     })
   } catch (error) {
     const proxies = await mihomoProxies()
@@ -362,7 +380,13 @@ async function mihomoProxyDelayUnchecked(
     if (!providerName) {
       throw error
     }
-    return await mihomoProviderLeafDelay(providerName, proxy, probeUrl, timeoutMs)
+    return await mihomoProviderLeafDelay(
+      providerName,
+      proxy,
+      probeUrl,
+      timeoutMs,
+      options?.expectedStatus
+    )
   }
 }
 
@@ -386,7 +410,8 @@ async function mihomoGroupDelayUnchecked(
   return await instance.get(`/group/${encodeURIComponent(group)}/delay`, {
     params: {
       url: url || delayTestUrl || DEFAULT_GENERAL_DELAY_TEST_URL,
-      timeout: timeoutMs
+      timeout: timeoutMs,
+      ...(options?.expectedStatus ? { expected: options.expectedStatus } : {})
     }
   })
 }
@@ -564,6 +589,17 @@ export const restartMihomoLogs = async (): Promise<void> => {
   await startMihomoLogs()
 }
 
+type MihomoLogListener = (log: ControllerLog) => void
+const mihomoLogListeners = new Set<MihomoLogListener>()
+
+/** 订阅内核日志流（供按需探测等活动判定使用）；返回取消订阅函数。 */
+export function subscribeMihomoLogs(listener: MihomoLogListener): () => void {
+  mihomoLogListeners.add(listener)
+  return () => {
+    mihomoLogListeners.delete(listener)
+  }
+}
+
 const mihomoLogs = async (): Promise<void> => {
   const { realtimeLogLevel } = await getAppConfig()
   const { 'log-level': logLevel = 'info' } = await getControledMihomoConfig()
@@ -576,7 +612,15 @@ const mihomoLogs = async (): Promise<void> => {
     const data = e.data as string
     logsRetry = 10
     try {
-      publishMihomoLog(JSON.parse(data) as ControllerLog)
+      const log = JSON.parse(data) as ControllerLog
+      publishMihomoLog(log)
+      for (const listener of mihomoLogListeners) {
+        try {
+          listener(log)
+        } catch {
+          // 单个订阅者异常不影响日志广播
+        }
+      }
     } catch {
       // ignore
     }

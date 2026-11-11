@@ -7,7 +7,7 @@ Shell/TS 脚本：本地升级、安装门禁、post-upgrade 验收。
 | 文件 | 职责 |
 | --- | --- |
 | `agent-sparkle-upgrade.sh` | **Agent SSOT**：dist 就绪则仅 install，否则 full upgrade；装后数据面就绪门禁 + profile due-check |
-| `upgrade-sparkle-local.sh` | 本地 dev 一条龙：vite → electron-builder dir → asar gate → install → PostCoreBootstrap `mihomo API ready` 门控（macOS 26 且未设 `macos26ForceGui` 走 headless 分支，否则走 GUI 就绪门禁） |
+| `upgrade-sparkle-local.sh` | 本地 dev 一条龙：清理 `out/` → vite → electron-builder dir → asar gate → install → PostCoreBootstrap `mihomo API ready` 门控（macOS 26 且未设 `macos26ForceGui` 走 headless 分支，否则走 GUI 就绪门禁） |
 | `install-sparkle-local.sh` | 仅安装 `dist/mac-arm64/Sparkle.app` → `/Applications` |
 | `verify-sparkle-main-asar.mts` | Stage-B：app.asar 内 main bundle marker 门禁 |
 | `verify-sparkle-bundle.mts` | Stage-A：vite 后 out/main bundle marker 门禁 |

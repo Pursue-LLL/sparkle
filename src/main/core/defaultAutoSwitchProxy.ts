@@ -8,6 +8,7 @@ import {
   isNestedAutoSwitchSelection,
   isSparkleAutoSelectSubGroup,
   isAgyDedicatedGroupName,
+  isGrokDedicatedGroupName,
   isHongKongFilterGroupName,
   isMailDedicatedGroupName,
   isMailProbeHiddenGroupName,
@@ -174,7 +175,8 @@ function resolveAutoSelectLeafNames(
 }
 
 /**
- * Sparkle-* 地区组仅供手动选路；`自动选择` = 平铺节点 + fallback（按地区优先级用第一个可用节点，挂了才降级）。
+ * Sparkle-* 地区组仅供用户在父组手动选路，组内节点仍由 url-test 自动选择/切换；
+ * `自动选择` = 平铺节点 + fallback（按地区优先级用第一个可用节点，挂了才降级）。
  * 不把 🎯 Cursor 专用 嵌进 自动选择：Cursor 专用已包含 自动选择，反向嵌套会成环。
  */
 function ensureRegionPriorityAutoSelect(
@@ -309,6 +311,7 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
     if (
       isSparkleAutoSelectSubGroup(group.name) ||
       isHongKongFilterGroupName(group.name) ||
+      isGrokDedicatedGroupName(group.name) ||
       isMailDedicatedGroupName(group.name) ||
       isAgyDedicatedGroupName(group.name) ||
       isMailProbeHiddenGroupName(group.name)

@@ -1,8 +1,10 @@
 // [INPUT] 当前订阅节点 · 地区优先级 · 真实邮件端口（IMAPS 993 + SMTPS 465）探测缓存
-// [OUTPUT] MAIL_NODE_PROVIDER_ID · orderMailProxies · buildSparkleMailProviderDocument
-// [POS] `📧 邮件专用` 的专属 provider 文件生成逻辑：
+// [OUTPUT] MAIL_NODE_PROVIDER_ID · orderMailProxies · buildSparkleMailProviderDocument · buildMailGroupConfig（`fallback`）·
+//          buildMailProbeHiddenGroupConfig · ensureMailProbeListener · mailProviderMembershipChanged
+// [POS] `📧 邮件专用` 的专属 provider 与组配置生成逻辑：
 // 只保留通过了 `imap.gmail.com:993` 与 `smtp.gmail.com:465` 双端口 TLS 握手与 Banner 校验的节点；
-// 若首次冷启动尚无已验证节点，则排除已知封禁端口节点与 AnyTLS，并优先将 Hysteria2/VLESS 候选节点排在前面兜底，避免空 provider 报错。
+// 组为 `fallback`（按 provider 地区优先级取首个存活，台湾优先）；冷启动无已验证节点时排除已知封禁端口节点与 AnyTLS，
+// 并优先将 Hysteria2/VLESS 候选节点排在前面兜底，避免空 provider 报错。
 
 import {
   CURSOR_DEDICATED_DIRECT_PROXY,
@@ -153,12 +155,29 @@ export function buildSparkleMailProviderDocument(input: {
   }
 }
 
+/** provider 成员集合是否变化；顺序变化不触发热重载，只有增删节点才需要让 mihomo 重读。 */
+export function mailProviderMembershipChanged(
+  previousNames: readonly string[],
+  nextNames: readonly string[]
+): boolean {
+  const previous = new Set(previousNames)
+  const next = new Set(nextNames)
+  if (previous.size !== next.size) {
+    return true
+  }
+  for (const name of next) {
+    if (!previous.has(name)) {
+      return true
+    }
+  }
+  return false
+}
+
 export interface MailProxyGroupShape {
   name: string
   type?: string
   url?: string
   interval?: number
-  tolerance?: number
   timeout?: number
   lazy?: boolean
   hidden?: boolean
@@ -171,12 +190,13 @@ export function buildMailGroupConfig(
   profileId: string | undefined
 ): MailProxyGroupShape | null {
   if (profileId) {
+    // fallback（不是 url-test）：按 provider 的地区优先级顺序取「首个存活」，
+    // 与 `自动选择` 一致；993/465 的真实故障由 sparkleMailCurrentNodeProbe 剔除成员后触发切换。
     return {
       name: MAIL_DEDICATED_GROUP_NAME,
-      type: 'url-test',
+      type: 'fallback',
       url: MAIL_DELAY_TEST_URL,
       interval: 300,
-      tolerance: 150,
       timeout: 5000,
       lazy: true,
       use: [MAIL_NODE_PROVIDER_ID]
@@ -190,10 +210,9 @@ export function buildMailGroupConfig(
   }
   return {
     name: MAIL_DEDICATED_GROUP_NAME,
-    type: 'url-test',
+    type: 'fallback',
     url: MAIL_DELAY_TEST_URL,
     interval: 300,
-    tolerance: 150,
     timeout: 5000,
     lazy: true,
     proxies: mailMembers

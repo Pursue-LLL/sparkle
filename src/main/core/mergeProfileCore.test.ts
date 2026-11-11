@@ -13,6 +13,13 @@ const REGIONS = ['台湾', '日本', '新加坡', '韩国', '美国', '越南', 
 
 const BASE_YAML = `
 port: 7890
+dns:
+  enable: true
+  proxy-server-nameserver:
+    - 223.5.5.5
+  proxy-server-nameserver-policy:
+    existing.example:
+      - 9.9.9.9
 proxies:
   - { name: "🇭🇰 香港 01", type: trojan, server: a.example, port: 443 }
   - { name: "🇭🇰 台湾 M1 | 港澳B站", type: trojan, server: b.example, port: 443 }
@@ -30,6 +37,10 @@ rules:
 
 const OTHER_YAML = `
 port: 9999
+dns:
+  enable: true
+  proxy-server-nameserver:
+    - https://doh.example/dns-query
 proxies:
   - { name: "🇺🇸 美国 01", type: vless, server: f.example, port: 443 }
   - { name: "🇩🇪 德国 01", type: vless, server: g.example, port: 443 }
@@ -41,8 +52,18 @@ rules:
   - MATCH,🔰 手动选择
 `
 
+const NO_DNS_BASE_YAML = `
+proxies:
+  - { name: "🇯🇵 日本 01", type: trojan, server: base.example, port: 443 }
+proxy-groups:
+  - { name: "G", type: select, proxies: ["🇯🇵 日本 01"] }
+rules:
+  - MATCH,G
+`
+
 const sources: Record<string, { label: string; yaml: string; derived: boolean }> = {
   base: { label: '主订阅', yaml: BASE_YAML, derived: false },
+  noDnsBase: { label: '无DNS主订阅', yaml: NO_DNS_BASE_YAML, derived: false },
   other: { label: '移动订阅', yaml: OTHER_YAML, derived: false },
   merged: { label: '合并版', yaml: '', derived: true }
 }
@@ -90,6 +111,27 @@ describe('mergeProfileCore', () => {
     assert.equal(select['exclude-filter'], undefined)
     assert.equal(merged.port, 7890)
     assert.deepEqual(merged.rules, ['DOMAIN-SUFFIX,example.com,🚀 节点选择', 'MATCH,🎯 全球直连'])
+  })
+
+  it('来源订阅的 proxy-server-nameserver 按节点域名合并，只影响来源自己的 server', async () => {
+    const merged = parse(await buildMergedProfileStr(spec(), readSource))
+    const policy = merged.dns['proxy-server-nameserver-policy']
+    assert.deepEqual(policy['existing.example'], ['9.9.9.9'])
+    assert.deepEqual(policy['f.example'], ['https://doh.example/dns-query'])
+    assert.deepEqual(policy['h.example'], ['https://doh.example/dns-query'])
+    assert.equal(policy['a.example'], undefined)
+  })
+
+  it('base 没有 dns 时也保留来源节点的 proxy-server-nameserver 策略', async () => {
+    const merged = parse(
+      await buildMergedProfileStr(
+        spec({ base: 'noDnsBase', sources: ['noDnsBase', 'other'] }),
+        readSource
+      )
+    )
+    const policy = merged.dns['proxy-server-nameserver-policy']
+    assert.deepEqual(policy['f.example'], ['https://doh.example/dns-query'])
+    assert.equal(policy['base.example'], undefined)
   })
 
   it('专用地区节点保留在节点池，但被挡在含节点的普通组之外', async () => {

@@ -252,3 +252,30 @@ interface ControllerRuleProviderDetail {
   updatedAt: string
   vehicleType: string
 }
+
+/** agy 真实请求实测快照：节点名 → 最近一次探测的真实状态（成功 / 锁区 / 失败）。 */
+interface AgyProbeSample {
+  rttMs: number
+  checkedAt: number
+  /** usable=真实 200；unusable=地区不支持；failed=本轮未通过（超时/网络/未知）；缺省按 usable 处理。 */
+  state?: 'usable' | 'unusable' | 'failed'
+  /** 失败/锁区的简短原因，UI tooltip 展示，避免"未测"歧义。 */
+  reason?: string
+}
+
+type AgyProbeSnapshot = Record<string, AgyProbeSample>
+
+/** grok 真实请求实测快照：节点名 → 最近一次 grok.com HEAD 请求的真实结论。 */
+interface GrokProbeSample {
+  /** state=usable 时为 grok.com 真实响应耗时；失败时固定 0。 */
+  rttMs: number
+  checkedAt: number
+  /** usable=HTTP 200 且无 Cloudflare 挑战；failed=超时/403 挑战/其它非 200。 */
+  state: 'usable' | 'failed'
+  /** HTTP 状态码；0 表示没有拿到响应（超时/连接失败）。 */
+  status?: number
+  /** 失败原因（如 `HTTP 403 cf-mitigated=challenge`），UI tooltip 展示。 */
+  reason?: string
+}
+
+type GrokProbeSnapshot = Record<string, GrokProbeSample>

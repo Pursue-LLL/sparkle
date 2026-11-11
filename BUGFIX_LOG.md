@@ -35,7 +35,10 @@
 
 ---
 
-> **2026-11-02 最新**：**BUG-2026-11-02-001 CODE-DONE @1.30.71 git** · `tagss.pro` 报「Sorry, you have been blocked」：机场节点缺 `udp: true` → 浏览器 HTTP/3(UDP 443) 与 WebRTC STUN 回落 `DIRECT`，与 TCP 的台湾节点形成双出口 IP 分裂 → 新增 `quicTrafficRuleInjection.ts` 在规则链最前端注入 UDP 443 / `stun.cloudflare.com` 的 `REJECT`（浏览器按 RFC 9114 回退 HTTP/2 over TCP）· 运行态热修 + 全局 Override 持久化 · 干净浏览器实测拿到 `cf_clearance` · 单测 253/253 · **未装包（asar 仍为旧构建）**
+> **2026-11-03 17:00 最新**：**BUG-2026-11-03-003 CODE-DONE @1.30.71 git · 已装包 · 截图已验证** · 代理页 `🎯 agy 专用` 的延迟显示的是 mihomo 到 gstatic 的网络 RTT（200~400ms），与真实 agy 响应时间（3~50s）是两个口径 → 主进程维护真实请求快照 + IPC + `AgyDelayControl`（`3.9s · N 分前` / 「未测」），组头改「agy 实测」并隐藏手动测速与 mihomo 柱图 · 单测 318/318 PASS · typecheck/eslint 0
+> **2026-11-03 15:30 上一版**：**BUG-2026-11-03-002 CODE-DONE @1.30.71 git · 已装包 · 运行态已验证** · `🎯 agy 专用` 巡检结论张冠李戴：mihomo `select` 只影响新建连接，magpie 的 HTTP/2 长连接继续复用旧出口（8 个节点同判可用，实际全部走同一个土耳其出口）→ 任何切组后强制 `mihomoCloseConnections`；巡检改为每 3min pin 就地复测 + pin 400 先二次确认、超时连续两轮才做地区轮转修复扫描（第一个 200 立即停）；实测修复耗时 110s → 4~21s，`台湾-优化` 端到端 HTTP 200 / 2.8s · 单测 311/311 PASS · typecheck/eslint 0
+> **2026-11-03 上一版**：**BUG-2026-11-03-001 CODE-DONE @1.30.71 git** · `📧 邮件专用` 当前节点只封 993/465 时 443 体检仍判活，且邮件端口缓存 alive 最长 12h、provider 成员删除后未热重载 → 新增按需复测当前节点 993/465（仅邮件组有活动/最近 30 分钟用过）+ 成员集合变化即热重载 + 探测通道拆分；地区组启动预热改为仅活动/选中组；`自动选择` 固定节点 Gemini 地区复核 5 分钟节流 · 单测全量 PASS（本次新增 8 项）· typecheck/eslint 0
+> **2026-11-02 上一版**：**BUG-2026-11-02-001 CODE-DONE @1.30.71 git** · `tagss.pro` 报「Sorry, you have been blocked」：机场节点缺 `udp: true` → 浏览器 HTTP/3(UDP 443) 与 WebRTC STUN 回落 `DIRECT`，与 TCP 的台湾节点形成双出口 IP 分裂 → 新增 `quicTrafficRuleInjection.ts` 在规则链最前端注入 UDP 443 / `stun.cloudflare.com` 的 `REJECT`（浏览器按 RFC 9114 回退 HTTP/2 over TCP）· 运行态热修 + 全局 Override 持久化 · 干净浏览器实测拿到 `cf_clearance` · 单测 253/253 · **未装包（asar 仍为旧构建）**
 > **2026-10-17 上一版**：**BUG-2026-10-17-001 @1.30.71** · `自动选择` 选中「名为日本/韩国/美国、实被 Google 送中（`vXmutd="ZZ"` / `google.cn`）」节点导致 `gemini.google.com` 报「目前不支持你所在的地区」：mihomo 探测仅看 `HTTP 200` 状态码无法识别应用层地区锁 → 新增 `sparkleGeminiProbeCore.ts` + `sparkleGeminiProbe.ts` 流式校验 `vXmutd` 国家码 + `autoSelectStickyPin` 固定前拦截 + `sparkle-fast` 自动剔除送中节点并热重载（网络抖动 fail-open 绝不误杀）· 单测 250/250 · ESLint 0 warning
 > **2026-10-16 上一版**：**BUG-2026-10-16-001 INSTALLED @1.30.71** · macOS Mail 收 Gmail SSL `-9806`：Gmail IMAP/SMTP 走通用 `自动选择` 节点，部分机场封 993/465 → 新增 `📧 邮件专用` + `sparkle-mail` provider（Sparkle 主进程 993/465 TLS 双通探测 + 前置邮件域名规则）；mihomo 不可用 IMAPS 作 url-test 目标 · 单测 + `_ARCH`/`VERSION_LOG` 同步
 > **2026-10-15 13:24 上一版**：**BUG-2026-10-14-001 INSTALLED @1.30.71 3b60710**（CDHash `d19fd1a1`）· `自动选择` 粘性固定与单点复测保活（连续 2 次轮询稳定即 `PUT` 固定、丢固定时单点独立 Gemini 复测过滤并发体检假超时、10 分钟防抖冷却、孤儿锁清理）+ `sparkle-fast` 体检统一对齐 `Gemini + lazy:true` 并在订阅刷新时同步热重载 + 主商业 provider 开启 `lazy:true` + 冷启动沿用磁盘快照防残缺样本重排 · 单测 236/236 · ESLint 0 warning
@@ -93,7 +96,42 @@
 
 ---
 
+### BUG-2026-11-03-003 · 代理页面板延迟用 gstatic 网络 RTT 冒充 agy 响应时间（200ms vs 30s）· **CODE-DONE @1.30.71 git（已装包 · 截图已验证）**
+
+| 字段 | 内容 |
+| --- | --- |
+| **发生与修复标识** | 发生版本：`1.30.71`（代理页一直如此）；代码修复：本次（git，已装包 16:43）；验证：16:50 截图。 |
+| **症状** | 代理页 `🎯 agy 专用` 组节点显示 200~400ms 的「低延迟」，但真实 agy 请求 3~50s，用户判断节点快慢被误导。 |
+| **证据链** | ① `config.yaml:74` `delayTestUrl: https://www.gstatic.com/generate_204`，`delayTestUrlScope: group`；② `🎯 agy 专用` 是 `select` 且没有 `testUrl` → `resolveEffectiveDelayTestUrl` 回落到全局 gstatic；③ 真实判定在 `sparkleAgyProbe.ts:121` 的 magpie `chat/completions`，与面板延迟完全独立；④ 同一节点 16:50 面板 200~400ms、live 请求 39s。 |
+| **根因** | 面板展示的是「节点到 gstatic 的网络 RTT」，agy 的真实体验是「带账号凭证的模型请求到出字」，两者不是同一把尺子；agy 组没有自己的真实延迟数据源，UI 只能回落到通用延迟。 |
+| **修复** | ① 主进程维护 `agyProbeSnapshot`（真实请求成功才写入 rtt/时间），`buildAgyProbeSnapshot` 纯映射；② IPC `getSparkleAgyProbeSnapshot` + `useAgyProbeSnapshot` 30s 轮询；③ `AgyDelayControl` 显示 `3.9s · 2 分前` / `未测`；④ 组头「agy 实测」+ 隐藏手动测速；⑤ 该组不渲染 mihomo 详情柱图。 |
+| **验证** | 单测 `agy-probe-display` + 快照映射；全量 **318/318 PASS**；typecheck/eslint 0；16:50 组头截图 `Selector 🇯🇵 日本 02 agy 实测`、测速按钮已隐藏；17:03 节点 Chip 截图（CDP）：`日本 02 3.6s · 15分前` / `台湾 02 10s · 9分前` / `土耳其 7.4s · 47分前` / 其余 3.1~3.8s · 1~5 时前；live 请求 HTTP 200。 |
+| **防再翻车铁律** | 1. 网络 RTT ≠ 业务响应时间，特殊组的 SLA 必须用自己的真实探针口径。<br>2. 没有真实数据就显示「未测」，禁止用另一个指标顶替。<br>3. 隐藏一切会误导的「测速」入口（按钮/柱图），而不是只改数字。 |
+
+---
+
+> **巡检节奏与排序已由 2026-11-03 后续条目更新**：3min → 5min、地区轮转 → 严格地区优先 + 15 分钟尝试记录。
+
+### BUG-2026-11-03-002 · agy 巡检结论张冠李戴：`select` 切组不影响 magpie 已建立的 HTTP/2 连接，8 个节点同判可用实际全走同一出口；且失败节点饿死新节点、pin 12h 不复测 · **CODE-DONE @1.30.71 git（已装包 · 运行态已验证）**
+
+| 字段 | 内容 |
+| --- | --- |
+| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-03 11:08 起缓存被污染，用户会话持续 400）；代码修复：本次（git，已装包 14:40）；运行态验证：14:45。 |
+| **症状** | `antigravity/gemini-3.8-flash` 持续 `400 Antigravity: User location is not supported for the API use.`；core 日志显示分流正常：`daily-cloudcode-pa.googleapis.com:443 match DomainKeyword(cloudcode-pa) using 🎯 agy 专用[日本-优化]`。 |
+| **证据链 ①（归因）** | 11:07:58~11:08:01 `sparkle-agy-nodes.json` 写入 8 条 `usable:true`（rtt 2711~4827ms），同刻 `core-2026-11-3.log` 只有 6 条 cloudcode 连接且**全部 `using 🎯 agy 专用[🇹🇷 土耳其 B88]`**；13:23 那轮日志 `probed=8 usable=0`，该分钟 core 日志**零条 cloudcode 连接**。→ 探测请求全部复用 magpie 已建立的 HTTP/2 长连接，切组没有生效。 |
+| **证据链 ②（饥饿）** | `pending` 按 `checkedAt` 升序取前 8（`sparkleAgyProbe.ts:310-322` 旧实现），失败记录 30min 过期、成功 12h → 13 个 400 节点每轮占据全部名额；`sparkle-agy-nodes.json` 16 条记录里**没有** `台湾 02 / 日本 02 / 韩国 02 / 新加坡 02 / 美国 02`（hysteria2），它们从未被测过，而全量矩阵显示它们是最快的一批（3.4~8.9s，200）。 |
+| **证据链 ③（不复测）** | 可用 TTL 12h + 只测「不新鲜」节点 → 11:08 之后 `日本-优化` 再没被测过，14:00 时仍被钉住（实际 400）。 |
+| **全量矩阵（14:03，关连接后逐节点）** | 33 个候选：`台湾 02` 3.4s / `日本 02` 3.5s / `韩国 02` 3.7s / `新加坡 02` 4.5s / `美国 02` 8.9s / `印度-优化` 6.3s / `印度 B75` 12~13.6s / `土耳其 B88` 8.7s 均 200；13 个 mojcn「优化」节点两轮稳定 400；其余超时。**同一节点 14:03 为 400、14:45 为 200**，再次印证 400 的时变性。 |
+| **根因** | ① mihomo `select` 组只改新建连接的路由，magpie 进程内的 HTTP/2 连接池不会重建；旧实现「切组 → 发请求」缺少 `mihomoCloseConnections`，导致探测结论与节点身份解耦。② 调度只看 `checkedAt` 且单轮 8 个名额，失败结论高频过期 → 已确认不可用的节点反复占用预算，从未测过的节点永远排不上。③ 巡检不复查当前 pin，可用 TTL 12h 让坏节点长期在岗。 |
+| **修复** | ① 新增 `sparkleAgyProbeCache.ts`（缓存唯一读写 + TTL）与 `sparkleAgyMagpieClient.ts`（response/unreachable/timeout 三态）；② `sparkleAgyProviderCore.orderAgyRepairProxies`：地区轮转（每轮每个地区先试一个 + 其它节点跟在每轮末尾）、已确认不可用垫底、地区内最近 30 分钟验证过的按 rtt 优先；③ `sparkleAgyProbe`：每 3min pin 就地复测（不切组、不关连接、30s 超时）；400 先同节点复测一次（排除账号轮转），两次都 400 立即修复；超时按轮次累计（连续 2 轮才修复，上游整体变慢时不制造无意义切换）；修复扫描 15s 超时、12 个上限、5min 预算、第一个 200 立即停；**任何切组后 `mihomoCloseConnections('🎯 agy 专用')`**，外部改过选择也补断一次；provider 成员集合不变不写盘不热重载；写 provider 前校验 profile 未切换；④ `runAgyAudit` 支持 `stopOnUsable` 并返回 `usableNode`；新增纯函数 `shouldRepairAgyPin`；⑤ 探测请求带 `reasoning_effort: low`（实测 `completion_tokens` 54 → 1，单次成本约 1/18）。 |
+| **验证** | 单测：`sparkleAgyProbeCore.test.ts` + `sparkleAgyProviderCore.test.ts` 30 例 PASS；`pnpm run test:node-quality` **311/311 PASS**；`typecheck:node` 0；改动文件 eslint 0。运行态：旧实现最后一次修复 **110s**（`14:33:24 → 14:35:14`，4 个超时节点各吃 20s）；新实现强制把 pin 切到已知 400 的 `日本-优化` 后 **4s** 完成修复（`14:45:21.446 → 14:45:25.443`，落到 `台湾-优化`），随后 magpie 真实请求 **HTTP 200 / 2.8s**；第二轮 `台湾-优化` 3 分钟后翻 400 → **10s** 修复到 `韩国 02`；含 400 二次确认的完整链路 `15:16:58` 两条 400 → `15:17:00 → 15:17:21` **21s** 修复到 `韩国 02`；超时两轮策略实测 `15:57:22 streak=2` 触发扫描（`probed=7`）全灭 → 保留原 pin，`15:59:56` 同节点自愈（未切换）；core 日志 `using 🎯 agy 专用[韩国 02]`。 |
+| **防再翻车铁律** | 1. **「切组」不是「换出口」**：任何依赖 mihomo select 的探测/切换，必须显式关闭旧连接（`mihomoCloseConnections`），否则结论不可归因。<br>2. **缓存不只是 TTL**：决定「下一轮测谁」的排序必须同时覆盖「当前在用节点 / 从未测过 / 已确认不可用」，并按地区轮转，禁止只按 `checkedAt` 升序取前 N。<br>3. **修复要快**：同地区深挖会在成组失效的机场上烧光预算（110s），改为地区轮转 + 更短探测超时 + 第一个成功即停（4s）。<br>4. **环境噪声要区分**：同节点 400/200 可在 40 分钟内翻转，禁止把一次探测结果当长期属性；用 3min 级复测兜底。 |
+
+---
+
 ### BUG-2026-11-02-002 · magpie 的 agy 请求报 `User location is not supported`：`自动选择` 按延迟把流量钉在新加坡节点，而 gemini.com 探测测不出 cloudcode-pa 地域拒绝 · **CODE-DONE @1.30.71 git（未装包）**
+
+> **已被 BUG-2026-11-03-002 取代**：巡检已重做为 pin 就地复测 + 地区轮转 + 切组强制断连；本条仅保留当日归因与首版实现记录。
 
 | 字段 | 内容 |
 | --- | --- |

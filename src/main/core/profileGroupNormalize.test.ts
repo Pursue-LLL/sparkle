@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { CURSOR_DEDICATED_GROUP_NAME, GROK_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME } from './customProxyGroups'
 import {
   collectSubscriptionGroupNames,
+  dropUnknownGroupMembers,
+  ensureMatchFallbackRule,
   removeNonSubscriptionProxyGroups,
   rewriteMissingRuleProxyGroupTargets
 } from './profileGroupNormalize'
@@ -20,6 +22,7 @@ describe('profileGroupNormalize', () => {
       'proxy-groups': [
         { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select' },
         { name: HONG_KONG_FILTER_GROUP_NAME, type: 'select' },
+        { name: GROK_DEDICATED_GROUP_NAME, type: 'url-test' },
         { name: '香港专用', type: 'select' },
         { name: 'SDK DNS', type: 'select' }
       ]
@@ -106,5 +109,74 @@ describe('profileGroupNormalize', () => {
 
     assert.ok(groupNames(profile).includes('🚀 节点选择'))
     assert.ok(groupNames(profile).includes('主代理'))
+  })
+
+  it('drops unknown group members so mihomo can load the whole profile', () => {
+    const profile = {
+      'proxy-groups': [
+        { name: '🚀 节点选择', type: 'select', proxies: ['JP-01'] },
+        {
+          name: '🍃 应用净化',
+          type: 'select',
+          proxies: ['REJECT', 'DIRECT', '🚀 节点选择', '🇭🇰 香港 I0B | AWS']
+        },
+        { name: '空组', type: 'select', proxies: ['已下架节点'] }
+      ]
+    } as unknown as MihomoConfig
+
+    const dropped = dropUnknownGroupMembers(profile, ['JP-01'])
+
+    assert.deepEqual(profile['proxy-groups'], [
+      { name: '🚀 节点选择', type: 'select', proxies: ['JP-01'] },
+      {
+        name: '🍃 应用净化',
+        type: 'select',
+        proxies: ['REJECT', 'DIRECT', '🚀 节点选择']
+      },
+      { name: '空组', type: 'select', proxies: ['DIRECT'] }
+    ])
+    assert.deepEqual(dropped, [
+      { group: '🍃 应用净化', dropped: ['🇭🇰 香港 I0B | AWS'] },
+      { group: '空组', dropped: ['已下架节点'] }
+    ])
+  })
+
+  it('appends a MATCH fallback when the profile has none', () => {
+    const profile = {
+      'proxy-groups': [
+        { name: '🚀 节点选择', type: 'select', proxies: ['JP-01'] },
+        { name: '自动选择', type: 'fallback', proxies: ['JP-01'] }
+      ],
+      rules: ['DOMAIN-SUFFIX,example.com,🚀 节点选择']
+    } as unknown as MihomoConfig
+
+    assert.equal(ensureMatchFallbackRule(profile), '🚀 节点选择')
+    assert.deepEqual(profile.rules, [
+      'DOMAIN-SUFFIX,example.com,🚀 节点选择',
+      'MATCH,🚀 节点选择'
+    ])
+  })
+
+  it('keeps an existing MATCH and falls back to 自动选择 when the main group is absent', () => {
+    const existing = {
+      'proxy-groups': [{ name: '🚀 节点选择', type: 'select' }],
+      rules: ['MATCH,DIRECT']
+    } as unknown as MihomoConfig
+    assert.equal(ensureMatchFallbackRule(existing), null)
+    assert.deepEqual(existing.rules, ['MATCH,DIRECT'])
+
+    const fallback = {
+      'proxy-groups': [{ name: '自动选择', type: 'fallback' }],
+      rules: []
+    } as unknown as MihomoConfig
+    assert.equal(ensureMatchFallbackRule(fallback), '自动选择')
+    assert.deepEqual(fallback.rules, ['MATCH,自动选择'])
+
+    const direct = {
+      'proxy-groups': [{ name: '其它', type: 'select' }],
+      rules: []
+    } as unknown as MihomoConfig
+    assert.equal(ensureMatchFallbackRule(direct), 'DIRECT')
+    assert.deepEqual(direct.rules, ['MATCH,DIRECT'])
   })
 })

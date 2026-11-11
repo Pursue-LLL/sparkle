@@ -235,6 +235,18 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('mihomoRules', ipcErrorWrapper(mihomoRules))
   ipcMain.handle('mihomoProxies', ipcErrorWrapper(mihomoProxies))
   ipcMain.handle('mihomoGroups', ipcErrorWrapper(mihomoGroups))
+  ipcMain.handle('getSparkleAgyProbeSnapshot', () =>
+    ipcErrorWrapper(async () => {
+      const { getSparkleAgyProbeSnapshot } = await import('../core/sparkleAgyProbe')
+      return getSparkleAgyProbeSnapshot()
+    })()
+  )
+  ipcMain.handle('getSparkleGrokProbeSnapshot', () =>
+    ipcErrorWrapper(async () => {
+      const { getSparkleGrokProbeSnapshot } = await import('../core/sparkleGrokProbe')
+      return getSparkleGrokProbeSnapshot()
+    })()
+  )
   ipcMain.handle('mihomoProxyProviders', ipcErrorWrapper(mihomoProxyProviders))
   ipcMain.handle('mihomoUpdateProxyProviders', (_e, name) =>
     ipcErrorWrapper(mihomoUpdateProxyProviders)(name)

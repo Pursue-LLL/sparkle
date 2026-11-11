@@ -1,6 +1,7 @@
 // [INPUT] MergeProfileSpec · 来源订阅 yaml（由调用方注入读取函数，本模块不碰文件系统）
 // [OUTPUT] findDependentMergeItems · buildMergedProfileStr · matchesRegions
 // [POS] 合并订阅：按地区白名单取多个订阅节点的并集，策略组与规则沿用 base 订阅；
+// 来源订阅的 proxy-server-nameserver 按来源节点域名合并为 proxy-server-nameserver-policy，避免 base DNS 覆盖来源入口；
 // 专用地区（香港）的节点保留在节点池里，但被组级 exclude-filter 挡在普通组之外
 
 import { parseYaml, stringifyYaml } from '../utils/yaml'
@@ -17,6 +18,7 @@ interface GroupEntry {
 }
 
 interface ProfileDocument {
+  dns?: unknown
   proxies?: ProxyEntry[]
   'proxy-groups'?: GroupEntry[]
   [key: string]: unknown
@@ -110,6 +112,82 @@ function rewriteGroupNodeRefs(
   return { ...group, proxies, ...(mergedFilter ? { 'exclude-filter': mergedFilter } : {}) }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function asStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map(String)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+  return typeof value === 'string' && value.trim() ? [value.trim()] : []
+}
+
+function isIpAddress(value: string): boolean {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value) || value.includes(':')
+}
+
+/** 来源订阅自己的 proxy-server-nameserver 只对来源节点域名生效，不能污染 base 的其他节点。 */
+function collectSourceProxyServerPolicy(source: MergeSource): Record<string, string[]> | undefined {
+  const sourceDns = isRecord(source.document.dns) ? source.document.dns : undefined
+  const nameservers = asStringList(sourceDns?.['proxy-server-nameserver'])
+  if (nameservers.length === 0) {
+    return undefined
+  }
+  const policy: Record<string, string[]> = {}
+  for (const proxy of source.document.proxies ?? []) {
+    const server = typeof proxy.server === 'string' ? proxy.server.trim() : ''
+    if (!server || isIpAddress(server)) {
+      continue
+    }
+    policy[server] = nameservers
+  }
+  return Object.keys(policy).length > 0 ? policy : undefined
+}
+
+/**
+ * 合并订阅沿用 base 的策略组与规则，但 DNS 不能无条件沿用 base：
+ * 来源订阅的节点域名可能依赖它自己的 proxy-server-nameserver（例如 YYSSR 的 carrier DoH）。
+ * 这里按「来源节点域名 → 来源 nameserver」写入 proxy-server-nameserver-policy，
+ * 只影响来源自己的 server 域名，不改变 base 与其他来源的解析路径。
+ */
+function mergeProxyServerNameserverPolicy(
+  base: ProfileDocument,
+  sources: readonly MergeSource[]
+): Record<string, unknown> | undefined {
+  const baseDns = isRecord(base.dns) ? base.dns : {}
+  const existing = isRecord(baseDns['proxy-server-nameserver-policy'])
+    ? baseDns['proxy-server-nameserver-policy']
+    : {}
+  const merged: Record<string, string[]> = {}
+  for (const [domain, nameservers] of Object.entries(existing)) {
+    const list = asStringList(nameservers)
+    if (list.length > 0) {
+      merged[domain] = list
+    }
+  }
+  for (const source of sources) {
+    if (source.document === base) {
+      continue
+    }
+    const policy = collectSourceProxyServerPolicy(source)
+    if (!policy) {
+      continue
+    }
+    for (const [domain, nameservers] of Object.entries(policy)) {
+      const current = merged[domain] ?? []
+      merged[domain] = [...new Set([...current, ...nameservers])]
+    }
+  }
+  if (Object.keys(merged).length === 0) {
+    return undefined
+  }
+  return { ...baseDns, 'proxy-server-nameserver-policy': merged }
+}
+
 function buildMergedProfile(
   base: ProfileDocument,
   sources: readonly MergeSource[],
@@ -125,8 +203,10 @@ function buildMergedProfile(
   }
   const baseNodeNames = new Set((base.proxies ?? []).map((proxy) => proxy.name))
   const excludeFilter = buildExcludeFilter(dedicatedRegions)
+  const dns = mergeProxyServerNameserverPolicy(base, sources)
   return {
     ...base,
+    ...(dns ? { dns } : {}),
     proxies: nodes,
     'proxy-groups': (base['proxy-groups'] ?? []).map((group) =>
       rewriteGroupNodeRefs(group, baseNodeNames, memberNames, excludeFilter)

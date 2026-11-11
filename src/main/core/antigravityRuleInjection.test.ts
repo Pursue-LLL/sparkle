@@ -32,6 +32,7 @@ describe('antigravityRuleInjection', () => {
     assert.ok(
       rules.includes(`DOMAIN-SUFFIX,generativelanguage.googleapis.com,${AGY_DEDICATED_GROUP_NAME}`)
     )
+    assert.ok(rules.includes(`DOMAIN,www.googleapis.com,${AGY_DEDICATED_GROUP_NAME}`))
     assert.equal(rules.at(-1), 'DOMAIN-SUFFIX,example.com,DIRECT')
     // 关键顺序不变量：专用规则必须先于通用 googleapis 规则命中。
     assert.ok(
@@ -82,10 +83,11 @@ describe('antigravityRuleInjection', () => {
     injectAntigravityTrafficRules(profile)
 
     const rules = rulesOf(profile)
-    assert.equal(rules.length, 4)
+    assert.equal(rules.length, 5)
     assert.equal(rules.filter((rule) => rule.endsWith(`,${AUTO_SELECT_GROUP_NAME}`)).length, 0)
-    assert.equal(rules[0], `DOMAIN-KEYWORD,cloudcode-pa,${AGY_DEDICATED_GROUP_NAME}`)
-    assert.equal(rules[3], GENERIC_GOOGLEAPIS_RULE)
+    assert.equal(rules[0], `DOMAIN,www.googleapis.com,${AGY_DEDICATED_GROUP_NAME}`)
+    assert.ok(rules.includes(`DOMAIN-KEYWORD,cloudcode-pa,${AGY_DEDICATED_GROUP_NAME}`))
+    assert.equal(rules[4], GENERIC_GOOGLEAPIS_RULE)
   })
 
   it('is idempotent when the rules are already present', () => {
@@ -102,12 +104,12 @@ describe('antigravityRuleInjection', () => {
     injectAntigravityTrafficRules(profile)
 
     const rules = rulesOf(profile)
-    assert.equal(rules.length, 4)
+    assert.equal(rules.length, 5)
     assert.equal(
       rules.filter((rule) => rule === `DOMAIN-KEYWORD,cloudcode-pa,${AGY_DEDICATED_GROUP_NAME}`)
         .length,
       1
     )
-    assert.equal(rules[3], GENERIC_GOOGLEAPIS_RULE)
+    assert.equal(rules[4], GENERIC_GOOGLEAPIS_RULE)
   })
 })
