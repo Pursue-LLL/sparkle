@@ -14,8 +14,16 @@ import {
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
+import {
+  migrateLegacyCursorDedicatedGroupReferences,
+  rewriteBroadCursorDedicatedRules
+} from './cursorDedicatedRuleRewrite'
 import { buildAgyGroupConfig } from './sparkleAgyProviderCore'
-import { buildMailGroupConfig, buildMailProbeHiddenGroupConfig, ensureMailProbeListener } from './sparkleMailProviderCore'
+import {
+  buildMailGroupConfig,
+  buildMailProbeHiddenGroupConfig,
+  ensureMailProbeListener
+} from './sparkleMailProviderCore'
 import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 import { resolveVpsProviderId } from './vpsProviderSplitCore'
 
@@ -65,91 +73,6 @@ const CURSOR_GROUP_REF_BLOCKLIST = new Set([
   '故障转移'
 ])
 const HONG_KONG_HOP_GROUP_NAMES = new Set(['🚀 节点选择', 'GLOBAL'])
-
-const CURSOR_RULE_HOST_MARKERS = [
-  'cursor.sh',
-  'cursor.com',
-  'cursorapi.com',
-  'cursor-cdn.com',
-  'cursorapi',
-  'gcpp.cursor'
-] as const
-
-function isCursorDedicatedTrafficRule(parts: string[]): boolean {
-  const ruleType = parts[0]
-  const payload = parts[1]?.toLowerCase() ?? ''
-
-  if (ruleType === 'DOMAIN') {
-    return CURSOR_RULE_HOST_MARKERS.some(
-      (marker) => payload === marker || payload.endsWith(`.${marker}`) || payload.includes(marker)
-    )
-  }
-
-  if (ruleType === 'DOMAIN-SUFFIX') {
-    return CURSOR_RULE_HOST_MARKERS.some(
-      (marker) => payload === marker || payload.endsWith(marker) || marker.endsWith(payload)
-    )
-  }
-
-  if (ruleType === 'DOMAIN-KEYWORD') {
-    return payload.includes('cursor')
-  }
-
-  return false
-}
-
-/** Rewrite rules still pointing at the pre-rename Cursor dedicated group. Returns true if any rule changed. */
-export function migrateLegacyCursorDedicatedGroupReferences(profile: MihomoConfig): boolean {
-  const rules = profile.rules as string[] | undefined
-  if (!rules?.length) {
-    return false
-  }
-  let migrated = false
-  profile.rules = rules.map((rule) => {
-    let nextRule = rule
-    let ruleMigrated = false
-    for (const legacyName of LEGACY_CURSOR_DEDICATED_GROUP_NAMES) {
-      if (!nextRule.includes(legacyName)) {
-        continue
-      }
-      ruleMigrated = true
-      nextRule = nextRule.split(legacyName).join(CURSOR_DEDICATED_GROUP_NAME)
-    }
-    if (ruleMigrated) {
-      migrated = true
-    }
-    return nextRule
-  }) as MihomoConfig['rules']
-  return migrated
-}
-
-/** Rewrite non-Cursor subscription rules that hijack general traffic into Cursor 专用. */
-export function rewriteBroadCursorDedicatedRules(profile: MihomoConfig): void {
-  const rules = profile.rules as string[] | undefined
-  if (!rules?.length) {
-    return
-  }
-
-  profile.rules = rules.map((rule) => {
-    const trimmed = rule.trim()
-    if (!trimmed || trimmed.startsWith('#')) {
-      return rule
-    }
-    const parts = trimmed.split(',').map((part) => part.trim())
-    if (parts.length < 3) {
-      return rule
-    }
-    const policy = parts[parts.length - 1]
-    if (policy !== CURSOR_DEDICATED_GROUP_NAME) {
-      return rule
-    }
-    if (isCursorDedicatedTrafficRule(parts)) {
-      return rule
-    }
-    parts[parts.length - 1] = AUTO_SELECT_GROUP_NAME
-    return parts.join(',')
-  }) as MihomoConfig['rules']
-}
 
 function isRedundantHongKongWrapperGroup(group: ProxyGroupConfig): boolean {
   if (group.name === '香港专用') {
@@ -251,16 +174,16 @@ function buildCursorGroupConfig(
   _groups: ProxyGroupConfig[],
   profileId: string | undefined
 ): ProxyGroupConfig {
-  const vpsNodes = filterCursorEligibleVpsLeaves(
-    [...new Set(leafNames.filter(matchesVpsNode))],
-  ).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  const vpsNodes = filterCursorEligibleVpsLeaves([
+    ...new Set(leafNames.filter(matchesVpsNode))
+  ]).sort((a, b) => a.localeCompare(b, 'zh-CN'))
 
   // 没有自建节点时组依然存在：成员由地区组 / 自动选择补齐，而不是整组消失导致规则悬空。
   if (profileId) {
     const group: ProxyGroupConfig = {
       name: CURSOR_DEDICATED_GROUP_NAME,
       type: 'select',
-      proxies: [CURSOR_DEDICATED_DIRECT_PROXY],
+      proxies: [CURSOR_DEDICATED_DIRECT_PROXY]
     }
     if (vpsNodes.length > 0) {
       group.use = [resolveVpsProviderId(profileId)]
@@ -272,7 +195,7 @@ function buildCursorGroupConfig(
   return {
     name: CURSOR_DEDICATED_GROUP_NAME,
     type: 'select',
-    proxies: prependCursorDedicatedDirectOption(vpsNodes),
+    proxies: prependCursorDedicatedDirectOption(vpsNodes)
   }
 }
 

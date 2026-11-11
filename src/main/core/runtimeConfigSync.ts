@@ -38,7 +38,12 @@ async function syncOnce({ force = false }: RuntimeConfigSyncOptions): Promise<bo
   )
   const reason = force
     ? 'forced'
-    : decideRuntimeConfigReload({ diskFingerprint, diskRuleCount, appliedFingerprint, liveRuleCount })
+    : decideRuntimeConfigReload({
+        diskFingerprint,
+        diskRuleCount,
+        appliedFingerprint,
+        liveRuleCount
+      })
 
   if (!reason) {
     if (liveRuleCount !== undefined) {
@@ -50,7 +55,9 @@ async function syncOnce({ force = false }: RuntimeConfigSyncOptions): Promise<bo
   try {
     await reloadMihomoConfigFromDisk()
   } catch (error) {
-    await appendAppLog(`[RuntimeConfigSync]: reload failed reason=${reason} err=${describeError(error)}\n`)
+    await appendAppLog(
+      `[RuntimeConfigSync]: reload failed reason=${reason} err=${describeError(error)}\n`
+    )
     return false
   }
   appliedFingerprint = diskFingerprint

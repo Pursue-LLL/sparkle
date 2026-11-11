@@ -356,7 +356,7 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('getVersion', () => app.getVersion())
   ipcMain.handle('getBuildStamp', () => ({
     buildStamp: SPARKLE_BUILD_STAMP,
-    semver: SPARKLE_SEMVER || app.getVersion(),
+    semver: SPARKLE_SEMVER || app.getVersion()
   }))
   ipcMain.handle('platform', () => process.platform)
   ipcMain.handle('openUWPTool', ipcErrorWrapper(openUWPTool))

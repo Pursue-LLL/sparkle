@@ -60,7 +60,10 @@ function resolveMissingRuleTarget(
     return undefined
   }
 
-  if (STALE_TEMPLATE_HOP_GROUP_NAMES.has(missingName) && groupNames.has(CURSOR_DEDICATED_GROUP_NAME)) {
+  if (
+    STALE_TEMPLATE_HOP_GROUP_NAMES.has(missingName) &&
+    groupNames.has(CURSOR_DEDICATED_GROUP_NAME)
+  ) {
     return CURSOR_DEDICATED_GROUP_NAME
   }
 

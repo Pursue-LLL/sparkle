@@ -79,13 +79,7 @@ function cleanNumberConfigs(profile: MihomoConfig): void {
     }
   }
 
-  ;[
-    'port',
-    'socks-port',
-    'redir-port',
-    'tproxy-port',
-    'mixed-port'
-  ].forEach((key) => {
+  ;['port', 'socks-port', 'redir-port', 'tproxy-port', 'mixed-port'].forEach((key) => {
     if (profile[key] === 0) delete (profile as Partial<MihomoConfig>)[key]
   })
 }
@@ -215,7 +209,6 @@ function cleanDnsConfig(profile: MihomoConfig, controlDns: boolean): void {
   ) {
     delete dnsConfig['proxy-server-nameserver-policy']
   }
-
 }
 
 function cleanSnifferConfig(profile: MihomoConfig, controlSniff: boolean): void {

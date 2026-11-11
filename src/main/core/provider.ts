@@ -19,10 +19,7 @@ function getProviderConfigPath(profileId: string): string {
   return path.relative(mihomoWorkDir(), getProviderFilePath(profileId))
 }
 
-import {
-  applyVlessVisionMuxGuard,
-  summarizeVlessVisionMuxGuard
-} from './vlessVisionMuxGuardCore'
+import { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } from './vlessVisionMuxGuardCore'
 import { partitionLeafProxies, resolveVpsProviderId } from './vpsProviderSplitCore'
 import { buildBaseConfigWithProviders } from './providerConfigCore'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
@@ -145,12 +142,7 @@ export function generateBaseConfigWithProvider(
     interval?: number
   }
 ): MihomoConfig {
-  return buildBaseConfigWithProviders(
-    originalConfig,
-    profileId,
-    getProviderConfigPath,
-    healthCheck
-  )
+  return buildBaseConfigWithProviders(originalConfig, profileId, getProviderConfigPath, healthCheck)
 }
 
 /**

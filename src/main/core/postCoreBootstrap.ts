@@ -40,7 +40,7 @@ export async function waitForMihomoControllerReady(
   const detail =
     lastError instanceof Error
       ? `${lastError.name}: ${lastError.message}`
-      : JSON.stringify(lastError) ?? String(lastError)
+      : (JSON.stringify(lastError) ?? String(lastError))
   await appendAppLog(`[PostCoreBootstrap]: controller probe last_error=${detail.slice(0, 400)}\n`)
   return false
 }
@@ -51,7 +51,9 @@ export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Prom
 
   const apiReady = await waitForMihomoControllerReady()
   if (!apiReady) {
-    await appendAppLog('[PostCoreBootstrap]: mihomo API not reachable after 30s — post-core services not started\n')
+    await appendAppLog(
+      '[PostCoreBootstrap]: mihomo API not reachable after 30s — post-core services not started\n'
+    )
     return
   }
 
@@ -83,14 +85,13 @@ async function runPostReadyServices(): Promise<void> {
   }
 
   try {
-    const { bootstrapSparkleFastLatencyOrder, startSparkleFastLatencyOrderLoop } = await import(
-      './sparkleFastLatencyOrder'
-    )
+    const { bootstrapSparkleFastLatencyOrder, startSparkleFastLatencyOrderLoop } =
+      await import('./sparkleFastLatencyOrder')
     await bootstrapSparkleFastLatencyOrder()
     startSparkleFastLatencyOrderLoop()
   } catch (error) {
     await appendAppLog(
-      `[SparkleFastOrder]: failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      `[SparkleFastOrder]: failed: ${error instanceof Error ? error.message : String(error)}\n`
     )
   }
 
@@ -109,13 +110,11 @@ async function runPostReadyServices(): Promise<void> {
 
   void (async () => {
     try {
-      const { bootstrapSparkleMailProvider, startSparkleMailProbeLoop } = await import(
-        './sparkleMailProbe'
-      )
+      const { bootstrapSparkleMailProvider, startSparkleMailProbeLoop } =
+        await import('./sparkleMailProbe')
       try {
-        const { startSparkleMailCurrentNodeProbeLoop } = await import(
-          './sparkleMailCurrentNodeProbe'
-        )
+        const { startSparkleMailCurrentNodeProbeLoop } =
+          await import('./sparkleMailCurrentNodeProbe')
         startSparkleMailCurrentNodeProbeLoop()
       } catch (error) {
         await appendAppLog(
@@ -126,16 +125,15 @@ async function runPostReadyServices(): Promise<void> {
       startSparkleMailProbeLoop()
     } catch (error) {
       await appendAppLog(
-        `[SparkleMailProbe]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        `[SparkleMailProbe]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`
       )
     }
   })()
 
   void (async () => {
     try {
-      const { bootstrapSparkleGrokProvider, startSparkleGrokProbeLoop } = await import(
-        './sparkleGrokProbe'
-      )
+      const { bootstrapSparkleGrokProvider, startSparkleGrokProbeLoop } =
+        await import('./sparkleGrokProbe')
       await bootstrapSparkleGrokProvider()
       startSparkleGrokProbeLoop()
     } catch (error) {
@@ -147,14 +145,13 @@ async function runPostReadyServices(): Promise<void> {
 
   void (async () => {
     try {
-      const { bootstrapSparkleAgyProvider, startSparkleAgyProbeLoop } = await import(
-        './sparkleAgyProbe'
-      )
+      const { bootstrapSparkleAgyProvider, startSparkleAgyProbeLoop } =
+        await import('./sparkleAgyProbe')
       await bootstrapSparkleAgyProvider()
       startSparkleAgyProbeLoop()
     } catch (error) {
       await appendAppLog(
-        `[SparkleAgyProbe]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        `[SparkleAgyProbe]: bootstrap failed: ${error instanceof Error ? error.message : String(error)}\n`
       )
     }
   })()
@@ -172,9 +169,8 @@ async function runPostReadyServices(): Promise<void> {
     )
   }
 
-  const { mihomoGroups, mihomoChangeProxy, mihomoGetConnections, mihomoGroupDelay } = await import(
-    './mihomoApi'
-  )
+  const { mihomoGroups, mihomoChangeProxy, mihomoGetConnections, mihomoGroupDelay } =
+    await import('./mihomoApi')
 
   const { initProfileUpdater } = await import('./profileUpdater')
   initProfileUpdater()
@@ -194,9 +190,8 @@ async function runPostReadyServices(): Promise<void> {
   setTimeout(() => {
     void (async () => {
       try {
-        const { collectActiveWarmupGroupNames, warmupRegionalUrlTestGroups } = await import(
-          './regionalUrlTestWarmup'
-        )
+        const { collectActiveWarmupGroupNames, warmupRegionalUrlTestGroups } =
+          await import('./regionalUrlTestWarmup')
         const groups = await mihomoGroups()
         const connections = await mihomoGetConnections().catch(() => undefined)
         const activeGroupNames = collectActiveWarmupGroupNames(groups, connections)
@@ -206,19 +201,19 @@ async function runPostReadyServices(): Promise<void> {
         )
         if (warmed > 0) {
           await appendAppLog(
-            `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`,
+            `[PostCoreBootstrap]: regional url-test warmup (${warmed} groups) after ${NETWORK_MONITOR_STARTUP_GRACE_MS / 1000}s grace\n`
           )
           // 地区组预热是组内并发测速，易产生误报；对最近一次样本不是成功的节点（超时/不稳定/未测）做一次低并发复测。
           const { verifyUnconfirmedFailures } = await import('./providerLeafProbe')
           await verifyUnconfirmedFailures()
         } else {
           await appendAppLog(
-            `[PostCoreBootstrap]: regional url-test warmup skipped active_groups=${activeGroupNames.size}\n`,
+            `[PostCoreBootstrap]: regional url-test warmup skipped active_groups=${activeGroupNames.size}\n`
           )
         }
       } catch (error) {
         await appendAppLog(
-          `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`,
+          `[PostCoreBootstrap]: regional url-test warmup failed: ${error instanceof Error ? error.message : String(error)}\n`
         )
       } finally {
         endProbeWarmup()

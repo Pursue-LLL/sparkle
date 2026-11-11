@@ -5,22 +5,14 @@ import {
   getProfileStr,
   getAppConfig
 } from '../config'
-import {
-  mihomoProfileWorkDir,
-  mihomoWorkConfigPath,
-  mihomoWorkDir
-} from '../utils/dirs'
+import { mihomoProfileWorkDir, mihomoWorkConfigPath, mihomoWorkDir } from '../utils/dirs'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { copyFile, mkdir, readdir, writeFile } from 'fs/promises'
 import { deepMerge } from '../utils/merge'
 import { logBuildDriftAtStartup } from './buildDriftCore'
 import { existsSync } from 'fs'
 import path from 'path'
-import {
-  extractProxies,
-  setupProfileProviders,
-  generateBaseConfigWithProvider
-} from './provider'
+import { extractProxies, setupProfileProviders, generateBaseConfigWithProvider } from './provider'
 import {
   collectSubscriptionGroupNames,
   dropUnknownGroupMembers,
@@ -35,7 +27,7 @@ import { overrideProfile } from './overrideProfile'
 import { writeSparkleProviderFiles } from './sparkleProviderFiles'
 import {
   formatAutoSelectAnyTlsExclusionLogLine,
-  type ProxyCatalogEntry,
+  type ProxyCatalogEntry
 } from './autoSelectAnyTlsExclusionCore'
 import { injectDedicatedTrafficRules } from './dedicatedTrafficRuleInjection'
 import { injectMailTrafficRules } from './mailTrafficRuleInjection'
@@ -52,9 +44,7 @@ import { ensureFakeIpRoutingIntegrity } from './fakeIpRoutingIntegrity'
 import { ensureDnsFallbackIntegrity, ensureTunStrictRoute } from './dnsFallbackIntegrity'
 import { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } from './vlessVisionMuxGuardCore'
 import { showNotification } from '../utils/notification'
-import {
-  CURSOR_DEDICATED_GROUP_NAME
-} from './cursorProxyGroup'
+import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { appendAppLog } from '../utils/log'
 import { performance } from 'node:perf_hooks'
 import { readFile } from 'fs/promises'
@@ -205,12 +195,16 @@ async function generateProfileImpl(): Promise<void> {
       }
       return {
         name: proxy.name.trim(),
-        type: typeof proxy.type === 'string' ? proxy.type.trim() : undefined,
+        type: typeof proxy.type === 'string' ? proxy.type.trim() : undefined
       }
     })
     .filter((entry): entry is ProxyCatalogEntry => entry !== null)
   const providerProfileId = current && current !== 'default' ? current : undefined
-  const legacyCursorGroupMigrated = ensureCustomProxyGroups(profile, leafProxyNames, providerProfileId)
+  const legacyCursorGroupMigrated = ensureCustomProxyGroups(
+    profile,
+    leafProxyNames,
+    providerProfileId
+  )
   injectDedicatedTrafficRules(profile)
   injectMailTrafficRules(profile)
   if (legacyCursorGroupMigrated && !cursorDedicatedGroupRenameNotified) {

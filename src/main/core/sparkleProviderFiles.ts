@@ -14,9 +14,8 @@ export async function writeSparkleProviderFiles(
   proxySwitchPriority: string[]
 ): Promise<void> {
   try {
-    const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } = await import(
-      './sparkleFastProviderCore'
-    )
+    const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } =
+      await import('./sparkleFastProviderCore')
     const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
     const { loadGeminiBlockedNodeNames } = await import('./sparkleGeminiProbe')
     const fastInputProxies = extractProxies(currentProfile) as unknown as Array<
@@ -42,9 +41,8 @@ export async function writeSparkleProviderFiles(
     // best-effort：写失败沿用上一份 sparkle-fast 文件
   }
   try {
-    const { buildSparkleMailProviderDocument, MAIL_NODE_PROVIDER_FILENAME } = await import(
-      './sparkleMailProviderCore'
-    )
+    const { buildSparkleMailProviderDocument, MAIL_NODE_PROVIDER_FILENAME } =
+      await import('./sparkleMailProviderCore')
     const { loadSparkleMailProbeCache } = await import('./sparkleMailProbe')
     const mailProbeCache = await loadSparkleMailProbeCache()
     writeFileSync(
@@ -62,9 +60,8 @@ export async function writeSparkleProviderFiles(
     // best-effort：写失败沿用上一份 sparkle-mail 文件
   }
   try {
-    const { buildSparkleAgyProviderDocument, AGY_NODE_PROVIDER_FILENAME } = await import(
-      './sparkleAgyProviderCore'
-    )
+    const { buildSparkleAgyProviderDocument, AGY_NODE_PROVIDER_FILENAME } =
+      await import('./sparkleAgyProviderCore')
     const { loadSparkleAgyProbeCache } = await import('./sparkleAgyProbeCache')
     const agyProbeCache = await loadSparkleAgyProbeCache()
     const agyDocument = buildSparkleAgyProviderDocument({
@@ -84,9 +81,8 @@ export async function writeSparkleProviderFiles(
     // best-effort：写失败沿用上一份 sparkle-agy 文件
   }
   try {
-    const { buildSparkleGrokProviderDocument, GROK_NODE_PROVIDER_FILENAME } = await import(
-      './sparkleGrokProviderCore'
-    )
+    const { buildSparkleGrokProviderDocument, GROK_NODE_PROVIDER_FILENAME } =
+      await import('./sparkleGrokProviderCore')
     const { loadSparkleGrokProbeCache } = await import('./sparkleGrokProbe')
     const grokProbeCache = await loadSparkleGrokProbeCache()
     const grokDocument = buildSparkleGrokProviderDocument({

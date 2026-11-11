@@ -161,7 +161,9 @@ export function isCursorSelectorGroupName(groupName: string): boolean {
   return isCursorDedicatedGroupName(groupName)
 }
 
-export function isCursorSelectorGroupType(groupType: MihomoProxyType | string | undefined): boolean {
+export function isCursorSelectorGroupType(
+  groupType: MihomoProxyType | string | undefined
+): boolean {
   if (!groupType) return false
   return groupType === 'Selector' || groupType.toLowerCase() === 'select'
 }
@@ -170,8 +172,7 @@ export function resolveCursorStableSelectorGroup(
   groups: ControllerMixedGroup[]
 ): ControllerMixedGroup | undefined {
   const canonical = groups.find(
-    (group) =>
-      group.name === CURSOR_DEDICATED_GROUP_NAME && isCursorSelectorGroupType(group.type)
+    (group) => group.name === CURSOR_DEDICATED_GROUP_NAME && isCursorSelectorGroupType(group.type)
   )
   if (canonical) {
     return canonical
@@ -186,7 +187,7 @@ export function resolveGeneralProxySelectGroup(
 ): ControllerMixedGroup | undefined {
   for (const name of GENERAL_PROXY_GROUP_NAMES) {
     const match = groups.find(
-      (group) => group.name === name && isCursorSelectorGroupType(group.type),
+      (group) => group.name === name && isCursorSelectorGroupType(group.type)
     )
     if (match) {
       return match

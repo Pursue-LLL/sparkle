@@ -44,7 +44,11 @@ describe('ensureCnDirectBaseline', () => {
   })
 
   it('leaves subscriptions that already carry CN geo rules untouched', () => {
-    for (const cnRule of ['GEOIP,CN,🎯 全球直连', 'GEOIP,cn,DIRECT,no-resolve', 'GEOSITE,CN,DIRECT']) {
+    for (const cnRule of [
+      'GEOIP,CN,🎯 全球直连',
+      'GEOIP,cn,DIRECT,no-resolve',
+      'GEOSITE,CN,DIRECT'
+    ]) {
       const profile = profileWith(['DOMAIN-SUFFIX,qq.com,DIRECT', cnRule, 'MATCH,🐟 漏网之鱼'])
       const before = [...(profile.rules as string[])]
 
@@ -71,6 +75,9 @@ describe('ensureCnDirectBaseline', () => {
 
     assert.equal(ensureCnDirectBaseline(profile), true)
     assert.equal(ensureCnDirectBaseline(profile), false)
-    assert.equal((profile.rules as string[]).filter((rule) => rule.startsWith('GEOIP,CN')).length, 1)
+    assert.equal(
+      (profile.rules as string[]).filter((rule) => rule.startsWith('GEOIP,CN')).length,
+      1
+    )
   })
 })

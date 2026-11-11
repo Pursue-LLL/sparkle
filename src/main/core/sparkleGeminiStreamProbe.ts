@@ -56,10 +56,7 @@ export function streamProbeGeminiRegionViaLocalListener(
       resolve(res)
     }
 
-    const timer = setTimeout(
-      () => finish({ definitive: false, eligible: true }),
-      timeoutMs
-    )
+    const timer = setTimeout(() => finish({ definitive: false, eligible: true }), timeoutMs)
 
     rawSocket = net.connect(MAIL_PROBE_LISTENER_PORT, '127.0.0.1')
     rawSocket.once('error', () => finish({ definitive: false, eligible: true }))
