@@ -15,12 +15,7 @@ export {
   changeCurrentProfile,
   updateProfileItem
 } from './profile'
-export {
-  getFileStr,
-  getFilePreviewStr,
-  setFileStr,
-  saveFileStrWithElevation
-} from './profileFiles'
+export { getFileStr, getFilePreviewStr, setFileStr, saveFileStrWithElevation } from './profileFiles'
 export {
   getOverrideConfig,
   setOverrideConfig,

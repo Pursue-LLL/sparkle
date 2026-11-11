@@ -6,16 +6,20 @@
 
 import axios, { AxiosInstance } from 'axios'
 import { getAppConfig, getControledMihomoConfig } from '../config'
-import { getRuntimeConfig, hydrateRuntimeConfigFromDiskIfEmpty, loadRuntimeConfigFromDisk } from './factory'
+import {
+  getRuntimeConfig,
+  hydrateRuntimeConfigFromDiskIfEmpty,
+  loadRuntimeConfigFromDisk
+} from './factory'
 import { mihomoIpcPath, serviceIpcPath } from '../utils/dirs'
 import { createSignedServiceAxios } from '../service/api'
 import { DEFAULT_GENERAL_DELAY_TEST_URL } from './cursorProxyGroup'
 import { withMihomoDelayProbeSlot } from './mihomoProbeCoordinator'
+import { buildProviderProxyLookup, resolveGroupMemberProxies } from './mihomoGroupMembersCore'
 import {
-  buildProviderProxyLookup,
-  resolveGroupMemberProxies
-} from './mihomoGroupMembersCore'
-import { isMihomoApiResourceNotFoundError, resolveProviderNameForLeaf } from './mihomoProxyDelayCore'
+  isMihomoApiResourceNotFoundError,
+  resolveProviderNameForLeaf
+} from './mihomoProxyDelayCore'
 
 export {
   restartMihomoConnections,
@@ -103,11 +107,7 @@ export const patchMihomoConfig = async (patch: Partial<ControllerConfigs>): Prom
 /** Reload mihomo runtime config from on-disk work/config.yaml (non-destructive vs restartCore). */
 export const reloadMihomoConfigFromDisk = async (): Promise<void> => {
   const instance = await getAxios()
-  await instance.put(
-    '/configs?force=true',
-    { path: '', payload: '' },
-    { timeout: 30_000 },
-  )
+  await instance.put('/configs?force=true', { path: '', payload: '' }, { timeout: 30_000 })
 }
 
 export const mihomoCloseConnection = async (id: string): Promise<void> => {
@@ -235,14 +235,16 @@ export const mihomoChangeProxy = async (
     const groups = await mihomoGroups()
     const targetGroup = groups?.find((item) => item.name === group)
     const current = targetGroup?.now ?? ''
-    const { isCursorDedicatedManualOnlySwitchAllowed, formatCursorDedicatedManualOnlyBlockedLogLine } =
-      await import('./cursorDedicatedManualOnlyCore')
+    const {
+      isCursorDedicatedManualOnlySwitchAllowed,
+      formatCursorDedicatedManualOnlyBlockedLogLine
+    } = await import('./cursorDedicatedManualOnlyCore')
     if (
       current &&
       current !== proxy &&
       !isCursorDedicatedManualOnlySwitchAllowed({
         source,
-        fromNode: current,
+        fromNode: current
       })
     ) {
       const { appendAppLog } = await import('../utils/log')
@@ -250,8 +252,8 @@ export const mihomoChangeProxy = async (
         formatCursorDedicatedManualOnlyBlockedLogLine({
           source,
           fromNode: current,
-          toNode: proxy,
-        }),
+          toNode: proxy
+        })
       )
       return false
     }

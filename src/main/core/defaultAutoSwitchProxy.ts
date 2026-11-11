@@ -11,20 +11,17 @@ import {
   isSparkleAutoSelectSubGroup,
   isSparkleRegionalAutoSelectGroup,
   filterCursorEligibleVpsLeaves,
-  prependCursorDedicatedDirectOption,
+  prependCursorDedicatedDirectOption
 } from './cursorProxyGroup'
 import { DEFAULT_REGION_PRIORITY, resolveEffectiveRegionPriority } from './regionPriority'
 import type { MihomoChangeProxyOptions } from './mihomoApi'
 import {
   excludeAnyTlsFromAutoSelectUrlTestGroups,
   type AutoSelectAnyTlsExclusionResult,
-  type ProxyCatalogEntry,
+  type ProxyCatalogEntry
 } from './autoSelectAnyTlsExclusionCore'
 import { buildRegionalUrlTestGroup } from './regionalAutoSelectGroupsCore'
-import {
-  FAST_NODE_PROVIDER_ID,
-  listFlatAutoSelectProxyNames
-} from './sparkleFastProviderCore'
+import { FAST_NODE_PROVIDER_ID, listFlatAutoSelectProxyNames } from './sparkleFastProviderCore'
 
 export interface MihomoAutoSwitchApi {
   mihomoGroups: () => Promise<ControllerMixedGroup[]>
@@ -58,7 +55,6 @@ export interface EnsureAutoSwitchOptions {
   leafProxyCatalog?: ProxyCatalogEntry[]
   regionPriority?: string[]
 }
-
 
 /** 自动选择 探测目标：用户主用 Gemini——探测即验证目标站可达（SSOT: cursorProxyGroup）。 */
 export const AUTO_SELECT_GEMINI_PROBE_URL = GEMINI_REACHABILITY_PROBE_URL
@@ -280,12 +276,12 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
     profileId,
     regionPriority,
     options.leafProxyNames,
-    options.leafProxyCatalog,
+    options.leafProxyCatalog
   )
   rewriteLegacySubscriptionAutoSelectInGroups(groups)
   const anyTlsExclusion = excludeAnyTlsFromAutoSelectUrlTestGroups(
     groups,
-    options.leafProxyCatalog ?? [],
+    options.leafProxyCatalog ?? []
   )
   profile['proxy-groups'] = groups as MihomoConfig['proxy-groups']
   rewriteLegacyAutoSelectRuleTargets(profile)
@@ -340,9 +336,7 @@ export function appendRegionalAutoGroupsToCursorDedicated(profile: MihomoConfig)
   ]
 }
 
-export function resolvePreferredAutoSwitchProxy(
-  group: ControllerMixedGroup
-): string | undefined {
+export function resolvePreferredAutoSwitchProxy(group: ControllerMixedGroup): string | undefined {
   const available = new Set(group.all.map((proxy) => proxy.name))
   for (const name of PREFERRED_AUTO_SWITCH_NAMES) {
     if (available.has(name)) {

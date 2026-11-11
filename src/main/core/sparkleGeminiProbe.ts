@@ -26,7 +26,10 @@ import {
   FAST_NODE_PROVIDER_FILENAME,
   FAST_NODE_PROVIDER_ID
 } from './sparkleFastProviderCore'
-import { resolveGeminiBlockedNodeNames, type GeminiRegionProbeRecord } from './sparkleGeminiProbeCore'
+import {
+  resolveGeminiBlockedNodeNames,
+  type GeminiRegionProbeRecord
+} from './sparkleGeminiProbeCore'
 import { streamProbeGeminiRegionViaLocalListener } from './sparkleGeminiStreamProbe'
 import type { MailProxyRecord } from './sparkleMailProviderCore'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'

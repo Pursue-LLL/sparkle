@@ -41,7 +41,10 @@ export function fingerprintRuntimeConfig(config: ReloadSensitiveSections): strin
 export function decideRuntimeConfigReload(
   facts: RuntimeConfigSyncFacts
 ): RuntimeConfigReloadReason | null {
-  if (facts.appliedFingerprint !== undefined && facts.appliedFingerprint !== facts.diskFingerprint) {
+  if (
+    facts.appliedFingerprint !== undefined &&
+    facts.appliedFingerprint !== facts.diskFingerprint
+  ) {
     return 'config-changed'
   }
   if (facts.liveRuleCount !== undefined && facts.liveRuleCount !== facts.diskRuleCount) {
