@@ -1,7 +1,7 @@
 import {
   AGY_DEDICATED_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
-  GENERAL_PROXY_GROUP_ALIAS_AUTO_SELECT,
+  AUTO_SELECT_GROUP_NAME,
   GENERAL_PROXY_GROUP_NAME,
   GROK_DEDICATED_GROUP_NAME,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
@@ -150,8 +150,8 @@ export function ensureMatchFallbackRule(profile: MihomoConfig): string | null {
   const names = new Set(groups.map((group) => group.name))
   const target = names.has(GENERAL_PROXY_GROUP_NAME)
     ? GENERAL_PROXY_GROUP_NAME
-    : names.has(GENERAL_PROXY_GROUP_ALIAS_AUTO_SELECT)
-      ? GENERAL_PROXY_GROUP_ALIAS_AUTO_SELECT
+    : names.has(AUTO_SELECT_GROUP_NAME)
+      ? AUTO_SELECT_GROUP_NAME
       : 'DIRECT'
 
   profile.rules = [...rules, `MATCH,${target}`] as MihomoConfig['rules']

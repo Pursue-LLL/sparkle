@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   AGY_DEDICATED_GROUP_NAME,
+  AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
   GROK_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
-import { AUTO_SELECT_GROUP_NAME } from './defaultAutoSwitchProxy'
 import { orderProxyGroups } from './proxyGroupOrder'
 
 function group(name: string): { name: string; type: string } {

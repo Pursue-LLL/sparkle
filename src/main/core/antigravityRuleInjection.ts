@@ -1,5 +1,4 @@
-import { AGY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
-import { AUTO_SELECT_GROUP_NAME } from './defaultAutoSwitchProxy'
+import { AGY_DEDICATED_GROUP_NAME, AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
 
 /**
  * Google Code Assist / Gemini API hosts whose edge enforces per-region geo

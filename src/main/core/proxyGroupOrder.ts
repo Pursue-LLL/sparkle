@@ -5,12 +5,12 @@
  */
 import {
   AGY_DEDICATED_GROUP_NAME,
+  AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
   GROK_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
-import { AUTO_SELECT_GROUP_NAME } from './defaultAutoSwitchProxy'
 
 /** 专用组的展示顺序；隐藏探测组紧跟邮件专用组，不进 UI 但顺序保持确定。 */
 const DEDICATED_GROUP_ORDER: readonly string[] = [

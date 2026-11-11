@@ -7,7 +7,10 @@ const AUTO_SWITCHING_GROUP_TYPES = new Set<MihomoProxyType>([
   'Relay'
 ])
 
-const AUTO_SWITCHING_PROXY_NAMES = new Set(['自动选择', '故障转移'])
+/** Sparkle 重写订阅 ♻️ / 节点选择 后的 fallback 自动选择组（粘性固定组）。 */
+export const AUTO_SELECT_GROUP_NAME = '自动选择' as const
+
+const AUTO_SWITCHING_PROXY_NAMES = new Set<string>([AUTO_SELECT_GROUP_NAME, '故障转移'])
 
 export function isAutoSwitchingGroupType(groupType: MihomoProxyType | string | undefined): boolean {
   if (!groupType) return false
@@ -51,13 +54,7 @@ export function filterCursorEligibleVpsLeaves(leaves: readonly string[]): string
 
 export const GENERAL_PROXY_GROUP_NAME = '🚀 节点选择' as const
 
-/** Current Sparkle name after BUG-2026-08-29-002 rewrite of subscription ♻️ / 节点选择. */
-export const GENERAL_PROXY_GROUP_ALIAS_AUTO_SELECT = '自动选择' as const
-
-export const GENERAL_PROXY_GROUP_NAMES = [
-  GENERAL_PROXY_GROUP_NAME,
-  GENERAL_PROXY_GROUP_ALIAS_AUTO_SELECT,
-] as const
+export const GENERAL_PROXY_GROUP_NAMES = [GENERAL_PROXY_GROUP_NAME, AUTO_SELECT_GROUP_NAME] as const
 
 /** Built-in Mihomo leaf — lets operators bypass VPS for Cursor traffic (L1 baseline / company network). */
 export const CURSOR_DEDICATED_DIRECT_PROXY = 'DIRECT' as const

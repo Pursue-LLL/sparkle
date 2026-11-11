@@ -5,6 +5,7 @@
 // [POS] 自动切换组固定释放执行层。内核启动 / 整配置重载后释放缓存恢复的固定（all）；订阅刷新后只释放孤儿固定（orphans）。
 //       节点失活的处理由内核原生保证：URLTest 仅在固定节点存活时才遵循 fixed，Fallback 会清除失活的固定。
 
+import { describeError } from '../utils/errorMessage'
 import { appendAppLog } from '../utils/log'
 import {
   planAutoSwitchPinRelease,
@@ -20,10 +21,6 @@ function toSnapshot(group: ControllerMixedGroup): AutoSwitchGroupSnapshot {
     fixed: group.fixed,
     all: group.all.map((member) => member.name)
   }
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /** 释放自动切换组的固定并唤起组内测速，返回成功释放的组数；失败只记日志，不影响调用方流程。 */

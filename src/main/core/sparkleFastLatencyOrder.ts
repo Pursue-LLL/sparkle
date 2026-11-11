@@ -13,7 +13,8 @@ import { getAppConfig } from '../config'
 import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
-import { AUTO_SELECT_GROUP_NAME, AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
+import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
+import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
 import {
   mihomoGroupDetail,
   mihomoProxyProviders,

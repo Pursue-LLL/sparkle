@@ -1,4 +1,5 @@
 import {
+  AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
   CURSOR_DEDICATED_DIRECT_PROXY,
   CURSOR_VPS_PROVIDER_FILTER,
@@ -56,8 +57,13 @@ function matchesHongKongNode(name: string): boolean {
   return /香港|\bHK\b|hong\s*kong|hongkong/i.test(name)
 }
 
-const CURSOR_GROUP_REF_BLOCKLIST = new Set(['SDK DNS', 'GLOBAL', '🚀 节点选择', '自动选择', '故障转移'])
-const AUTO_SELECT_GROUP_NAME = '自动选择' as const
+const CURSOR_GROUP_REF_BLOCKLIST = new Set([
+  'SDK DNS',
+  'GLOBAL',
+  '🚀 节点选择',
+  AUTO_SELECT_GROUP_NAME,
+  '故障转移'
+])
 const HONG_KONG_HOP_GROUP_NAMES = new Set(['🚀 节点选择', 'GLOBAL'])
 
 const CURSOR_RULE_HOST_MARKERS = [

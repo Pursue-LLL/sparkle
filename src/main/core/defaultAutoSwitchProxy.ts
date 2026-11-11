@@ -1,4 +1,6 @@
+import { resolveGroupPolicy } from './autoSwitchPolicy'
 import {
+  AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
   DEFAULT_GENERAL_DELAY_TEST_URL,
   GEMINI_REACHABILITY_PROBE_URL,
@@ -7,11 +9,6 @@ import {
   isCursorDedicatedGroupName,
   isNestedAutoSwitchSelection,
   isSparkleAutoSelectSubGroup,
-  isAgyDedicatedGroupName,
-  isGrokDedicatedGroupName,
-  isHongKongFilterGroupName,
-  isMailDedicatedGroupName,
-  isMailProbeHiddenGroupName,
   isSparkleRegionalAutoSelectGroup,
   filterCursorEligibleVpsLeaves,
   prependCursorDedicatedDirectOption,
@@ -39,7 +36,7 @@ export interface MihomoAutoSwitchApi {
   mihomoGroupDelay: (group: string, url?: string) => Promise<ControllerGroupDelay>
 }
 
-const PREFERRED_AUTO_SWITCH_NAMES = ['自动选择', '故障转移'] as const
+const PREFERRED_AUTO_SWITCH_NAMES = [AUTO_SELECT_GROUP_NAME, '故障转移'] as const
 
 interface ProxyGroupConfig {
   name: string
@@ -62,7 +59,6 @@ export interface EnsureAutoSwitchOptions {
   regionPriority?: string[]
 }
 
-export const AUTO_SELECT_GROUP_NAME = '自动选择' as const
 
 /** 自动选择 探测目标：用户主用 Gemini——探测即验证目标站可达（SSOT: cursorProxyGroup）。 */
 export const AUTO_SELECT_GEMINI_PROBE_URL = GEMINI_REACHABILITY_PROBE_URL
@@ -300,32 +296,10 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
   }
 
   for (const group of groups) {
-    if (isCursorDedicatedGroupName(group.name)) {
+    if (!resolveGroupPolicy(group).acceptsAutoSwitchRefs) {
       continue
     }
-    if (group.name === AUTO_SELECT_GROUP_NAME || isAutoSwitchingProxyName(group.name)) {
-      continue
-    }
-    // BUG-2026-09-15-009: Sparkle sub-groups (regional + cursor) are select groups too;
-    // appending the auto-switch refs to them would create self-references.
-    if (
-      isSparkleAutoSelectSubGroup(group.name) ||
-      isHongKongFilterGroupName(group.name) ||
-      isGrokDedicatedGroupName(group.name) ||
-      isMailDedicatedGroupName(group.name) ||
-      isAgyDedicatedGroupName(group.name) ||
-      isMailProbeHiddenGroupName(group.name)
-    ) {
-      continue
-    }
-
-    const type = (group.type ?? 'select').toLowerCase()
-    if (type !== 'select') {
-      continue
-    }
-
-    const existing = group.proxies ?? []
-    group.proxies = appendAutoSwitchRefs(existing, autoSwitchRefs)
+    group.proxies = appendAutoSwitchRefs(group.proxies ?? [], autoSwitchRefs)
   }
 
   appendRegionalAutoGroupsToCursorDedicated(profile)

@@ -2,10 +2,11 @@
 //         runtimeConfigSync::syncRuntimeConfigToCore (POS: 运行时配置对齐执行层) ·
 //         autoSwitchPinRelease::releaseAutoSwitchPins (POS: 自动切换组固定释放执行层) ·
 //         sparkleFastLatencyOrder::bootstrapSparkleFastLatencyOrder (POS: sparkle-fast 延迟序) ·
+//         groupFailover::startGroupFailover (POS: 故障转移引擎接线) ·
 //         sparkleMailProbe/sparkleMailCurrentNodeProbe (POS: 邮件 provider 全量探测/当前节点按需复测) ·
 //         regionalUrlTestWarmup (POS: 地区组按需预热)
 // [OUTPUT] runPostCoreBootstrap: 内核就绪后的单一启动编排入口
-// [POS] 内核就绪后的单一启动编排入口。运行时配置对齐与自动组固定释放、延迟序、粘性固定、邮件探测、agy 巡检、订阅更新、Cursor 默认节点、地区组按需预热。
+// [POS] 内核就绪后的单一启动编排入口。运行时配置对齐与自动组固定释放、延迟序、粘性固定、故障转移、邮件探测、agy 巡检、订阅更新、Cursor 默认节点、地区组按需预热。
 
 import { appendAppLog } from '../utils/log'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
@@ -44,7 +45,7 @@ export async function waitForMihomoControllerReady(
   return false
 }
 
-/** 内核就绪后：自动选择延迟排序与粘性固定、订阅更新器、Cursor 专用组默认节点、地区 url-test 预热。 */
+/** 内核就绪后：自动选择延迟排序与粘性固定、故障转移、订阅更新器、Cursor 专用组默认节点、地区 url-test 预热。 */
 export async function runPostCoreBootstrap(coreInitPromise: Promise<void>): Promise<void> {
   await Promise.race([coreInitPromise, delay(CORE_INIT_RACE_MS)])
 
@@ -161,6 +162,9 @@ async function runPostReadyServices(): Promise<void> {
   // 排序失败也要启动：固定逻辑只依赖 controller，与重排相互独立。
   const { startAutoSelectStickyPin } = await import('./autoSelectStickyPin')
   startAutoSelectStickyPin()
+
+  const { startGroupFailover } = await import('./groupFailover')
+  startGroupFailover()
 
   const { mihomoGroups, mihomoChangeProxy, mihomoGetConnections, mihomoGroupDelay } = await import(
     './mihomoApi'

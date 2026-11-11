@@ -6,6 +6,7 @@
 // [POS] 运行时配置对齐执行层。规则、分组或 provider 定义变化时整配置重载（不断开已建立连接，新连接仅在毫秒级重载窗口内受影响）；
 //       其余情况只热刷新 provider 节点文件。所有对齐请求串行执行，重载失败只记日志并保留当前内核配置。
 
+import { describeError } from '../utils/errorMessage'
 import { appendAppLog } from '../utils/log'
 import { releaseAutoSwitchPins } from './autoSwitchPinRelease'
 import { generateProfile, getRuntimeConfig } from './factory'
@@ -21,10 +22,6 @@ export interface RuntimeConfigSyncOptions {
 /** 本进程最近一次确认内核已采用的配置指纹；进程重启后为未知，由规则数对账兜底。 */
 let appliedFingerprint: string | undefined
 let syncChain: Promise<void> = Promise.resolve()
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : JSON.stringify(error)
-}
 
 async function syncOnce({ force = false }: RuntimeConfigSyncOptions): Promise<boolean> {
   const runtime = await getRuntimeConfig()

@@ -170,7 +170,7 @@ interface ControllerGroupDetail {
 
 // 自定义 group 内容
 interface ControllerMixedGroup extends ControllerGroupDetail {
-  all: (ControllerProxyDetail | ControllerGroupDetail)[]
+  all: (ControllerProxiesDetail | ControllerGroupDetail)[]
 }
 
 // ${api}/proxies/:name/delay
