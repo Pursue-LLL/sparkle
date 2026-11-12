@@ -284,15 +284,8 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
   retainTarget(target)
 
   let lineBuffer = ''
-  // 内核输出逐行解析发布；ws 模式下日志由 websocket 提供，残留的半行不再发布
-  const flushPartialLine = (): void => {
-    if (mihomoLogSource === 'out') {
-      publishTargetLogLines(lineBuffer.trim(), type)
-    }
-    lineBuffer = ''
-  }
-  // 落盘失败（磁盘满、权限等）只丢这一段日志（appendLog 不会 reject）：把错误交给 pipe 的目标流，
-  // 会让整条子进程输出管道出错并升级成主进程未捕获异常。
+  // 落盘失败（磁盘满、权限等）只丢这一段日志（appendLog 不会 reject）。若把错误交给 pipe 的目标流，
+  // 整条子进程输出管道会出错并升级成主进程未捕获异常。
   const consume = (content: Buffer, callback: () => void): void => {
     if (target === 'core' && mihomoLogSource === 'out') {
       lineBuffer = flushCoreLogLines(lineBuffer, content.toString('utf-8'), type)
@@ -307,9 +300,12 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
     writev(chunks, callback) {
       consume(Buffer.concat(chunks.map(({ chunk }) => chunk as Buffer)), callback)
     },
-    // 正常结束（autoDestroy）与中途销毁都会走到这里，各只一次：发布最后半行，释放共用的写入流
+    // 正常结束（autoDestroy）与中途销毁都会走到这里，各只一次：发布最后半行，释放共用的写入流。
+    // ws 模式下日志由 websocket 提供，残留的半行不再发布。
     destroy(error, callback) {
-      flushPartialLine()
+      if (mihomoLogSource === 'out') {
+        publishTargetLogLines(lineBuffer.trim(), type)
+      }
       releaseTarget(target)
       callback(error)
     }
