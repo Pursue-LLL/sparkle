@@ -19,6 +19,8 @@ export const world: {
   skipEnsureOnce: boolean
   /** 设置后 ensureLogDir 抛出该错误，模拟磁盘满 / 权限不足等落盘失败。 */
   ensureFailure: Error | undefined
+  /** 设置后读取应用配置抛出该错误（配置文件损坏等）。 */
+  configFailure: Error | undefined
   /** 日志模块打开过的写入流（按创建顺序），用来观察流的复用与关闭。 */
   streams: WriteStream[]
 } = {
@@ -28,6 +30,7 @@ export const world: {
   windows: [],
   skipEnsureOnce: false,
   ensureFailure: undefined,
+  configFailure: undefined,
   streams: []
 }
 
@@ -62,7 +65,14 @@ export function loadLog(): typeof import('./log') {
       }
     })
     mock.module('../config/app', {
-      exports: { getAppConfig: async () => world.config }
+      exports: {
+        getAppConfig: async () => {
+          if (world.configFailure) {
+            throw world.configFailure
+          }
+          return world.config
+        }
+      }
     })
     mock.module('./dirs', {
       exports: {
@@ -115,6 +125,7 @@ export function resetWorld(): void {
   world.windows = []
   world.skipEnsureOnce = false
   world.ensureFailure = undefined
+  world.configFailure = undefined
   world.streams = []
 }
 

@@ -26,10 +26,9 @@ function scheduleNextCheck(delayMs: number, owner: number): void {
     try {
       await runDueProfileUpdates()
     } catch (error) {
-      // 日志写不进去也不能让心跳链断掉
       await appendAppLog(
         `[ProfileUpdater]: heartbeat failed: ${error instanceof Error ? error.message : String(error)}\n`
-      ).catch(() => undefined)
+      )
     }
     if (owner === generation) {
       scheduleNextCheck(HEARTBEAT_INTERVAL_MS, owner)
