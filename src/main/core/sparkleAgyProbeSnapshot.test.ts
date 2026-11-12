@@ -11,6 +11,7 @@ import {
   POOL,
   runBootstrap,
   settle,
+  snapshot,
   TW1,
   TW2,
   useAgyRig,
@@ -30,7 +31,7 @@ const TW1_TWIN: Proxy = { ...TW1, server: 'tw1-twin.example.com' }
 
 describe('getSparkleAgyProbeSnapshot', () => {
   it('is empty before the first round', () => {
-    assert.deepEqual(agy().getSparkleAgyProbeSnapshot(), {})
+    assert.deepEqual(snapshot(), {})
   })
 
   it('lists the verified nodes with their round-trip time', async () => {
@@ -38,7 +39,7 @@ describe('getSparkleAgyProbeSnapshot', () => {
 
     await runBootstrap(agy())
 
-    assert.deepEqual(agy().getSparkleAgyProbeSnapshot(), {
+    assert.deepEqual(snapshot(), {
       '台湾-1': { rttMs: 42, checkedAt: NOW, state: 'usable' }
     })
   })
@@ -46,10 +47,10 @@ describe('getSparkleAgyProbeSnapshot', () => {
   it('hands out a copy that callers cannot use to change the next answer', async () => {
     await runBootstrap(agy())
 
-    const snapshot = agy().getSparkleAgyProbeSnapshot()
-    delete snapshot['台湾-1']
+    const copy = snapshot()
+    delete copy['台湾-1']
 
-    assert.deepEqual(Object.keys(agy().getSparkleAgyProbeSnapshot()), ['台湾-1'])
+    assert.deepEqual(Object.keys(snapshot()), ['台湾-1'])
   })
 
   it('shows nodes that Google rejected together with the evidence', async () => {
@@ -57,7 +58,7 @@ describe('getSparkleAgyProbeSnapshot', () => {
 
     await runBootstrap(agy())
 
-    assert.deepEqual(agy().getSparkleAgyProbeSnapshot()['台湾-2'], {
+    assert.deepEqual(snapshot()['台湾-2'], {
       rttMs: 77,
       checkedAt: NOW - 5 * MINUTE_MS,
       state: 'unusable',
@@ -70,7 +71,7 @@ describe('getSparkleAgyProbeSnapshot', () => {
 
     await runBootstrap(agy())
 
-    assert.deepEqual(agy().getSparkleAgyProbeSnapshot()['台湾-1'], {
+    assert.deepEqual(snapshot()['台湾-1'], {
       rttMs: 0,
       checkedAt: NOW + 90_000,
       state: 'failed',
@@ -85,7 +86,7 @@ describe('getSparkleAgyProbeSnapshot', () => {
 
     await runBootstrap(agy())
 
-    assert.equal(agy().getSparkleAgyProbeSnapshot()['台湾-1'].state, 'usable')
+    assert.equal(snapshot()['台湾-1'].state, 'usable')
   })
 
   describe('when two nodes share a name', () => {
@@ -104,7 +105,7 @@ describe('getSparkleAgyProbeSnapshot', () => {
 
       await runBootstrap(agy())
 
-      assert.equal(agy().getSparkleAgyProbeSnapshot()['台湾-1'].state, 'usable')
+      assert.equal(snapshot()['台湾-1'].state, 'usable')
     })
 
     it('shows the rejection when it is the newer conclusion', async () => {
@@ -112,7 +113,7 @@ describe('getSparkleAgyProbeSnapshot', () => {
 
       await runBootstrap(agy())
 
-      assert.deepEqual(agy().getSparkleAgyProbeSnapshot()['台湾-1'], {
+      assert.deepEqual(snapshot()['台湾-1'], {
         rttMs: 20,
         checkedAt: NOW - MINUTE_MS,
         state: 'unusable',
@@ -125,7 +126,7 @@ describe('getSparkleAgyProbeSnapshot', () => {
 
       await runBootstrap(agy())
 
-      assert.equal(agy().getSparkleAgyProbeSnapshot()['台湾-1'].state, 'unusable')
+      assert.equal(snapshot()['台湾-1'].state, 'unusable')
     })
   })
 
@@ -139,19 +140,19 @@ describe('getSparkleAgyProbeSnapshot', () => {
     it('shows the failure when it is newer than the sample', async () => {
       await runWithSampleAge(MINUTE_MS)
 
-      assert.equal(agy().getSparkleAgyProbeSnapshot()['台湾-1'].state, 'failed')
+      assert.equal(snapshot()['台湾-1'].state, 'failed')
     })
 
     it('shows the failure when it is exactly as new as the sample', async () => {
       await runWithSampleAge(-90_000)
 
-      assert.equal(agy().getSparkleAgyProbeSnapshot()['台湾-1'].state, 'failed')
+      assert.equal(snapshot()['台湾-1'].state, 'failed')
     })
 
     it('keeps the sample when it is newer than the failure', async () => {
       await runWithSampleAge(-120_000)
 
-      assert.equal(agy().getSparkleAgyProbeSnapshot()['台湾-1'].state, 'usable')
+      assert.equal(snapshot()['台湾-1'].state, 'usable')
     })
   })
 })

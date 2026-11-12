@@ -25,6 +25,7 @@ import {
   probeDir,
   readCache,
   runBootstrap,
+  snapshot,
   TW1,
   useAgyRig,
   world,
@@ -88,7 +89,7 @@ describe('sparkleAgyProbe agy CLI request', () => {
 
     assert.deepEqual(world.killed, ['SIGKILL'])
     assertNoLog('error=')
-    assert.equal(agy().getSparkleAgyProbeSnapshot()['台湾-1'].reason, '超时')
+    assert.equal(snapshot()['台湾-1'].reason, '超时')
   })
 })
 
@@ -126,7 +127,7 @@ describe('sparkleAgyProbe reading the CLI result', () => {
       await runBootstrap(agy())
 
       assert.equal(cacheFileExists(), false, 'no evidence about the node, so nothing is cached')
-      assert.deepEqual(agy().getSparkleAgyProbeSnapshot()['台湾-1'], {
+      assert.deepEqual(snapshot()['台湾-1'], {
         rttMs: 0,
         checkedAt: NOW,
         state: 'failed',

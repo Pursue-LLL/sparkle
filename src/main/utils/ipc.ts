@@ -237,7 +237,7 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('mihomoGroups', ipcErrorWrapper(mihomoGroups))
   ipcMain.handle('getSparkleAgyProbeSnapshot', () =>
     ipcErrorWrapper(async () => {
-      const { getSparkleAgyProbeSnapshot } = await import('../core/sparkleAgyProbe')
+      const { getSparkleAgyProbeSnapshot } = await import('../core/sparkleAgyProbeSnapshot')
       return getSparkleAgyProbeSnapshot()
     })()
   )
