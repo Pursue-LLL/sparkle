@@ -63,20 +63,11 @@ function getWriteStream(target: LogTarget): WriteStream {
   ensureLogDir()
   const nextPath = resolveLogPath(target)
   const current = streamMap.get(target)
-  const sizeState = logFileSizeMap.get(target)
 
-  if (!sizeState || sizeState.path !== nextPath) {
-    logFileSizeMap.set(target, { path: nextPath, size: null })
-  }
-
-  if (current && current.path === nextPath) {
+  if (current?.path === nextPath) {
     return current.stream
   }
-
-  if (current) {
-    streamMap.delete(target)
-    current.stream.end()
-  }
+  current?.stream.end()
 
   const stream = createWriteStream(nextPath, { flags: 'a', highWaterMark: logStreamHighWaterMark })
   // 写入失败已通过 write 回调交给 appendLog 处理；没有 'error' 监听时同一个错误还会升级成
@@ -97,25 +88,11 @@ async function closeWriteStream(target: LogTarget): Promise<void> {
   streamMap.delete(target)
   const { stream } = current
 
-  if (stream.closed || stream.destroyed) return
+  // 已销毁的流不会再发 close，等它会永远挂住写入队列
+  if (stream.destroyed) return
 
   await new Promise<void>((resolve) => {
-    const cleanup = (): void => {
-      stream.removeListener('close', onClose)
-      stream.removeListener('error', onError)
-      resolve()
-    }
-
-    const onClose = (): void => {
-      cleanup()
-    }
-
-    const onError = (): void => {
-      cleanup()
-    }
-
-    stream.once('close', onClose)
-    stream.once('error', onError)
+    stream.once('close', () => resolve())
     stream.end()
   })
 }
@@ -140,14 +117,6 @@ function trimCachedLogs(): void {
   cachedLogs.splice(0, cachedLogs.length - cachedLogLimit)
 }
 
-function isEmptyLogContent(content: LogContent): boolean {
-  return typeof content === 'string' ? content.length === 0 : content.byteLength === 0
-}
-
-function getLogContentSize(content: LogContent): number {
-  return typeof content === 'string' ? Buffer.byteLength(content, 'utf-8') : content.byteLength
-}
-
 function normalizeLogContent(content: string): string[] {
   return content
     .replace(/\r\n/g, '\n')
@@ -156,18 +125,14 @@ function normalizeLogContent(content: string): string[] {
 }
 
 function getLogFileSize(target: LogTarget, path: string): number {
-  const state = logFileSizeMap.get(target)
-  const cached = resolveCachedLogFileSize(state, path)
+  const cached = resolveCachedLogFileSize(logFileSizeMap.get(target), path)
   if (cached !== null) {
     return cached
   }
 
   try {
-    const fileStat = statSync(path)
-    logFileSizeMap.set(target, { path, size: fileStat.size })
-    return fileStat.size
+    return statSync(path).size
   } catch {
-    logFileSizeMap.set(target, { path, size: 0 })
     return 0
   }
 }
@@ -178,13 +143,7 @@ async function trimLogFileToSize(
   targetBytes: number
 ): Promise<void> {
   await closeWriteStream(target)
-  let content: string
-  try {
-    content = readFileSync(path, 'utf-8')
-  } catch {
-    content = ''
-  }
-  const result = trimLogContent(content, targetBytes)
+  const result = trimLogContent(readFileSync(path, 'utf-8'), targetBytes)
   if (result.trimmed) {
     writeFileSync(path, result.content, 'utf-8')
   }
@@ -263,14 +222,13 @@ async function appendToLogFile(
   } catch (error) {
     await closeWriteStream(target)
     if (!isMissingFileError(error)) throw error
-    // 日志目录被删：重建后重试一次
-    ensureLogDir()
+    // 日志目录被删（什么都没写进去）：getWriteStream 会重建目录，换新流重试一次
     await writeToStream(target, content)
   }
   await enforceLogFileSizeLimit(
     target,
     path,
-    nextLogFileSizeAfterAppend(sizeBeforeAppend, getLogContentSize(content)),
+    nextLogFileSizeAfterAppend(sizeBeforeAppend, Buffer.byteLength(content)),
     maxBytes
   )
 }
@@ -281,7 +239,7 @@ async function appendToLogFile(
  */
 async function appendLog(target: LogTarget, content: LogContent): Promise<void> {
   try {
-    if (isEmptyLogContent(content) || !(await shouldSaveLogs())) return
+    if (content.length === 0 || !(await shouldSaveLogs())) return
 
     const path = resolveLogPath(target)
     const maxBytes = await getMaxLogFileSizeBytes()
@@ -326,11 +284,12 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
   retainTarget(target)
 
   let lineBuffer = ''
-  let released = false
-  const release = (): void => {
-    if (released) return
-    released = true
-    releaseTarget(target)
+  // 内核输出逐行解析发布；ws 模式下日志由 websocket 提供，残留的半行不再发布
+  const flushPartialLine = (): void => {
+    if (mihomoLogSource === 'out') {
+      publishTargetLogLines(lineBuffer.trim(), type)
+    }
+    lineBuffer = ''
   }
   // 落盘失败（磁盘满、权限等）只丢这一段日志（appendLog 不会 reject）：把错误交给 pipe 的目标流，
   // 会让整条子进程输出管道出错并升级成主进程未捕获异常。
@@ -348,20 +307,15 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
     writev(chunks, callback) {
       consume(Buffer.concat(chunks.map(({ chunk }) => chunk as Buffer)), callback)
     },
+    // 'finish' 之前把最后半行发布出来
     final(callback) {
-      if (target === 'core' && mihomoLogSource === 'out' && lineBuffer.trim()) {
-        publishTargetLogLines(lineBuffer.trim(), type)
-      }
-      lineBuffer = ''
-      release()
+      flushPartialLine()
       callback()
     },
+    // 正常结束（autoDestroy）与中途销毁都会走到这里，各只一次
     destroy(error, callback) {
-      if (target === 'core' && mihomoLogSource === 'out' && lineBuffer.trim()) {
-        publishTargetLogLines(lineBuffer.trim(), type)
-      }
-      lineBuffer = ''
-      release()
+      flushPartialLine()
+      releaseTarget(target)
       callback(error)
     }
   })

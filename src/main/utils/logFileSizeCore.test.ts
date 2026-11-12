@@ -89,6 +89,11 @@ describe('trimLogContent', () => {
     })
   })
 
+  it('copes with a target below zero', () => {
+    assert.deepEqual(trimLogContent('a\nb\n', -1), { content: '', size: 0, trimmed: true })
+    assert.deepEqual(trimLogContent('a\nb', -1), { content: '', size: 0, trimmed: true })
+  })
+
   it('keeps blank lines it does not have to drop', () => {
     assert.deepEqual(trimLogContent('a\n\n\nb\n', 5), {
       content: '\n\nb\n',

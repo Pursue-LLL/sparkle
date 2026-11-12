@@ -157,6 +157,52 @@ describe('log file size limit', () => {
     assert.ok(sizeOf('substore.log') <= Math.floor(twentyMiB * 0.7))
   })
 
+  it('keeps the limit when many appends arrive at the same time', async () => {
+    world.config = { maxLogFileSizeMB: 1 }
+    const { appendAppLog } = loadLog()
+    const body = 'x'.repeat(1000)
+
+    await Promise.all(
+      Array.from({ length: 1500 }, (_, index) =>
+        appendAppLog(`${String(index).padStart(4, '0')} ${body}`)
+      )
+    )
+
+    const content = readLog('app.log')
+    assert.ok(Buffer.byteLength(content) <= ONE_MIB, 'the file stays within the limit')
+    assert.ok(content.includes(' 1499 '), 'the newest line is kept')
+    assert.equal(content.includes(' 0000 '), false, 'the oldest line is gone')
+  })
+
+  it('leaves the file alone when the cached size was too high', async () => {
+    world.config = { maxLogFileSizeMB: 1 }
+    const { createLogWritable } = loadLog()
+    const writer = createLogWritable('substore')
+    await writeAndWait(writer, numberedLines(1000, 1024))
+
+    // 文件被外部改小后，缓存的大小偏高：裁剪前重读发现并不超限，不应改写
+    writeFileSync(logFile('substore.log'), 'kept\r\nas written\r\n')
+    await writeAndWait(writer, numberedLines(60, 1024))
+
+    assert.ok(readLog('substore.log').startsWith('kept\r\nas written\r\n'))
+    assert.equal(sizeOf('substore.log'), 'kept\r\nas written\r\n'.length + 60 * 1024)
+    writer.end()
+    await finished(writer)
+  })
+
+  it('closes the append stream before rewriting a trimmed file', async () => {
+    world.config = { maxLogFileSizeMB: 1 }
+    const { createLogWritable } = loadLog()
+    const writer = createLogWritable('substore')
+
+    await writeAndWait(writer, numberedLines(1025, 1024))
+    assert.equal(world.streams[0].closed, true)
+    await writeAndWait(writer, 'after\n')
+
+    assert.equal(world.streams.length, 2)
+    assert.ok(readLog('substore.log').endsWith('after\n'))
+  })
+
   it('writes concurrent appends in call order', async () => {
     const { appendAppLog } = loadLog()
 
@@ -229,6 +275,55 @@ describe('log write streams', () => {
     assert.equal(readLog('substore.log'), 'new\n')
     world.logDir = originalDir
     assert.equal(readLog('substore.log'), 'old\n')
+  })
+
+  it('closes the file again after a later cycle of writers', async () => {
+    const { createLogWritable } = loadLog()
+
+    await pipeThrough(createLogWritable('substore'), 'one\n')
+    await pipeThrough(createLogWritable('substore'), 'two\n')
+
+    await streamClosed(world.streams[1])
+    assert.equal(world.streams.length, 2)
+  })
+
+  it('releases the shared stream when the last writer is destroyed without ending', async () => {
+    const { createLogWritable } = loadLog()
+    const writer = createLogWritable('substore')
+    await writeAndWait(writer, 'partial\n')
+
+    writer.destroy()
+
+    await streamClosed(world.streams[0])
+    assert.equal(readLog('substore.log'), 'partial\n')
+  })
+
+  it('keeps the current stream when a replaced one fails late', async () => {
+    const { createLogWritable } = loadLog()
+    const writer = createLogWritable('substore')
+    await writeAndWait(writer, 'old\n')
+    world.logDir = `${world.logDir}-moved`
+    await writeAndWait(writer, 'new\n')
+
+    world.streams[0].emit('error', new Error('EIO: late failure'))
+    await writeAndWait(writer, 'newer\n')
+
+    assert.equal(world.streams.length, 2)
+    assert.equal(readLog('substore.log'), 'new\nnewer\n')
+  })
+
+  it('does not hang on a stream that was destroyed behind its back', async () => {
+    const { appendAppLog } = loadLog()
+    await appendAppLog('one')
+
+    world.streams[0].destroy()
+    await appendAppLog('lost')
+    await appendAppLog('three')
+
+    const content = readLog('app.log')
+    assert.match(content, / one\n/)
+    assert.match(content, / three\n/)
+    assert.equal(content.includes('lost'), false)
   })
 
   it('reopens the file after the stream failed', async () => {

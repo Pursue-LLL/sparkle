@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { afterEach, beforeEach, describe, it, mock } from 'node:test'
 import {
   cleanupWorld,
@@ -69,6 +69,26 @@ describe('log', () => {
       await appendAppLog('kept')
       assert.match(readLog('app.log'), / kept\n$/)
       assert.equal(readLog('app.log').includes('lost'), false)
+    })
+
+    it('stamps a single-character message', async () => {
+      const { appendAppLog } = loadLog()
+
+      await appendAppLog('x')
+
+      assert.match(readLog('app.log'), /^\S+ x\n$/)
+    })
+
+    it('drops a line when the log path is a directory and does not retry the open', async () => {
+      const { appendAppLog } = loadLog()
+      mkdirSync(logFile('app.log'), { recursive: true })
+
+      await appendAppLog('lost')
+
+      assert.equal(world.streams.length, 1)
+      rmSync(logFile('app.log'), { recursive: true })
+      await appendAppLog('kept')
+      assert.match(readLog('app.log'), / kept\n$/)
     })
 
     it('drops a line when the app config cannot be read', async () => {
