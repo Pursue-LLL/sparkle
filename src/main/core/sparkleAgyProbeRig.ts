@@ -1,5 +1,5 @@
 // [INPUT] node:test 假时钟与模块替身 · sparkleAgyProbe 及其子模块（被测，每个用例重新加载）· 临时目录里的真实 HOME / 数据目录 / provider 文件 · 假的 agy CLI 进程 · sparkleAgyProbeWorld
-// [OUTPUT] useAgyRig · snapshot · 文件读写辅助 · runBootstrap/expireHangingProbe/settle · 重导出 sparkleAgyProbeWorld 的全部夹具
+// [OUTPUT] useAgyRig · snapshot/syncSnapshot/groupControl/agyCli · 文件读写辅助 · runBootstrap/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeWorld 的全部夹具
 // [POS] sparkleAgyProbe 行为测试夹具：配置、mihomo 控制器与日志用替身，agy CLI 用可编排结局的假子进程，
 // 探测缓存、provider 文件与探测目录走临时目录里的真实文件。仅供测试使用。
 
@@ -10,7 +10,9 @@ import path from 'node:path'
 import { after, afterEach, before, beforeEach, mock } from 'node:test'
 import { parseYaml } from '../utils/yaml'
 import { flush } from './groupFailoverEngineHarness'
+import type * as AgyCli from './sparkleAgyCli'
 import type * as AgyProbe from './sparkleAgyProbe'
+import type * as AgyGroupControl from './sparkleAgyGroupControl'
 import type * as AgySnapshot from './sparkleAgyProbeSnapshot'
 import { NOW, resetWorld, world, type CliOutcome, type Proxy } from './sparkleAgyProbeWorld'
 import { AGY_NODE_PROVIDER_FILENAME } from './sparkleAgyProviderCore'
@@ -93,10 +95,10 @@ export function expireHangingProbe(): boolean {
   return true
 }
 
-/** 跑完一轮 bootstrap；途中悬挂的假进程由这里推进时钟让探测超时。 */
-export async function runBootstrap(agy: typeof AgyProbe): Promise<void> {
+/** 等一个异步操作做完；途中悬挂的假进程由这里推进时钟让探测超时。 */
+export async function drive<T>(operation: Promise<T>): Promise<T> {
   const state = { finished: false }
-  const run = agy.bootstrapSparkleAgyProvider().finally(() => {
+  const run = operation.finally(() => {
     state.finished = true
   })
   for (let guard = 0; guard < 500 && !state.finished; guard++) {
@@ -105,7 +107,12 @@ export async function runBootstrap(agy: typeof AgyProbe): Promise<void> {
       expireHangingProbe()
     }
   }
-  await run
+  return run
+}
+
+/** 跑完一轮 bootstrap。 */
+export function runBootstrap(agy: typeof AgyProbe): Promise<void> {
+  return drive(agy.bootstrapSparkleAgyProvider())
 }
 
 function emitOutcome(child: FakeChild, outcome: CliOutcome, args: string[]): void {
@@ -218,6 +225,9 @@ function installMocks(): void {
       },
       mihomoChangeProxy: async (_group: string, node: string): Promise<boolean> => {
         world.calls.push(`change:${node}`)
+        if (world.changeFailure) {
+          throw new Error('mihomo is down')
+        }
         if (world.changeRefused.has(node) || !world.members.includes(node)) {
           return false
         }
@@ -240,6 +250,9 @@ function installMocks(): void {
         if (world.selection && !world.members.includes(world.selection)) {
           world.selection = world.members[0]
         }
+        if (world.afterUpdateSelection !== undefined) {
+          world.selection = world.afterUpdateSelection
+        }
       }
     }
   })
@@ -256,6 +269,24 @@ const AGY_MODULES = [
 /** 本用例里探针当前的展示快照。 */
 export function snapshot(): AgyProbeSnapshot {
   return (require('./sparkleAgyProbeSnapshot') as typeof AgySnapshot).getSparkleAgyProbeSnapshot()
+}
+
+/** 用缓存与订阅节点重建展示快照（探针自己在每轮的固定位置做这件事）。 */
+export function syncSnapshot(
+  proxies: Proxy[] = world.profileProxies,
+  cache: ReadonlyMap<string, { usable: boolean; rttMs: number; checkedAt: number }> = new Map()
+): void {
+  ;(require('./sparkleAgyProbeSnapshot') as typeof AgySnapshot).syncAgyProbeSnapshot(cache, proxies)
+}
+
+/** 本用例里的 agy CLI 请求模块（探针的最底层，可直接驱动）。 */
+export function agyCli(): typeof AgyCli {
+  return require('./sparkleAgyCli') as typeof AgyCli
+}
+
+/** 本用例里的 agy 组操作模块（探针的下层，可直接驱动）。 */
+export function groupControl(): typeof AgyGroupControl {
+  return require('./sparkleAgyGroupControl') as typeof AgyGroupControl
 }
 
 const SECRET_ENV_NAMES = [

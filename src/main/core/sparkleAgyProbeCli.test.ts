@@ -8,8 +8,9 @@ import {
   writeFileSync
 } from 'node:fs'
 import path from 'node:path'
-import { describe, it } from 'node:test'
+import { describe, it, mock } from 'node:test'
 import {
+  agyCli,
   assertLog,
   assertNoLog,
   cacheFileExists,
@@ -90,6 +91,34 @@ describe('sparkleAgyProbe agy CLI request', () => {
     assert.deepEqual(world.killed, ['SIGKILL'])
     assertNoLog('error=')
     assert.equal(snapshot()['台湾-1'].reason, '超时')
+  })
+
+  it('leaves a process alone that has already answered', async () => {
+    await agyCli().requestNativeAgy(90_000)
+
+    mock.timers.tick(HOUR_MS)
+
+    assert.deepEqual(world.killed, [])
+  })
+
+  describe('the time agy is told it may take', () => {
+    const askedTimeout = (): string => {
+      const { args } = world.spawns[world.spawns.length - 1]
+      return args[args.indexOf('--print-timeout') + 1]
+    }
+    const cases: Array<readonly [number, string]> = [
+      [90_000, '85s'],
+      [21_000, '16s'],
+      [20_000, '15s'],
+      [10_000, '15s']
+    ]
+    for (const [allowedMs, expected] of cases) {
+      it(`is ${expected} when the probe allows ${allowedMs / 1000} s`, async () => {
+        await agyCli().requestNativeAgy(allowedMs)
+
+        assert.equal(askedTimeout(), expected)
+      })
+    }
   })
 })
 

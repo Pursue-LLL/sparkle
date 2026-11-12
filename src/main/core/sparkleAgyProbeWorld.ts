@@ -77,8 +77,12 @@ export const world = {
   members: [...POOL],
   groupMissing: false,
   changeRefused: new Set<string>(),
+  /** 切换接口本身报错（而不是返回「没切成」）。 */
+  changeFailure: false,
   closeFailure: false,
   updateFailure: undefined as undefined | { reason: unknown },
+  /** 重载 provider 后 mihomo 把组选择落到这个节点，而不是「选中节点还在就保持、没了落到第一个」。 */
+  afterUpdateSelection: undefined as string | undefined,
   /** 按出场顺序消耗；用完后按节点查 outcomeByNode，再回落 defaultOutcome。 */
   outcomes: [] as CliOutcome[],
   outcomeByNode: {} as Record<string, CliOutcome>,
@@ -109,8 +113,10 @@ export function resetWorld(): void {
   world.members = [...POOL]
   world.groupMissing = false
   world.changeRefused = new Set()
+  world.changeFailure = false
   world.closeFailure = false
   world.updateFailure = undefined
+  world.afterUpdateSelection = undefined
   world.outcomes = []
   world.outcomeByNode = {}
   world.defaultOutcome = OK
