@@ -11,6 +11,7 @@ import {
   NOW,
   readCache,
   readProviderOrder,
+  UNUSABLE_PROFILES,
   useGeminiRig,
   world,
   writeCache,
@@ -104,19 +105,34 @@ describe('sparkleGeminiProbe blocked node names', () => {
     assert.deepEqual([...(await gemini().loadGeminiBlockedNodeNames())], ['台湾-2'])
   })
 
-  it('falls back to the plain names in the cache when the profile cannot be used', async () => {
-    writeCache({ '台湾-2': cacheRecord(false), '日本-1': cacheRecord(true) })
-    world.profile = { current: 'default' }
-
-    assert.deepEqual([...(await gemini().loadGeminiBlockedNodeNames())], ['台湾-2'])
+  it('does not look at the profile when nothing is cached', async () => {
+    assert.equal((await gemini().loadGeminiBlockedNodeNames()).size, 0)
+    assert.equal(world.profileReads, 0)
   })
 
-  it('falls back the same way when the profile config cannot be read', async () => {
-    writeCache({ '台湾-2': cacheRecord(false) })
-    world.profileError = true
+  it('judges by the nodes it is given, not by the current profile', async () => {
+    writeCache({ [cacheKey(TW1)]: cacheRecord(false) })
+    world.profileProxies = [TW2]
 
-    assert.deepEqual([...(await gemini().loadGeminiBlockedNodeNames())], ['台湾-2'])
+    assert.deepEqual([...(await gemini().loadGeminiBlockedNodeNames([TW1]))], ['台湾-1'])
+    assert.equal(world.profileReads, 0)
   })
+
+  it('does not block a node whose server changed since it was rejected', async () => {
+    writeCache({ [cacheKey(TW1)]: cacheRecord(false) })
+    world.profileProxies = [{ ...TW1, server: 'moved.example.com' }]
+
+    assert.equal((await gemini().loadGeminiBlockedNodeNames()).size, 0)
+  })
+
+  for (const [label, apply] of UNUSABLE_PROFILES) {
+    it(`falls back to the plain names in the cache when the ${label}`, async () => {
+      writeCache({ '台湾-2': cacheRecord(false), '日本-1': cacheRecord(true) })
+      apply()
+
+      assert.deepEqual([...(await gemini().loadGeminiBlockedNodeNames())], ['台湾-2'])
+    })
+  }
 
   it('falls back the same way when it is given no nodes at all', async () => {
     writeCache({ '台湾-2': cacheRecord(false) })
@@ -127,11 +143,20 @@ describe('sparkleGeminiProbe blocked node names', () => {
   it('recovers names from fingerprints when there are no plain names', async () => {
     writeCache({
       [cacheKey({ name: 'a|b', type: 'ss', server: 's', port: 443 })]: cacheRecord(false),
+      [cacheKey(TW2)]: cacheRecord(false),
+      [cacheKey({ type: 'ss', server: 's', port: 443 })]: cacheRecord(false),
       [cacheKey(TW1)]: cacheRecord(true)
     })
     world.profile = { current: 'default' }
 
-    assert.deepEqual([...(await gemini().loadGeminiBlockedNodeNames())], ['a|b'])
+    assert.deepEqual([...(await gemini().loadGeminiBlockedNodeNames())].sort(), ['a|b', '台湾-2'])
+  })
+
+  it('keeps a plain node name that itself contains a bar', async () => {
+    writeCache({ 'x|y': cacheRecord(false) })
+    world.profile = { current: 'default' }
+
+    assert.deepEqual([...(await gemini().loadGeminiBlockedNodeNames())], ['x|y'])
   })
 
   it('prefers plain names over fingerprints in the fallback', async () => {
@@ -183,6 +208,18 @@ describe('sparkleGeminiProbe verifyNodeGeminiRegion', () => {
     await gemini().verifyNodeGeminiRegion('台湾-1')
     assert.deepEqual(callsStarting('lock:'), ['lock:台湾-1'], 'the second ask is a cache hit')
   })
+
+  for (const [label, apply] of UNUSABLE_PROFILES) {
+    it(`keys the verdict by the plain name when the ${label}`, async () => {
+      apply()
+      world.verdictOf = () => ({ definitive: true, eligible: true, countryCode: 'TW' })
+
+      const verdict = await gemini().verifyNodeGeminiRegion('台湾-1')
+
+      assert.deepEqual(verdict, { eligible: true, countryCode: 'TW', definitive: true })
+      assert.deepEqual(Object.keys(readCache()), ['台湾-1'])
+    })
+  }
 
   it('keys a node that is not in the profile by its plain name only', async () => {
     world.verdictOf = () => ({ definitive: true, eligible: true, countryCode: 'JP' })

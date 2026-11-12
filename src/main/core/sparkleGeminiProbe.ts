@@ -101,21 +101,11 @@ export async function loadGeminiBlockedNodeNames(
   if (cache.size === 0) {
     return new Set()
   }
-  let targetProxies = proxies
-  if (!targetProxies) {
-    try {
-      const { current } = await getProfileConfig()
-      if (current && current !== 'default') {
-        const currentProfile = await getProfile(current)
-        targetProxies = extractProxies(currentProfile) as MailProxyRecord[]
-      }
-    } catch {
-      targetProxies = undefined
-    }
-  }
-  if (targetProxies && targetProxies.length > 0) {
+  const targetProxies = proxies ?? (await resolveCurrentProfileProxies())
+  if (targetProxies.length > 0) {
     return resolveGeminiBlockedNodeNames(targetProxies, cache)
   }
+  // 拿不到节点列表（没选订阅、配置读不出来或订阅里没有节点）时，按缓存里记录的节点名兜底。
   const fallback = new Set<string>()
   for (const [key, rec] of cache.entries()) {
     if (!rec.eligible && !key.includes('|')) {
@@ -163,7 +153,7 @@ export async function rebuildAndReloadSparkleFastProvider(): Promise<void> {
     const doc = buildSparkleFastProviderDocument({
       proxies,
       regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
-      delayMs: delaySnapshot.size > 0 ? delaySnapshot : undefined,
+      delayMs: delaySnapshot,
       blockedNodeNames
     })
     await writeFile(
@@ -286,10 +276,6 @@ export async function bootstrapSparkleGeminiRegionAudit(): Promise<void> {
         return !(fp && cache.has(fp)) && !cache.has(leaf.name)
       })
       .map((leaf) => leaf.name)
-
-    if (unverifiedAliveNames.length === 0) {
-      return
-    }
 
     let newlyRejected = 0
     for (const name of unverifiedAliveNames) {

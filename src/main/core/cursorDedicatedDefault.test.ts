@@ -101,11 +101,19 @@ describe('applyCursorDedicatedVpsSelection', () => {
   })
 
   describe('preconditions', () => {
-    it('refuses an api that lacks the controller calls', async () => {
-      await assert.rejects(
-        applyCursorDedicatedVpsSelection({} as unknown as Api),
-        /mihomoApi exports missing/
-      )
+    it('refuses an api that lacks any of the controller calls', async () => {
+      const complete = apiFor(cursorGroups('SDK DNS', ['SDK DNS', 'KR-VPS-Reality']))
+
+      for (const partial of [
+        {},
+        { mihomoGroups: complete.mihomoGroups },
+        { mihomoChangeProxy: complete.mihomoChangeProxy }
+      ]) {
+        await assert.rejects(
+          applyCursorDedicatedVpsSelection(partial as unknown as Api),
+          /mihomoApi exports missing/
+        )
+      }
     })
 
     it('does nothing without groups, or without the Cursor group', async () => {
@@ -153,6 +161,17 @@ describe('applyCursorDedicatedVpsSelection', () => {
 
       assert.equal(changes.length, 1)
       assert.deepEqual(logs, [])
+    })
+
+    it('recognises a chosen node whose name is a single character', async () => {
+      writeFileSync(selectionFile, JSON.stringify({ node: 'X' }))
+      const api = apiFor(cursorGroups('DIRECT', ['DIRECT', 'X']))
+
+      assert.equal(await applyCursorDedicatedVpsSelection(api), true)
+
+      assert.deepEqual(changes, [
+        { group: CURSOR_DEDICATED_GROUP_NAME, node: 'X', source: 'manual' }
+      ])
     })
 
     it('falls back to the default when the chosen node left the group', async () => {
