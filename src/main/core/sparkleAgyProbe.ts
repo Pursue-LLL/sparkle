@@ -300,9 +300,8 @@ function countUsable(
   cache: ReadonlyMap<string, AgyNodeProbeRecord>,
   proxies: readonly AgyProxyRecord[]
 ): number {
-  return proxies.filter(
-    (proxy) => cache.get(computeProxyNodeFingerprint(proxy))?.usable === true
-  ).length
+  return proxies.filter((proxy) => cache.get(computeProxyNodeFingerprint(proxy))?.usable === true)
+    .length
 }
 
 function providerNames(documentProxies: readonly AgyProxyRecord[]): string[] {
@@ -359,22 +358,29 @@ async function convergeAgyProvider(
   return names
 }
 
-/** 切换选择并让旧出口立即失效；当前已经是目标节点时不做任何动作。 */
-async function selectAgyNode(ordered: readonly string[], preferred?: string | null): Promise<void> {
+/**
+ * 切换选择并让旧出口立即失效；当前已经是目标节点时不做任何动作。
+ * 返回组最终所处的节点：切换失败时是原来的节点，候选池为空时是 null。
+ */
+async function selectAgyNode(
+  ordered: readonly string[],
+  preferred?: string | null
+): Promise<string | null> {
   if (ordered.length === 0) {
-    return
+    return null
   }
   const target = preferred && ordered.includes(preferred) ? preferred : ordered[0]
   const before = await currentAgySelection()
   if (before === target) {
-    return
+    return target
   }
   const switched = await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, target).catch(() => false)
   if (!switched) {
-    return
+    return before
   }
   rememberSelection(target)
   await closeAgyConnections().catch(() => undefined)
+  return target
 }
 
 let probeInFlight = false
@@ -559,16 +565,19 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
     const needsRepair = shouldRepairAgyPin({ pinVerdict, unknownStreak: pinUnknownStreak })
 
     if (!needsRepair) {
-      // pin 实测可用才收敛 provider：不健康时保持现状，交给下面的修复扫描。
+      // pin 没被判不可用就按缓存收敛 provider；只有实测可用才算恢复。
+      // 仅超时一轮就清掉退避的话，紧随其后的 400 会绕过退避立刻再扫一遍。
       const ordered = await convergeAgyProvider(proxies, regionPriority, cache)
       await selectAgyNode(ordered, pinName)
-      consecutiveEmptyRounds = 0
-      repairSkipUntilMs = 0
-      if (agyState !== 'healthy') {
-        await appendAppLog(
-          `[SparkleAgyProbe]: pin ${pinName ?? 'n/a'} healthy again, pool=${ordered.length}\n`
-        )
-        agyState = 'healthy'
+      if (pinVerdict === 'usable') {
+        consecutiveEmptyRounds = 0
+        repairSkipUntilMs = 0
+        if (agyState !== 'healthy') {
+          await appendAppLog(
+            `[SparkleAgyProbe]: pin ${pinName ?? 'n/a'} healthy again, pool=${ordered.length}\n`
+          )
+          agyState = 'healthy'
+        }
       }
       return
     }
@@ -633,14 +642,14 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
       return
     }
 
-    // 全灭：保持原 pin（没有证据表明别的节点更好），并拉长下一轮修复间隔。
-    await selectAgyNode(ordered, pinName)
+    // 全灭：没有证据表明别的节点更好，pin 还在候选池里就留在 pin 上，并拉长下一轮修复间隔。
+    const kept = await selectAgyNode(ordered, pinName)
     consecutiveEmptyRounds += 1
     repairSkipUntilMs =
       Date.now() + resolveAgyAuditBackoffMs(PIN_CHECK_INTERVAL_MS, consecutiveEmptyRounds)
     agyState = 'exhausted'
     await appendAppLog(
-      `[SparkleAgyProbe]: WARN no node passed the real agy check (probed=${audit.probed}); keep ${pinName ?? 'none'} empty_rounds=${consecutiveEmptyRounds}\n`
+      `[SparkleAgyProbe]: WARN no node passed the real agy check (probed=${audit.probed}); keep ${kept ?? 'none'} empty_rounds=${consecutiveEmptyRounds}\n`
     )
   } catch (error) {
     await appendAppLog(

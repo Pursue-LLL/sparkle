@@ -9,7 +9,7 @@ import { flush } from './groupFailoverEngineHarness'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import type * as StickyPin from './autoSelectStickyPin'
 
-const POLL_INTERVAL_MS = 3000
+export const POLL_INTERVAL_MS = 3000
 
 export const GEMINI_ALIVE = { [AUTO_SELECT_GEMINI_PROBE_URL]: { alive: true } }
 export const GEMINI_DEAD = { [AUTO_SELECT_GEMINI_PROBE_URL]: { alive: false } }

@@ -19,6 +19,7 @@ import {
   writeCache,
   writeProviderMembers
 } from './sparkleMailProbeRig'
+import { spyOnTimer } from './timerSpyHarness'
 
 const MAIL_GROUP = '📧 邮件专用'
 const CHECK_INTERVAL_MS = 5 * MINUTE_MS
@@ -46,30 +47,6 @@ const check = (): Promise<void> => advance(CHECK_INTERVAL_MS)
 function logLine(payload: string | undefined): void {
   assert.ok(world.logHandler, 'the probe has not subscribed to the core logs')
   world.logHandler({ type: 'info', payload } as { type: string; payload: string })
-}
-
-type TimerFunction = (...args: unknown[]) => NodeJS.Timeout
-
-/** 包住 setInterval/setTimeout，记录每次登记的间隔与 unref 次数；计时仍由假时钟负责。 */
-function spyOnTimer(api: 'setInterval' | 'setTimeout'): {
-  delays: number[]
-  unrefs: () => number
-  restore: () => void
-} {
-  const timers = globalThis as unknown as Record<typeof api, TimerFunction>
-  const real = timers[api]
-  const delays: number[] = []
-  let unrefs = 0
-  const spy = mock.method(timers, api, (...args: unknown[]) => {
-    delays.push(args[1] as number)
-    const timer = real(...args)
-    mock.method(timer, 'unref', () => {
-      unrefs += 1
-      return timer
-    })
-    return timer
-  })
-  return { delays, unrefs: () => unrefs, restore: () => spy.mock.restore() }
 }
 
 describe('sparkleMailCurrentNodeProbe loop', () => {

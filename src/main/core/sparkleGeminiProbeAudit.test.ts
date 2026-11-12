@@ -16,6 +16,7 @@ import {
   world,
   writeCache
 } from './sparkleGeminiProbeRig'
+import { spyOnTimer } from './timerSpyHarness'
 
 const TW1 = NODES[0]
 const JP1 = NODES[2]
@@ -256,37 +257,16 @@ describe('sparkleGeminiProbe audit loop', () => {
     assert.deepEqual(callsStarting('lock:'), ['lock:台湾-1'])
   })
 
-  it('registers one timer however often it is asked to start', () => {
-    const setIntervalSpy = mock.method(globalThis, 'setInterval')
+  it('registers one timer that does not keep the process alive', () => {
+    const timers = spyOnTimer('setInterval')
     try {
       gemini().startSparkleGeminiRegionAuditLoop()
       gemini().startSparkleGeminiRegionAuditLoop()
 
-      assert.equal(setIntervalSpy.mock.callCount(), 1)
+      assert.deepEqual(timers.delays, [AUDIT_INTERVAL_MS])
+      assert.equal(timers.unrefs(), 1)
     } finally {
-      setIntervalSpy.mock.restore()
-    }
-  })
-
-  it('does not keep the process alive just to audit', () => {
-    const realSetInterval = globalThis.setInterval
-    let unrefCalls = 0
-    const setIntervalSpy = mock.method(globalThis, 'setInterval', ((
-      ...args: Parameters<typeof setInterval>
-    ) => {
-      const timer = realSetInterval(...args)
-      mock.method(timer, 'unref', () => {
-        unrefCalls += 1
-        return timer
-      })
-      return timer
-    }) as typeof setInterval)
-    try {
-      gemini().startSparkleGeminiRegionAuditLoop()
-
-      assert.equal(unrefCalls, 1)
-    } finally {
-      setIntervalSpy.mock.restore()
+      timers.restore()
     }
   })
 
