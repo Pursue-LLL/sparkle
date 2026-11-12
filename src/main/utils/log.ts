@@ -307,12 +307,7 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
     writev(chunks, callback) {
       consume(Buffer.concat(chunks.map(({ chunk }) => chunk as Buffer)), callback)
     },
-    // 'finish' 之前把最后半行发布出来
-    final(callback) {
-      flushPartialLine()
-      callback()
-    },
-    // 正常结束（autoDestroy）与中途销毁都会走到这里，各只一次
+    // 正常结束（autoDestroy）与中途销毁都会走到这里，各只一次：发布最后半行，释放共用的写入流
     destroy(error, callback) {
       flushPartialLine()
       releaseTarget(target)
