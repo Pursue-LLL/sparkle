@@ -134,8 +134,8 @@ function orderByRegion(
  * 生成 `sparkle-agy` provider 的节点集合：
  * 1. 有已验证可用节点时，**只**返回这些节点（“只包含能正常访问 agy 的节点”）；
  * 2. 尚无结论（冷启动 / 缓存过期）时，返回「未被确认不可用」的候选，保证 provider 不为空；
- * 3. 全部被确认不可用时仍然返回候选池 —— mihomo 拒绝加载空 provider，
- *    此时由探测模块写日志告警，而不是让整份配置加载失败。
+ * 3. 全部被确认不可用时仍然返回候选池 —— 空 provider 会让整组静默退化为 COMPATIBLE 直连，
+ *    此时由探测模块写日志告警，而不是悄悄断开代理。
  */
 export function orderAgyProxies(
   proxies: readonly AgyProxyRecord[],

@@ -25,7 +25,7 @@ export type NodeDelayMap = ReadonlyMap<string, number>
  * 优先地区节点按优先级分段在前，其余国家节点垫底；去重保序；AnyTLS、香港与已确认 Gemini 锁区/送中节点不进入。
  * 有实测延迟样本时：所有有样本（探测存活）的节点按地区分段 + 段内延迟升序排在前面，
  * 无样本（探测超时/不可达）的节点按地区顺序统一垫在文件末尾，防止已知死节点挡在低优先地区的活节点前面。
- * 极端兜底：若排除 `blockedNodeNames` 后候选池为空，则回退保留原候选池，防止空 provider 报错。
+ * 极端兜底：若排除 `blockedNodeNames` 后候选池为空，则回退保留原候选池，防止空 provider 让整组退化为 COMPATIBLE 直连。
  */
 export function orderProxiesByRegionPriority(
   proxies: ProxyRecord[],

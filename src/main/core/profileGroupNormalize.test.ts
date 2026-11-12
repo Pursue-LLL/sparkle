@@ -59,6 +59,89 @@ describe('profileGroupNormalize', () => {
     assert.deepEqual(profile.rules, ['GEOIP,us,SDK DNS', 'DOMAIN-SUFFIX,example.com,SDK DNS'])
   })
 
+  it('picks the first subscription select group as the main one, skipping Sparkle and non-select groups', () => {
+    const profile = {
+      'proxy-groups': [
+        { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select' },
+        { name: '备用', type: 'fallback' },
+        { name: '主代理', type: 'select' },
+        { name: '次代理', type: 'select' }
+      ],
+      rules: ['DOMAIN,example.com,不存在组']
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, ['DOMAIN,example.com,主代理'])
+  })
+
+  it('treats a group without a type as a select group', () => {
+    const profile = {
+      'proxy-groups': [{ name: '主代理' }],
+      rules: ['DOMAIN,example.com,不存在组']
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, ['DOMAIN,example.com,主代理'])
+  })
+
+  it('keeps the no-resolve modifier when it rewrites the target', () => {
+    const profile = {
+      'proxy-groups': [{ name: '主代理', type: 'select' }],
+      rules: ['IP-CIDR,1.2.3.4/32,不存在组,no-resolve', 'GEOIP,cn,不存在组']
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, ['IP-CIDR,1.2.3.4/32,主代理,no-resolve', 'GEOIP,cn,主代理'])
+  })
+
+  it('leaves comments, blanks, built-in targets, known groups and incomplete rules alone', () => {
+    const rules = [
+      '',
+      '# DOMAIN,example.com,不存在组',
+      'DOMAIN,example.com,DIRECT',
+      'DOMAIN,example.com,REJECT',
+      'DOMAIN,example.com,主代理',
+      'DOMAIN,example.com,',
+      'DOMAIN,不存在组'
+    ]
+    const profile = {
+      'proxy-groups': [{ name: '主代理', type: 'select' }],
+      rules: [...rules]
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, rules)
+  })
+
+  it('has nothing to point a rule at when the subscription has no select group', () => {
+    const rules = ['DOMAIN,example.com,不存在组']
+    const profile = {
+      'proxy-groups': [{ name: '备用', type: 'fallback' }],
+      rules: [...rules]
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, rules)
+  })
+
+  it('tolerates a profile without groups or without rules', () => {
+    const noGroups = { rules: ['DOMAIN,example.com,不存在组'] } as unknown as MihomoConfig
+    const noRules = {
+      'proxy-groups': [{ name: '主代理', type: 'select' }]
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(noGroups)
+    rewriteMissingRuleProxyGroupTargets(noRules)
+
+    assert.deepEqual(noGroups.rules, ['DOMAIN,example.com,不存在组'])
+    assert.equal(noRules.rules, undefined)
+  })
+
   it('keeps rules when target group already exists in subscription', () => {
     const profile = {
       'proxy-groups': [
@@ -141,6 +224,52 @@ describe('profileGroupNormalize', () => {
     ])
   })
 
+  it('keeps the members that still exist, even when only one is left', () => {
+    const profile = {
+      'proxy-groups': [{ name: '组', type: 'select', proxies: ['JP-01', '已下架节点'] }]
+    } as unknown as MihomoConfig
+
+    dropUnknownGroupMembers(profile, ['JP-01'])
+
+    assert.deepEqual(profile['proxy-groups'], [{ name: '组', type: 'select', proxies: ['JP-01'] }])
+  })
+
+  it('has nothing to drop from groups without explicit members, or from a profile without groups', () => {
+    const groups = [
+      { name: '仅 provider', type: 'url-test', use: ['p1'] },
+      { name: '空成员', type: 'select', proxies: [] }
+    ]
+    const profile = { 'proxy-groups': structuredClone(groups) } as unknown as MihomoConfig
+
+    assert.deepEqual(dropUnknownGroupMembers(profile, []), [])
+    assert.deepEqual(profile['proxy-groups'], groups)
+    assert.deepEqual(dropUnknownGroupMembers({} as MihomoConfig, []), [])
+    assert.deepEqual(
+      dropUnknownGroupMembers({ 'proxy-groups': [] } as unknown as MihomoConfig, []),
+      []
+    )
+  })
+
+  it('does not add DIRECT to a group that still draws members from a provider', () => {
+    const profile = {
+      'proxy-groups': [
+        { name: '备用', type: 'fallback', proxies: ['已下架节点'], use: ['p1'] },
+        { name: '空组', type: 'fallback', proxies: ['已下架节点'], use: [] }
+      ]
+    } as unknown as MihomoConfig
+
+    const dropped = dropUnknownGroupMembers(profile, [])
+
+    assert.deepEqual(profile['proxy-groups'], [
+      { name: '备用', type: 'fallback', use: ['p1'] },
+      { name: '空组', type: 'fallback', proxies: ['DIRECT'], use: [] }
+    ])
+    assert.deepEqual(dropped, [
+      { group: '备用', dropped: ['已下架节点'] },
+      { group: '空组', dropped: ['已下架节点'] }
+    ])
+  })
+
   it('appends a MATCH fallback when the profile has none', () => {
     const profile = {
       'proxy-groups': [
@@ -151,10 +280,7 @@ describe('profileGroupNormalize', () => {
     } as unknown as MihomoConfig
 
     assert.equal(ensureMatchFallbackRule(profile), '🚀 节点选择')
-    assert.deepEqual(profile.rules, [
-      'DOMAIN-SUFFIX,example.com,🚀 节点选择',
-      'MATCH,🚀 节点选择'
-    ])
+    assert.deepEqual(profile.rules, ['DOMAIN-SUFFIX,example.com,🚀 节点选择', 'MATCH,🚀 节点选择'])
   })
 
   it('keeps an existing MATCH and falls back to 自动选择 when the main group is absent', () => {

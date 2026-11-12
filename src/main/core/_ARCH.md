@@ -161,6 +161,8 @@ pnpm run upgrade:mac         # 本地装 /Applications + PostCoreBootstrap 门�
 
 随机化不变量测试（`*Invariants.test.ts` / `*Interleaving.test.ts`）用 `seededProperty.ts` 的 `forSeeds`：固定 seed 1..N，失败信息带 seed，可原样重放；`*Harness.ts` / `*Rig.ts` 是测试夹具，只被测试引用。
 
+涉及真实 I/O 的接线模块（如 `factory` / `mihomoApi` / `sparkleProviderFiles` / `profileFiles` / `overrideProfile` / `postCoreBootstrap` / Gemini 探测）用 `mock.module` 换掉依赖、临时目录承接落盘，要求 `--experimental-test-module-mocks`（已写进 `test:node-quality`；该标志不能放进 `NODE_OPTIONS`）。约定：① 同一说明符每进程只能 mock 一次，可变行为放进夹具的 `state` 对象；② 说明符按**调用文件**解析，夹具必须与被测文件同目录；③ `ws` / `axios` 这类双格式依赖要用 `mock.module(require.resolve('pkg'), { exports: { default: Fake } })` 指向 CJS 入口；④ 不要在 `afterEach` 里 `mock.restoreAll()` / `mock.reset()`，保留 spy 句柄各自 `.mock.restore()`；⑤ 被测模块有模块级状态（如 `factory` 的运行时配置）时，夹具在每个用例前 `delete require.cache[…]` 再 `require` 重新加载，用例之间互不依赖执行顺序（`import()` 会命中缓存，不能用来重载）。
+
 ## 构建标识（UI）
 
 | 路径                                 | 职责                                                                                          |
