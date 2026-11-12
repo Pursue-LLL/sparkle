@@ -18,23 +18,27 @@ export const runDueProfileUpdates = createDueProfileUpdateRunner({
 })
 
 let heartbeat: NodeJS.Timeout | undefined
+/** 每次 init 换新一代：上一代正在执行的检查结束后不再续排，核心重启不会叠出多条心跳链。 */
+let generation = 0
 
-function scheduleNextCheck(delayMs: number): void {
+function scheduleNextCheck(delayMs: number, owner: number): void {
   heartbeat = setTimeout(async () => {
     try {
       await runDueProfileUpdates()
     } catch (error) {
+      // 日志写不进去也不能让心跳链断掉
       await appendAppLog(
         `[ProfileUpdater]: heartbeat failed: ${error instanceof Error ? error.message : String(error)}\n`
-      )
+      ).catch(() => undefined)
     }
-    scheduleNextCheck(HEARTBEAT_INTERVAL_MS)
+    if (owner === generation) {
+      scheduleNextCheck(HEARTBEAT_INTERVAL_MS, owner)
+    }
   }, delayMs)
 }
 
 export function initProfileUpdater(): void {
-  if (heartbeat) {
-    clearTimeout(heartbeat)
-  }
-  scheduleNextCheck(STARTUP_DELAY_MS)
+  clearTimeout(heartbeat)
+  generation += 1
+  scheduleNextCheck(STARTUP_DELAY_MS, generation)
 }
