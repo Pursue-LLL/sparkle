@@ -68,8 +68,7 @@ describe('sparkleGeminiProbeCore', () => {
   })
 
   it('evaluates eligible=false immediately if google.cn OneGoogleBar or LQaXg blocked module is present', () => {
-    const cnOgbHtml =
-      '<a href="https://www.google.cn/intl/zh-CN/about/products">Google</a>'
+    const cnOgbHtml = '<a href="https://www.google.cn/intl/zh-CN/about/products">Google</a>'
     assert.deepEqual(evaluateGeminiHtmlEligibility(cnOgbHtml), {
       settled: true,
       eligible: false,
@@ -87,9 +86,24 @@ describe('sparkleGeminiProbeCore', () => {
 
   it('resolves blocked node names from cache by fingerprint or node name', () => {
     const proxies = [
-      { name: '🇸🇬 日本 V0 | 移动优化、新开机 | 2x', type: 'trojan', server: '172.104.110.31', port: 26160 },
-      { name: '🇯🇵 日本 I3 | AI、Netflix(JP)、SVIP | 3x', type: 'trojan', server: '211.90.241.37', port: 48131 },
-      { name: '🇰🇷 韩国 I1 | IEPL、ChatGPT、动态IP | 3x', type: 'trojan', server: '27.44.143.224', port: 28600 }
+      {
+        name: '🇸🇬 日本 V0 | 移动优化、新开机 | 2x',
+        type: 'trojan',
+        server: '172.104.110.31',
+        port: 26160
+      },
+      {
+        name: '🇯🇵 日本 I3 | AI、Netflix(JP)、SVIP | 3x',
+        type: 'trojan',
+        server: '211.90.241.37',
+        port: 48131
+      },
+      {
+        name: '🇰🇷 韩国 I1 | IEPL、ChatGPT、动态IP | 3x',
+        type: 'trojan',
+        server: '27.44.143.224',
+        port: 28600
+      }
     ]
     const cache = new Map<string, GeminiRegionProbeRecord>([
       [
