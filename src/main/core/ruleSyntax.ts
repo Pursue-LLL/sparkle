@@ -1,4 +1,4 @@
-// [INPUT] 规则文本：`类型,载荷,策略[,修饰符…]`
+// [INPUT] 规则文本：`类型,载荷,策略[,修饰符…]`，兜底规则为 `MATCH,策略[,修饰符…]`
 // [OUTPUT] RULE_BUILTIN_TARGETS · ParsedRule · RulePolicyPicker · parseRule · rewriteRulePolicies
 // [POS] 规则文本解析与策略改写的单一出处：策略是修饰符（no-resolve）之前的最后一个字段。
 // 各处不再自写 split(',')，改写策略时修饰符与其余字段一律原样保留。
@@ -16,6 +16,9 @@ export const RULE_BUILTIN_TARGETS: ReadonlySet<string> = new Set([
 /** 写在策略之后的规则修饰符。 */
 const RULE_MODIFIERS: ReadonlySet<string> = new Set(['no-resolve'])
 
+/** 兜底规则 `MATCH,策略` 没有载荷。 */
+const PAYLOADLESS_RULE_TYPE = 'MATCH'
+
 export interface ParsedRule {
   /** 策略之前的字段（类型、载荷…），已去首尾空白 */
   head: string[]
@@ -32,7 +35,7 @@ interface RuleLayout extends ParsedRule {
   policyIndex: number
 }
 
-/** 空行、注释、不足 `类型,载荷,策略` 三段的规则（如 `MATCH,策略`）不参与解析。 */
+/** 空行、注释、不足 `类型,载荷,策略` 三段的规则（`MATCH` 除外，它只有 `MATCH,策略`）不参与解析。 */
 function layoutOf(rule: string): RuleLayout | undefined {
   const trimmed = rule.trim()
   if (!trimmed || trimmed.startsWith('#')) {
@@ -44,7 +47,8 @@ function layoutOf(rule: string): RuleLayout | undefined {
   while (policyIndex >= 0 && RULE_MODIFIERS.has(fields[policyIndex].trim())) {
     policyIndex -= 1
   }
-  if (policyIndex < 2) {
+  const firstPolicyIndex = fields[0].trim().toUpperCase() === PAYLOADLESS_RULE_TYPE ? 1 : 2
+  if (policyIndex < firstPolicyIndex) {
     return undefined
   }
 

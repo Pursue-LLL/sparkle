@@ -10,6 +10,8 @@ import {
   CURSOR_DEDICATED_GROUP_NAME,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES
 } from './cursorProxyGroup'
+import { rewriteMissingRuleProxyGroupTargets } from './profileGroupNormalize'
+import { parseRule } from './ruleSyntax'
 import { fingerprintRuntimeConfig } from './runtimeConfigSyncCore'
 import { clean, type Fields } from './runtimeConfigSanitizeHarness'
 import { forSeeds, forSeedsAsync, type Random } from './seededProperty'
@@ -141,6 +143,64 @@ describe('cursor rule rewriting (random rule lists)', () => {
         original.filter((rule) => !mentionsLegacy(rule))
       )
       assert.equal(migrateLegacyCursorDedicatedGroupReferences(profile), false)
+    })
+  })
+})
+
+describe('rule target repair (random rule lists)', () => {
+  const MAIN_GROUP = '主代理'
+  const KNOWN_OUTSIDE_PROFILE = ['DIRECT', 'REJECT']
+  const TARGETS = [
+    ...KNOWN_OUTSIDE_PROFILE,
+    MAIN_GROUP,
+    '备用',
+    'SG-01',
+    '🚀 节点选择',
+    '不存在组',
+    CURSOR_DEDICATED_GROUP_NAME
+  ]
+
+  it('leaves every rule pointing at something mihomo can load and touches only the ones that did not', () => {
+    forSeeds(RUNS, (random) => {
+      const groups = [
+        { name: MAIN_GROUP, type: 'select' },
+        { name: '备用', type: 'fallback' },
+        ...(random.chance(0.5) ? [{ name: CURSOR_DEDICATED_GROUP_NAME, type: 'select' }] : [])
+      ]
+      const nodes = random.chance(0.5) ? [{ name: 'SG-01', type: 'ss' }] : undefined
+      const known = new Set([
+        ...KNOWN_OUTSIDE_PROFILE,
+        ...groups.map((group) => group.name),
+        ...(nodes ? ['SG-01'] : [])
+      ])
+      const original = randomRules(random, TARGETS)
+      const profile = {
+        proxies: nodes,
+        'proxy-groups': groups,
+        rules: [...original]
+      } as unknown as MihomoConfig
+
+      rewriteMissingRuleProxyGroupTargets(profile)
+
+      const repaired = rulesOf(profile)
+      assert.equal(repaired.length, original.length)
+      original.forEach((rule, index) => {
+        const before = parseRule(rule)
+        const after = parseRule(repaired[index])
+        if (!before || !after) {
+          assert.equal(repaired[index], rule)
+          return
+        }
+        assert.ok(known.has(after.policy), `${rule} -> ${repaired[index]}`)
+        if (known.has(before.policy)) {
+          assert.equal(repaired[index], rule)
+        } else if (before.head[0].toUpperCase() === 'MATCH') {
+          assert.equal(after.policy, MAIN_GROUP)
+        }
+      })
+
+      rewriteMissingRuleProxyGroupTargets(profile)
+      assert.deepEqual(rulesOf(profile), repaired)
     })
   })
 })

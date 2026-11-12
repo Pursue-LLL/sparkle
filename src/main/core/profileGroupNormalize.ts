@@ -50,10 +50,13 @@ export function resolveSubscriptionMainSelectGroup(groups: ProxyGroupConfig[]): 
 
 function resolveMissingRuleTarget(
   missingName: string,
+  isCatchAll: boolean,
   groups: ProxyGroupConfig[],
-  groupNames: Set<string>
+  groupNames: ReadonlySet<string>
 ): string | undefined {
+  // 兜底规则不能进 Cursor 专用组：它默认选中 DIRECT，等于让所有未命中的流量绕过代理
   if (
+    !isCatchAll &&
     STALE_TEMPLATE_HOP_GROUP_NAMES.has(missingName) &&
     groupNames.has(CURSOR_DEDICATED_GROUP_NAME)
   ) {
@@ -63,6 +66,12 @@ function resolveMissingRuleTarget(
   return resolveSubscriptionMainSelectGroup(groups)
 }
 
+/** mihomo 只认顶层 `proxies` 里的节点为规则目标，provider 里的节点不算。 */
+function collectInlineProxyNames(profile: MihomoConfig): string[] {
+  const proxies = profile.proxies as ({ name?: string } | null)[] | undefined
+  return Array.isArray(proxies) ? proxies.flatMap((proxy) => (proxy?.name ? [proxy.name] : [])) : []
+}
+
 export function rewriteMissingRuleProxyGroupTargets(profile: MihomoConfig): void {
   const groups = (profile['proxy-groups'] as ProxyGroupConfig[] | undefined) ?? []
   if (!groups.length) {
@@ -70,10 +79,11 @@ export function rewriteMissingRuleProxyGroupTargets(profile: MihomoConfig): void
   }
 
   const groupNames = new Set(groups.map((group) => group.name))
-  rewriteRulePolicies(profile, ({ policy }) =>
-    RULE_BUILTIN_TARGETS.has(policy) || groupNames.has(policy)
+  const knownTargets = new Set([...groupNames, ...collectInlineProxyNames(profile)])
+  rewriteRulePolicies(profile, ({ head, policy }) =>
+    RULE_BUILTIN_TARGETS.has(policy) || knownTargets.has(policy)
       ? undefined
-      : resolveMissingRuleTarget(policy, groups, groupNames)
+      : resolveMissingRuleTarget(policy, head[0].toUpperCase() === 'MATCH', groups, groupNames)
   )
 }
 

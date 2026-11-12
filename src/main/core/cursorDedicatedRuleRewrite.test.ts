@@ -189,6 +189,14 @@ describe('rewriteBroadCursorDedicatedRules', () => {
     assert.equal(other, untouched)
   })
 
+  it('also takes the catch-all MATCH out of the Cursor group', () => {
+    const profile = profileWith([`MATCH,${CURSOR_DEDICATED_GROUP_NAME}`, 'MATCH,DIRECT'])
+
+    rewriteBroadCursorDedicatedRules(profile)
+
+    assert.deepEqual(profile.rules, [`MATCH,${AUTO_SELECT_GROUP_NAME}`, 'MATCH,DIRECT'])
+  })
+
   it('keeps no-resolve on a rule it sends back to 自动选择', () => {
     const profile = profileWith([
       `IP-CIDR,203.0.113.7/32,${CURSOR_DEDICATED_GROUP_NAME},no-resolve`,
