@@ -10,6 +10,7 @@ import {
   resolveCursorStableSelectorGroup,
   resolveGeneralProxySelectGroup
 } from './cursorProxyGroup'
+import { parseRule } from './ruleSyntax'
 
 /** Default dedicated bundles — Cursor 主 / Latest / Cursor-2 / Cursor-3 → 🎯 Cursor 专用. */
 export const DEFAULT_CURSOR_PROXY_APP_PATH_PREFIXES = CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES
@@ -132,25 +133,12 @@ export function stripUnscopedCursorDedicatedRules(profile: MihomoConfig): void {
   }
 
   profile.rules = rules.filter((rule) => {
-    const trimmed = rule.trim()
-    if (!trimmed || trimmed.startsWith('#')) {
-      return true
-    }
-    if (isPathScopedCursorDedicatedRule(trimmed)) {
+    const parsed = parseRule(rule)
+    if (!parsed || !CURSOR_DEDICATED_GROUP_NAMES.has(parsed.policy)) {
       return true
     }
 
-    const parts = trimmed.split(',').map((part) => part.trim())
-    if (parts.length < 3) {
-      return true
-    }
-
-    const policy = parts[parts.length - 1]
-    if (!CURSOR_DEDICATED_GROUP_NAMES.has(policy)) {
-      return true
-    }
-
-    return !isUnscopedCursorDedicatedRuleParts(parts)
+    return isPathScopedCursorDedicatedRule(rule) || !isUnscopedCursorDedicatedRuleParts(parsed.head)
   }) as MihomoConfig['rules']
 }
 
@@ -221,7 +209,10 @@ function injectPathScopedRules(
     pushRuleIfMissing(
       prefix,
       existing,
-      buildAndRule([`DOMAIN-SUFFIX,cursor.com`, buildAppBundlePathMatcher(trimmedPrefix)], mainGroup)
+      buildAndRule(
+        [`DOMAIN-SUFFIX,cursor.com`, buildAppBundlePathMatcher(trimmedPrefix)],
+        mainGroup
+      )
     )
 
     pushRuleIfMissing(prefix, existing, `${buildAppBundlePathMatcher(trimmedPrefix)},${mainGroup}`)

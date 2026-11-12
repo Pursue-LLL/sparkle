@@ -1,7 +1,10 @@
-// [INPUT] 规则文本：`类型,载荷,策略[,修饰符…]`，兜底规则为 `MATCH,策略[,修饰符…]`
+// [INPUT] 规则文本，字段布局与 mihomo 的解析一致（v1.19.32 经 `mihomo -t` 与回环代理实测）：
+//   `类型,载荷,策略[,参数…]`；兜底规则 `MATCH,策略[,参数…]`；载荷自带逗号的类型
+//   （AND / OR / NOT、DOMAIN-REGEX、PROCESS-NAME-REGEX、PROCESS-PATH-REGEX）取最后一个字段为策略，其后不接参数；
+//   `SUB-RULE,(条件),子规则名` 指向 `sub-rules` 里的子规则，不是策略。
 // [OUTPUT] RULE_BUILTIN_TARGETS · ParsedRule · RulePolicyPicker · parseRule · rewriteRulePolicies
-// [POS] 规则文本解析与策略改写的单一出处：策略是修饰符（no-resolve）之前的最后一个字段。
-// 各处不再自写 split(',')，改写策略时修饰符与其余字段一律原样保留。
+// [POS] 规则文本解析与策略改写的单一出处：改写策略时其余字段（含 no-resolve、src 等参数）一律原样保留。
+// 参数不在这里枚举：内核认哪些、忽略哪些，由它自己决定；这里只负责找到策略所在的字段。
 
 /** 内置出口：不是代理组，规则指向它们不需要对应的组。 */
 export const RULE_BUILTIN_TARGETS: ReadonlySet<string> = new Set([
@@ -13,16 +16,26 @@ export const RULE_BUILTIN_TARGETS: ReadonlySet<string> = new Set([
   'NOOP'
 ])
 
-/** 写在策略之后的规则修饰符。 */
-const RULE_MODIFIERS: ReadonlySet<string> = new Set(['no-resolve'])
-
 /** 兜底规则 `MATCH,策略` 没有载荷。 */
 const PAYLOADLESS_RULE_TYPE = 'MATCH'
+
+/** 载荷自带逗号的规则类型：内核取最后一个字段为策略，其后不接参数。 */
+const COMMA_PAYLOAD_RULE_TYPES: ReadonlySet<string> = new Set([
+  'AND',
+  'OR',
+  'NOT',
+  'DOMAIN-REGEX',
+  'PROCESS-NAME-REGEX',
+  'PROCESS-PATH-REGEX'
+])
+
+/** 目标是 `sub-rules` 里的子规则名，不是代理组或节点，不参与策略解析与改写。 */
+const SUB_RULE_TYPE = 'SUB-RULE'
 
 export interface ParsedRule {
   /** 策略之前的字段（类型、载荷…），已去首尾空白 */
   head: string[]
-  /** 已去首尾空白；规则末尾多一个逗号时为空串 */
+  /** 已去首尾空白；策略字段为空（如 `DOMAIN,a.com,`）时为空串 */
   policy: string
 }
 
@@ -35,7 +48,19 @@ interface RuleLayout extends ParsedRule {
   policyIndex: number
 }
 
-/** 空行、注释、不足 `类型,载荷,策略` 三段的规则（`MATCH` 除外，它只有 `MATCH,策略`）不参与解析。 */
+/** 策略字段在逗号拆开后的下标；类型 / 载荷 / 策略不全，或目标不是策略时为 undefined。 */
+function policyIndexOf(ruleType: string, fieldCount: number): number | undefined {
+  if (ruleType === SUB_RULE_TYPE) {
+    return undefined
+  }
+  if (ruleType === PAYLOADLESS_RULE_TYPE) {
+    return fieldCount > 1 ? 1 : undefined
+  }
+  const index = COMMA_PAYLOAD_RULE_TYPES.has(ruleType) ? fieldCount - 1 : 2
+  return index >= 2 && index < fieldCount ? index : undefined
+}
+
+/** 空行、注释、没有策略字段的规则与 `SUB-RULE` 不参与解析。 */
 function layoutOf(rule: string): RuleLayout | undefined {
   const trimmed = rule.trim()
   if (!trimmed || trimmed.startsWith('#')) {
@@ -43,12 +68,8 @@ function layoutOf(rule: string): RuleLayout | undefined {
   }
 
   const fields = trimmed.split(',')
-  let policyIndex = fields.length - 1
-  while (policyIndex >= 0 && RULE_MODIFIERS.has(fields[policyIndex].trim())) {
-    policyIndex -= 1
-  }
-  const firstPolicyIndex = fields[0].trim().toUpperCase() === PAYLOADLESS_RULE_TYPE ? 1 : 2
-  if (policyIndex < firstPolicyIndex) {
+  const policyIndex = policyIndexOf(fields[0].trim().toUpperCase(), fields.length)
+  if (policyIndex === undefined) {
     return undefined
   }
 

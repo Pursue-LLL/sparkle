@@ -21,22 +21,56 @@ describe('parseRule', () => {
     })
   })
 
-  it('reads the policy in front of the modifiers', () => {
-    assert.deepEqual(parseRule('IP-CIDR,1.1.1.1/32,Proxy,no-resolve'), {
-      head: ['IP-CIDR', '1.1.1.1/32'],
-      policy: 'Proxy'
-    })
-    assert.deepEqual(parseRule('IP-CIDR,1.1.1.1/32,Proxy, no-resolve ,no-resolve'), {
-      head: ['IP-CIDR', '1.1.1.1/32'],
-      policy: 'Proxy'
-    })
+  it('reads the field right after the payload and leaves every parameter to the kernel', () => {
+    for (const rule of [
+      'IP-CIDR,1.1.1.1/32,Proxy,no-resolve',
+      'IP-CIDR,1.1.1.1/32,Proxy,src',
+      'IP-CIDR,1.1.1.1/32,Proxy,src,no-resolve',
+      'IP-CIDR,1.1.1.1/32,Proxy, no-resolve ,no-resolve',
+      'IP-CIDR,1.1.1.1/32,Proxy,anything,else',
+      'IP-CIDR,1.1.1.1/32,Proxy,'
+    ]) {
+      assert.deepEqual(parseRule(rule), { head: ['IP-CIDR', '1.1.1.1/32'], policy: 'Proxy' }, rule)
+    }
   })
 
-  it('takes the last field of a logical rule as its policy', () => {
+  it('takes the last field of the rule types whose payload contains commas', () => {
     assert.deepEqual(parseRule('AND,((DOMAIN,a.com),(NETWORK,UDP)),Proxy'), {
       head: ['AND', '((DOMAIN', 'a.com)', '(NETWORK', 'UDP))'],
       policy: 'Proxy'
     })
+    assert.deepEqual(parseRule('or,((DOMAIN,a.com),(DOMAIN,b.com)),Proxy'), {
+      head: ['or', '((DOMAIN', 'a.com)', '(DOMAIN', 'b.com))'],
+      policy: 'Proxy'
+    })
+    assert.deepEqual(parseRule('NOT,((DOMAIN,a.com)),Proxy'), {
+      head: ['NOT', '((DOMAIN', 'a.com))'],
+      policy: 'Proxy'
+    })
+    assert.deepEqual(parseRule('DOMAIN-REGEX,^a{1,2}\\.com$,Proxy'), {
+      head: ['DOMAIN-REGEX', '^a{1', '2}\\.com$'],
+      policy: 'Proxy'
+    })
+    assert.deepEqual(parseRule('PROCESS-NAME-REGEX,^a{1,2}$,Proxy'), {
+      head: ['PROCESS-NAME-REGEX', '^a{1', '2}$'],
+      policy: 'Proxy'
+    })
+    assert.deepEqual(parseRule('PROCESS-PATH-REGEX,^/Applications/.{1,9}$,Proxy'), {
+      head: ['PROCESS-PATH-REGEX', '^/Applications/.{1', '9}$'],
+      policy: 'Proxy'
+    })
+  })
+
+  it('reads the third field as the policy even when it looks like a parameter, as the kernel does', () => {
+    assert.deepEqual(parseRule('DOMAIN,a.com,no-resolve'), {
+      head: ['DOMAIN', 'a.com'],
+      policy: 'no-resolve'
+    })
+  })
+
+  it('does not treat the sub-rule a SUB-RULE rule calls as a policy', () => {
+    assert.equal(parseRule('SUB-RULE,(NETWORK,tcp),subx'), undefined)
+    assert.equal(parseRule('sub-rule,(AND,((NETWORK,tcp),(DST-PORT,443))),subx'), undefined)
   })
 
   it('reads the policy of a MATCH rule, which has no payload', () => {
@@ -55,9 +89,8 @@ describe('parseRule', () => {
       '# DOMAIN,a.com,Proxy',
       '  # DOMAIN,a.com,Proxy',
       'MATCH',
-      'MATCH,no-resolve',
       'DOMAIN,a.com',
-      'DOMAIN,a.com,no-resolve',
+      'AND,((DOMAIN',
       'no-resolve'
     ]) {
       assert.equal(parseRule(rule), undefined, rule)
@@ -70,8 +103,11 @@ describe('rewriteRulePolicies', () => {
     const profile = profileWithRules(
       'DOMAIN,a.com,Old',
       'IP-CIDR, 1.1.1.1/32 , Old , no-resolve',
+      'IP-CIDR,1.1.1.1/32,Old,src',
       'AND,((DOMAIN,a.com),(NETWORK,UDP)),Old',
+      'DOMAIN-REGEX,^a{1,2}$,Old',
       ' MATCH , Old ',
+      'SUB-RULE,(NETWORK,tcp),Old',
       'DOMAIN,b.com,Other'
     )
 
@@ -80,8 +116,11 @@ describe('rewriteRulePolicies', () => {
     assert.deepEqual(profile.rules, [
       'DOMAIN,a.com,New',
       'IP-CIDR, 1.1.1.1/32 ,New, no-resolve',
+      'IP-CIDR,1.1.1.1/32,New,src',
       'AND,((DOMAIN,a.com),(NETWORK,UDP)),New',
+      'DOMAIN-REGEX,^a{1,2}$,New',
       'MATCH ,New',
+      'SUB-RULE,(NETWORK,tcp),Old',
       'DOMAIN,b.com,Other'
     ])
   })
@@ -109,7 +148,7 @@ describe('rewriteRulePolicies', () => {
   })
 
   it('does not ask about blank, comment, incomplete or policy-less rules', () => {
-    const rules = ['', '# DOMAIN,a.com,Old', 'MATCH', 'DOMAIN,a.com,', 'DOMAIN,a.com,no-resolve']
+    const rules = ['', '# DOMAIN,a.com,Old', 'MATCH', 'DOMAIN,a.com,', 'SUB-RULE,(NETWORK,tcp),Old']
     const profile = profileWithRules(...rules)
     let asked = 0
 

@@ -31,6 +31,12 @@ function randomRule(random: Random, policies: readonly string[] = POLICIES): str
     `geosite , ${random.pick(['CN', 'google'])} ,${policy}`,
     `RULE-SET,${host},${policy}`,
     `IP-CIDR,10.0.0.0/8,${policy},no-resolve`,
+    `IP-CIDR,10.0.0.0/8,${policy},src`,
+    `IP-CIDR6,fc00::/7,${policy},src,no-resolve`,
+    `DOMAIN-SUFFIX,${host},${policy},ignored,extra`,
+    `AND,((DOMAIN-SUFFIX,${host}),(NETWORK,UDP)),${policy}`,
+    `DOMAIN-REGEX,^a{1,2}\\.${host}$,${policy}`,
+    'SUB-RULE,(NETWORK,tcp),子规则',
     `PROCESS-NAME,Cursor,${policy}`,
     `  MATCH,${policy}`,
     'MATCH ,DIRECT',
@@ -44,6 +50,23 @@ function randomRules(random: Random, policies?: readonly string[]): string[] {
 }
 
 const fieldsOf = (rule: string): string[] => rule.split(',').map((field) => field.trim())
+
+/** 载荷自带逗号的类型取最后一个字段为策略，其余类型取第三个字段（MATCH 取第二个）；与 mihomo 的解析一致。 */
+const COMMA_PAYLOAD_TYPES = [
+  'AND',
+  'OR',
+  'NOT',
+  'DOMAIN-REGEX',
+  'PROCESS-NAME-REGEX',
+  'PROCESS-PATH-REGEX'
+]
+
+function kernelPolicyIndex(rule: string): number {
+  const fields = fieldsOf(rule)
+  const type = fields[0].toUpperCase()
+  if (type === 'MATCH') return 1
+  return COMMA_PAYLOAD_TYPES.includes(type) ? fields.length - 1 : 2
+}
 
 function profileOf(rules: string[] | undefined): MihomoConfig {
   return { rules } as unknown as MihomoConfig
@@ -119,8 +142,8 @@ describe('cursor rule rewriting (random rule lists)', () => {
       for (const [index, rule] of once.entries()) {
         if (rule === original[index]) continue
         const before = fieldsOf(original[index])
-        // 策略是 no-resolve 这类修饰符之前的最后一个字段，改写时修饰符原样保留。
-        const policyAt = before.findLastIndex((field) => field !== 'no-resolve')
+        // 只换策略字段，no-resolve、src 等其余字段原样保留。
+        const policyAt = kernelPolicyIndex(original[index])
         assert.equal(before[policyAt], CURSOR_DEDICATED_GROUP_NAME)
         assert.deepEqual(fieldsOf(rule), before.with(policyAt, AUTO_SELECT_GROUP_NAME))
       }
@@ -191,6 +214,7 @@ describe('rule target repair (random rule lists)', () => {
           assert.equal(repaired[index], rule)
           return
         }
+        assert.equal(before.policy, fieldsOf(rule)[kernelPolicyIndex(rule)], rule)
         assert.ok(known.has(after.policy), `${rule} -> ${repaired[index]}`)
         if (known.has(before.policy)) {
           assert.equal(repaired[index], rule)
