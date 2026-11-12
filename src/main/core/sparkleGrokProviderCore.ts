@@ -161,8 +161,8 @@ export function orderGrokRepairCandidates(
   const untried: GrokProxyRecord[] = []
   const recentlyTried: GrokProxyRecord[] = []
   for (const proxy of proxies) {
-    const attemptedAt = attempts.get(computeProxyNodeFingerprint(proxy)) ?? 0
-    if (attemptedAt > 0 && nowMs - attemptedAt < windowMs) {
+    const attemptedAt = attempts.get(computeProxyNodeFingerprint(proxy))
+    if (attemptedAt !== undefined && nowMs - attemptedAt < windowMs) {
       recentlyTried.push(proxy)
     } else {
       untried.push(proxy)
