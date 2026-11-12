@@ -122,9 +122,7 @@ export async function writeSparkleMailProviderFromCache(
     regionPriority,
     probeCache
   })
-  const nextMembers = doc.proxies
-    .map((proxy) => String(proxy.name ?? '').trim())
-    .filter((name) => name.length > 0)
+  const nextMembers = doc.proxies.map((proxy) => String(proxy.name ?? '').trim())
   const previousMembers = await readMailProviderMembers()
   const membershipChanged = mailProviderMembershipChanged(previousMembers, nextMembers)
   await writeFile(providerFilePath(), stringifyYaml(doc), 'utf8')
@@ -225,13 +223,7 @@ async function runBootstrapSparkleMailProvider(): Promise<void> {
       )
     }
 
-    const unprobed = eligible.filter(
-      (proxy) => !cache.has(computeProxyNodeFingerprint(proxy))
-    )
-    if (unprobed.length === 0) {
-      return
-    }
-
+    const unprobed = eligible.filter((proxy) => !cache.has(computeProxyNodeFingerprint(proxy)))
     const preferredUnprobed = unprobed.filter((proxy) => isPreferredMailCandidateType(proxy))
     const remainingUnprobed = unprobed.filter((proxy) => !isPreferredMailCandidateType(proxy))
 

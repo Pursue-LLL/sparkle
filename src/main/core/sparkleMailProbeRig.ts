@@ -65,6 +65,7 @@ export const world = {
   profileError: false,
   profileProxies: NODES as Proxy[],
   appConfig: {} as { proxySwitchPriority?: string[] },
+  appConfigReads: 0,
   portVerdictOf: (_node: string): PortVerdict => ({ alive: true, rttMs: 50 }),
   portProbeFailure: undefined as undefined | { reason: unknown },
   onPortProbe: undefined as undefined | ((node: string) => Promise<void> | void),
@@ -85,6 +86,7 @@ function resetWorld(): void {
   world.profileError = false
   world.profileProxies = NODES
   world.appConfig = {}
+  world.appConfigReads = 0
   world.portVerdictOf = () => ({ alive: true, rttMs: 50 })
   world.portProbeFailure = undefined
   world.onPortProbe = undefined
@@ -191,7 +193,10 @@ function installMocks(): void {
   })
   mock.module('../config', {
     exports: {
-      getAppConfig: async () => world.appConfig,
+      getAppConfig: async () => {
+        world.appConfigReads += 1
+        return world.appConfig
+      },
       getProfileConfig: async () => {
         if (world.profileError) {
           throw new Error('profile config unreadable')

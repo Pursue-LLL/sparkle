@@ -181,6 +181,18 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
     await check()
 
     assert.deepEqual(callsStarting('probe:'), [])
+    assert.deepEqual(world.logs, [])
+  })
+
+  it('has nothing to probe when the current node is not a member of the mail group', async () => {
+    mailInUse()
+    mailGroupOn('台湾-HY2', ['台湾-SS'])
+    mail.current().startSparkleMailCurrentNodeProbeLoop()
+
+    await check()
+
+    assert.deepEqual(callsStarting('probe:'), [])
+    assert.deepEqual(world.logs, [])
   })
 
   it('probes the node under its trimmed name', async () => {

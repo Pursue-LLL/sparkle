@@ -157,6 +157,15 @@ describe('sparkleMailProbe writeSparkleMailProviderFromCache', () => {
     assert.equal(removedFromFile.membershipChanged, true)
   })
 
+  it('ignores blank entries in the previous provider file and keeps one-letter names', async () => {
+    const single = { name: 'X', type: 'ss', server: 'x.example.com', port: 1 }
+    writeProviderRaw('proxies:\n  - name: ""\n  - name: "   "\n  - name: X\n')
+
+    const result = await mail.probe().writeSparkleMailProviderFromCache([single], PRIORITY)
+
+    assert.deepEqual(result, { count: 1, membershipChanged: false })
+  })
+
   it('counts an unreadable or member-less provider file as having no members', async () => {
     for (const body of ['proxies: [unclosed', 'other: 1\n']) {
       writeProviderRaw(body)
