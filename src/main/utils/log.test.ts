@@ -59,16 +59,28 @@ describe('log', () => {
       assert.match(readLog('app.log'), / recovered\n.* next\n$/)
     })
 
-    it('reports a failed write to the caller without blocking later writes', async () => {
+    it('drops a line it cannot write without failing the caller or blocking later writes', async () => {
       const { appendAppLog } = loadLog()
       world.ensureFailure = new Error('EACCES: permission denied')
 
-      await assert.rejects(appendAppLog('lost'), /EACCES/)
+      await appendAppLog('lost')
 
       world.ensureFailure = undefined
       await appendAppLog('kept')
       assert.match(readLog('app.log'), / kept\n$/)
       assert.equal(readLog('app.log').includes('lost'), false)
+    })
+
+    it('drops a line when the app config cannot be read', async () => {
+      const { appendAppLog } = loadLog()
+      world.configFailure = new Error('config.yaml is corrupted')
+
+      await appendAppLog('lost')
+      assert.equal(existsSync(logFile('app.log')), false)
+
+      world.configFailure = undefined
+      await appendAppLog('kept')
+      assert.match(readLog('app.log'), / kept\n$/)
     })
 
     it('trims the oldest lines once the file exceeds the size limit', async () => {

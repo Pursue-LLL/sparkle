@@ -348,41 +348,55 @@ function writeToStream(target: LogTarget, content: LogContent): Promise<void> {
 const isMissingFileError = (error: unknown): boolean =>
   (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'
 
+async function appendToLogFile(
+  target: LogTarget,
+  path: string,
+  content: LogContent,
+  maxBytes: number
+): Promise<void> {
+  // 写入前读取：缓存缺失时回退到 stat，写入后再读会把本次内容算两遍
+  const sizeBeforeAppend = getLogFileSize(target, path)
+  try {
+    await writeToStream(target, content)
+  } catch (error) {
+    await closeWriteStream(target)
+    if (!isMissingFileError(error)) throw error
+    // 日志目录被删：重建后重试一次
+    ensureLogDir()
+    await writeToStream(target, content)
+  }
+  await enforceLogFileSizeLimit(
+    target,
+    path,
+    nextLogFileSizeAfterAppend(sizeBeforeAppend, getLogContentSize(content)),
+    maxBytes
+  )
+}
+
+/**
+ * 日志只是尽力而为：磁盘满、权限错误、配置读取失败时丢掉这一段日志即可，
+ * 不能让调用方（上百处 `await appendAppLog`）的业务流程跟着失败。
+ */
 async function appendLog(target: LogTarget, content: LogContent): Promise<void> {
-  if (isEmptyLogContent(content) || !(await shouldSaveLogs())) return
+  try {
+    if (isEmptyLogContent(content) || !(await shouldSaveLogs())) return
 
-  const path = resolveLogPath(target)
-  const maxLogFileSizeBytes = await getMaxLogFileSizeBytes()
-  const contentSize = getLogContentSize(content)
-  const currentQueue = writeQueue[target].catch(() => {})
-  writeQueue[target] = (async () => {
-    await currentQueue
-    // 写入前读取：缓存缺失时回退到 stat，写入后再读会把本次内容算两遍
-    const sizeBeforeAppend = getLogFileSize(target, path)
-    try {
-      await writeToStream(target, content)
-    } catch (error) {
-      await closeWriteStream(target)
-      if (!isMissingFileError(error)) throw error
-      // 日志目录被删：重建后重试一次
-      ensureLogDir()
-      await writeToStream(target, content)
-    }
-    await enforceLogFileSizeLimit(
-      target,
-      path,
-      nextLogFileSizeAfterAppend(sizeBeforeAppend, contentSize),
-      maxLogFileSizeBytes
-    )
-  })()
-
-  await writeQueue[target]
+    const path = resolveLogPath(target)
+    const maxBytes = await getMaxLogFileSizeBytes()
+    const queued = writeQueue[target].then(() => appendToLogFile(target, path, content, maxBytes))
+    // 队列自身不能 reject，否则一次失败会挡住此后所有写入
+    writeQueue[target] = queued.catch(() => undefined)
+    await queued
+  } catch {
+    // 丢弃本段日志，原因见函数注释
+  }
 }
 
 export function setMihomoLogSource(source: MihomoLogSource): void {
   mihomoLogSource = source
 }
 
+/** 不会 reject：落盘失败只丢这一段日志。 */
 export async function appendAppLog(content: string): Promise<void> {
   const ts = new Date().toISOString()
   const stamped = content
@@ -416,28 +430,21 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
     released = true
     releaseTarget(target)
   }
-  // 落盘失败（磁盘满、权限等）只丢这一段日志：把错误交给 pipe 的目标流，
+  // 落盘失败（磁盘满、权限等）只丢这一段日志（appendLog 不会 reject）：把错误交给 pipe 的目标流，
   // 会让整条子进程输出管道出错并升级成主进程未捕获异常。
-  const persist = (content: Buffer, done: () => void): void => {
-    void appendLog(target, content).then(
-      () => done(),
-      () => done()
-    )
+  const consume = (content: Buffer, callback: () => void): void => {
+    if (target === 'core' && mihomoLogSource === 'out') {
+      lineBuffer = flushCoreLogLines(lineBuffer, content.toString('utf-8'), type)
+    }
+    void appendLog(target, content).then(callback)
   }
 
   return new Writable({
     write(content: Buffer, _encoding, callback) {
-      if (target === 'core' && mihomoLogSource === 'out') {
-        lineBuffer = flushCoreLogLines(lineBuffer, content.toString('utf-8'), type)
-      }
-      persist(content, callback)
+      consume(content, callback)
     },
     writev(chunks, callback) {
-      const content = Buffer.concat(chunks.map(({ chunk }) => chunk as Buffer))
-      if (target === 'core' && mihomoLogSource === 'out') {
-        lineBuffer = flushCoreLogLines(lineBuffer, content.toString('utf-8'), type)
-      }
-      persist(content, callback)
+      consume(Buffer.concat(chunks.map(({ chunk }) => chunk as Buffer)), callback)
     },
     final(callback) {
       if (target === 'core' && mihomoLogSource === 'out' && lineBuffer.trim()) {

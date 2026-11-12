@@ -21,10 +21,9 @@ const world: {
   listFailure: unknown
   /** 设置后读取订阅列表会一直等到它完成，模拟一次耗时的检查。 */
   gate: Promise<void> | undefined
-  logFailure: boolean
   updated: string[]
   logs: string[]
-} = { items: [], listFailure: undefined, gate: undefined, logFailure: false, updated: [], logs: [] }
+} = { items: [], listFailure: undefined, gate: undefined, updated: [], logs: [] }
 
 let moduleMocked = false
 
@@ -47,9 +46,6 @@ function loadModule(): typeof import('./profileUpdater') {
     mock.module('../utils/log', {
       exports: {
         appendAppLog: async (message: string) => {
-          if (world.logFailure) {
-            throw new Error('disk full')
-          }
           world.logs.push(message)
         }
       }
@@ -71,7 +67,6 @@ describe('profileUpdater', () => {
     world.items = [dueItem()]
     world.listFailure = undefined
     world.gate = undefined
-    world.logFailure = false
     world.updated = []
     world.logs = []
     mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.UTC(2026, 10, 12, 12, 0, 0) })
@@ -158,18 +153,6 @@ describe('profileUpdater', () => {
 
     await advance(STARTUP_DELAY_MS)
     assert.deepEqual(world.updated, ['main', 'main', 'main'])
-  })
-
-  it('keeps the schedule going when writing the failure log fails too', async () => {
-    world.listFailure = new Error('profile config unreadable')
-    world.logFailure = true
-    loadModule().initProfileUpdater()
-
-    await advance(STARTUP_DELAY_MS)
-    world.listFailure = undefined
-    await advance(HEARTBEAT_MS)
-
-    assert.deepEqual(world.updated, ['main'])
   })
 
   it('shares one run between concurrent callers of runDueProfileUpdates', async () => {
