@@ -235,6 +235,60 @@ describe('parseYaml', () => {
     assert.equal(parsed.note, 'first\n\n# kept\nlast\n')
   })
 
+  it('recognizes reality-opts with a trailing comment but not look-alike keys', () => {
+    const content = [
+      'proxies:',
+      '  - name: a',
+      '    reality-opts: # from the panel',
+      '      short-id: 111',
+      '    x-reality-opts:',
+      '      short-id: 222',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{
+      proxies: Array<{
+        'reality-opts': { 'short-id': unknown }
+        'x-reality-opts': { 'short-id': unknown }
+      }>
+    }>(content)
+
+    assert.equal(parsed.proxies[0]?.['reality-opts']['short-id'], '111')
+    assert.equal(parsed.proxies[0]?.['x-reality-opts']['short-id'], 222)
+  })
+
+  it('starts every proxy outside reality-opts, whatever indentation the previous one used', () => {
+    const content = [
+      'proxies:',
+      '- name: a',
+      '  reality-opts:',
+      '    short-id: 111',
+      '-',
+      '    name: b',
+      '    short-id: 222',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{ proxies: RealityNode[] }>(content)
+
+    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '111')
+    assert.equal(parsed.proxies[1]?.['short-id'], 222)
+  })
+
+  it('leaves a document whose root is a list alone', () => {
+    const content = [
+      '- name: a',
+      '  reality-opts:',
+      '    short-id: 123',
+      '# proxies: not a key',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<RealityNode[]>(content)
+
+    assert.equal(parsed[0]?.['reality-opts']?.['short-id'], 123)
+  })
+
   it('does not touch documents that mention neither proxies nor short-id', () => {
     assert.deepEqual(parseYaml('a: 123\nshort-id: 456\n'), { a: 123, 'short-id': 456 })
   })
