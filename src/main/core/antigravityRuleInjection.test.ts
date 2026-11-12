@@ -180,4 +180,17 @@ describe('antigravityRuleInjection', () => {
     assert.equal(rules.length, 4)
     assert.equal(rules.filter((rule) => rule.includes('cloudcode-pa')).length, 1)
   })
+
+  it('keeps comments, blank lines and rules without a policy exactly where they were', () => {
+    const existing = ['# 订阅自带', '', 'GEOIP,CN', 'MATCH', GENERIC_GOOGLEAPIS_RULE]
+    const profile = {
+      'proxy-groups': [AGY_GROUP],
+      rules: [...existing]
+    } as unknown as MihomoConfig
+
+    injectAntigravityTrafficRules(profile)
+
+    assert.deepEqual(rulesOf(profile).slice(-existing.length), existing)
+    assert.equal(rulesOf(profile).length, existing.length + 4)
+  })
 })

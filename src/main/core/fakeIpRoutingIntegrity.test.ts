@@ -7,7 +7,7 @@ import {
   ensureFakeIpRoutingIntegrity,
   sanitizeFakeIpDirectCidrRules,
   TIER0_DIRECT_CN_SUFFIXES,
-  TIER0_FAKE_IP_FILTER,
+  TIER0_FAKE_IP_FILTER
 } from './fakeIpRoutingIntegrity'
 
 describe('fakeIpRoutingIntegrity', () => {
@@ -19,15 +19,18 @@ describe('fakeIpRoutingIntegrity', () => {
         'DOMAIN-SUFFIX,cloudflare.com,🚀 节点选择',
         'IP-CIDR,198.18.0.0/16,🎯 Direct,no-resolve',
         'GEOIP,CN,🎯 全球直连',
-        'MATCH,🐟 漏网之鱼',
-      ],
+        'MATCH,🐟 漏网之鱼'
+      ]
     } as unknown as MihomoConfig
 
     const removed = sanitizeFakeIpDirectCidrRules(profile)
     const rules = profile.rules as string[]
 
     assert.equal(removed, 1)
-    assert.equal(rules.some((rule) => rule.includes('198.18.0.0/16')), false)
+    assert.equal(
+      rules.some((rule) => rule.includes('198.18.0.0/16')),
+      false
+    )
   })
 
   it('removes fake-ip CIDR direct trap rules', () => {
@@ -46,7 +49,10 @@ describe('fakeIpRoutingIntegrity', () => {
     const rules = profile.rules as string[]
 
     assert.equal(removed, 1)
-    assert.equal(rules.some((rule) => rule.includes('198.18.0.0/16')), false)
+    assert.equal(
+      rules.some((rule) => rule.includes('198.18.0.0/16')),
+      false
+    )
     assert.equal(rules.length, 3)
   })
 
@@ -61,19 +67,28 @@ describe('fakeIpRoutingIntegrity', () => {
 
     assert.ok(entries.includes('+.cloudflare.com'))
     assert.ok(entries.includes('api2.cursor.sh'))
-    assert.equal(entries.some((entry) => entry === '+.ai'), false)
-    assert.equal(entries.some((entry) => entry.includes('staff.xdf.cn')), false)
+    assert.equal(
+      entries.some((entry) => entry === '+.ai'),
+      false
+    )
+    assert.equal(
+      entries.some((entry) => entry.includes('staff.xdf.cn')),
+      false
+    )
   })
 
   it('collects tier0 direct suffixes from Direct-intent rules and cn defaults', () => {
     const entries = collectTier0DirectFakeIpFilterEntries([
       'DOMAIN-SUFFIX,staff.xdf.cn,DIRECT',
-      'DOMAIN-SUFFIX,cloudflare.com,🚀 节点选择',
+      'DOMAIN-SUFFIX,cloudflare.com,🚀 节点选择'
     ])
     assert.ok(entries.includes('+.cn'))
     assert.ok(entries.includes('+.qq.com'))
     assert.ok(entries.includes('+.staff.xdf.cn'))
-    assert.equal(entries.some((entry) => entry.includes('cloudflare.com')), false)
+    assert.equal(
+      entries.some((entry) => entry.includes('cloudflare.com')),
+      false
+    )
     for (const suffix of TIER0_DIRECT_CN_SUFFIXES) {
       assert.ok(entries.includes(suffix))
     }
@@ -83,7 +98,7 @@ describe('fakeIpRoutingIntegrity', () => {
     const filter = buildTieredFakeIpFilter({
       existing: ['+.lan'],
       rules: ['DOMAIN-SUFFIX,staff.xdf.cn,DIRECT', 'DOMAIN-SUFFIX,cloudflare.com,🚀 节点选择'],
-      includeTier1: true,
+      includeTier1: true
     })
 
     assert.ok(filter.includes('+.lan'))

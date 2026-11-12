@@ -30,18 +30,32 @@ describe('customProxyGroups · 香港组', () => {
 
     ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
 
-    const hkGroup = (
-      (profile['proxy-groups'] as {
-        name: string
-        type?: string
-        url?: string
-        filter?: string
-      }[]) ?? []
-    ).find((group) => group.name === HONG_KONG_FILTER_GROUP_NAME)
-    assert.equal(hkGroup?.type, 'url-test')
+    const hkGroup = (profile['proxy-groups'] as { name: string }[]).find(
+      (group) => group.name === HONG_KONG_FILTER_GROUP_NAME
+    )
     // HK 组按规则路由 x.com/Stripe，探针 = x.com（它实际承载的流量）。
-    assert.equal(hkGroup?.url, 'https://x.com')
-    assert.equal(hkGroup?.filter, '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong')
+    assert.deepEqual(hkGroup, {
+      name: HONG_KONG_FILTER_GROUP_NAME,
+      type: 'url-test',
+      url: 'https://x.com',
+      interval: 300,
+      timeout: 5000,
+      lazy: true,
+      use: ['test-profile'],
+      filter: '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong'
+    })
+  })
+
+  it('drops a group named 香港专用 whatever members it has, and moves its rules', () => {
+    const profile = profileOf(
+      [{ name: '香港专用', type: 'select', proxies: ['HK-01', 'SG-01'] }],
+      ['DOMAIN,x.com,香港专用']
+    )
+
+    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
+
+    assert.deepEqual(subscriptionGroupNames(profile), [])
+    assert.deepEqual(profile.rules, [`DOMAIN,x.com,${HONG_KONG_FILTER_GROUP_NAME}`])
   })
 
   it('drops redundant 香港专用 wrapper and rewrites rules to 🇭🇰 香港节点', () => {
