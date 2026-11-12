@@ -1,9 +1,11 @@
-// [INPUT] groupFailoverCore (POS: 故障转移纯决策层) · autoSwitchPolicy::resolveGroupPolicy (POS: 分组策略表)
+// [INPUT] groupFailoverCore (POS: 故障转移纯决策层) · autoSwitchPolicy::resolveGroupPolicy (POS: 分组策略表) ·
+//         utils/errorMessage::describeError · utils/bestEffortLog::bestEffortLog
 // [OUTPUT] createGroupFailoverEngine · GroupFailoverDeps · GroupFailoverEngine
 // [POS] 故障转移引擎的状态与编排：告警去重计数 → 读分组快照 → 决策 → 改选并固定 → 隔离失败节点 → 到期释放固定。
 //       所有读写内核的动作经 deps 注入，引擎本身不依赖 Electron 与控制器，可脱离内核单测。
 //       任务经同一队列串行执行：同一时刻只有一个改选 / 释放在读写分组。
 
+import { bestEffortLog } from '../utils/bestEffortLog'
 import { describeError } from '../utils/errorMessage'
 import { resolveGroupPolicy } from './autoSwitchPolicy'
 import {
@@ -41,6 +43,7 @@ interface OwnPin {
 }
 
 export function createGroupFailoverEngine(deps: GroupFailoverDeps): GroupFailoverEngine {
+  const writeLog = bestEffortLog(deps.log)
   const failureStates = new Map<string, DialFailureState>()
   const quarantinedUntil = new Map<string, number>()
   const ownPins = new Map<string, OwnPin>()
@@ -70,20 +73,23 @@ export function createGroupFailoverEngine(deps: GroupFailoverDeps): GroupFailove
     ownPins.set(group, { node, cancelRelease })
   }
 
-  /** 保留期满后把组交还给内核；固定已被用户或其它流程改动时不覆盖。 */
+  /**
+   * 保留期满后把组交还给内核；固定已被用户或其它流程改动时不覆盖。
+   * 读写内核失败时固定仍在，归属必须保留（否则下一次故障会把它当成用户固定而永久跳过），并顺延一个保留期后重试。
+   */
   async function releasePin(group: string, node: string): Promise<void> {
     if (ownPins.get(group)?.node !== node) {
       return
     }
-    ownPins.delete(group)
     try {
-      if ((await deps.loadGroup(group))?.fixed !== node) {
-        return
+      if ((await deps.loadGroup(group))?.fixed === node) {
+        await deps.unpinNode(group)
+        await writeLog(`[GroupFailover]: released group=${group} node=${node}\n`)
       }
-      await deps.unpinNode(group)
-      await deps.log(`[GroupFailover]: released group=${group} node=${node}\n`)
+      ownPins.delete(group)
     } catch (error) {
-      await deps.log(`[GroupFailover]: release failed group=${group} err=${describeError(error)}\n`)
+      holdPin(group, node)
+      await writeLog(`[GroupFailover]: release failed group=${group} err=${describeError(error)}\n`)
     }
   }
 
@@ -101,7 +107,7 @@ export function createGroupFailoverEngine(deps: GroupFailoverDeps): GroupFailove
       })
       if (decision.kind === 'skip') {
         const node = decision.badLeaf ? ` node=${decision.badLeaf}` : ''
-        await deps.log(`[GroupFailover]: skipped group=${group} reason=${decision.reason}${node}\n`)
+        await writeLog(`[GroupFailover]: skipped group=${group} reason=${decision.reason}${node}\n`)
         return
       }
       if (!(await deps.pinNode(group, decision.target))) {
@@ -109,11 +115,11 @@ export function createGroupFailoverEngine(deps: GroupFailoverDeps): GroupFailove
       }
       quarantinedUntil.set(decision.badLeaf, nowMs + FAILOVER_HOLD_MS)
       holdPin(group, decision.target)
-      await deps.log(
+      await writeLog(
         `[GroupFailover]: switched group=${group} from=${decision.badLeaf} to=${decision.target} delay=${decision.targetDelay}ms\n`
       )
     } catch (error) {
-      await deps.log(
+      await writeLog(
         `[GroupFailover]: failover failed group=${group} err=${describeError(error)}\n`
       )
     }

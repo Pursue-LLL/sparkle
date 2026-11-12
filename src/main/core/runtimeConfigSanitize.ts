@@ -196,7 +196,9 @@ function cleanDnsConfig(profile: MihomoConfig, controlDns: boolean): void {
     if (dnsConfig[key]?.length === 0) delete dnsConfig[key]
   })
 
-  if (dnsConfig['respect-rules'] === false || dnsConfig['proxy-server-nameserver']?.length === 0) {
+  // 内核在 respect-rules 开启而 proxy-server-nameserver 为空 / 缺失时会拒绝加载整份配置，因此一并去掉。
+  const hasProxyServerNameserver = (dnsConfig['proxy-server-nameserver']?.length ?? 0) > 0
+  if (dnsConfig['respect-rules'] === false || !hasProxyServerNameserver) {
     delete dnsConfig['respect-rules']
   }
 
