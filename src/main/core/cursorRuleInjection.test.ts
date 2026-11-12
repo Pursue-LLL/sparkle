@@ -7,18 +7,13 @@ import {
   resolveGeneralProxySelectGroup
 } from './cursorProxyGroup'
 import { CURSOR_2_APP_PATH_PREFIX } from './cursorAppBundlePathsCore'
-import {
-  injectCursorDomainRules,
-  stripUnscopedCursorDedicatedRules
-} from './cursorRuleInjection'
+import { injectCursorDomainRules, stripUnscopedCursorDedicatedRules } from './cursorRuleInjection'
 
 function ruleLines(profile: MihomoConfig): string[] {
   return ((profile.rules as string[] | undefined) ?? []).map((rule) => rule.trim())
 }
 
-function profileWithCursorGroups(
-  dedicatedProxies: string[] = ['KR-VPS-TUIC']
-): MihomoConfig {
+function profileWithCursorGroups(dedicatedProxies: string[] = ['KR-VPS-TUIC']): MihomoConfig {
   return {
     'proxy-groups': [
       { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select', proxies: dedicatedProxies },
@@ -71,16 +66,11 @@ describe('injectCursorDomainRules', () => {
     assert.ok(
       rules.some(
         (rule) =>
-          rule ===
-          `AND,((DOMAIN,cursor-cdn.com),(${cursor2Regex})),${CURSOR_DEDICATED_GROUP_NAME}`
+          rule === `AND,((DOMAIN,cursor-cdn.com),(${cursor2Regex})),${CURSOR_DEDICATED_GROUP_NAME}`
       )
     )
-    assert.ok(
-      rules.some((rule) => rule === `${cursorMainRegex},${CURSOR_DEDICATED_GROUP_NAME}`)
-    )
-    assert.ok(
-      !rules.some((rule) => rule === `${cursorMainRegex},${GENERAL_PROXY_GROUP_NAME}`)
-    )
+    assert.ok(rules.some((rule) => rule === `${cursorMainRegex},${CURSOR_DEDICATED_GROUP_NAME}`))
+    assert.ok(!rules.some((rule) => rule === `${cursorMainRegex},${GENERAL_PROXY_GROUP_NAME}`))
     assert.ok(
       rules.some(
         (rule) =>
@@ -91,13 +81,12 @@ describe('injectCursorDomainRules', () => {
     assert.ok(
       rules.some(
         (rule) =>
-          rule === `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursor3Regex})),${CURSOR_DEDICATED_GROUP_NAME}`
+          rule ===
+          `AND,((DOMAIN-SUFFIX,cursor.sh),(${cursor3Regex})),${CURSOR_DEDICATED_GROUP_NAME}`
       )
     )
     assert.ok(!rules.some((rule) => rule.startsWith('PROCESS-NAME,')))
-    assert.ok(
-      !rules.some((rule) => rule === `DOMAIN,cursor-cdn.com,${GENERAL_PROXY_GROUP_NAME}`)
-    )
+    assert.ok(!rules.some((rule) => rule === `DOMAIN,cursor-cdn.com,${GENERAL_PROXY_GROUP_NAME}`))
 
     const geoipIndex = rules.indexOf('GEOIP,us,🚀 节点选择')
     const dedicatedPathIndex = rules.findIndex(
@@ -113,9 +102,10 @@ describe('injectCursorDomainRules', () => {
 
     const rules = ruleLines(profile)
     assert.ok(
-      rules.some((rule) =>
-        rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/') &&
-        rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
+      rules.some(
+        (rule) =>
+          rule.includes('PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/') &&
+          rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
       )
     )
     assert.ok(
@@ -212,12 +202,13 @@ describe('injectCursorDomainRules', () => {
     const cursor2Regex = 'PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/'
     assert.ok(
       rules.some(
-        (rule) =>
-          rule.includes(cursor2Regex) && rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
+        (rule) => rule.includes(cursor2Regex) && rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
       )
     )
     assert.ok(!rules.some((rule) => rule.startsWith('PROCESS-NAME,Cursor')))
-    assert.ok(!rules.some((rule) => rule === `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`))
+    assert.ok(
+      !rules.some((rule) => rule === `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`)
+    )
     assert.ok(rules.includes('GEOIP,us,🚀 节点选择'))
   })
 
@@ -253,8 +244,7 @@ describe('injectCursorDomainRules', () => {
 
     const mediaRuleIndex = rules.indexOf('DOMAIN-SUFFIX,cursor.sh,🌍 国外媒体')
     const dedicatedCursorAppIndex = rules.findIndex(
-      (rule) =>
-        rule.includes(cursorAppPath) && rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
+      (rule) => rule.includes(cursorAppPath) && rule.endsWith(`,${CURSOR_DEDICATED_GROUP_NAME}`)
     )
     assert.ok(mediaRuleIndex > dedicatedCursorAppIndex)
   })
@@ -285,6 +275,24 @@ describe('injectCursorDomainRules', () => {
 
     assert.deepEqual(ruleLines(profile), [
       `AND,((DOMAIN,api2.cursor.sh),(PROCESS-PATH-REGEX,^/Applications/Cursor-2\\.app/)),${CURSOR_DEDICATED_GROUP_NAME}`
+    ])
+  })
+
+  it('stripUnscopedCursorDedicatedRules reads the policy in front of trailing parameters', () => {
+    const profile = {
+      rules: [
+        `DOMAIN-SUFFIX,cursor.sh,${CURSOR_DEDICATED_GROUP_NAME},extra`,
+        `DOMAIN-KEYWORD,cursor,${CURSOR_DEDICATED_GROUP_NAME},src,no-resolve`,
+        'DOMAIN-SUFFIX,cursor.sh,🚀 节点选择,extra',
+        `SUB-RULE,(DOMAIN,cursor.sh),${CURSOR_DEDICATED_GROUP_NAME}`
+      ]
+    } as unknown as MihomoConfig
+
+    stripUnscopedCursorDedicatedRules(profile)
+
+    assert.deepEqual(ruleLines(profile), [
+      'DOMAIN-SUFFIX,cursor.sh,🚀 节点选择,extra',
+      `SUB-RULE,(DOMAIN,cursor.sh),${CURSOR_DEDICATED_GROUP_NAME}`
     ])
   })
 })

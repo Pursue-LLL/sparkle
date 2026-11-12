@@ -177,8 +177,43 @@ describe('rewriteMissingRuleProxyGroupTargets', () => {
     assert.deepEqual(profile.rules, ['DOMAIN,a.com,主代理'])
   })
 
-  it('does not mistake a rule made only of modifiers for one with a target', () => {
-    const rules = ['no-resolve', 'no-resolve,no-resolve,no-resolve']
+  it('repairs a rule whose policy field holds a stray parameter, which the kernel would reject', () => {
+    const profile = {
+      'proxy-groups': [{ name: '主代理', type: 'select' }],
+      rules: ['DOMAIN,a.com,no-resolve', 'no-resolve']
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, ['DOMAIN,a.com,主代理', 'no-resolve'])
+  })
+
+  it('reads the policy in front of the src and no-resolve parameters, never the parameter itself', () => {
+    const profile = {
+      'proxy-groups': [{ name: '主代理', type: 'select' }],
+      rules: [
+        'IP-CIDR,10.0.0.0/8,DIRECT,src',
+        'IP-CIDR,10.0.0.0/8,主代理,src,no-resolve',
+        'IP-CIDR,10.0.0.0/8,不存在组,src',
+        'IP-CIDR,10.0.0.0/8,不存在组,src,no-resolve'
+      ]
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, [
+      'IP-CIDR,10.0.0.0/8,DIRECT,src',
+      'IP-CIDR,10.0.0.0/8,主代理,src,no-resolve',
+      'IP-CIDR,10.0.0.0/8,主代理,src',
+      'IP-CIDR,10.0.0.0/8,主代理,src,no-resolve'
+    ])
+  })
+
+  it('does not point a SUB-RULE rule at a proxy group: it calls a sub-rule', () => {
+    const rules = [
+      'SUB-RULE,(NETWORK,tcp),子规则',
+      'SUB-RULE,(AND,((NETWORK,tcp),(DST-PORT,443))),子规则'
+    ]
     const profile = {
       'proxy-groups': [{ name: '主代理', type: 'select' }],
       rules: [...rules]
