@@ -1,21 +1,9 @@
 /** Shared helpers: Cursor traffic must use fixed Selector nodes, never UrlTest auto-hop. */
 
-const AUTO_SWITCHING_GROUP_TYPES = new Set<MihomoProxyType>([
-  'URLTest',
-  'LoadBalance',
-  'Fallback',
-  'Relay'
-])
-
 /** Sparkle 重写订阅 ♻️ / 节点选择 后的 fallback 自动选择组（粘性固定组）。 */
 export const AUTO_SELECT_GROUP_NAME = '自动选择' as const
 
 const AUTO_SWITCHING_PROXY_NAMES = new Set<string>([AUTO_SELECT_GROUP_NAME, '故障转移'])
-
-export function isAutoSwitchingGroupType(groupType: MihomoProxyType | string | undefined): boolean {
-  if (!groupType) return false
-  return AUTO_SWITCHING_GROUP_TYPES.has(groupType as MihomoProxyType)
-}
 
 export function isAutoSwitchingProxyName(proxyName: string): boolean {
   return AUTO_SWITCHING_PROXY_NAMES.has(proxyName)
@@ -194,21 +182,4 @@ export function resolveGeneralProxySelectGroup(
     }
   }
   return undefined
-}
-
-export function resolveGroupByName(
-  groups: ControllerMixedGroup[],
-  name: string
-): ControllerMixedGroup | undefined {
-  return groups.find((group) => group.name === name)
-}
-
-/** True when the active selection is a UrlTest/LoadBalance/Fallback group (mihomo auto-hops). */
-export function isNestedAutoSwitchSelection(
-  proxyName: string,
-  groups: ControllerMixedGroup[]
-): boolean {
-  const nested = resolveGroupByName(groups, proxyName)
-  if (!nested) return false
-  return isAutoSwitchingGroupType(nested.type)
 }

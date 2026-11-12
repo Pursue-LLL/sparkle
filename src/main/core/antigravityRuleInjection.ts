@@ -1,4 +1,5 @@
 import { AGY_DEDICATED_GROUP_NAME, AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
+import { parseRule, rewriteRulePolicies } from './ruleSyntax'
 
 /**
  * Google Code Assist / Gemini API hosts whose edge enforces per-region geo
@@ -17,6 +18,9 @@ const ANTIGRAVITY_TRAFFIC_RULE_BASES = [
   // 导致整轮探测全部 unknown（代理页表现为"全都未测"）。
   'DOMAIN,www.googleapis.com'
 ] as const
+
+/** 规则「类型,载荷」部分，用来认出自己写过的规则。 */
+const ANTIGRAVITY_RULE_HEADS: ReadonlySet<string> = new Set(ANTIGRAVITY_TRAFFIC_RULE_BASES)
 
 /** 规则可能被上一版目标组写过，改写而不是重复追加。 */
 const ANTIGRAVITY_RULE_TARGETS: ReadonlySet<string> = new Set([
@@ -39,20 +43,10 @@ function resolveAntigravityTargetGroup(profile: MihomoConfig): string | null {
   return null
 }
 
-function migrateRuleTarget(rule: string, target: string): string {
-  const parts = rule.split(',').map((part) => part.trim())
-  if (parts.length !== 3) {
-    return rule
-  }
-  const [type, payload, policy] = parts
-  const bases: readonly string[] = ANTIGRAVITY_TRAFFIC_RULE_BASES
-  if (!bases.includes(`${type},${payload}`)) {
-    return rule
-  }
-  if (!ANTIGRAVITY_RULE_TARGETS.has(policy) || policy === target) {
-    return rule
-  }
-  return `${type},${payload},${target}`
+/** 去掉空白与修饰符后的 `类型,载荷,策略`，用来判断规则是否已存在。 */
+function canonicalRule(rule: string): string {
+  const parsed = parseRule(rule)
+  return parsed ? [...parsed.head, parsed.policy].join(',') : rule.trim()
 }
 
 /**
@@ -65,17 +59,17 @@ export function injectAntigravityTrafficRules(profile: MihomoConfig): void {
     return
   }
 
+  rewriteRulePolicies(profile, ({ head, policy }) =>
+    ANTIGRAVITY_RULE_TARGETS.has(policy) && ANTIGRAVITY_RULE_HEADS.has(head.join(','))
+      ? target
+      : undefined
+  )
+
   const existing = (profile.rules as string[] | undefined) ?? []
-  const migrated = existing.map((rule) => migrateRuleTarget(rule, target))
-  const migratedSet = new Set(migrated.map((rule) => rule.trim()))
-  const prefix: string[] = []
+  const present = new Set(existing.map(canonicalRule))
+  const missing = ANTIGRAVITY_TRAFFIC_RULE_BASES.map((base) => `${base},${target}`).filter(
+    (rule) => !present.has(rule)
+  )
 
-  for (const ruleBase of ANTIGRAVITY_TRAFFIC_RULE_BASES) {
-    const rule = `${ruleBase},${target}`
-    if (!migratedSet.has(rule)) {
-      prefix.push(rule)
-    }
-  }
-
-  profile.rules = (prefix.length > 0 ? [...prefix, ...migrated] : migrated) as MihomoConfig['rules']
+  profile.rules = [...missing, ...existing] as MihomoConfig['rules']
 }

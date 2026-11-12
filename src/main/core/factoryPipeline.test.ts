@@ -270,6 +270,15 @@ describe('factory: runtime config pipeline', () => {
       )
     })
 
+    it('stays quiet about AnyTLS when no group had to change', async () => {
+      await rig.generate()
+
+      assert.equal(
+        state.logs.some((line) => line.includes('AutoSelectAnyTlsExclusion')),
+        false
+      )
+    })
+
     it('copes with nodes that have no usable name or no type, and keeps one-letter names', async () => {
       state.current = 'default'
       state.profile = subscription({

@@ -4,10 +4,6 @@ import {
   CURSOR_DEDICATED_GROUP_NAME,
   DEFAULT_GENERAL_DELAY_TEST_URL,
   GEMINI_REACHABILITY_PROBE_URL,
-  isAutoSwitchingGroupType,
-  isAutoSwitchingProxyName,
-  isCursorDedicatedGroupName,
-  isNestedAutoSwitchSelection,
   isSparkleAutoSelectSubGroup,
   isSparkleRegionalAutoSelectGroup,
   filterCursorEligibleVpsLeaves,
@@ -61,9 +57,9 @@ export const AUTO_SELECT_GEMINI_PROBE_URL = GEMINI_REACHABILITY_PROBE_URL
 /** 全 HTTPS 握手探测的合理余量（2000 会误杀可用节点）。 */
 export const AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS = 5000
 
-export const DEFAULT_URL_TEST_INTERVAL = 300
+const DEFAULT_URL_TEST_INTERVAL = 300
 /** url-test 仅在新节点比当前节点快出该值以上才切换，避免延迟抖动引起来回切。 */
-export const DEFAULT_URL_TEST_TOLERANCE_MS = 2000
+const DEFAULT_URL_TEST_TOLERANCE_MS = 2000
 
 /** 自动选择 与其地区组共用的探测口径：Gemini 可达性，每 5 分钟一次，5 秒超时。 */
 const AUTO_SELECT_PROBE = {
@@ -114,9 +110,7 @@ function rewriteLegacyAutoSelectRuleTargets(profile: MihomoConfig): void {
   profile.rules = rules.map((rule) => {
     let updated = rule
     for (const legacy of LEGACY_SUBSCRIPTION_AUTO_SELECT_NAMES) {
-      if (updated.includes(legacy)) {
-        updated = updated.replaceAll(legacy, AUTO_SELECT_GROUP_NAME)
-      }
+      updated = updated.replaceAll(legacy, AUTO_SELECT_GROUP_NAME)
     }
     return updated
   }) as MihomoConfig['rules']
@@ -213,27 +207,26 @@ function ensureRegionPriorityAutoSelect(
     if (flatNames.length === 0 && regionalGroups.length === 0) {
       return
     }
-    if (flatNames.length > 0) {
-      autoSelectGroup.proxies = flatNames
-    }
+    autoSelectGroup.proxies = flatNames
   }
 
   const withoutAutoSelect = groups.filter(
     (group) => group.name !== AUTO_SELECT_GROUP_NAME && !isSparkleAutoSelectSubGroup(group.name)
   )
 
-  const autoSelectIndex = groups.findIndex((group) => group.name === AUTO_SELECT_GROUP_NAME)
-  const insertAt = autoSelectIndex >= 0 ? autoSelectIndex : 0
+  // 新的 自动选择 顶替旧的位置；订阅里原本没有它（只有 故障转移）时放到最前。
+  const insertAt = Math.max(
+    groups.findIndex((group) => group.name === AUTO_SELECT_GROUP_NAME),
+    0
+  )
   withoutAutoSelect.splice(insertAt, 0, ...regionalGroups, autoSelectGroup)
 
   groups.length = 0
   groups.push(...withoutAutoSelect)
 }
 
-function ensureAutoSelectUrlTestGroup(
-  groups: ProxyGroupConfig[],
-  profileId: string | undefined
-): void {
+/** 订阅里没有任何自动选路组时，先放一个默认 url-test，供后续步骤改建或兜底。 */
+function ensureAutoSelectUrlTestGroup(groups: ProxyGroupConfig[]): void {
   const hasAutoSwitchGroup = groups.some((group) =>
     PREFERRED_AUTO_SWITCH_NAMES.includes(group.name as (typeof PREFERRED_AUTO_SWITCH_NAMES)[number])
   )
@@ -241,15 +234,7 @@ function ensureAutoSelectUrlTestGroup(
     return
   }
 
-  const autoSelectGroup: ProxyGroupConfig = {
-    name: AUTO_SELECT_GROUP_NAME,
-    ...buildUrlTestGroupDefaults()
-  }
-  if (profileId) {
-    autoSelectGroup.use = [profileId]
-  }
-
-  groups.unshift(autoSelectGroup)
+  groups.unshift({ name: AUTO_SELECT_GROUP_NAME, ...buildUrlTestGroupDefaults() })
 }
 
 /**
@@ -270,7 +255,7 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
     options.regionPriority ?? [...DEFAULT_REGION_PRIORITY]
   )
 
-  ensureAutoSelectUrlTestGroup(groups, profileId)
+  ensureAutoSelectUrlTestGroup(groups)
   ensureRegionPriorityAutoSelect(
     groups,
     profileId,
@@ -283,14 +268,9 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
     groups,
     options.leafProxyCatalog ?? []
   )
-  profile['proxy-groups'] = groups as MihomoConfig['proxy-groups']
   rewriteLegacyAutoSelectRuleTargets(profile)
 
   const autoSwitchRefs = collectSparkleAutoSelectGroupRefs(groups)
-  if (autoSwitchRefs.length === 0) {
-    return anyTlsExclusion
-  }
-
   for (const group of groups) {
     if (!resolveGroupPolicy(group).acceptsAutoSwitchRefs) {
       continue
@@ -336,52 +316,7 @@ export function appendRegionalAutoGroupsToCursorDedicated(profile: MihomoConfig)
   ]
 }
 
-export function resolvePreferredAutoSwitchProxy(group: ControllerMixedGroup): string | undefined {
-  const available = new Set(group.all.map((proxy) => proxy.name))
-  for (const name of PREFERRED_AUTO_SWITCH_NAMES) {
-    if (available.has(name)) {
-      return name
-    }
-  }
-
-  for (const proxy of group.all) {
-    if ('type' in proxy && isAutoSwitchingGroupType(proxy.type)) {
-      return proxy.name
-    }
-  }
-
-  return undefined
-}
-
-export function shouldApplyDefaultAutoSwitch(group: ControllerMixedGroup): boolean {
-  if (isCursorDedicatedGroupName(group.name)) {
-    return false
-  }
-  return group.type === 'Selector'
-}
-
-export function isGroupOnAutoSwitch(
-  group: ControllerMixedGroup,
-  groups: ControllerMixedGroup[]
-): boolean {
-  const current = group.now
-  if (!current) {
-    return false
-  }
-  if (isAutoSwitchingProxyName(current)) {
-    return true
-  }
-  return isNestedAutoSwitchSelection(current, groups)
-}
-
-/** Intentionally disabled: group defaults must follow subscription / user selection. */
-export async function applyDefaultAutoSwitchSelections(
-  _api?: MihomoAutoSwitchApi
-): Promise<number> {
-  return 0
-}
-
-export function buildUrlTestGroupDefaults(): {
+function buildUrlTestGroupDefaults(): {
   type: 'url-test'
   url: string
   interval: number

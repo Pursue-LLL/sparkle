@@ -10,6 +10,7 @@ import {
   LEGACY_CURSOR_DEDICATED_GROUP_NAME,
   PREVIOUS_CURSOR_DEDICATED_GROUP_NAME
 } from './cursorProxyGroup'
+import { parseRule } from './ruleSyntax'
 
 function profileWith(rules?: string[]): MihomoConfig {
   return { rules } as unknown as MihomoConfig
@@ -171,11 +172,34 @@ describe('rewriteBroadCursorDedicatedRules', () => {
     assert.deepEqual(profile.rules, rules)
   })
 
-  it('normalizes whitespace only on the rules it rewrites', () => {
-    const profile = profileWith([`  DOMAIN-SUFFIX , google.com , ${CURSOR_DEDICATED_GROUP_NAME}  `])
+  it('rewrites a rule written with extra spaces and leaves the others as they are', () => {
+    const untouched = '  DOMAIN-SUFFIX , example.com , DIRECT '
+    const profile = profileWith([
+      `  DOMAIN-SUFFIX , google.com , ${CURSOR_DEDICATED_GROUP_NAME}  `,
+      untouched
+    ])
 
     rewriteBroadCursorDedicatedRules(profile)
 
-    assert.deepEqual(profile.rules, [`DOMAIN-SUFFIX,google.com,${AUTO_SELECT_GROUP_NAME}`])
+    const [rewritten, other] = profile.rules as string[]
+    assert.deepEqual(parseRule(rewritten), {
+      head: ['DOMAIN-SUFFIX', 'google.com'],
+      policy: AUTO_SELECT_GROUP_NAME
+    })
+    assert.equal(other, untouched)
+  })
+
+  it('keeps no-resolve on a rule it sends back to 自动选择', () => {
+    const profile = profileWith([
+      `IP-CIDR,203.0.113.7/32,${CURSOR_DEDICATED_GROUP_NAME},no-resolve`,
+      'IP-CIDR,203.0.113.8/32,DIRECT,no-resolve'
+    ])
+
+    rewriteBroadCursorDedicatedRules(profile)
+
+    assert.deepEqual(profile.rules, [
+      `IP-CIDR,203.0.113.7/32,${AUTO_SELECT_GROUP_NAME},no-resolve`,
+      'IP-CIDR,203.0.113.8/32,DIRECT,no-resolve'
+    ])
   })
 })

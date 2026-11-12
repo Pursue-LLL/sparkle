@@ -1,39 +1,38 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { CURSOR_DEDICATED_GROUP_NAME, CURSOR_DEDICATED_DIRECT_PROXY, GROK_DEDICATED_GROUP_NAME, LEGACY_CURSOR_DEDICATED_GROUP_NAME, prependCursorDedicatedDirectOption } from './cursorProxyGroup'
-import { HONG_KONG_FILTER_GROUP_NAME, ensureCustomProxyGroups, resolveFailoverProxyGroup } from './customProxyGroups'
+import {
+  AGY_DEDICATED_GROUP_NAME,
+  CURSOR_DEDICATED_DIRECT_PROXY,
+  CURSOR_DEDICATED_GROUP_NAME,
+  GROK_DEDICATED_GROUP_NAME,
+  LEGACY_CURSOR_DEDICATED_GROUP_NAME,
+  MAIL_DEDICATED_GROUP_NAME,
+  MAIL_PROBE_HIDDEN_GROUP_NAME,
+  prependCursorDedicatedDirectOption
+} from './cursorProxyGroup'
+import { HONG_KONG_FILTER_GROUP_NAME, ensureCustomProxyGroups } from './customProxyGroups'
+import { groupNames, groupProxies, profileOf } from './customProxyGroupsRig'
 import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
-
-function groupNames(profile: MihomoConfig): string[] {
-  return ((profile['proxy-groups'] as { name: string }[] | undefined) ?? []).map(
-    (group) => group.name
-  )
-}
-
-function groupProxies(profile: MihomoConfig, name: string): string[] {
-  const group = ((profile['proxy-groups'] as { name: string; proxies?: string[] }[]) ?? []).find(
-    (item) => item.name === name
-  )
-  return group?.proxies ?? []
-}
+import { MAIL_PROBE_LISTENER_PORT } from './sparkleMailProviderCore'
 
 describe('customProxyGroups', () => {
   it('prependCursorDedicatedDirectOption dedupes and keeps DIRECT first', () => {
     assert.deepEqual(prependCursorDedicatedDirectOption(['KR-VPS-HY2']), [
       CURSOR_DEDICATED_DIRECT_PROXY,
-      'KR-VPS-HY2',
+      'KR-VPS-HY2'
     ])
     assert.deepEqual(prependCursorDedicatedDirectOption(['DIRECT', 'KR-VPS-HY2']), [
       CURSOR_DEDICATED_DIRECT_PROXY,
-      'KR-VPS-HY2',
+      'KR-VPS-HY2'
     ])
-    assert.deepEqual(
-      prependCursorDedicatedDirectOption(['KR-VPS-HY2', 'DIRECT', 'KR-VPS-HY2']),
-      [CURSOR_DEDICATED_DIRECT_PROXY, 'KR-VPS-HY2', 'KR-VPS-HY2'],
-    )
+    assert.deepEqual(prependCursorDedicatedDirectOption(['KR-VPS-HY2', 'DIRECT', 'KR-VPS-HY2']), [
+      CURSOR_DEDICATED_DIRECT_PROXY,
+      'KR-VPS-HY2',
+      'KR-VPS-HY2'
+    ])
   })
 
-  it('builds Cursor group from VPS leaf nodes and subscription group names', () => {
+  it('builds a provider-backed Cursor group with DIRECT and the VPS provider', () => {
     const profile = {
       'proxy-groups': [
         { name: '🚀 节点选择', type: 'select', proxies: ['SG-01', 'KR-VPS-HY2', 'TW-01'] },
@@ -43,10 +42,17 @@ describe('customProxyGroups', () => {
 
     ensureCustomProxyGroups(profile, ['SG-01', 'KR-VPS-HY2', 'TW-01', 'HK-01'], 'test-profile')
 
-    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [CURSOR_DEDICATED_DIRECT_PROXY])
-    const cursorGroup = ((profile['proxy-groups'] as { name: string; use?: string[]; filter?: string; proxies?: string[] }[]) ?? []).find(
-      (group) => group.name === CURSOR_DEDICATED_GROUP_NAME
-    )
+    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
+      CURSOR_DEDICATED_DIRECT_PROXY
+    ])
+    const cursorGroup = (
+      (profile['proxy-groups'] as {
+        name: string
+        use?: string[]
+        filter?: string
+        proxies?: string[]
+      }[]) ?? []
+    ).find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
     assert.deepEqual(cursorGroup?.use, ['test-profile-vps'])
     assert.deepEqual(cursorGroup?.proxies, [CURSOR_DEDICATED_DIRECT_PROXY])
     // 与 cursorProxyGroup 的 CURSOR_VPS_PROVIDER_FILTER 对齐（Reality 优先，HY2 次选）。
@@ -61,13 +67,15 @@ describe('customProxyGroups', () => {
 
     ensureCustomProxyGroups(profile, ['SG-01', 'JP-02'], 'test-profile')
 
-    const cursorGroup = ((profile['proxy-groups'] as { name: string; use?: string[]; filter?: string }[]) ?? []).find(
-      (group) => group.name === CURSOR_DEDICATED_GROUP_NAME
-    )
+    const cursorGroup = (
+      (profile['proxy-groups'] as { name: string; use?: string[]; filter?: string }[]) ?? []
+    ).find((group) => group.name === CURSOR_DEDICATED_GROUP_NAME)
     assert.ok(cursorGroup)
     assert.equal(cursorGroup.use, undefined)
     assert.equal(cursorGroup.filter, undefined)
-    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [CURSOR_DEDICATED_DIRECT_PROXY])
+    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
+      CURSOR_DEDICATED_DIRECT_PROXY
+    ])
     assert.ok(groupNames(profile).includes(HONG_KONG_FILTER_GROUP_NAME))
   })
 
@@ -90,51 +98,17 @@ describe('customProxyGroups', () => {
 
     ensureCustomProxyGroups(profile, ['MY-VPS-01', '香港-A', 'SG-01'], 'test-profile')
 
-    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [CURSOR_DEDICATED_DIRECT_PROXY])
+    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
+      CURSOR_DEDICATED_DIRECT_PROXY
+    ])
     const hkGroup = ((profile['proxy-groups'] as { name: string; filter?: string }[]) ?? []).find(
       (group) => group.name === HONG_KONG_FILTER_GROUP_NAME
     )
     assert.equal(hkGroup?.filter, '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong')
-    assert.equal(groupNames(profile).filter((name) => name === CURSOR_DEDICATED_GROUP_NAME).length, 1)
-  })
-
-  it('matches Hong Kong nodes with HK keyword variants', () => {
-    const profile = {
-      'proxy-groups': [{ name: '默认', type: 'select', proxies: [] }]
-    } as unknown as MihomoConfig
-
-    ensureCustomProxyGroups(profile, [
-      '香港 01',
-      'HK-Node',
-      'Hong Kong Premium',
-      'hongkong-lite',
-      'SG-01'
-    ])
-
-    const hkGroup = ((profile['proxy-groups'] as { name: string; type?: string; proxies?: string[] }[]) ?? []).find(
-      (group) => group.name === HONG_KONG_FILTER_GROUP_NAME
+    assert.equal(
+      groupNames(profile).filter((name) => name === CURSOR_DEDICATED_GROUP_NAME).length,
+      1
     )
-    assert.equal(hkGroup?.type, 'select')
-    assert.deepEqual(hkGroup?.proxies, [
-      '香港 01',
-      'HK-Node',
-      'Hong Kong Premium',
-      'hongkong-lite'
-    ])
-  })
-
-  it('builds Hong Kong provider group as url-test (auto lowest, manual pin supported)', () => {
-    const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
-
-    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
-
-    const hkGroup = ((profile['proxy-groups'] as { name: string; type?: string; url?: string; filter?: string }[]) ?? []).find(
-      (group) => group.name === HONG_KONG_FILTER_GROUP_NAME
-    )
-    assert.equal(hkGroup?.type, 'url-test')
-    // HK 组按规则路由 x.com/Stripe，探针 = x.com（它实际承载的流量）。
-    assert.equal(hkGroup?.url, 'https://x.com')
-    assert.equal(hkGroup?.filter, '香港|(?i)\\bHK\\b|hong\\s*kong|hongkong')
   })
 
   it('builds Grok group as select over the verified provider (app probe picks one)', () => {
@@ -142,12 +116,14 @@ describe('customProxyGroups', () => {
 
     ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
 
-    const grokGroup = ((profile['proxy-groups'] as {
-      name: string
-      type?: string
-      use?: string[]
-      filter?: string
-    }[]) ?? []).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
+    const grokGroup = (
+      (profile['proxy-groups'] as {
+        name: string
+        type?: string
+        use?: string[]
+        filter?: string
+      }[]) ?? []
+    ).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
 
     assert.equal(grokGroup?.type, 'select')
     assert.deepEqual(grokGroup?.use, [GROK_NODE_PROVIDER_ID])
@@ -160,11 +136,13 @@ describe('customProxyGroups', () => {
 
     ensureCustomProxyGroups(profile, ['HK-01', 'JP-01', 'HK-01', 'US-01'])
 
-    const grokGroup = ((profile['proxy-groups'] as {
-      name: string
-      type?: string
-      proxies?: string[]
-    }[]) ?? []).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
+    const grokGroup = (
+      (profile['proxy-groups'] as {
+        name: string
+        type?: string
+        proxies?: string[]
+      }[]) ?? []
+    ).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
 
     assert.equal(grokGroup?.type, 'select')
     assert.deepEqual(grokGroup?.proxies, ['HK-01', 'JP-01', 'US-01'])
@@ -179,7 +157,7 @@ describe('customProxyGroups', () => {
     assert.ok(groupNames(profile).includes(GROK_DEDICATED_GROUP_NAME))
   })
 
-  it('excludes auto-hop groups from Cursor group members', () => {
+  it('leaves subscription groups out of the inline Cursor group', () => {
     const profile = {
       'proxy-groups': [
         { name: '手动', type: 'select', proxies: ['SG-01'] },
@@ -190,45 +168,10 @@ describe('customProxyGroups', () => {
 
     ensureCustomProxyGroups(profile, ['MY-VPS-01', 'SG-01'])
 
-    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [CURSOR_DEDICATED_DIRECT_PROXY, 'MY-VPS-01'])
-  })
-
-  it('resolveFailoverProxyGroup falls back to first Selector when Cursor group is absent', () => {
-    const groups = [
-      { name: HONG_KONG_FILTER_GROUP_NAME, type: 'Selector' as const, now: 'HK-01', all: [] },
-      { name: '套餐', type: 'Selector' as const, now: 'SG-01', all: [] }
-    ] as unknown as ControllerMixedGroup[]
-
-    const target = resolveFailoverProxyGroup(groups)
-    assert.equal(target?.name, '套餐')
-  })
-
-  it('drops redundant 香港专用 wrapper and rewrites rules to 🇭🇰 香港节点', () => {
-    const profile = {
-      'proxy-groups': [
-        { name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] },
-        {
-          name: '香港专用',
-          type: 'select',
-          proxies: ['🚀 节点选择', HONG_KONG_FILTER_GROUP_NAME]
-        }
-      ],
-      rules: [
-        'DOMAIN-KEYWORD,stripe,香港专用',
-        'DOMAIN-SUFFIX,stripe.com,香港专用',
-        `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`
-      ]
-    } as unknown as MihomoConfig
-
-    ensureCustomProxyGroups(profile, ['KR-VPS-HY2', 'HK-1'], 'test-profile')
-
-    assert.ok(!groupNames(profile).includes('香港专用'))
-    assert.deepEqual(profile.rules, [
-      `DOMAIN-KEYWORD,stripe,${HONG_KONG_FILTER_GROUP_NAME}`,
-      `DOMAIN-SUFFIX,stripe.com,${HONG_KONG_FILTER_GROUP_NAME}`,
-      `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`
+    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
+      CURSOR_DEDICATED_DIRECT_PROXY,
+      'MY-VPS-01'
     ])
-    assert.ok(!groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME).includes('香港专用'))
   })
 
   it('rewrites broad GEOIP/google rules away from Cursor 专用', () => {
@@ -255,5 +198,54 @@ describe('customProxyGroups', () => {
       `DOMAIN,api2.cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
       `DOMAIN-KEYWORD,cursor,${CURSOR_DEDICATED_GROUP_NAME}`
     ])
+  })
+
+  it('puts the Sparkle groups ahead of the subscription groups in a fixed order', () => {
+    const profile = profileOf([{ name: '套餐', type: 'select', proxies: ['SG-01'] }])
+
+    ensureCustomProxyGroups(profile, ['MY-VPS-HY2', '香港-A', 'SG-01'], 'test-profile')
+
+    assert.deepEqual(groupNames(profile), [
+      CURSOR_DEDICATED_GROUP_NAME,
+      HONG_KONG_FILTER_GROUP_NAME,
+      GROK_DEDICATED_GROUP_NAME,
+      MAIL_DEDICATED_GROUP_NAME,
+      MAIL_PROBE_HIDDEN_GROUP_NAME,
+      AGY_DEDICATED_GROUP_NAME,
+      '套餐'
+    ])
+    const listeners = profile.listeners as { port: number; proxy: string }[]
+    assert.deepEqual(
+      listeners.map(({ port, proxy }) => ({ port, proxy })),
+      [{ port: MAIL_PROBE_LISTENER_PORT, proxy: MAIL_PROBE_HIDDEN_GROUP_NAME }]
+    )
+  })
+
+  it('builds the inline Cursor group from eligible VPS leaves only, sorted', () => {
+    const profile = profileOf([])
+
+    ensureCustomProxyGroups(profile, [
+      'B-VPS-HY2',
+      'A-VPS-Reality',
+      'A-VPS-Reality',
+      'KR-VPS-TLS',
+      'SG-01'
+    ])
+
+    assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
+      CURSOR_DEDICATED_DIRECT_PROXY,
+      'A-VPS-Reality',
+      'B-VPS-HY2'
+    ])
+    assert.equal(profile.listeners, undefined)
+  })
+
+  it('creates only the Cursor group while there is no node to build the others from', () => {
+    const profile = profileOf([{ name: '套餐', type: 'select', proxies: [] }])
+
+    const migrated = ensureCustomProxyGroups(profile, [])
+
+    assert.equal(migrated, false)
+    assert.deepEqual(groupNames(profile), [CURSOR_DEDICATED_GROUP_NAME, '套餐'])
   })
 })
