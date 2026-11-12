@@ -1,14 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { cleanProfile, dedupeProxyGroupProviderUse } from './runtimeConfigSanitize'
-
-type Fields = Record<string, unknown>
-
-async function clean(fields: Fields, controlDns = true, controlSniff = true): Promise<Fields> {
-  const profile = structuredClone(fields) as unknown as MihomoConfig
-  await cleanProfile(profile, controlDns, controlSniff)
-  return profile as unknown as Fields
-}
+import { dedupeProxyGroupProviderUse } from './runtimeConfigSanitize'
+import { clean, type Fields } from './runtimeConfigSanitizeHarness'
 
 async function withPlatform<T>(platform: NodeJS.Platform, run: () => Promise<T>): Promise<T> {
   const original = Object.getOwnPropertyDescriptor(process, 'platform')
@@ -112,6 +105,24 @@ describe('cleanProfile: scalar options', () => {
     assert.equal((await clean({ mode: 'global' })).mode, 'global')
   })
 
+  it('keeps string options and controller UI settings that have a value', async () => {
+    const fields = {
+      'interface-name': 'en0',
+      secret: 'token',
+      'global-client-fingerprint': 'chrome',
+      'external-controller': '127.0.0.1:9090',
+      'external-ui': 'ui',
+      'external-ui-url': 'https://example.test/ui.zip',
+      'external-controller-cors': { 'allow-origins': ['*'] }
+    }
+
+    const result = await clean(fields)
+
+    for (const [key, value] of Object.entries(fields)) {
+      assert.deepEqual(result[key], value, key)
+    }
+  })
+
   it('removes the controller UI options together with an empty controller address', async () => {
     const result = await clean({
       'external-controller': '',
@@ -184,6 +195,12 @@ describe('cleanProfile: LAN access', () => {
       'lan-allowed-ips': ['127.0.0.1/32', '10.0.0.0/8']
     })
     assert.deepEqual(withLoopback['lan-allowed-ips'], ['127.0.0.1/32', '10.0.0.0/8'])
+  })
+
+  it('keeps a populated deny list', async () => {
+    const result = await clean({ 'allow-lan': true, 'lan-disallowed-ips': ['192.168.1.1/32'] })
+
+    assert.deepEqual(result['lan-disallowed-ips'], ['192.168.1.1/32'])
   })
 
   it('drops empty allow and deny lists', async () => {
@@ -265,83 +282,6 @@ describe('cleanProfile: TUN', () => {
   })
 })
 
-describe('cleanProfile: DNS and sniffer', () => {
-  it('leaves DNS alone when the app does not control it', async () => {
-    const dns = { enable: false, nameserver: [] }
-
-    assert.deepEqual((await clean({ dns }, false)).dns, dns)
-  })
-
-  it('drops DNS settings unless DNS is enabled', async () => {
-    assert.equal('dns' in (await clean({ dns: { enable: false } })), false)
-    assert.equal('dns' in (await clean({})), false)
-  })
-
-  it('strips empty lists, empty policies and a pointless respect-rules', async () => {
-    const result = await clean({
-      dns: {
-        enable: true,
-        'fake-ip-range': [],
-        'fake-ip-range6': [],
-        'fake-ip-filter': [],
-        'proxy-server-nameserver': [],
-        'direct-nameserver': [],
-        nameserver: [],
-        'respect-rules': true,
-        'nameserver-policy': {},
-        'proxy-server-nameserver-policy': {},
-        ipv6: false
-      }
-    })
-
-    assert.deepEqual(result.dns, { enable: true, ipv6: false })
-  })
-
-  it('keeps respect-rules while a proxy server nameserver backs it', async () => {
-    const result = await clean({
-      dns: {
-        enable: true,
-        'respect-rules': true,
-        'proxy-server-nameserver': ['223.5.5.5'],
-        nameserver: ['8.8.8.8'],
-        'nameserver-policy': { 'geosite:cn': '223.5.5.5' }
-      }
-    })
-
-    assert.deepEqual(result.dns, {
-      enable: true,
-      'respect-rules': true,
-      'proxy-server-nameserver': ['223.5.5.5'],
-      nameserver: ['8.8.8.8'],
-      'nameserver-policy': { 'geosite:cn': '223.5.5.5' }
-    })
-  })
-
-  it('drops respect-rules when no proxy server nameserver is configured at all', async () => {
-    const result = await clean({
-      dns: { enable: true, 'respect-rules': true, nameserver: ['8.8.8.8'] }
-    })
-
-    assert.deepEqual(result.dns, { enable: true, nameserver: ['8.8.8.8'] })
-  })
-
-  it('drops respect-rules when it is switched off', async () => {
-    const result = await clean({
-      dns: { enable: true, 'respect-rules': false, 'proxy-server-nameserver': ['223.5.5.5'] }
-    })
-
-    assert.equal('respect-rules' in (result.dns as Fields), false)
-  })
-
-  it('treats the sniffer like DNS: only an enabled one is kept, and only when controlled', async () => {
-    assert.equal('sniffer' in (await clean({ sniffer: { enable: false } })), false)
-    assert.deepEqual((await clean({ sniffer: { enable: true } })).sniffer, { enable: true })
-    assert.deepEqual((await clean({ sniffer: { enable: false } }, true, false)).sniffer, {
-      enable: false
-    })
-  })
-})
-
 describe('cleanProfile: proxies and providers', () => {
   it('drops empty proxy lists, rule lists and provider tables', async () => {
     const result = await clean({
@@ -388,6 +328,16 @@ describe('dedupeProxyGroupProviderUse', () => {
       (profile['proxy-groups'] as unknown as { use?: string[] }[]).map((group) => group.use),
       [['p1', 'p2', 'p3'], undefined, ['p1']]
     )
+  })
+
+  it('leaves a group whose use is not a list as it is', () => {
+    const profile = {
+      'proxy-groups': [{ name: 'a', type: 'select', use: 'p1' }]
+    } as unknown as MihomoConfig
+
+    dedupeProxyGroupProviderUse(profile)
+
+    assert.deepEqual(profile['proxy-groups'], [{ name: 'a', type: 'select', use: 'p1' }])
   })
 
   it('does nothing for a profile without proxy groups', () => {

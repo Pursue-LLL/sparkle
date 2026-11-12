@@ -33,7 +33,7 @@ export function dedupeProxyGroupProviderUse(profile: MihomoConfig): void {
   const groups = profile['proxy-groups'] as ProxyGroupConfig[] | undefined
   if (!groups) return
   for (const group of groups) {
-    if (group.use && Array.isArray(group.use)) {
+    if (Array.isArray(group.use)) {
       group.use = [...new Set(group.use)]
     }
   }
@@ -197,7 +197,7 @@ function cleanDnsConfig(profile: MihomoConfig, controlDns: boolean): void {
   })
 
   // 内核在 respect-rules 开启而 proxy-server-nameserver 为空 / 缺失时会拒绝加载整份配置，因此一并去掉。
-  const hasProxyServerNameserver = (dnsConfig['proxy-server-nameserver']?.length ?? 0) > 0
+  const hasProxyServerNameserver = Boolean(dnsConfig['proxy-server-nameserver']?.length)
   if (dnsConfig['respect-rules'] === false || !hasProxyServerNameserver) {
     delete dnsConfig['respect-rules']
   }

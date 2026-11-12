@@ -22,14 +22,13 @@ function isCursorDedicatedTrafficRule(parts: string[]): boolean {
   const payload = parts[1]?.toLowerCase() ?? ''
 
   if (ruleType === 'DOMAIN') {
-    return CURSOR_RULE_HOST_MARKERS.some(
-      (marker) => payload === marker || payload.endsWith(`.${marker}`) || payload.includes(marker)
-    )
+    return CURSOR_RULE_HOST_MARKERS.some((marker) => payload.includes(marker))
   }
 
+  // 后缀规则两个方向都算：订阅里写得更宽（如 `sh`）的后缀同样会把 Cursor 流量吞进去。
   if (ruleType === 'DOMAIN-SUFFIX') {
     return CURSOR_RULE_HOST_MARKERS.some(
-      (marker) => payload === marker || payload.endsWith(marker) || marker.endsWith(payload)
+      (marker) => payload.endsWith(marker) || marker.endsWith(payload)
     )
   }
 

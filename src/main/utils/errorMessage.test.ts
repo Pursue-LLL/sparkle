@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import vm from 'node:vm'
 import { describeError } from './errorMessage'
 
 describe('describeError', () => {
   it('reads the message of an Error', () => {
     assert.equal(describeError(new Error('boom')), 'boom')
+  })
+
+  it('reads the message of an Error created in another realm', () => {
+    const foreign = vm.runInNewContext('new Error("from the sandbox")') as unknown
+
+    assert.equal(foreign instanceof Error, false)
+    assert.equal(describeError(foreign), 'from the sandbox')
   })
 
   it('reads the message of a controller rejection object', () => {

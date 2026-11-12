@@ -31,7 +31,7 @@ export function isPermissionError(error: unknown): boolean {
   if (!error || typeof error !== 'object') {
     return false
   }
-  const code = 'code' in error ? error.code : undefined
+  const { code } = error as { code?: unknown }
   return code === 'EACCES' || code === 'EPERM'
 }
 

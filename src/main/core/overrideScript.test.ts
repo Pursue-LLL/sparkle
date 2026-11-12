@@ -154,6 +154,17 @@ describe('runOverrideScript: script environment', () => {
     assert.equal(result.hasFetch, 'function')
   })
 
+  it('encodes binary buffers byte for byte', async () => {
+    const result = await run(
+      `function main(config) {
+        config.encoded = b64e(Buffer.from([255, 254, 0]))
+        return config
+      }`
+    )
+
+    assert.equal(result.encoded, '//4A')
+  })
+
   it('does not hand the script the Node module system, process or timers', async () => {
     const result = await run(
       `function main(config) {

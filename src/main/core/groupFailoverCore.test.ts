@@ -4,6 +4,7 @@ import {
   CANDIDATE_MAX_SAMPLE_AGE_MS,
   DIAL_FAILURE_DEDUPE_MS,
   DIAL_FAILURE_WINDOW_MS,
+  FAILOVER_HOLD_MS,
   parseDialFailureGroup,
   planFailover,
   recordDialFailure,
@@ -68,6 +69,16 @@ describe('parseDialFailureGroup', () => {
     ]) {
       assert.equal(parseDialFailureGroup({ payload }), undefined, String(payload))
     }
+  })
+})
+
+describe('failover policy values', () => {
+  // 这些数值写在 _ARCH.md 与缺陷台账里，并被 verify:failover 的节奏依赖；改动必须连同文档一起改。
+  it('keeps the documented timings', () => {
+    assert.equal(DIAL_FAILURE_DEDUPE_MS, 30_000)
+    assert.equal(DIAL_FAILURE_WINDOW_MS, 180_000)
+    assert.equal(FAILOVER_HOLD_MS, 10 * 60_000)
+    assert.equal(CANDIDATE_MAX_SAMPLE_AGE_MS, 15 * 60_000)
   })
 })
 
@@ -193,6 +204,24 @@ describe('planFailover', () => {
       kind: 'skip',
       reason: 'no-candidate',
       badLeaf: 'A'
+    })
+  })
+
+  it('accepts a sample exactly at the freshness bound and rejects one millisecond older', () => {
+    const decide = (sampledAgoMs: number): string =>
+      planFailover(group({ members: [leaf('A', 120), leaf('B', 200, sampledAgoMs)] }), context())
+        .kind
+    assert.equal(decide(15 * 60_000), 'switch')
+    assert.equal(decide(15 * 60_000 + 1), 'skip')
+  })
+
+  it('keeps the first of several equally fast candidates', () => {
+    const members = [leaf('A', 120), leaf('B', 90), leaf('C', 90), leaf('D', 90)]
+    assert.deepEqual(planFailover(group({ members }), context()), {
+      kind: 'switch',
+      badLeaf: 'A',
+      target: 'B',
+      targetDelay: 90
     })
   })
 
