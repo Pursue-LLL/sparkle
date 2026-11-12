@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import fsPromises from 'node:fs/promises'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, after, before, beforeEach, describe, it, mock } from 'node:test'
@@ -209,9 +209,10 @@ describe('editable profile files', () => {
     it('writes into the work directory when the profile work directory setting was never configured', async () => {
       state.diffWorkDir = undefined
 
-      await files.setFileStr('rules.yaml', 'work')
+      await files.setFileStr('unset-setting.yaml', 'work')
 
-      assert.equal(readFileSync(path.join(workDir, 'rules.yaml'), 'utf8'), 'work')
+      assert.equal(readFileSync(path.join(workDir, 'unset-setting.yaml'), 'utf8'), 'work')
+      assert.equal(existsSync(path.join(profileDir, 'unset-setting.yaml')), false)
     })
 
     it('rethrows errors that are not about permissions', async () => {
@@ -281,8 +282,11 @@ describe('editable profile files', () => {
 
     it('skips the repair when the process has no user id to hand the file back to', async () => {
       failWrites = [permissionError('EACCES')]
-      const getuidSpy = mock.method(process, 'getuid', (() => undefined) as unknown as () => number)
-      restorers.push(() => getuidSpy.mock.restore())
+      const originalGetuid = process.getuid
+      process.getuid = (() => undefined) as unknown as typeof process.getuid
+      restorers.push(() => {
+        process.getuid = originalGetuid
+      })
 
       await files.saveFileStrWithElevation('rules.yaml', 'retried')
 

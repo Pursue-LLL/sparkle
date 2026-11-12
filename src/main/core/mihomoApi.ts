@@ -196,8 +196,11 @@ export const mihomoGroups = async (): Promise<ControllerMixedGroup[]> => {
     }
   }
   if (mode === 'global') {
+    // GLOBAL 被隐藏时找不到（-1），splice(-1) 会把最后一个无关的组挪到最前面
     const global = groups.findIndex((group) => group.name === 'GLOBAL')
-    groups.unshift(groups.splice(global, 1)[0])
+    if (global > 0) {
+      groups.unshift(groups.splice(global, 1)[0])
+    }
   }
   return groups
 }

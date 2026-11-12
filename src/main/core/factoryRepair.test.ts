@@ -46,6 +46,27 @@ describe('factory: repairing what the subscription gets wrong', () => {
       )
     })
 
+    it('names the one group that lost members', async () => {
+      state.profile = subscription({
+        'proxy-groups': [
+          { name: GROUP, type: 'select', proxies: ['台湾 01', '日本 01', 'DIRECT'] },
+          {
+            name: '备用',
+            type: 'fallback',
+            url: 'https://example.com',
+            interval: 300,
+            proxies: ['台湾 01', '已下架节点']
+          }
+        ]
+      })
+
+      await rig.generate()
+
+      assert.ok(
+        state.logs.includes('[Factory]: dropped unknown group members: 备用->[已下架节点]\n')
+      )
+    })
+
     it('says nothing about dropped members when there were none', async () => {
       await rig.generate()
 
@@ -78,6 +99,21 @@ describe('factory: repairing what the subscription gets wrong', () => {
       })
 
       assert.deepEqual(groupOf(await rig.generate(), '重复')?.use, ['p1'])
+    })
+
+    it('lists each provider once per group, also when the nodes stay inline', async () => {
+      state.current = 'default'
+      state.profile = subscription({
+        'proxy-providers': {
+          extra: { type: 'http', url: 'https://example.com/extra', path: './extra.yaml' }
+        },
+        'proxy-groups': [
+          { name: GROUP, type: 'select', proxies: ['DIRECT'] },
+          { name: '重复', type: 'fallback', url: 'https://example.com', use: ['extra', 'extra'] }
+        ]
+      })
+
+      assert.deepEqual(groupOf(await rig.generate(), '重复')?.use, ['extra'])
     })
 
     it('drops groups that did not come from the subscription', async () => {
