@@ -137,6 +137,34 @@ describe('runtime config sync: sync', () => {
     assert.deepEqual(h.events, ['live'])
   })
 
+  it('reloads once per config change, not on every later sync', async () => {
+    const h = createHarness(configWith(RULES_A), RULES_A.length)
+    assert.equal(await h.sync(), false)
+
+    h.behavior.runtime = configWith(RULES_B)
+    assert.equal(await h.sync(), true)
+    h.events.length = 0
+
+    assert.equal(await h.sync(), false)
+    assert.deepEqual(h.events, ['live'])
+  })
+
+  it('counts a config without rules as zero rules', async () => {
+    const h = createHarness({} as unknown as MihomoConfig, 0)
+
+    assert.equal(await h.sync(), false)
+    assert.deepEqual(h.events, ['live'])
+  })
+
+  it('reports an empty kernel as zero rules rather than unknown', async () => {
+    const h = createHarness(configWith(RULES_A), 0)
+
+    assert.equal(await h.sync(), true)
+    assert.deepEqual(h.logs, [
+      '[RuntimeConfigSync]: reloaded reason=live-rule-count-mismatch rules=0->3\n'
+    ])
+  })
+
   it('reloads without comparing when forced, even though disk and kernel agree', async () => {
     const h = createHarness(configWith(RULES_A), RULES_A.length)
 

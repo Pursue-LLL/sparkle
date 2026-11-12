@@ -22,10 +22,23 @@ afterEach(() => {
 })
 
 describe('isPublicIpv4', () => {
-  it('accepts public addresses', () => {
-    assert.equal(isPublicIpv4('203.0.113.10'), true)
-    assert.equal(isPublicIpv4('172.15.0.1'), true)
-    assert.equal(isPublicIpv4('198.17.0.1'), true)
+  it('accepts public addresses, including the neighbours of every reserved range', () => {
+    for (const ip of [
+      '203.0.113.10',
+      '172.15.0.1',
+      '172.32.0.1',
+      '198.17.0.1',
+      '198.20.0.1',
+      '192.0.2.1',
+      '192.169.1.1',
+      '1.168.1.1',
+      '169.1.1.1',
+      '1.254.1.1',
+      '223.255.255.254',
+      '1.255.255.255'
+    ]) {
+      assert.equal(isPublicIpv4(ip), true, ip)
+    }
   })
 
   it('rejects private, loopback, link-local, benchmark, reserved and malformed addresses', () => {
@@ -42,6 +55,8 @@ describe('isPublicIpv4', () => {
       '224.0.0.1',
       '255.255.255.255',
       '256.1.1.1',
+      '1.256.1.1',
+      '1.1.1.256',
       '1.2.3',
       'example.com'
     ]) {
@@ -224,6 +239,21 @@ describe('ensureVpsDirectBypass', () => {
     assert.deepEqual(profile.rules, before)
   })
 
+  it('does not mistake a source-address rule for the destination DIRECT rule', async () => {
+    const profile = profileOf({ rules: ['SRC-IP-CIDR,203.0.113.10/32,DIRECT', 'MATCH,PROXY'] })
+
+    await ensureVpsDirectBypass(profile, [
+      { name: 'KR-VPS-Reality', server: '203.0.113.10', type: 'vless' }
+    ])
+
+    assert.deepEqual(profile.rules, [
+      ...ALIAS_RULES,
+      directRule('203.0.113.10'),
+      'SRC-IP-CIDR,203.0.113.10/32,DIRECT',
+      'MATCH,PROXY'
+    ])
+  })
+
   it('ignores commented-out and non-matching rules when checking for duplicates', async () => {
     const [alias] = VPS_SSH_HOST_ALIASES
     const profile = profileOf({
@@ -300,10 +330,13 @@ describe('ensureVpsDirectBypass', () => {
   })
 
   it('does not touch a profile that already has every rule and nothing new to add', async () => {
-    const profile = profileOf({ rules: [...ALIAS_RULES, 'MATCH,PROXY'] })
+    const rules = [...ALIAS_RULES, 'MATCH,PROXY']
+    const profile = profileOf({ rules, tun: { enable: true }, sniffer: { enable: true } })
 
     await ensureVpsDirectBypass(profile, [])
 
-    assert.deepEqual(profile.rules, [...ALIAS_RULES, 'MATCH,PROXY'])
+    assert.equal(profile.rules, rules)
+    assert.equal('route-exclude-address' in (profile.tun ?? {}), false)
+    assert.equal('skip-dst-address' in (profile.sniffer ?? {}), false)
   })
 })

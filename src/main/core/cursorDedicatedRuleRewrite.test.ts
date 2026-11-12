@@ -107,6 +107,36 @@ describe('rewriteBroadCursorDedicatedRules', () => {
     ])
   })
 
+  it('matches suffix rules in both directions but not by a mere shared prefix', () => {
+    const suffixRule = (payload: string): string =>
+      `DOMAIN-SUFFIX,${payload},${CURSOR_DEDICATED_GROUP_NAME}`
+    const kept = ['cursor.sh', 'api2.cursor.sh', 'sh'].map(suffixRule)
+    const sentBack = ['cursor.sh.evil.example', 'cursora'].map(suffixRule)
+    const profile = profileWith([...kept, ...sentBack])
+
+    rewriteBroadCursorDedicatedRules(profile)
+
+    assert.deepEqual(profile.rules, [
+      ...kept,
+      `DOMAIN-SUFFIX,cursor.sh.evil.example,${AUTO_SELECT_GROUP_NAME}`,
+      `DOMAIN-SUFFIX,cursora,${AUTO_SELECT_GROUP_NAME}`
+    ])
+  })
+
+  it('recognises Cursor traffic only in domain rules', () => {
+    const profile = profileWith([
+      `PROCESS-NAME,Cursor Helper,${CURSOR_DEDICATED_GROUP_NAME}`,
+      `IP-CIDR,203.0.113.7/32,${CURSOR_DEDICATED_GROUP_NAME}`
+    ])
+
+    rewriteBroadCursorDedicatedRules(profile)
+
+    assert.deepEqual(profile.rules, [
+      `PROCESS-NAME,Cursor Helper,${AUTO_SELECT_GROUP_NAME}`,
+      `IP-CIDR,203.0.113.7/32,${AUTO_SELECT_GROUP_NAME}`
+    ])
+  })
+
   it('only touches rules whose policy is the Cursor group', () => {
     const rules = [
       'DOMAIN-SUFFIX,google.com,🚀 节点选择',

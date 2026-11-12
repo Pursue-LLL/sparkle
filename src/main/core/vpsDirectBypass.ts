@@ -111,34 +111,25 @@ function buildDomainDirectRule(host: string): string {
   return `DOMAIN,${host},DIRECT,no-resolve`
 }
 
+/** 注释行的首段以 `#` 开头，不可能等于规则类型，因此无需单独跳过。 */
+function ruleTypeAndTarget(entry: string): [type: string, target: string] {
+  const [type, target = ''] = entry.split(',').map((part) => part.trim())
+  return [type, target]
+}
+
 function hasDirectRuleForDomain(rules: string[], host: string): boolean {
   const normalized = host.trim().toLowerCase()
   return rules.some((entry) => {
-    const trimmed = entry.trim()
-    if (!trimmed || trimmed.startsWith('#')) {
-      return false
-    }
-    const parts = trimmed.split(',')
-    if (parts[0]?.trim() !== 'DOMAIN') {
-      return false
-    }
-    return (parts[1]?.trim() ?? '').toLowerCase() === normalized
+    const [type, target] = ruleTypeAndTarget(entry)
+    return type === 'DOMAIN' && target.toLowerCase() === normalized
   })
 }
 
+/** 任意掩码长度的同 IP 规则都算已覆盖，避免重复前置。 */
 function hasDirectRuleForIp(rules: string[], ip: string): boolean {
-  const cidr = `${ip}/32`
   return rules.some((entry) => {
-    const trimmed = entry.trim()
-    if (!trimmed || trimmed.startsWith('#')) {
-      return false
-    }
-    const parts = trimmed.split(',')
-    if (parts[0]?.trim() !== 'IP-CIDR') {
-      return false
-    }
-    const target = parts[1]?.trim() ?? ''
-    return target === cidr || target.startsWith(`${ip}/`)
+    const [type, target] = ruleTypeAndTarget(entry)
+    return type === 'IP-CIDR' && target.startsWith(`${ip}/`)
   })
 }
 

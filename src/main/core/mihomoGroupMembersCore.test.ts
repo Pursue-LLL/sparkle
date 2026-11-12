@@ -170,4 +170,39 @@ describe('mihomoGroupMembersCore', () => {
 
     assert.deepEqual([...lookup.keys()], ['HK-01'])
   })
+
+  it('resolveGroupMemberProxies describes a member the controller does not know as a live, history-less node', () => {
+    const [ghost] = resolveGroupMemberProxies(['ghost'], {}, new Map())
+
+    assert.deepEqual(ghost, {
+      name: 'ghost',
+      type: 'Unknown',
+      alive: true,
+      history: [],
+      extra: {},
+      id: 'ghost',
+      tfo: false,
+      udp: true,
+      xudp: false,
+      mptcp: false,
+      smux: false,
+      uot: false,
+      'dialer-proxy': '',
+      interface: '',
+      'routing-mark': 0
+    })
+  })
+
+  it('resolveGroupMemberProxies trusts /proxies over the provider copy of the same name', () => {
+    const fromDict = { name: 'TW-I0', type: 'Vless', alive: true, history: [], extra: {} }
+    const fromProvider = { name: 'TW-I0', type: 'Hysteria2', alive: false, history: [], extra: {} }
+
+    const [resolved] = resolveGroupMemberProxies(
+      ['TW-I0'],
+      { 'TW-I0': fromDict as unknown as ControllerProxiesDetail },
+      new Map([['TW-I0', fromProvider as unknown as ControllerProxiesDetail]])
+    )
+
+    assert.equal(resolved, fromDict)
+  })
 })
