@@ -4,7 +4,12 @@
 // I/O（切组 + 调 magpie）由调用方注入，便于用假探针验证「不可用不下结论 / 致命错误中止 / 预算超时」等分支。
 
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import type { AgyNodeProbeRecord, AgyProbeVerdict, AgyProxyRecord } from './sparkleAgyProviderCore'
+import {
+  agyProxyName,
+  type AgyNodeProbeRecord,
+  type AgyProbeVerdict,
+  type AgyProxyRecord
+} from './sparkleAgyProviderCore'
 
 export interface AgyAuditOutcome {
   verdict: AgyProbeVerdict
@@ -90,7 +95,7 @@ export async function runAgyAudit(
       return { probed, usable, aborted: true, usableNode }
     }
 
-    const name = String(proxy.name ?? '').trim()
+    const name = agyProxyName(proxy)
     input.attempted?.set(computeProxyNodeFingerprint(proxy), now())
     const outcome = await deps.probeNode(name)
     if (outcome.fatal) {

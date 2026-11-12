@@ -20,6 +20,7 @@ import { recordAgyAttempt } from './sparkleAgyProbeSnapshot'
 import {
   AGY_NODE_PROVIDER_FILENAME,
   AGY_NODE_PROVIDER_ID,
+  agyProxyName,
   buildSparkleAgyProviderDocument,
   classifyAgyProbeResponse,
   type AgyNodeProbeCache,
@@ -31,8 +32,7 @@ import type { AgyAuditOutcome } from './sparkleAgyProbeCore'
 async function currentAgySelection(): Promise<string | null> {
   try {
     const detail = await mihomoGroupDetail(AGY_DEDICATED_GROUP_NAME)
-    const now = String(detail?.now ?? '').trim()
-    return now.length > 0 ? now : null
+    return String(detail?.now ?? '').trim() || null
   } catch {
     return null
   }
@@ -104,7 +104,7 @@ export async function probeSingleNode(node: string, timeoutMs: number): Promise<
 
 /** provider 文档里的节点一定有名字：没有名字的节点在生成文档时就被排除了。 */
 function providerNames(documentProxies: readonly AgyProxyRecord[]): string[] {
-  return documentProxies.map((proxy) => String(proxy.name ?? '').trim())
+  return documentProxies.map(agyProxyName)
 }
 
 function sameMemberSet(left: readonly string[], right: readonly string[]): boolean {

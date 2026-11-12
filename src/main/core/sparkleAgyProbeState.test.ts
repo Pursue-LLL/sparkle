@@ -75,6 +75,20 @@ describe('sparkleAgyProbe 跨轮状态：恢复与退避', () => {
     assert.deepEqual(emptyRoundLogs(), ['1', '1'])
   })
 
+  it('修复成功就清零空轮计数：紧接着再全灭，也从第 1 轮计', async () => {
+    await exhaustOnce()
+    mock.timers.tick(31 * MINUTE_MS)
+    world.defaultOutcome = { kind: 'ok' }
+    outcomesByNode({ '台湾-1': LOCATION })
+    await runBootstrap(agy())
+    assert.equal(logCount('repaired pin'), 1)
+
+    mock.timers.tick(31 * MINUTE_MS)
+    await exhaustOnce()
+
+    assert.deepEqual(emptyRoundLogs(), ['1', '1'])
+  })
+
   it('修复扫描全灭后再次修复，会重新记一次「repair start」', async () => {
     await exhaustOnce()
     mock.timers.tick(31 * MINUTE_MS)
