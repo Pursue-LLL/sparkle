@@ -123,17 +123,18 @@ describe('customProxyGroups · 香港组', () => {
     assert.deepEqual(profile.rules, rules)
   })
 
-  it('keeps no-resolve when it moves rules off a dropped wrapper group', () => {
+  it('keeps no-resolve, and moves the catch-all too, when rules leave a dropped wrapper group', () => {
     const profile = profileOf(
       [{ name: '香港专用', type: 'select', proxies: [HONG_KONG_FILTER_GROUP_NAME] }],
-      ['IP-CIDR,1.2.3.4/32,香港专用,no-resolve', 'DOMAIN-KEYWORD,香港专用,套餐']
+      ['IP-CIDR,1.2.3.4/32,香港专用,no-resolve', 'DOMAIN-KEYWORD,香港专用,套餐', 'MATCH,香港专用']
     )
 
     ensureCustomProxyGroups(profile, ['HK-01'], 'test-profile')
 
     assert.deepEqual(profile.rules, [
       `IP-CIDR,1.2.3.4/32,${HONG_KONG_FILTER_GROUP_NAME},no-resolve`,
-      'DOMAIN-KEYWORD,香港专用,套餐'
+      'DOMAIN-KEYWORD,香港专用,套餐',
+      `MATCH,${HONG_KONG_FILTER_GROUP_NAME}`
     ])
   })
 })

@@ -39,6 +39,11 @@ describe('parseRule', () => {
     })
   })
 
+  it('reads the policy of a MATCH rule, which has no payload', () => {
+    assert.deepEqual(parseRule('MATCH,Proxy'), { head: ['MATCH'], policy: 'Proxy' })
+    assert.deepEqual(parseRule('  match , Proxy ,no-resolve'), { head: ['match'], policy: 'Proxy' })
+  })
+
   it('reports a trailing comma as an empty policy', () => {
     assert.deepEqual(parseRule('DOMAIN,a.com,'), { head: ['DOMAIN', 'a.com'], policy: '' })
   })
@@ -49,7 +54,8 @@ describe('parseRule', () => {
       '   ',
       '# DOMAIN,a.com,Proxy',
       '  # DOMAIN,a.com,Proxy',
-      'MATCH,Proxy',
+      'MATCH',
+      'MATCH,no-resolve',
       'DOMAIN,a.com',
       'DOMAIN,a.com,no-resolve',
       'no-resolve'
@@ -65,6 +71,7 @@ describe('rewriteRulePolicies', () => {
       'DOMAIN,a.com,Old',
       'IP-CIDR, 1.1.1.1/32 , Old , no-resolve',
       'AND,((DOMAIN,a.com),(NETWORK,UDP)),Old',
+      ' MATCH , Old ',
       'DOMAIN,b.com,Other'
     )
 
@@ -74,6 +81,7 @@ describe('rewriteRulePolicies', () => {
       'DOMAIN,a.com,New',
       'IP-CIDR, 1.1.1.1/32 ,New, no-resolve',
       'AND,((DOMAIN,a.com),(NETWORK,UDP)),New',
+      'MATCH ,New',
       'DOMAIN,b.com,Other'
     ])
   })
@@ -101,13 +109,7 @@ describe('rewriteRulePolicies', () => {
   })
 
   it('does not ask about blank, comment, incomplete or policy-less rules', () => {
-    const rules = [
-      '',
-      '# DOMAIN,a.com,Old',
-      'MATCH,Old',
-      'DOMAIN,a.com,',
-      'DOMAIN,a.com,no-resolve'
-    ]
+    const rules = ['', '# DOMAIN,a.com,Old', 'MATCH', 'DOMAIN,a.com,', 'DOMAIN,a.com,no-resolve']
     const profile = profileWithRules(...rules)
     let asked = 0
 
