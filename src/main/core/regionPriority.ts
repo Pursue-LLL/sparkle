@@ -156,10 +156,6 @@ function keywordMatchesNode(nodeName: string, keyword: string): boolean {
     return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, 'i').test(lowerNode)
   }
 
-  if (/[\u{1F1E6}-\u{1F1FF}]/u.test(keyword)) {
-    return nodeName.includes(keyword)
-  }
-
   return lowerNode.includes(lowerKeyword)
 }
 

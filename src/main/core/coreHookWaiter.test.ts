@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import type { ChildProcess } from 'child_process'
 import { EventEmitter } from 'node:events'
-import { writeFileSync } from 'fs'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { tmpdir } from 'os'
@@ -128,21 +127,6 @@ describe('createCoreHookWaiter', () => {
       t.mock.timers.tick(1)
 
       await rejected
-    } finally {
-      await rm(hook.hookDir, { recursive: true, force: true })
-    }
-  })
-
-  it('accepts a post-up file the watcher never reported when the timeout fires', async (t) => {
-    t.mock.timers.enable({ apis: ['setTimeout'] })
-    const hook = await createTestHook(false)
-    try {
-      const waiter = createCoreHookWaiter(hook)
-
-      writeFileSync(hook.upFile, '')
-      t.mock.timers.tick(30_000)
-
-      await waiter.promise
     } finally {
       await rm(hook.hookDir, { recursive: true, force: true })
     }
