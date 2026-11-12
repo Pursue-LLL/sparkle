@@ -243,7 +243,7 @@ export function registerIpcMainHandlers(): void {
   )
   ipcMain.handle('getSparkleGrokProbeSnapshot', () =>
     ipcErrorWrapper(async () => {
-      const { getSparkleGrokProbeSnapshot } = await import('../core/sparkleGrokProbe')
+      const { getSparkleGrokProbeSnapshot } = await import('../core/sparkleGrokProbeSnapshot')
       return getSparkleGrokProbeSnapshot()
     })()
   )
