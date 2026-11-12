@@ -85,9 +85,6 @@ async function convertMrsRuleToText(path: string): Promise<string> {
   for (const output of Object.values(result.outputs)) {
     text += text ? `\n${output}` : output
   }
-  if (!text) {
-    return ''
-  }
   return text
 }
 
