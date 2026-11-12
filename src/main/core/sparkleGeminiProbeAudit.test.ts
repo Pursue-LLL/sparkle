@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it, mock } from 'node:test'
 import {
   assertLog,
+  AUDIT_INTERVAL_MS,
   cacheKey,
   cacheRecord,
   callsStarting,
@@ -10,6 +11,7 @@ import {
   readProviderOrder,
   settle,
   tickAudit,
+  UNUSABLE_PROFILES,
   useGeminiRig,
   world,
   writeCache
@@ -31,6 +33,18 @@ describe('sparkleGeminiProbe rebuildAndReloadSparkleFastProvider', () => {
     assert.equal(readProviderOrder(), undefined)
     assert.deepEqual(world.calls, [])
   })
+
+  for (const [label, apply] of UNUSABLE_PROFILES) {
+    it(`writes nothing when the ${label}`, async () => {
+      apply()
+
+      await gemini().rebuildAndReloadSparkleFastProvider()
+
+      assert.equal(readProviderOrder(), undefined)
+      assert.deepEqual(world.calls, [])
+      assert.deepEqual(world.logs, [])
+    })
+  }
 
   it('writes the nodes in region priority order and tells mihomo to reload', async () => {
     await gemini().rebuildAndReloadSparkleFastProvider()
@@ -109,6 +123,7 @@ describe('sparkleGeminiProbe audit', () => {
     await gemini().bootstrapSparkleGeminiRegionAudit()
 
     assert.deepEqual(callsStarting('lock:'), [])
+    assert.equal(world.profileReads, 0, 'nothing to match against, so the profile stays unread')
   })
 
   it('probes only the live nodes that have no verdict yet', async () => {
@@ -134,6 +149,17 @@ describe('sparkleGeminiProbe audit', () => {
     await gemini().bootstrapSparkleGeminiRegionAudit()
 
     assert.deepEqual(callsStarting('lock:'), [])
+  })
+
+  it('leaves the nodes that were already rejected alone, whichever way the verdict is stored', async () => {
+    world.leaves = [leaf('台湾-1', true), leaf('日本-1', true)]
+    writeCache({ [cacheKey(TW1)]: cacheRecord(false), '日本-1': cacheRecord(false, 'CN') })
+
+    await gemini().bootstrapSparkleGeminiRegionAudit()
+
+    assert.deepEqual(callsStarting('lock:'), [])
+    assert.deepEqual(callsStarting('update:'), [])
+    assert.ok(!world.logs.some((line) => line.includes('audit finished')))
   })
 
   it('rebuilds the provider once for the whole batch when some nodes are rejected', async () => {
@@ -214,6 +240,19 @@ describe('sparkleGeminiProbe audit loop', () => {
 
     await tickAudit()
 
+    assert.deepEqual(callsStarting('lock:'), ['lock:台湾-1'])
+  })
+
+  it('waits out the full half hour before the first round', async () => {
+    world.leaves = [leaf('台湾-1', true)]
+    gemini().startSparkleGeminiRegionAuditLoop()
+
+    mock.timers.tick(AUDIT_INTERVAL_MS - 1)
+    await settle()
+    assert.deepEqual(callsStarting('lock:'), [])
+
+    mock.timers.tick(1)
+    await settle()
     assert.deepEqual(callsStarting('lock:'), ['lock:台湾-1'])
   })
 

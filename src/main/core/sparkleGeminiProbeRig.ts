@@ -17,7 +17,7 @@ import type * as GeminiProbe from './sparkleGeminiProbe'
 
 export const NOW = 1_700_000_000_000
 export const HOUR_MS = 60 * 60 * 1000
-const AUDIT_INTERVAL_MS = 30 * 60 * 1000
+export const AUDIT_INTERVAL_MS = 30 * 60 * 1000
 const CACHE_FILENAME = 'sparkle-gemini-nodes.json'
 
 export type Proxy = Record<string, unknown>
@@ -57,6 +57,7 @@ export interface ProbeVerdict {
 export const world = {
   profile: { current: 'p1' } as { current?: string },
   profileError: false,
+  profileReads: 0,
   profileProxies: NODES as Proxy[],
   appConfig: {} as { proxySwitchPriority?: string[] },
   verdictOf: (_node: string): ProbeVerdict => ({ definitive: false, eligible: true }),
@@ -75,6 +76,7 @@ export const world = {
 function resetWorld(): void {
   world.profile = { current: 'p1' }
   world.profileError = false
+  world.profileReads = 0
   world.profileProxies = NODES
   world.appConfig = {}
   world.verdictOf = () => ({ definitive: false, eligible: true })
@@ -89,6 +91,28 @@ function resetWorld(): void {
   world.calls = []
   world.logs = []
 }
+
+/** 读不到当前订阅节点的几种情形：配置读取失败、选中默认配置、没有选中订阅。 */
+export const UNUSABLE_PROFILES: ReadonlyArray<readonly [label: string, apply: () => void]> = [
+  [
+    'config cannot be read',
+    () => {
+      world.profileError = true
+    }
+  ],
+  [
+    'selected one is the default',
+    () => {
+      world.profile = { current: 'default' }
+    }
+  ],
+  [
+    'selected one is missing',
+    () => {
+      world.profile = {}
+    }
+  ]
+]
 
 /** 整个测试进程共用一个临时根目录，进程结束时清理；用例之间各自重建 data/profiles 子目录。 */
 const root = mkdtempSync(path.join(tmpdir(), 'sparkle-gemini-probe-'))
@@ -182,6 +206,7 @@ function installMocks(): void {
     exports: {
       getAppConfig: async () => world.appConfig,
       getProfileConfig: async () => {
+        world.profileReads += 1
         if (world.profileError) {
           throw new Error('profile config unreadable')
         }

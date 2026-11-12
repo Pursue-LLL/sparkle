@@ -66,10 +66,6 @@ export async function applyCursorDedicatedVpsSelection(
     return false
   }
 
-  if (current === targetNode) {
-    return false
-  }
-
   if (!shouldApplyCursorDedicatedDefault(current)) {
     return false
   }

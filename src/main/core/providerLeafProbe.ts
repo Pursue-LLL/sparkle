@@ -15,11 +15,18 @@ const PROBE_CONCURRENCY = 4
 const VERIFY_BUDGET_MS = 150_000
 const INLINE_GROUP_VEHICLE_TYPE = 'Compatible'
 
-async function probeLeaves(providerName: string, names: readonly string[], deadlineMs: number): Promise<void> {
+/** 返回实际发起探测的节点数：超过 deadline 之后才轮到的节点不再探测，也不计入。 */
+async function probeLeaves(
+  providerName: string,
+  names: readonly string[],
+  deadlineMs: number
+): Promise<number> {
+  let attempted = 0
   await mapWithConcurrency(names, PROBE_CONCURRENCY, async (name) => {
     if (Date.now() >= deadlineMs) {
       return
     }
+    attempted += 1
     await mihomoProviderLeafDelay(
       providerName,
       name,
@@ -27,22 +34,22 @@ async function probeLeaves(providerName: string, names: readonly string[], deadl
       AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS
     )
   })
+  return attempted
 }
 
 /** 逐点探测整个 provider（代替 provider 级并发体检）；返回探测的节点数。 */
 export async function probeProviderLeavesGently(providerName: string): Promise<number> {
   const leaves = (await mihomoProxyProviders()).providers[providerName]?.proxies ?? []
-  await probeLeaves(
+  return probeLeaves(
     providerName,
     leaves.map((leaf) => leaf.name),
     Number.POSITIVE_INFINITY
   )
-  return leaves.length
 }
 
 /**
  * 复测所有非内联组 provider 里最近一次样本不是成功的节点（超时 / 不稳定 / 未测）。
- * 结果由 mihomo 写入各节点 history，界面随之更新；返回复测的节点数。
+ * 结果由 mihomo 写入各节点 history，界面随之更新；返回实际发起复测的节点数（预算耗尽后未轮到的不计）。
  */
 export async function verifyUnconfirmedFailures(): Promise<number> {
   const deadlineMs = Date.now() + VERIFY_BUDGET_MS
@@ -53,8 +60,7 @@ export async function verifyUnconfirmedFailures(): Promise<number> {
       continue
     }
     const names = listUnconfirmedLeafNames(provider.proxies ?? [], AUTO_SELECT_GEMINI_PROBE_URL)
-    await probeLeaves(providerName, names, deadlineMs)
-    probed += names.length
+    probed += await probeLeaves(providerName, names, deadlineMs)
   }
   await appendAppLog(`[ProviderLeafProbe]: verified unconfirmed failures probed=${probed}\n`)
   return probed
