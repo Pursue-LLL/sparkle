@@ -13,6 +13,7 @@ import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
 import { flush } from './groupFailoverEngineHarness'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { FAST_NODE_PROVIDER_FILENAME, FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { mockFsPromisesSync } from './syncFsPromisesRig'
 import type * as GeminiProbe from './sparkleGeminiProbe'
 
 export const NOW = 1_700_000_000_000
@@ -182,16 +183,7 @@ function installMocks(): void {
     return
   }
   mocksInstalled = true
-  // 文件读写换成同步实现：周期巡检是后台任务，没有 promise 可等，
-  // 同步实现让它的每一步都在微任务里完成，推进时钟后让出一轮事件循环即可确定它已结束。
-  mock.module('fs/promises', {
-    exports: {
-      readFile: async (file: string, encoding: BufferEncoding): Promise<string> =>
-        readFileSync(file, encoding),
-      writeFile: async (file: string, data: string, encoding: BufferEncoding): Promise<void> =>
-        writeFileSync(file, data, encoding)
-    }
-  })
+  mockFsPromisesSync()
   mock.module('../utils/dirs', {
     exports: { dataDir: () => dirs.data, profilesDir: () => dirs.profiles }
   })

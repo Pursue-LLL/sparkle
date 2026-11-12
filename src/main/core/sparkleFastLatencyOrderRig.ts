@@ -13,6 +13,7 @@ import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
 import { flush } from './groupFailoverEngineHarness'
 import { serializeSparkleFastDelaySnapshot } from './sparkleFastDelaySnapshotCore'
 import { FAST_NODE_PROVIDER_FILENAME, FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { mockFsPromisesSync } from './syncFsPromisesRig'
 import type * as FastOrder from './sparkleFastLatencyOrder'
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
@@ -123,16 +124,7 @@ export function assertLog(fragment: string): void {
 }
 
 function installMocks(): void {
-  // 文件读写换成同步实现：周期复查是后台任务，没有 promise 可等，
-  // 同步实现让它的每一步都在微任务里完成，推进时钟后让出一轮事件循环即可确定它已结束。
-  mock.module('fs/promises', {
-    exports: {
-      readFile: async (file: string, encoding: BufferEncoding): Promise<string> =>
-        readFileSync(file, encoding),
-      writeFile: async (file: string, data: string, encoding: BufferEncoding): Promise<void> =>
-        writeFileSync(file, data, encoding)
-    }
-  })
+  mockFsPromisesSync()
   mock.module('../utils/dirs', {
     exports: { dataDir: () => dirs.data, profilesDir: () => dirs.profiles }
   })

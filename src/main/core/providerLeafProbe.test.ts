@@ -178,19 +178,26 @@ describe('providerLeafProbe', () => {
       ])
     })
 
-    it('stops probing once its time budget is spent and counts only what it probed', async () => {
-      mock.timers.enable({ apis: ['Date'], now: NOW })
-      world.providers = { slow: { vehicleType: 'HTTP', proxies: manyLeaves(8) } }
-      // 第一个探测一发出，预算就耗尽：排在后面还没开始的节点都不再探测
-      world.onProbe = () => mock.timers.tick(151_000)
+    // 每个探测一发出，时钟就前进 elapsedMs。预算 150 s 一用完（含恰好用完），还没开始的节点就不再探测；
+    // 差 1 ms 没用完时，第二个节点还能探测，第三个起已经超出。
+    for (const [elapsedMs, expectedProbes] of [
+      [151_000, 1],
+      [150_000, 1],
+      [149_999, 2]
+    ] as const) {
+      it(`stops probing once ${elapsedMs} ms of the time budget are spent and counts only what it probed`, async () => {
+        mock.timers.enable({ apis: ['Date'], now: NOW })
+        world.providers = { slow: { vehicleType: 'HTTP', proxies: manyLeaves(8) } }
+        world.onProbe = () => mock.timers.tick(elapsedMs)
 
-      const probed = await probe.verifyUnconfirmedFailures()
+        const probed = await probe.verifyUnconfirmedFailures()
 
-      assert.equal(world.probes.length, 1)
-      assert.equal(probed, 1)
-      assert.deepEqual(world.logs, [
-        '[ProviderLeafProbe]: verified unconfirmed failures probed=1\n'
-      ])
-    })
+        assert.equal(world.probes.length, expectedProbes)
+        assert.equal(probed, expectedProbes)
+        assert.deepEqual(world.logs, [
+          `[ProviderLeafProbe]: verified unconfirmed failures probed=${expectedProbes}\n`
+        ])
+      })
+    }
   })
 })
