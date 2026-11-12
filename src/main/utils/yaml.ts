@@ -75,11 +75,6 @@ function addYamlTagsToProxiesShortId(yamlContent: string): string {
         return line
       }
       if (proxyIndent === null) return line
-      if (indent <= proxyIndent) {
-        proxyIndent = null
-        realityIndent = null
-        return line
-      }
 
       if (trimmed.startsWith('reality-opts:')) {
         realityIndent = indent
