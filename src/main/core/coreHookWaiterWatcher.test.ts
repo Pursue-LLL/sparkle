@@ -97,6 +97,18 @@ describe('createCoreHookWaiter with a scripted directory watcher', () => {
     assert.equal(world.watcher?.closed, true)
   })
 
+  it('accepts a post-up file that no event reported once the timeout fires', async () => {
+    const { promise } = loadModule().createCoreHookWaiter(target)
+
+    world.upFileExists = true
+    assert.equal(await isPending(promise), true, 'without an event nothing notices the file yet')
+
+    mock.timers.tick(30_000)
+
+    assert.equal(await isPending(promise), false)
+    assert.equal(world.watcher?.closed, true)
+  })
+
   it('completes on the event that names the post-up file', async () => {
     const { promise } = loadModule().createCoreHookWaiter(target)
 
