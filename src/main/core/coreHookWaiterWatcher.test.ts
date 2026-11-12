@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import type { ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, it, mock } from 'node:test'
 import { setImmediate as settle } from 'node:timers/promises'
@@ -107,6 +108,18 @@ describe('createCoreHookWaiter with a scripted directory watcher', () => {
 
     assert.equal(await isPending(promise), false)
     assert.equal(world.watcher?.closed, true)
+  })
+
+  it('stops listening to the core once the post-up file is ready', async () => {
+    const { promise, attachProcess } = loadModule().createCoreHookWaiter(target)
+    const core = new EventEmitter() as ChildProcess
+    attachProcess(core)
+    assert.equal(core.listenerCount('close'), 1)
+
+    world.listener?.('rename', target.upFileName)
+    await promise
+
+    assert.equal(core.listenerCount('close'), 0)
   })
 
   it('completes on the event that names the post-up file', async () => {

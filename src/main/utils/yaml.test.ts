@@ -47,12 +47,32 @@ describe('parseYaml', () => {
     assert.equal(shortIdOf(withRealityShortId('12345678 # from the panel')), '12345678')
   })
 
-  it('leaves null-like, already tagged and inline-collection short-id values alone', () => {
+  it('leaves null-like, already tagged and inline-collection short-id values alone', (t) => {
+    // 给内联集合硬加 !!str 标签，yaml 库会发出 TAG_RESOLVE_FAILED 警告
+    const warnings = t.mock.method(process, 'emitWarning', () => undefined)
+
     assert.equal(shortIdOf(withRealityShortId('null')), null)
+    assert.equal(shortIdOf(withRealityShortId('NULL')), null)
     assert.equal(shortIdOf(withRealityShortId('~')), null)
     assert.equal(shortIdOf(withRealityShortId('!!str 123')), '123')
     assert.deepEqual(shortIdOf(withRealityShortId('[a, b]')), ['a', 'b'])
     assert.deepEqual(shortIdOf(withRealityShortId('{ k: v }')), { k: 'v' })
+
+    assert.equal(warnings.mock.callCount(), 0)
+  })
+
+  it('leaves a short-id line without a value alone', () => {
+    assert.equal(shortIdOf(withRealityShortId('')), null)
+    assert.equal(shortIdOf(withRealityShortId('# nothing yet')), null)
+  })
+
+  it('does not choke on a flow-style reality-opts', () => {
+    const content = 'proxies:\n  - name: a\n    reality-opts: { public-key: pk, short-id: abcd }\n'
+
+    assert.deepEqual(parseYaml<{ proxies: RealityNode[] }>(content).proxies[0]['reality-opts'], {
+      'public-key': 'pk',
+      'short-id': 'abcd'
+    })
   })
 
   it('only rewrites short-id inside reality-opts of a top-level proxies list', () => {
