@@ -24,9 +24,6 @@ export const TIER0_DIRECT_CN_SUFFIXES = [
 
 const FAKE_IP_DIRECT_CIDR_TARGETS = ['198.18.0.0/16', '198.19.0.0/16'] as const
 
-/** Mihomo fake-ip-filter cannot safely represent single-label public suffixes. */
-const TLD_ONLY_SUFFIX = /^\.[a-z0-9-]{2,63}$/i
-
 const DOMAIN_PATTERN = /\bDOMAIN,([^,)]+)/g
 const DOMAIN_SUFFIX_PATTERN = /\bDOMAIN-SUFFIX,([^,)]+)/g
 
@@ -37,26 +34,19 @@ function isDirectIntentTarget(target: string): boolean {
   return /直连|全球拦截/.test(target)
 }
 
-function isTldOnlySuffix(payload: string): boolean {
-  return TLD_ONLY_SUFFIX.test(payload.trim())
-}
-
+/** 标签个数；mihomo 的 fake-ip-filter 无法安全表达单标签后缀（`.cn` 这类），调用方要求至少两个。 */
 function suffixLabelDepth(payload: string): number {
-  const trimmed = payload.trim().replace(/^\./, '')
-  if (!trimmed) {
-    return 0
-  }
-  return trimmed.split('.').filter(Boolean).length
+  return payload.trim().replace(/^\./, '').split('.').filter(Boolean).length
 }
 
 function toFakeIpFilterEntry(kind: 'DOMAIN' | 'DOMAIN-SUFFIX', payload: string): string | null {
   const trimmed = payload.trim()
-  if (!trimmed || trimmed === '.') {
+  if (!trimmed) {
     return null
   }
 
   if (kind === 'DOMAIN-SUFFIX') {
-    if (isTldOnlySuffix(trimmed) || suffixLabelDepth(trimmed) < 2) {
+    if (suffixLabelDepth(trimmed) < 2) {
       return null
     }
     if (trimmed.startsWith('.')) {
@@ -243,18 +233,16 @@ export function ensureFakeIpRoutingIntegrity(profile: MihomoConfig): {
   }
 
   const dns = profile.dns as MihomoDNSConfig
-  dns['fake-ip-filter'] = buildTieredFakeIpFilter({
+  const filter = buildTieredFakeIpFilter({
     existing: dns['fake-ip-filter'],
     rules: profile.rules as string[] | undefined,
     includeTier1: false
   })
+  dns['fake-ip-filter'] = filter
 
   if (profile.sniffer?.enable !== false) {
     profile.sniffer = applySnifferIntegrityPatch(profile.sniffer as MihomoSnifferConfig | undefined)
   }
 
-  return {
-    removedFakeIpCidrRules,
-    fakeIpFilterCount: dns['fake-ip-filter']?.length ?? 0
-  }
+  return { removedFakeIpCidrRules, fakeIpFilterCount: filter.length }
 }
