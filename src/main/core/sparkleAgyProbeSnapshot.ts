@@ -5,6 +5,7 @@
 
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import {
+  agyProxyName,
   buildAgyProbeSnapshot,
   type AgyNodeProbeRecord,
   type AgyProxyRecord
@@ -44,7 +45,7 @@ export function syncAgyProbeSnapshot(
   // 已确认锁区（400 location）的节点：有记录就展示真实结论，而不是笼统的"未测"。
   const subscribed = new Set<string>()
   for (const proxy of proxies) {
-    const name = String(proxy.name ?? '').trim()
+    const name = agyProxyName(proxy)
     if (!name) {
       continue
     }

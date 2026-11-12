@@ -55,13 +55,14 @@ export interface AgyProxyGroupShape {
   use?: string[]
 }
 
-function proxyName(proxy: AgyProxyRecord): string {
+/** 节点名：订阅里的名字去掉首尾空白；没有名字时为空串。 */
+export function agyProxyName(proxy: AgyProxyRecord): string {
   return String(proxy.name ?? '').trim()
 }
 
 /** 单个节点是否可能进 agy 池：命名有效、非 AnyTLS、非香港（香港不在 Antigravity 地区可用表内）。 */
 export function isEligibleAgyNode(proxy: AgyProxyRecord): boolean {
-  const name = proxyName(proxy)
+  const name = agyProxyName(proxy)
   if (!name || isAnyTlsProxyType(String(proxy.type ?? ''))) {
     return false
   }
@@ -79,7 +80,7 @@ export function collectEligibleAgyProxies(proxies: readonly AgyProxyRecord[]): A
     if (!isEligibleAgyNode(proxy)) {
       continue
     }
-    const name = proxyName(proxy)
+    const name = agyProxyName(proxy)
     if (seen.has(name)) {
       continue
     }
@@ -102,7 +103,7 @@ function orderByRegion(
   const take = (matches: (name: string) => boolean): void => {
     const sampled: AgyProxyRecord[] = []
     for (const proxy of candidates) {
-      const name = proxyName(proxy)
+      const name = agyProxyName(proxy)
       if (!name || included.has(name) || !matches(name)) {
         continue
       }
@@ -201,7 +202,7 @@ function orderWithinRegions(
   const buckets: AgyProxyRecord[][] = regionPriority.map(() => [])
   const rest: AgyProxyRecord[] = []
   for (const proxy of candidates) {
-    const name = proxyName(proxy)
+    const name = agyProxyName(proxy)
     const regionIndex = regionPriority.findIndex((region) => nodeMatchesRegion(name, region))
     if (regionIndex >= 0) {
       buckets[regionIndex]!.push(proxy)
@@ -266,7 +267,7 @@ export function buildAgyProbeSnapshot(
 ): Record<string, { rttMs: number; checkedAt: number }> {
   const snapshot: Record<string, { rttMs: number; checkedAt: number }> = {}
   for (const proxy of proxies) {
-    const name = proxyName(proxy)
+    const name = agyProxyName(proxy)
     const record = probeCache?.get(computeProxyNodeFingerprint(proxy))
     if (name && record?.usable === true) {
       snapshot[name] = { rttMs: record.rttMs, checkedAt: record.checkedAt }

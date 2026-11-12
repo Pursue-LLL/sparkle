@@ -76,8 +76,17 @@ function markRepairAttempt(proxy: GrokProxyRecord): void {
   grokRepairAttempts.set(computeProxyNodeFingerprint(proxy), Date.now())
 }
 
-function resolveRepairBackoffMs(emptyRounds: number): number {
-  return RECHECK_INTERVAL_MS * Math.min(emptyRounds, 3)
+function resetRepairBackoff(): void {
+  consecutiveEmptyRounds = 0
+  repairSkipUntilMs = 0
+}
+
+/** 记一个全灭轮次并拉长下一次修复的间隔（1×、2×、3× 封顶），返回这次的退避时长。 */
+function extendRepairBackoff(): number {
+  consecutiveEmptyRounds += 1
+  const backoffMs = RECHECK_INTERVAL_MS * Math.min(consecutiveEmptyRounds, 3)
+  repairSkipUntilMs = Date.now() + backoffMs
+  return backoffMs
 }
 
 /** 切换并做真实请求验证；只有 routed 通过才写入 alive。 */
@@ -153,11 +162,8 @@ async function discoverWorking(
   return (await switchGrokNode(first)) ? first : null
 }
 
-interface GrokSelectionResult {
-  selected: string | null
-  /** 本轮是否真的跑了修复/发现扫描；退避跳过的轮次不参与空轮计数。 */
-  scanned: boolean
-}
+/** 选路结果：选中了节点；或没选中，并说明本轮是否真的跑了修复/发现扫描（退避跳过的轮次不参与空轮计数）。 */
+type GrokSelectionResult = { selected: string } | { selected: null; scanned: boolean }
 
 /** 稳态：真实请求复核当前节点；失败才按池内顺序找下一个；池内全灭才重新发现。 */
 async function ensureGrokSelection(
@@ -167,9 +173,7 @@ async function ensureGrokSelection(
   deadline: number
 ): Promise<GrokSelectionResult> {
   const current = await currentGrokNode()
-  const currentProxy = current
-    ? proxies.find((proxy) => grokProxyName(proxy) === current)
-    : undefined
+  const currentProxy = proxies.find((proxy) => grokProxyName(proxy) === current)
   if (currentProxy) {
     let check = await requestGrokViaRoute(mixedPort)
     // 网络超时是瞬时的：同一节点再给一次机会，避免因为一次抖动就断连接、换节点。
@@ -181,7 +185,7 @@ async function ensureGrokSelection(
     }
     if (check.ok) {
       recordRouted(cache, currentProxy, check)
-      return { selected: current, scanned: false }
+      return { selected: grokProxyName(currentProxy) }
     }
     recordRoutedFailure(cache, currentProxy, check)
     await appendAppLog(
@@ -213,11 +217,12 @@ async function ensureGrokSelection(
     }
     probed += 1
     if (await tryNode(proxy, mixedPort, cache)) {
-      return { selected: name, scanned: true }
+      return { selected: name }
     }
   }
 
-  return { selected: await discoverWorking(proxies, cache, mixedPort, deadline), scanned: true }
+  const discovered = await discoverWorking(proxies, cache, mixedPort, deadline)
+  return discovered ? { selected: discovered } : { selected: null, scanned: true }
 }
 
 export async function bootstrapSparkleGrokProvider(): Promise<void> {
@@ -249,11 +254,9 @@ export async function bootstrapSparkleGrokProvider(): Promise<void> {
       await saveSparkleGrokProbeCache(cache)
       syncGrokProbeSnapshot(proxies, cache)
       if (selected) {
-        consecutiveEmptyRounds = 0
-        repairSkipUntilMs = 0
+        resetRepairBackoff()
       } else {
-        consecutiveEmptyRounds += 1
-        repairSkipUntilMs = Date.now() + resolveRepairBackoffMs(consecutiveEmptyRounds)
+        extendRepairBackoff()
         await appendAppLog(
           `[SparkleGrokProbe]: WARN discovery found nothing (empty_rounds=${consecutiveEmptyRounds})\n`
         )
@@ -265,18 +268,16 @@ export async function bootstrapSparkleGrokProvider(): Promise<void> {
     await writeGrokProviderFromCache(proxies, cache)
     await ensureGrokProviderReloaded()
 
-    const { selected, scanned } = await ensureGrokSelection(proxies, cache, mixedPort, deadline)
+    const result = await ensureGrokSelection(proxies, cache, mixedPort, deadline)
     await saveSparkleGrokProbeCache(cache)
     syncGrokProbeSnapshot(proxies, cache)
-    if (selected) {
-      consecutiveEmptyRounds = 0
-      repairSkipUntilMs = 0
-      await appendAppLog(`[SparkleGrokProbe]: selected=${selected}\n`)
-    } else if (scanned) {
-      consecutiveEmptyRounds += 1
-      repairSkipUntilMs = Date.now() + resolveRepairBackoffMs(consecutiveEmptyRounds)
+    if (result.selected !== null) {
+      resetRepairBackoff()
+      await appendAppLog(`[SparkleGrokProbe]: selected=${result.selected}\n`)
+    } else if (result.scanned) {
+      const backoffMs = extendRepairBackoff()
       await appendAppLog(
-        `[SparkleGrokProbe]: WARN no usable node (empty_rounds=${consecutiveEmptyRounds} next_repair_in=${Math.round(resolveRepairBackoffMs(consecutiveEmptyRounds) / 1000)}s)\n`
+        `[SparkleGrokProbe]: WARN no usable node (empty_rounds=${consecutiveEmptyRounds} next_repair_in=${Math.round(backoffMs / 1000)}s)\n`
       )
     } else {
       await appendAppLog(

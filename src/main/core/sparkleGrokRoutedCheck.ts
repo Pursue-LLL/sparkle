@@ -18,15 +18,10 @@ export interface RoutedCheckResult {
   reason?: string
 }
 
+/** mihomo 的 mixed-port；缺省、读不到或不是数字时为 NaN —— 调用方只把大于 0 的值当作可用端口。 */
 export async function resolveMixedPort(): Promise<number> {
-  try {
-    const config = await getControledMihomoConfig()
-    // 缺省 / 非数字（NaN）与 0（未开启）都不大于 0，统一按「没有 mixed-port」处理。
-    const mixedPort = Number((config as Record<string, unknown>)['mixed-port'])
-    return mixedPort > 0 ? mixedPort : 0
-  } catch {
-    return 0
-  }
+  const config = await getControledMihomoConfig().catch(() => undefined)
+  return Number(config?.['mixed-port'])
 }
 
 /**
@@ -47,14 +42,17 @@ export async function requestGrokViaRoute(mixedPort: number): Promise<RoutedChec
       validateStatus: () => true,
       headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html,application/xhtml+xml' }
     })
-    const mitigated = String((res.headers as Record<string, unknown>)?.['cf-mitigated'] ?? '')
+    const mitigated = String((res.headers as Record<string, unknown>)?.['cf-mitigated'] || '')
     const ok = isGrokRoutedResponseUsable(res.status, mitigated)
-    return {
-      ok,
-      status: res.status,
-      rttMs: Date.now() - startedAt,
-      reason: ok ? undefined : `HTTP ${res.status}${mitigated ? ` cf-mitigated=${mitigated}` : ''}`
-    }
+    const rttMs = Date.now() - startedAt
+    return ok
+      ? { ok, status: res.status, rttMs }
+      : {
+          ok,
+          status: res.status,
+          rttMs,
+          reason: `HTTP ${res.status}${mitigated ? ` cf-mitigated=${mitigated}` : ''}`
+        }
   } catch (error) {
     return {
       ok: false,

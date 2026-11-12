@@ -22,6 +22,7 @@ import {
 } from './sparkleAgyProbeCore'
 import { syncAgyProbeSnapshot } from './sparkleAgyProbeSnapshot'
 import {
+  agyProxyName,
   orderAgyRepairProxies,
   type AgyNodeProbeRecord,
   type AgyProbeVerdict,
@@ -118,9 +119,7 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
     }
 
     const pinName = String(group.now ?? '').trim() || null
-    const pinProxy = pinName
-      ? proxies.find((proxy) => String(proxy.name ?? '').trim() === pinName)
-      : undefined
+    const pinProxy = proxies.find((proxy) => agyProxyName(proxy) === pinName)
 
     // ① pin 就地复测：不切组、不关连接、不影响正在进行的会话。
     // 400 可能是账号轮转造成的：同节点再确认一次，两次都 400 才认定节点被拒；
@@ -195,7 +194,7 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
       MAX_PROBES_PER_REPAIR,
       Date.now(),
       agyRepairAttempts
-    ).filter((proxy) => String(proxy.name ?? '').trim() !== pinName)
+    ).filter((proxy) => agyProxyName(proxy) !== pinName)
     const audit = await runAgyAudit(
       {
         pending: candidates,

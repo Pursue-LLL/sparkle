@@ -77,6 +77,17 @@ describe('sparkleGrokProbe：池内延迟刷新', () => {
     assert.deepEqual(world.members, ['日本-1', '台湾-1'])
   })
 
+  it('最小的有效延迟（1 毫秒）算通过，0 才算没通过', async () => {
+    seedHealthyPool()
+    world.groupDelays = { '日本-1': 100, '美国-1': 1, '台湾-1': 0 }
+
+    await runBootstrap(grok())
+
+    const cache = readCache()
+    assert.deepEqual([cache[cacheKey(US1)].alive, cache[cacheKey(US1)].rttMs], [true, 1])
+    assert.equal(cache[cacheKey(TW1)].alive, false)
+  })
+
   it('每 5 分钟刷新一次：差 1 毫秒不刷，到点才刷', async () => {
     seedHealthyPool()
     world.groupDelays = POOL_DELAYS

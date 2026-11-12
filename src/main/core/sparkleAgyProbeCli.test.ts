@@ -277,6 +277,19 @@ describe('sparkleAgyProbe probe directory', () => {
       assertNoLog('error=')
     })
 
+    it('starts no agy before the cleanup has finished, even for concurrent requests', async () => {
+      arrange()
+      add('old.db', 25 * HOUR_MS)
+      const stillThere: boolean[] = []
+      world.onSpawn = () => {
+        stillThere.push(existsSync(path.join(conversations(), 'old.db')))
+      }
+
+      await Promise.all([agyCli().requestNativeAgy(90_000), agyCli().requestNativeAgy(90_000)])
+
+      assert.deepEqual(stillThere, [false, false])
+    })
+
     it('only cleans up once per process', async () => {
       arrange()
       await runBootstrap(agy())

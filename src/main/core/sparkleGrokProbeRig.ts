@@ -1,5 +1,5 @@
 // [INPUT] node:test 假时钟与模块替身 · sparkleGrokProbe 及其子模块（被测，每个用例重新加载）· 临时目录里的真实数据 / provider 文件 · 假的 axios · sparkleGrokProbeWorld
-// [OUTPUT] useGrokRig · snapshot · 文件读写辅助 · runBootstrap/settle/advance/setNow · 重导出 sparkleGrokProbeWorld 的全部夹具
+// [OUTPUT] useGrokRig · snapshot/loadCache/routedCheck · 文件读写辅助 · runBootstrap/settle/advance/setNow · 重导出 sparkleGrokProbeWorld 的全部夹具
 // [POS] sparkleGrokProbe 行为测试夹具：配置、mihomo 控制器与日志用替身，grok.com 请求用可编排结局的假 axios，
 // 探测缓存与 provider 文件走临时目录里的真实文件。仅供测试使用。
 
@@ -12,6 +12,7 @@ import { flush } from './groupFailoverEngineHarness'
 import type * as GrokProbe from './sparkleGrokProbe'
 import type * as GrokCache from './sparkleGrokProbeCache'
 import type * as GrokSnapshot from './sparkleGrokProbeSnapshot'
+import type * as GrokRoutedCheck from './sparkleGrokRoutedCheck'
 import {
   JP1,
   NOW,
@@ -278,6 +279,11 @@ export function snapshot(): GrokProbeSnapshot {
   return (
     require('./sparkleGrokProbeSnapshot') as typeof GrokSnapshot
   ).getSparkleGrokProbeSnapshot()
+}
+
+/** 本用例里的真实请求模块（探针的最底层，可直接驱动）。 */
+export function routedCheck(): typeof GrokRoutedCheck {
+  return require('./sparkleGrokRoutedCheck') as typeof GrokRoutedCheck
 }
 
 /** 经本用例里的缓存模块读磁盘上的探测缓存。 */

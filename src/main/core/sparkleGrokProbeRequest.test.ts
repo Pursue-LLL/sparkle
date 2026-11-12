@@ -22,6 +22,7 @@ import {
   networkFailure,
   ok,
   readCache,
+  routedCheck,
   runBootstrap,
   setNow,
   settle,
@@ -133,6 +134,37 @@ describe('sparkleGrokProbe：可用性判定', () => {
       assert.equal(record.rttMs, alive ? 5 : 0)
     })
   }
+})
+
+describe('sparkleGrokProbe：单次请求的结果', () => {
+  useGrokRig()
+
+  it('可用：只有状态与耗时，没有失败原因', async () => {
+    const result = await routedCheck().requestGrokViaRoute(7890)
+
+    assert.deepEqual(result, { ok: true, status: 200, rttMs: 5 })
+  })
+
+  it('不可用：带上状态、耗时与失败原因', async () => {
+    world.defaultRouted = challenge(7)
+
+    const result = await routedCheck().requestGrokViaRoute(7890)
+
+    assert.deepEqual(result, {
+      ok: false,
+      status: 403,
+      rttMs: 7,
+      reason: 'HTTP 403 cf-mitigated=challenge'
+    })
+  })
+
+  it('网络错误：状态为 0，耗时照实记录，原因取自错误信息', async () => {
+    world.defaultRouted = networkFailure('socket hang up', 30)
+
+    const result = await routedCheck().requestGrokViaRoute(0)
+
+    assert.deepEqual(result, { ok: false, status: 0, rttMs: 30, reason: 'socket hang up' })
+  })
 })
 
 describe('sparkleGrokProbe：读取探测缓存', () => {
