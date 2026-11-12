@@ -285,17 +285,19 @@ describe('factory: runtime config pipeline', () => {
         proxies: [
           proxy('A'),
           { type: 'ss', server: 'nameless.example.com', port: 1 },
+          { name: '', type: 'ss', server: 'empty.example.com', port: 1 },
           { name: '  ', type: 'ss', server: 'blank.example.com', port: 1 },
           { name: 5, type: 'ss', server: 'numeric.example.com', port: 1 },
           { name: '无类型', server: 'untyped.example.com', port: 1 }
         ],
-        'proxy-groups': [{ name: GROUP, type: 'select', proxies: ['A', '无类型', 'DIRECT'] }]
+        'proxy-groups': [{ name: GROUP, type: 'select', proxies: ['A', '无类型', '', 'DIRECT'] }]
       })
 
       const members = groupOf(await rig.generate(), GROUP)?.proxies as string[]
 
       assert.ok(members.includes('A'))
       assert.ok(members.includes('无类型'))
+      assert.equal(members.includes(''), false, 'a node without a name is not a member to keep')
     })
   })
 
