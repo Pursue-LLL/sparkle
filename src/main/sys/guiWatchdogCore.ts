@@ -48,11 +48,7 @@ export function shouldOpenFastCrashStreakFuse(streak: number): boolean {
   return streak >= GUI_WATCHDOG_FAST_CRASH_STREAK_LIMIT
 }
 
-export function countRecentCrashRestarts(
-  lines: string[],
-  nowMs: number,
-  windowMs: number,
-): number {
+export function countRecentCrashRestarts(lines: string[], nowMs: number, windowMs: number): number {
   const cutoff = nowMs - windowMs
   let count = 0
   for (const line of lines) {

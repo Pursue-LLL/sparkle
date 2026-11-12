@@ -1,14 +1,6 @@
+/** 只看有没有订阅条目（`- id:` 行）：空文件、`items: []`、`items:` 都没有条目。 */
 export function isBlankProfileConfigRaw(raw: string): boolean {
-  // Lazy import avoided — parse minimal YAML shape without pulling electron deps in tests.
-  if (!raw.trim()) {
-    return true
-  }
-  const hasItemLine = /^\s*-\s+id:/m.test(raw)
-  const emptyItems = /^\s*items:\s*\[\s*\]\s*$/m.test(raw) || /^\s*items:\s*$/m.test(raw)
-  if (emptyItems && !hasItemLine) {
-    return true
-  }
-  return !hasItemLine
+  return !/^\s*-\s+id:/m.test(raw)
 }
 
 export function isEmptyPersistableProfileConfig(config: ProfileConfig): boolean {

@@ -141,3 +141,33 @@ describe('regionPriority: regions outside the default five', () => {
     assert.equal(buildRegionProviderFilter('Germany'), undefined)
   })
 })
+
+describe('regionPriority: priority list fallback and node name matching details', () => {
+  it('falls back to a fresh copy of the defaults when nothing survives the filter', () => {
+    const fallback = normalizeRegionPriority(['香港', 'Hong Kong'])
+
+    assert.deepEqual(fallback, [...DEFAULT_REGION_PRIORITY])
+    fallback.pop()
+    assert.deepEqual(normalizeRegionPriority([]), [...DEFAULT_REGION_PRIORITY])
+  })
+
+  it('reads the headline up to the first pipe, trimmed, even when the name has no pipe', () => {
+    assert.equal(nodeMatchesRegion('专线 日本', '日本'), true)
+    assert.equal(nodeMatchesRegion('  日本 | 专线', '日本'), true)
+    assert.equal(nodeMatchesRegion('|日本节点', '日本'), false)
+  })
+
+  it('matches long Latin names and flags anywhere in the headline, case-insensitively', () => {
+    assert.equal(nodeMatchesRegion('Japan01', '日本'), true)
+    assert.equal(nodeMatchesRegion('SINGAPORE-node', '新加坡'), true)
+    assert.equal(nodeMatchesRegion('United States 01', '美国'), true)
+    assert.equal(nodeMatchesRegion('🇯🇵 01', '日本'), true)
+  })
+
+  it('keeps short Latin codes from matching inside longer words or glued digits', () => {
+    assert.equal(nodeMatchesRegion('JP01', '日本'), false)
+    assert.equal(nodeMatchesRegion('jp-01', '日本'), true)
+    assert.equal(nodeMatchesRegion('node us', '美国'), true)
+    assert.equal(nodeMatchesRegion('usage', '美国'), false)
+  })
+})

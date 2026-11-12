@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import {
   buildCrashLedgerLine,
@@ -7,7 +9,9 @@ import {
   guiCrashLedgerPath,
   guiDownHandledMarkerPath,
   guiWatchdogScriptPath,
+  GUI_WATCHDOG_FAST_CRASH_STREAK_LIMIT,
   GUI_WATCHDOG_FUSE_WINDOW_MS,
+  GUI_WATCHDOG_MAX_RESTARTS,
   launchAgentPlistPath,
   shouldDisableGuiAutoRelaunchOnMacOs26,
   shouldOpenFastCrashStreakFuse
@@ -137,5 +141,15 @@ describe('guiWatchdogCore', () => {
 
   it('uses 5-minute fuse window constant', () => {
     assert.equal(GUI_WATCHDOG_FUSE_WINDOW_MS, 300_000)
+  })
+
+  it('mirrors the limits of the shell watchdog that enforces them', () => {
+    const script = readFileSync(join(__dirname, '../../../scripts/sparkle-gui-watchdog.sh'), 'utf8')
+    const shellNumber = (name: string): number =>
+      Number(script.match(new RegExp(`^${name}=(\\d+)$`, 'm'))?.[1])
+
+    assert.equal(GUI_WATCHDOG_MAX_RESTARTS, shellNumber('MAX_RESTARTS'))
+    assert.equal(GUI_WATCHDOG_FUSE_WINDOW_MS, shellNumber('WINDOW_SEC') * 1000)
+    assert.equal(GUI_WATCHDOG_FAST_CRASH_STREAK_LIMIT, shellNumber('FAST_CRASH_STREAK_LIMIT'))
   })
 })

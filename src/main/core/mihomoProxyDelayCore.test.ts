@@ -63,6 +63,14 @@ describe('mihomoProxyDelayCore', () => {
       assert.equal(resolveProviderNameForLeaf(providers, 'JP-01'), 'first')
     })
 
+    it('has no answer for a blank name even when a provider lists an unnamed node', () => {
+      const unnamed = {
+        providers: { odd: { proxies: [{ name: '' }] } }
+      } as unknown as ControllerProxyProviders
+
+      assert.equal(resolveProviderNameForLeaf(unnamed, '  '), undefined)
+    })
+
     it('has no answer for a blank name, an unknown node or missing providers', () => {
       assert.equal(resolveProviderNameForLeaf(providers, '   '), undefined)
       assert.equal(resolveProviderNameForLeaf(providers, 'US-01'), undefined)

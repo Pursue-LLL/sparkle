@@ -57,7 +57,7 @@ const EXTRA_COUNTRY_PATTERNS: readonly string[] = [
   '沙特',
   '卡塔尔',
   '埃及',
-  '南非',
+  '南非'
 ] as const
 
 /** `自动选择` 的 provider filter：只命中国家/地区节点（香港与信息占位节点不命中）。 */
@@ -223,11 +223,8 @@ export function nodeMatchesRegion(nodeName: string, region: string): boolean {
   const explicitRegion = resolveExplicitHeadlineRegion(headline)
 
   if (explicitRegion !== undefined) {
-    if (explicitRegion === null) {
-      return false
-    }
-    const canonicalTarget = resolveCanonicalRegionKey(region)
-    return explicitRegion === (canonicalTarget ?? region)
+    // null（香港、马来西亚等已知的非默认地区）不会等于任何目标地区
+    return explicitRegion === (resolveCanonicalRegionKey(region) ?? region)
   }
 
   const keywords = extractRegionKeywords(region)
@@ -236,8 +233,7 @@ export function nodeMatchesRegion(nodeName: string, region: string): boolean {
     const normalizedHeadline = headline.toLowerCase()
     const normalizedRegion = region.toLowerCase()
     return (
-      normalizedHeadline.includes(normalizedRegion) ||
-      normalizedRegion.includes(normalizedHeadline)
+      normalizedHeadline.includes(normalizedRegion) || normalizedRegion.includes(normalizedHeadline)
     )
   }
 
