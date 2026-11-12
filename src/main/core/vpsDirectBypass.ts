@@ -4,15 +4,22 @@ const IPV4_PATTERN = /^(\d{1,3}\.){3}\d{1,3}$/
 const VPS_DNS_RESOLVE_TIMEOUT_MS = 3000
 
 async function resolve4WithTimeout(host: string): Promise<string[]> {
+  let timer: NodeJS.Timeout | undefined
   try {
     return await Promise.race([
       dns.promises.resolve4(host),
       new Promise<string[]>((_, reject) => {
-        setTimeout(() => reject(new Error('dns resolve timeout')), VPS_DNS_RESOLVE_TIMEOUT_MS)
+        timer = setTimeout(
+          () => reject(new Error('dns resolve timeout')),
+          VPS_DNS_RESOLVE_TIMEOUT_MS
+        )
       })
     ])
   } catch {
     return []
+  } finally {
+    // 解析先完成时必须撤掉超时定时器，否则每次生成配置都会遗留一个 3 秒的挂起定时器
+    clearTimeout(timer)
   }
 }
 
@@ -149,7 +156,10 @@ function prependUnique(values: string[] | undefined, additions: string[]): strin
  * Ensure outbound dials to VPS proxy servers bypass TUN/sniffer mis-routing.
  * Without this, TLS SNI (e.g. cloudflare.com) can match domain rules and loop via another proxy.
  */
-export async function ensureVpsDirectBypass(profile: MihomoConfig, leafProxies: unknown[]): Promise<void> {
+export async function ensureVpsDirectBypass(
+  profile: MihomoConfig,
+  leafProxies: unknown[]
+): Promise<void> {
   const ips = await collectVpsServerIps(leafProxies)
   const existingRules = profile.rules as string[] | undefined
   const domainRules = VPS_SSH_HOST_ALIASES.filter(
@@ -161,9 +171,7 @@ export async function ensureVpsDirectBypass(profile: MihomoConfig, leafProxies: 
   }
 
   const existing = existingRules ?? []
-  const ipAdditions = ips
-    .filter((ip) => !hasDirectRuleForIp(existing, ip))
-    .map(buildDirectRule)
+  const ipAdditions = ips.filter((ip) => !hasDirectRuleForIp(existing, ip)).map(buildDirectRule)
   Reflect.set(profile, 'rules', [...domainRules, ...ipAdditions, ...existing])
 
   if (profile.tun?.enable) {
