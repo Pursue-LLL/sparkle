@@ -8,6 +8,7 @@ import {
   GROK_POOL_MAX_SIZE,
   GROK_POOL_TRUST_MS,
   isGrokRoutedResponseUsable,
+  orderGrokCandidates,
   orderGrokProxies,
   orderGrokRepairCandidates,
   type GrokNodeProbeCache,
@@ -20,14 +21,14 @@ function node(name: string, server = 'example.com'): GrokProxyRecord {
 }
 
 function cacheOf(
-  entries: Array<{ proxy: GrokProxyRecord; alive: boolean; rttMs: number }>
+  entries: Array<{ proxy: GrokProxyRecord; alive: boolean; rttMs: number; checkedAt?: number }>
 ): GrokNodeProbeCache {
   const map = new Map<string, GrokNodeProbeRecord>()
   for (const entry of entries) {
     map.set(computeProxyNodeFingerprint(entry.proxy), {
       alive: entry.alive,
       rttMs: entry.rttMs,
-      checkedAt: Date.now()
+      checkedAt: entry.checkedAt ?? Date.now()
     })
   }
   return map
@@ -171,9 +172,120 @@ describe('sparkleGrokProviderCore', () => {
     )
   })
 
+  it('treats an attempt exactly one window old as expired and one millisecond younger as recent', () => {
+    const attempted = node('JP-01')
+    const fresh = node('JP-02')
+    const attempts = new Map([[computeProxyNodeFingerprint(attempted), 1000]])
+
+    assert.deepEqual(
+      orderGrokRepairCandidates([attempted, fresh], attempts, 1000 + 10_000, 10_000),
+      [attempted, fresh]
+    )
+    assert.deepEqual(
+      orderGrokRepairCandidates([attempted, fresh], attempts, 1000 + 10_000 - 1, 10_000),
+      [fresh, attempted]
+    )
+  })
+
   it('detects membership changes but ignores pure reordering', () => {
     assert.equal(grokProviderMembershipChanged(['a', 'b'], ['b', 'a']), false)
     assert.equal(grokProviderMembershipChanged(['a', 'b'], ['a', 'b', 'c']), true)
     assert.equal(grokProviderMembershipChanged(['a'], ['b']), true)
+  })
+})
+
+describe('sparkleGrokProviderCore pool selection details', () => {
+  const NOW = 1_700_000_000_000
+  const DAY_MS = 86_400_000
+
+  it('trusts a verified sample up to exactly one day old, not a millisecond more', () => {
+    const verified = node('JP-01')
+    const other = node('US-01')
+    const sampleAt = (checkedAt: number): GrokNodeProbeCache =>
+      cacheOf([{ proxy: verified, alive: true, rttMs: 100, checkedAt }])
+
+    assert.deepEqual(orderGrokProxies([verified, other], sampleAt(NOW - DAY_MS), NOW), [verified])
+    assert.deepEqual(orderGrokProxies([verified, other], sampleAt(NOW - DAY_MS - 1), NOW), [
+      verified,
+      other
+    ])
+  })
+
+  it('keeps at most the 12 fastest verified nodes', () => {
+    const proxies = Array.from({ length: 13 }, (_, i) => node(`JP-${String(i).padStart(2, '0')}`))
+    const cache = cacheOf(proxies.map((proxy, i) => ({ proxy, alive: true, rttMs: 100 + i })))
+
+    assert.deepEqual(orderGrokProxies(proxies, cache), proxies.slice(0, 12))
+  })
+
+  it('ranks Hong Kong nodes last wherever they sit in the subscription', () => {
+    const hk = node('香港 01')
+    const jp = node('日本 01')
+    const us = node('美国 01')
+    const cache = cacheOf([
+      { proxy: hk, alive: true, rttMs: 50 },
+      { proxy: jp, alive: true, rttMs: 300 },
+      { proxy: us, alive: true, rttMs: 400 }
+    ])
+
+    assert.deepEqual(orderGrokProxies([jp, us, hk], cache), [jp, us, hk])
+    assert.deepEqual(orderGrokProxies([hk, jp, us], cache), [jp, us, hk])
+  })
+
+  it('breaks rtt ties by node name whatever the subscription order', () => {
+    const a = node('JP-a')
+    const b = node('JP-b')
+    const cache = cacheOf([
+      { proxy: a, alive: true, rttMs: 100 },
+      { proxy: b, alive: true, rttMs: 100 }
+    ])
+
+    assert.deepEqual(orderGrokProxies([b, a], cache), [a, b])
+    assert.deepEqual(orderGrokProxies([a, b], cache), [a, b])
+  })
+})
+
+describe('orderGrokCandidates', () => {
+  it('puts Hong Kong nodes last, keeps every other order, drops duplicates and nameless nodes', () => {
+    const [hk, jp, us, sg] = [node('香港 01'), node('日本 01'), node('美国 01'), node('新加坡 01')]
+    const nameless = { type: 'vmess' } as GrokProxyRecord
+
+    assert.deepEqual(orderGrokCandidates([hk, jp, nameless, us, jp, sg]), [jp, us, sg, hk])
+  })
+
+  it('recognizes Hong Kong by its Chinese name, HK, Hong Kong and HongKong — not by look-alikes', () => {
+    const regular = node('日本 01')
+    for (const name of ['🇭🇰 香港 01', 'HK-01', 'hk 02', 'Hong Kong 03', 'HongKong-04']) {
+      const hk = node(name)
+      assert.deepEqual(orderGrokCandidates([hk, regular]), [regular, hk], name)
+    }
+    for (const name of ['HKT-01', 'CHK-02', 'Hokkaido']) {
+      const lookalike = node(name)
+      assert.deepEqual(orderGrokCandidates([lookalike, regular]), [lookalike, regular], name)
+    }
+  })
+})
+
+describe('buildGrokProbeSnapshot details', () => {
+  it('shows a failed node with zero rtt even when its record still carries an old one', () => {
+    const failed = node('HK-01')
+    const cache = new Map<string, GrokNodeProbeRecord>([
+      [computeProxyNodeFingerprint(failed), { alive: false, rttMs: 250, checkedAt: 2000 }]
+    ])
+
+    assert.deepEqual(buildGrokProbeSnapshot([failed], cache), {
+      'HK-01': { rttMs: 0, checkedAt: 2000, state: 'failed' }
+    })
+  })
+
+  it('leaves status and reason out when the record has none', () => {
+    const verified = node('JP-01')
+    const cache = new Map<string, GrokNodeProbeRecord>([
+      [computeProxyNodeFingerprint(verified), { alive: true, rttMs: 90, checkedAt: 1000 }]
+    ])
+
+    assert.deepEqual(buildGrokProbeSnapshot([verified], cache), {
+      'JP-01': { rttMs: 90, checkedAt: 1000, state: 'usable' }
+    })
   })
 })

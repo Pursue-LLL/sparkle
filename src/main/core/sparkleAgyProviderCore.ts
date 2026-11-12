@@ -90,6 +90,15 @@ export function collectEligibleAgyProxies(proxies: readonly AgyProxyRecord[]): A
   return eligible
 }
 
+interface SampledProxy {
+  proxy: AgyProxyRecord
+  rttMs: number
+}
+
+function sortByRtt(sampled: readonly SampledProxy[]): AgyProxyRecord[] {
+  return [...sampled].sort((a, b) => a.rttMs - b.rttMs).map(({ proxy }) => proxy)
+}
+
 /** 地区优先级分段 + 段内按实测往返耗时升序；无样本的节点垫在最后，避免未测节点挡住已验证节点。 */
 function orderByRegion(
   candidates: readonly AgyProxyRecord[],
@@ -101,7 +110,7 @@ function orderByRegion(
   const unsampled: AgyProxyRecord[] = []
 
   const take = (matches: (name: string) => boolean): void => {
-    const sampled: AgyProxyRecord[] = []
+    const sampled: SampledProxy[] = []
     for (const proxy of candidates) {
       const name = agyProxyName(proxy)
       if (!name || included.has(name) || !matches(name)) {
@@ -110,17 +119,12 @@ function orderByRegion(
       included.add(name)
       const record = probeCache?.get(computeProxyNodeFingerprint(proxy))
       if (record?.usable === true) {
-        sampled.push(proxy)
+        sampled.push({ proxy, rttMs: record.rttMs })
       } else {
         unsampled.push(proxy)
       }
     }
-    sampled.sort((a, b) => {
-      const rttA = probeCache?.get(computeProxyNodeFingerprint(a))?.rttMs ?? 0
-      const rttB = probeCache?.get(computeProxyNodeFingerprint(b))?.rttMs ?? 0
-      return rttA - rttB
-    })
-    ordered.push(...sampled)
+    ordered.push(...sortByRtt(sampled))
   }
 
   for (const region of regionPriority) {
@@ -144,9 +148,6 @@ export function orderAgyProxies(
   probeCache?: AgyNodeProbeCache
 ): AgyProxyRecord[] {
   const eligible = collectEligibleAgyProxies(proxies)
-  if (eligible.length === 0) {
-    return []
-  }
 
   const verified = eligible.filter(
     (proxy) => probeCache?.get(computeProxyNodeFingerprint(proxy))?.usable === true
@@ -174,22 +175,17 @@ function prioritizeFreshWithinRegion(
   probeCache: AgyNodeProbeCache | undefined,
   nowMs: number
 ): AgyProxyRecord[] {
-  const fresh: AgyProxyRecord[] = []
+  const fresh: SampledProxy[] = []
   const others: AgyProxyRecord[] = []
   for (const proxy of bucket) {
     const record = probeCache?.get(computeProxyNodeFingerprint(proxy))
     if (record?.usable === true && nowMs - record.checkedAt < FRESH_VERIFIED_MS) {
-      fresh.push(proxy)
+      fresh.push({ proxy, rttMs: record.rttMs })
     } else {
       others.push(proxy)
     }
   }
-  fresh.sort((a, b) => {
-    const rttA = probeCache?.get(computeProxyNodeFingerprint(a))?.rttMs ?? 0
-    const rttB = probeCache?.get(computeProxyNodeFingerprint(b))?.rttMs ?? 0
-    return rttA - rttB
-  })
-  return [...fresh, ...others]
+  return [...sortByRtt(fresh), ...others]
 }
 
 /** 严格按地区优先级分段（台湾 → 日本 → 韩国 → 新加坡 → 美国 → 其余）。 */
@@ -243,8 +239,8 @@ export function orderAgyRepairProxies(
       rejected.push(proxy)
       continue
     }
-    const lastAttempt = attempted?.get(fingerprint) ?? 0
-    if (lastAttempt > 0 && nowMs - lastAttempt < REPAIR_ATTEMPT_WINDOW_MS) {
+    const lastAttempt = attempted?.get(fingerprint)
+    if (lastAttempt !== undefined && nowMs - lastAttempt < REPAIR_ATTEMPT_WINDOW_MS) {
       recentlyTried.push(proxy)
     } else {
       untried.push(proxy)

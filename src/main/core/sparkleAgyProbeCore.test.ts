@@ -16,7 +16,11 @@ const NODES: AgyProxyRecord[] = [
   { name: '🇯🇵 日本 02', type: 'vless', server: 'jp.example', port: 443 }
 ]
 
-function outcomeOf(verdict: AgyAuditOutcome['verdict'], rttMs = 500, fatal = false): AgyAuditOutcome {
+function outcomeOf(
+  verdict: AgyAuditOutcome['verdict'],
+  rttMs = 500,
+  fatal = false
+): AgyAuditOutcome {
   return { verdict, rttMs, fatal }
 }
 
@@ -42,7 +46,12 @@ describe('runAgyAudit', () => {
     )
 
     assert.deepEqual(probed, ['新加坡-优化2-GPT', '美国LA-优化2-GPT', '🇯🇵 日本 02'])
-    assert.deepEqual(result, { probed: 2, usable: 1, aborted: false, usableNode: '美国LA-优化2-GPT' })
+    assert.deepEqual(result, {
+      probed: 2,
+      usable: 1,
+      aborted: false,
+      usableNode: '美国LA-优化2-GPT'
+    })
     assert.deepEqual(cache.get(computeProxyNodeFingerprint(NODES[0]!)), {
       usable: false,
       rttMs: 210,
@@ -72,7 +81,12 @@ describe('runAgyAudit', () => {
     )
 
     assert.deepEqual(probed, ['新加坡-优化2-GPT'])
-    assert.deepEqual(result, { probed: 1, usable: 1, aborted: false, usableNode: '新加坡-优化2-GPT' })
+    assert.deepEqual(result, {
+      probed: 1,
+      usable: 1,
+      aborted: false,
+      usableNode: '新加坡-优化2-GPT'
+    })
     assert.equal(cache.size, 1)
   })
 
@@ -123,7 +137,9 @@ describe('runAgyAudit', () => {
         now: () => 1000,
         probeNode: async (node) => {
           probed.push(node)
-          return node === '美国LA-优化2-GPT' ? outcomeOf('fatal', 0, true) : outcomeOf('usable', 300)
+          return node === '美国LA-优化2-GPT'
+            ? outcomeOf('fatal', 0, true)
+            : outcomeOf('usable', 300)
         }
       }
     )
@@ -160,6 +176,25 @@ describe('runAgyAudit', () => {
     })
   })
 
+  it('keeps probing while the elapsed time equals the budget and stops one millisecond past it', async () => {
+    const cache = new Map<string, AgyNodeProbeRecord>()
+    let clock = 0
+
+    const result = await runAgyAudit(
+      { pending: NODES, cache, budgetMs: 500 },
+      {
+        now: () => clock,
+        probeNode: async () => {
+          clock += 500
+          return outcomeOf('unusable')
+        }
+      }
+    )
+
+    // 第 2 个节点开始时恰好用掉 500ms：预算「超过」才中止，所以第 2 个还要测；第 3 个开始时已超出。
+    assert.deepEqual(result, { probed: 2, usable: 0, aborted: true, usableNode: null })
+  })
+
   it('handles an empty pending list', async () => {
     const result = await runAgyAudit(
       { pending: [], cache: new Map(), budgetMs: 1000 },
@@ -183,8 +218,12 @@ describe('shouldRepairAgyPin', () => {
     )
   })
 
-  it('never repairs while the pin is usable', () => {
+  it('never repairs while the pin is usable, whatever the timeout streak was before', () => {
     assert.equal(shouldRepairAgyPin({ pinVerdict: 'usable', unknownStreak: 0 }), false)
+    assert.equal(
+      shouldRepairAgyPin({ pinVerdict: 'usable', unknownStreak: AGY_PIN_UNKNOWN_STREAK_LIMIT + 5 }),
+      false
+    )
   })
 })
 
@@ -200,5 +239,9 @@ describe('resolveAgyAuditBackoffMs', () => {
     assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 2), INTERVAL * 2)
     assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 3), INTERVAL * 3)
     assert.equal(resolveAgyAuditBackoffMs(INTERVAL, 9), INTERVAL * 3)
+  })
+
+  it('never produces a negative window', () => {
+    assert.equal(resolveAgyAuditBackoffMs(INTERVAL, -1), 0)
   })
 })

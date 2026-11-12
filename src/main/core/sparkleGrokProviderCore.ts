@@ -69,19 +69,10 @@ function dedupeByName(proxies: readonly GrokProxyRecord[]): GrokProxyRecord[] {
   return unique
 }
 
-/** 未验证节点的候选顺序：非香港优先（香港出口可能轮换到被挑战的 IP），保持原 provider 顺序。 */
+/** 未验证节点的候选顺序：非香港优先（香港出口可能轮换到被挑战的 IP），两段各自保持原 provider 顺序。 */
 export function orderGrokCandidates(proxies: readonly GrokProxyRecord[]): GrokProxyRecord[] {
   const unique = dedupeByName(proxies)
-  return [...unique].sort((a, b) => {
-    const hkA = isHongKongNamed(a) ? 1 : 0
-    const hkB = isHongKongNamed(b) ? 1 : 0
-    return hkA - hkB
-  })
-}
-
-function probeRtt(cache: GrokNodeProbeCache, proxy: GrokProxyRecord): number {
-  const record = cache.get(computeProxyNodeFingerprint(proxy))
-  return record?.alive ? record.rttMs : Number.POSITIVE_INFINITY
+  return [...unique.filter((proxy) => !isHongKongNamed(proxy)), ...unique.filter(isHongKongNamed)]
 }
 
 /** 香港命名的节点出口可能轮换到被 Cloudflare 挑战的 HK IP（实测同一节点时好时坏），排到最后只做兜底。 */
@@ -106,29 +97,29 @@ export function orderGrokProxies(
     return unique
   }
 
-  const verified = unique.filter((proxy) => {
+  const verified = unique.flatMap((proxy) => {
     const record = probeCache.get(computeProxyNodeFingerprint(proxy))
     return record?.alive === true && nowMs - record.checkedAt <= GROK_POOL_TRUST_MS
+      ? [{ proxy, rttMs: record.rttMs }]
+      : []
   })
   if (verified.length === 0) {
     return unique
   }
 
-  return [...verified]
+  return verified
     .sort((a, b) => {
-      const hkA = isHongKongNamed(a) ? 1 : 0
-      const hkB = isHongKongNamed(b) ? 1 : 0
-      if (hkA !== hkB) {
-        return hkA - hkB
+      const hkA = isHongKongNamed(a.proxy)
+      if (hkA !== isHongKongNamed(b.proxy)) {
+        return hkA ? 1 : -1
       }
-      const rttA = probeRtt(probeCache, a)
-      const rttB = probeRtt(probeCache, b)
-      if (rttA !== rttB) {
-        return rttA < rttB ? -1 : 1
+      if (a.rttMs !== b.rttMs) {
+        return a.rttMs - b.rttMs
       }
-      return grokProxyName(a).localeCompare(grokProxyName(b), 'zh-CN')
+      return grokProxyName(a.proxy).localeCompare(grokProxyName(b.proxy), 'zh-CN')
     })
     .slice(0, GROK_POOL_MAX_SIZE)
+    .map(({ proxy }) => proxy)
 }
 
 /**
