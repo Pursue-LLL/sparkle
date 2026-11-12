@@ -43,7 +43,7 @@ async function writeEditableFile(
   target: string,
   content: string,
   current: string | undefined,
-  elevate = false
+  elevate: boolean
 ): Promise<void> {
   const canElevate =
     process.platform !== 'win32' &&

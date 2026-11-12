@@ -14,7 +14,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
-    "test:node-quality": "tsx --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
+    "test:node-quality": "tsx --experimental-test-module-mocks --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
     "write-build-stamp": "tsx scripts/write-build-stamp.ts",
     "ensure:electron": "node scripts/install-electron.ts",
     "prepare": "node scripts/prepare.ts",

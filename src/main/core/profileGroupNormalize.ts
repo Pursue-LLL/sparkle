@@ -86,9 +86,11 @@ export function rewriteMissingRuleProxyGroupTargets(profile: MihomoConfig): void
     }
 
     const parts = trimmed.split(',')
-    while (parts.length > 0 && RULE_MODIFIERS.has(parts[parts.length - 1].trim())) {
-      parts.pop()
+    let modifiersStart = parts.length
+    while (modifiersStart > 0 && RULE_MODIFIERS.has(parts[modifiersStart - 1].trim())) {
+      modifiersStart -= 1
     }
+    const modifiers = parts.splice(modifiersStart)
     if (parts.length < 3) {
       return rule
     }
@@ -105,7 +107,7 @@ export function rewriteMissingRuleProxyGroupTargets(profile: MihomoConfig): void
     }
 
     parts[policyIndex] = rewriteTarget
-    return parts.join(',')
+    return [...parts, ...modifiers].join(',')
   }) as MihomoConfig['rules']
 }
 
@@ -195,7 +197,14 @@ export function dropUnknownGroupMembers(
       continue
     }
     const removed = members.filter((member) => !validTargets.has(member))
-    group.proxies = kept.length > 0 ? kept : ['DIRECT']
+    if (kept.length > 0) {
+      group.proxies = kept
+    } else if (group.use?.length) {
+      // provider 里还有成员，不能再塞 DIRECT：fallback / url-test 会把排在最前且必然存活的 DIRECT 选成出口
+      delete group.proxies
+    } else {
+      group.proxies = ['DIRECT']
+    }
     dropped.push({ group: group.name, dropped: removed })
   }
   return dropped

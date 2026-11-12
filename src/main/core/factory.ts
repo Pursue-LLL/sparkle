@@ -102,19 +102,22 @@ export async function hydrateRuntimeConfigFromDiskIfEmpty(): Promise<boolean> {
 
 export async function generateProfile(): Promise<void> {
   const run = async (): Promise<void> => {
-    generateProfileLastStep = 'queued'
-    await Promise.race([
-      generateProfileImpl(),
-      new Promise<void>((_, reject) => {
-        setTimeout(() => {
-          reject(
-            new Error(
-              `generateProfile wall-clock timeout after ${GENERATE_PROFILE_WALL_CLOCK_MS}ms last_step=${generateProfileLastStep}`
-            )
+    let watchdog: ReturnType<typeof setTimeout> | undefined
+    const timedOut = new Promise<never>((_, reject) => {
+      watchdog = setTimeout(() => {
+        reject(
+          new Error(
+            `generateProfile wall-clock timeout after ${GENERATE_PROFILE_WALL_CLOCK_MS}ms last_step=${generateProfileLastStep}`
           )
-        }, GENERATE_PROFILE_WALL_CLOCK_MS)
-      })
-    ])
+        )
+      }, GENERATE_PROFILE_WALL_CLOCK_MS)
+    })
+    try {
+      await Promise.race([generateProfileImpl(), timedOut])
+    } finally {
+      // 不清掉的话，每次生成都会留下一个 60s 的挂起定时器，拖住事件循环
+      clearTimeout(watchdog)
+    }
   }
   const next = generateProfileChain.then(run, run)
   generateProfileChain = next.catch(async (error) => {
@@ -170,9 +173,11 @@ async function generateProfileImpl(): Promise<void> {
   }
 
   if (profile.proxies && Array.isArray(profile.proxies)) {
-    const guarded = applyVlessVisionMuxGuard(profile.proxies as unknown[])
-    ;(profile as MihomoConfig).proxies = guarded as MihomoConfig['proxies']
-    const muxSummary = summarizeVlessVisionMuxGuard(guarded)
+    // 必须先统计再归一化：归一化会剥掉 multiplex，之后再统计 stripped 恒为 0
+    const muxSummary = summarizeVlessVisionMuxGuard(profile.proxies as unknown[])
+    ;(profile as MihomoConfig).proxies = applyVlessVisionMuxGuard(
+      profile.proxies as unknown[]
+    ) as MihomoConfig['proxies']
     if (muxSummary.visionNodeCount > 0) {
       const nodeList = muxSummary.visionNodeNames.join(',')
       await appendAppLog(

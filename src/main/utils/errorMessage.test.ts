@@ -29,4 +29,16 @@ describe('describeError', () => {
     assert.equal(describeError({ code: 1 }), '[object Object]')
     assert.equal(describeError({ message: 7 }), '[object Object]')
   })
+
+  it('never throws, even for values that cannot be converted to a string', () => {
+    const unprintable = Object.create(null) as object
+    const hostile = {
+      toString() {
+        throw new Error('no string for you')
+      }
+    }
+
+    assert.equal(describeError(unprintable), '[object Object]')
+    assert.equal(describeError(hostile), '[object Object]')
+  })
 })
