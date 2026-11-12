@@ -50,10 +50,8 @@ export function trimLogContent(raw: string, targetBytes: number): TrimmedLogCont
 
   let startIndex = 0
   while (startIndex < lines.length && size > targetBytes) {
-    size -= Buffer.byteLength(lines[startIndex], 'utf-8')
-    if (startIndex < lines.length - 1 || hasTrailingNewline) {
-      size -= 1
-    }
+    // 没有结尾换行时最后一行多减了 1 字节，但那一行被丢掉时已经不剩任何内容，不影响结果
+    size -= Buffer.byteLength(lines[startIndex], 'utf-8') + 1
     startIndex++
   }
 

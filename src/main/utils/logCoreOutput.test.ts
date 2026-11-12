@@ -125,6 +125,18 @@ describe('core log output parsing', () => {
     )
   })
 
+  it('drops the partial line when the log feed switched to websocket meanwhile', async () => {
+    const { createLogWritable, getCachedMihomoLogs, setMihomoLogSource } = loadLog()
+    const writer = createLogWritable('core')
+    await writeAndWait(writer, 'level=info msg=half')
+
+    setMihomoLogSource('ws')
+    writer.end()
+    await finished(writer)
+
+    assert.deepEqual(getCachedMihomoLogs(), [])
+  })
+
   it('keeps the output pipe alive when persisting fails, and still publishes parsed lines', async () => {
     const { appendAppLog, createLogWritable, getCachedMihomoLogs } = loadLog()
     world.ensureFailure = new Error('ENOSPC: no space left on device')

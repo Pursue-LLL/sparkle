@@ -57,6 +57,7 @@ describe('parseYaml', () => {
     assert.equal(shortIdOf(withRealityShortId('!!str 123')), '123')
     assert.deepEqual(shortIdOf(withRealityShortId('[a, b]')), ['a', 'b'])
     assert.deepEqual(shortIdOf(withRealityShortId('{ k: v }')), { k: 'v' })
+    assert.deepEqual(shortIdOf(withRealityShortId('{k: v}')), { k: 'v' })
 
     assert.equal(warnings.mock.callCount(), 0)
   })
