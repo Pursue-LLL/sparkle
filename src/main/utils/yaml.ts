@@ -1,87 +1,45 @@
-import yaml from 'yaml'
+import yaml, { type Document, type Scalar } from 'yaml'
+
+const REALITY_OPTS_KEY = 'reality-opts'
+const SHORT_ID_KEY = 'short-id'
 
 export function parseYaml<T = unknown>(content: string): T {
-  const processedContent = addYamlTagsToProxiesShortId(content)
+  // 流程与 yaml.parse 相同（警告照常上报、抛出第一个错误），只是在转成 JS 对象前多一步还原 short-id 原文
+  const doc = yaml.parseDocument(content, { merge: true })
+  doc.warnings.forEach((warning) => process.emitWarning(warning))
+  if (doc.errors.length > 0) throw doc.errors[0]
 
-  const result =
-    yaml.parse(processedContent, {
-      merge: true
-    }) || {}
-
-  return result as T
+  restoreRealityShortIdText(doc)
+  return (doc.toJS() || {}) as T
 }
 
 export function stringifyYaml(data: unknown): string {
   return yaml.stringify(data)
 }
 
-const shortIdPattern = /^(\s*short-id:\s*)([^\s#]+)(.*)$/
+const isScalarWithValue = (node: unknown, value: unknown): boolean =>
+  yaml.isScalar(node) && node.value === value
 
-/** `short-id: 12345678` 改写成 `short-id: !!str 12345678`；null、已带标签、内联集合保持原样。 */
-function tagShortIdLine(line: string): string {
-  const match = line.match(shortIdPattern)
-  if (!match) return line
-
-  const [, prefix, value, suffix] = match
-  if (
-    value.toLowerCase() === 'null' ||
-    value === '~' ||
-    value.startsWith('!!') ||
-    value.startsWith('{') ||
-    value.startsWith('[')
-  ) {
-    return line
-  }
-  return `${prefix}!!str ${value}${suffix}`
+/** 解析器给解析出来的每个标量都记下了原文（`source`），代码里新建的标量没有。 */
+function isParsedScalar(node: unknown): node is Scalar.Parsed {
+  return yaml.isScalar(node) && typeof node.source === 'string'
 }
 
 /**
- * Reality 的 short-id 是十六进制字符串，纯数字写法（如 01234567、1e5）会被 YAML 解析成数字而失真。
- * 只处理顶层 proxies 列表里每个代理的 reality-opts.short-id，其他位置的同名键不动。
+ * Reality 的 short-id 是十六进制字符串，纯数字写法（01234567、1e5、12e3456）会被 YAML 解析成数字：
+ * 前导零丢失、科学计数法变成 Infinity，而服务端要求逐字相同。reality-opts 里的 short-id 还原成原文，
+ * 不论代理写成块风格还是 flow 风格，也不论 reality-opts 本身是否被锚点 / 合并键引用（还原发生在它定义的位置）。
+ * 显式标签（如 `!!int`）是写的人的明确意图，null 表示没填，都保持原样；
+ * short-id 自己是别名引用（`short-id: *x`）时没有可还原的原文，按 YAML 规则解析。
  */
-function addYamlTagsToProxiesShortId(yamlContent: string): string {
-  if (!yamlContent.includes('proxies:') || !yamlContent.includes('short-id:')) {
-    return yamlContent
-  }
-
-  // 当前所处层级：顶层 proxies 列表 → 其中一个代理条目（`-` 所在缩进，null 表示不在条目内）
-  // → 该代理的 reality-opts 块（`reality-opts:` 所在缩进，null 表示不在块内）
-  let inProxies = false
-  let proxyIndent: number | null = null
-  let realityIndent: number | null = null
-
-  return yamlContent
-    .split('\n')
-    .map((line) => {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) return line
-
-      const indent = line.length - line.trimStart().length
-      const isListItem = trimmed.startsWith('-')
-
-      // 顶层键决定是否在 proxies 列表内；与键同缩进的 `-` 仍是列表项
-      if (indent === 0 && !isListItem) {
-        inProxies = trimmed.startsWith('proxies:')
-        proxyIndent = null
-        realityIndent = null
-        return line
-      }
-      if (!inProxies) return line
-
-      // 不比当前条目更深的 `-` 才是新条目；更深的 `-` 是条目内部的嵌套列表（如 alpn）
-      if (isListItem && (proxyIndent === null || indent <= proxyIndent)) {
-        proxyIndent = indent
-        realityIndent = null
-        return line
-      }
-      if (proxyIndent === null) return line
-
-      if (trimmed.startsWith('reality-opts:')) {
-        realityIndent = indent
-      } else if (realityIndent !== null && indent <= realityIndent) {
-        realityIndent = null
-      }
-      return realityIndent !== null && trimmed.includes('short-id:') ? tagShortIdLine(line) : line
-    })
-    .join('\n')
+function restoreRealityShortIdText(doc: Document): void {
+  yaml.visit(doc, {
+    Pair(_key, pair) {
+      if (!isScalarWithValue(pair.key, REALITY_OPTS_KEY) || !yaml.isMap(pair.value)) return
+      const shortId = pair.value.get(SHORT_ID_KEY, true)
+      if (!isParsedScalar(shortId) || shortId.tag !== undefined) return
+      if (shortId.value === null || typeof shortId.value === 'string') return
+      shortId.value = shortId.source
+    }
+  })
 }
