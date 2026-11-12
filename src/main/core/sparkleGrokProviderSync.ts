@@ -26,16 +26,12 @@ function providerFilePath(): string {
   return path.join(profilesDir(), GROK_NODE_PROVIDER_FILENAME)
 }
 
-function namesOf(proxies: readonly GrokProxyRecord[]): string[] {
-  return proxies.map(grokProxyName).filter((name) => name.length > 0)
-}
-
 export async function readGrokProviderMembers(): Promise<string[]> {
   try {
     const doc = parseYaml<{ proxies?: GrokProxyRecord[] }>(
       await readFile(providerFilePath(), 'utf8')
     )
-    return namesOf(doc.proxies ?? [])
+    return (doc.proxies ?? []).map(grokProxyName)
   } catch {
     return []
   }
@@ -45,7 +41,7 @@ export async function readGrokProviderMembers(): Promise<string[]> {
 export async function writeProviderDocument(proxies: readonly GrokProxyRecord[]): Promise<void> {
   const previousMembers = await readGrokProviderMembers()
   await writeFile(providerFilePath(), stringifyYaml({ proxies: [...proxies] }), 'utf8')
-  if (grokProviderMembershipChanged(previousMembers, namesOf(proxies))) {
+  if (grokProviderMembershipChanged(previousMembers, proxies.map(grokProxyName))) {
     providerReloadPending = true
   }
 }
@@ -66,7 +62,7 @@ export async function reloadGrokProvider(): Promise<void> {
     providerReloadPending = false
     providerReloadFailing = false
   } catch (error) {
-    providerReloadPending = true
+    // 待重载标记不动：它只由「文件成员与 mihomo 已载入的不同」决定，重载失败时保持原样即可。
     if (!providerReloadFailing) {
       providerReloadFailing = true
       await appendAppLog(

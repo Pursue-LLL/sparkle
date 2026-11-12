@@ -21,8 +21,9 @@ export interface RoutedCheckResult {
 export async function resolveMixedPort(): Promise<number> {
   try {
     const config = await getControledMihomoConfig()
+    // 缺省 / 非数字（NaN）与 0（未开启）都不大于 0，统一按「没有 mixed-port」处理。
     const mixedPort = Number((config as Record<string, unknown>)['mixed-port'])
-    return Number.isFinite(mixedPort) && mixedPort > 0 ? mixedPort : 0
+    return mixedPort > 0 ? mixedPort : 0
   } catch {
     return 0
   }

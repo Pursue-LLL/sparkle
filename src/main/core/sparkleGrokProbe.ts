@@ -77,7 +77,7 @@ function markRepairAttempt(proxy: GrokProxyRecord): void {
 }
 
 function resolveRepairBackoffMs(emptyRounds: number): number {
-  return RECHECK_INTERVAL_MS * Math.min(Math.max(emptyRounds, 0), 3)
+  return RECHECK_INTERVAL_MS * Math.min(emptyRounds, 3)
 }
 
 /** 切换并做真实请求验证；只有 routed 通过才写入 alive。 */

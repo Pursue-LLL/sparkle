@@ -19,6 +19,7 @@ import {
   challenge,
   HANG,
   loadCache,
+  networkFailure,
   ok,
   readCache,
   runBootstrap,
@@ -61,6 +62,7 @@ describe('sparkleGrokProbe：请求格式', () => {
 
   for (const [title, controlled, expected] of [
     ['mixed-port 是数字字符串', { 'mixed-port': '7891' }, 7891],
+    ['mixed-port 取最小的合法端口', { 'mixed-port': 1 }, 1],
     ['mixed-port 缺失（依赖 TUN 直连）', {}, undefined],
     ['mixed-port 为 0', { 'mixed-port': 0 }, undefined],
     ['mixed-port 为负数', { 'mixed-port': -5 }, undefined],
@@ -114,6 +116,7 @@ describe('sparkleGrokProbe：可用性判定', () => {
       true,
       undefined
     ],
+    ['网络错误但错误信息是空的', networkFailure(''), false, undefined],
     ['403 且没有 cf-mitigated', { kind: 'response', status: 403 }, false, 'HTTP 403'],
     ['重定向不算通过', { kind: 'response', status: 301 }, false, 'HTTP 301'],
     ['5xx', { kind: 'response', status: 503 }, false, 'HTTP 503']
@@ -203,6 +206,17 @@ describe('sparkleGrokProbe：代理页快照', () => {
     })
   })
 
+  it('一轮开始就先按缓存里已有的结论更新，不必等这一轮探测完', async () => {
+    seedCache()
+    skipPoolRefresh()
+    world.routedQueue = [HANG]
+
+    void grok().bootstrapSparkleGrokProvider()
+    await settle()
+
+    assert.deepEqual(Object.keys(snapshot()).sort(), ['日本-1', '美国-1'])
+  })
+
   it('读到的是副本，改动它不影响后续读取', async () => {
     singleNodeWorld()
     await runBootstrap(grok())
@@ -214,7 +228,7 @@ describe('sparkleGrokProbe：代理页快照', () => {
     assert.deepEqual(Object.keys(snapshot()), ['台湾-1'])
   })
 
-  it('本轮探测比磁盘缓存新就以探测为准，缓存更新就以缓存为准', async () => {
+  it('快照跟着缓存里最新的结论走：本轮探测的结果，以及别处写入的更新结果', async () => {
     seedCache()
     skipPoolRefresh()
     world.routedByNode = { '日本-1': challenge() }

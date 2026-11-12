@@ -220,6 +220,9 @@ function installMocks(): void {
       },
       mihomoChangeProxy: async (_group: string, node: string): Promise<boolean> => {
         world.calls.push(`change:${node}`)
+        if (world.changeFailure) {
+          throw new Error('mihomo api unreachable')
+        }
         if (world.changeRefused.has(node) || !world.members.includes(node)) {
           return false
         }

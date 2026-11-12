@@ -91,6 +91,7 @@ export const world = {
   members: ['香港-1', '台湾-1', '日本-1', '美国-1', '新加坡-1'],
   groupMissing: false,
   changeRefused: new Set<string>(),
+  changeFailure: false,
   closeFailure: false,
   updateFailure: undefined as undefined | { reason: unknown },
   /** 按出场顺序消耗；用完后按节点查 routedByNode，再回落 defaultRouted。 */
@@ -118,6 +119,7 @@ export function resetWorld(): void {
   world.members = ['香港-1', '台湾-1', '日本-1', '美国-1', '新加坡-1']
   world.groupMissing = false
   world.changeRefused = new Set()
+  world.changeFailure = false
   world.closeFailure = false
   world.updateFailure = undefined
   world.routedQueue = []

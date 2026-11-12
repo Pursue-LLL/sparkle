@@ -1,13 +1,12 @@
 // [INPUT] 数据目录里的 sparkle-grok-nodes.json · 每次真实 grok.com 请求的结论
 // [OUTPUT] loadSparkleGrokProbeCache · saveSparkleGrokProbeCache · recordRouted · recordRoutedFailure
 // [POS] grok 探测缓存的磁盘读写与结论写入：读取时整条丢弃字段不合法的记录；
-// 写入结论的同时登记到展示快照，让代理页与缓存对同一次探测看到同一个结论。
+// 代理页的展示快照由缓存整体重建，所以每次探测只需要把结论写进缓存。
 
 import { readFile, writeFile } from 'fs/promises'
 import path from 'path'
 import { dataDir } from '../utils/dirs'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import { recordGrokAttempt } from './sparkleGrokProbeSnapshot'
 import type {
   GrokNodeProbeCache,
   GrokNodeProbeRecord,
@@ -63,7 +62,6 @@ export function recordRouted(
     checkedAt: Date.now(),
     status: check.status
   })
-  recordGrokAttempt(proxy, check)
 }
 
 export function recordRoutedFailure(
@@ -78,5 +76,4 @@ export function recordRoutedFailure(
     status: check.status,
     ...(check.reason ? { reason: check.reason } : {})
   })
-  recordGrokAttempt(proxy, check)
 }

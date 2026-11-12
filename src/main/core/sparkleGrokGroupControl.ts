@@ -11,8 +11,6 @@ import {
   mihomoGroupDetail
 } from './mihomoApi'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import { saveSparkleGrokProbeCache } from './sparkleGrokProbeCache'
-import { syncGrokProbeSnapshot } from './sparkleGrokProbeSnapshot'
 import { readGrokProviderMembers } from './sparkleGrokProviderSync'
 import {
   grokProxyName,
@@ -30,8 +28,7 @@ let lastPoolRefreshAt = 0
 export async function currentGrokNode(): Promise<string | null> {
   try {
     const detail = await mihomoGroupDetail(GROK_DEDICATED_GROUP_NAME)
-    const now = String(detail?.now ?? '').trim()
-    return now.length > 0 ? now : null
+    return String(detail?.now ?? '').trim() || null
   } catch {
     return null
   }
@@ -48,7 +45,8 @@ export async function switchGrokNode(node: string): Promise<boolean> {
 
 /**
  * 非侵入式全量刷新：用 mihomo group-delay(expected=200) 测当前 provider 的全部成员。
- * 不切换选择、不关闭连接，只更新缓存与展示快照；当前节点跳过——它的 60 秒 HEAD 复核更权威。
+ * 不切换选择、不关闭连接，只更新内存里的缓存（本轮结束时统一落盘并重建展示快照）；
+ * 当前节点跳过——它的 60 秒 HEAD 复核更权威。
  */
 async function refreshGrokPoolLatency(
   proxies: readonly GrokProxyRecord[],
@@ -104,8 +102,6 @@ async function refreshGrokPoolLatency(
     }
   }
 
-  await saveSparkleGrokProbeCache(cache)
-  syncGrokProbeSnapshot(proxies, cache)
   await appendAppLog(
     `[SparkleGrokProbe]: pool refresh members=${members.size} ok=${ok} elapsed=${
       Date.now() - startedAt
