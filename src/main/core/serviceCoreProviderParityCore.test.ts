@@ -124,6 +124,20 @@ describe('serviceCoreProviderParityCore', () => {
     assert.equal(diskReads, 0)
   })
 
+  it('resolveExpectedProxyProviderIds trusts a memory config with a single provider', async () => {
+    let diskReads = 0
+    const ids = await resolveExpectedProxyProviderIds({
+      runtimeConfig: { 'proxy-providers': { only: {} } },
+      loadDiskRuntimeConfig: async () => {
+        diskReads += 1
+        return { 'proxy-providers': { other: {} } }
+      }
+    })
+
+    assert.deepEqual(ids, ['only'])
+    assert.equal(diskReads, 0)
+  })
+
   it('resolveExpectedProxyProviderIds reports nothing when the disk has no config either', async () => {
     assert.deepEqual(
       await resolveExpectedProxyProviderIds({

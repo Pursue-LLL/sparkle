@@ -5,8 +5,7 @@
 /** Serialize unknown catch values for appendAppLog — mihomo axios rejects plain objects. */
 export function formatUnknownErrorForLog(error: unknown): string {
   if (error instanceof Error) {
-    const cause =
-      error.cause != null ? ` cause=${formatUnknownErrorForLog(error.cause)}` : ''
+    const cause = error.cause != null ? ` cause=${formatUnknownErrorForLog(error.cause)}` : ''
     return `${error.name}: ${error.message}${cause}`
   }
   if (typeof error === 'string') {
@@ -30,15 +29,10 @@ export function formatUnknownErrorForUi(error: unknown): string {
   if (typeof error === 'string') {
     return error
   }
-  if (error != null && typeof error === 'object') {
-    if ('message' in error) {
-      const nested = (error as { message: unknown }).message
-      if (typeof nested === 'string' && nested.trim()) {
-        return nested
-      }
-      if (nested != null && nested !== error) {
-        return formatUnknownErrorForUi(nested)
-      }
+  if (typeof error === 'object' && error !== null) {
+    const { message } = error as { message?: unknown }
+    if (message != null && message !== error) {
+      return formatUnknownErrorForUi(message)
     }
   }
   const serialized = formatUnknownErrorForLog(error)

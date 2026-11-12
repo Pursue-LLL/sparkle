@@ -43,15 +43,15 @@ export function shouldRestartServiceCoreForProviderParity(
 ): boolean {
   const expected = [...expectedProviderIds].sort()
   const running = collectRunningProxyProviderIds(runningProviders)
-  if (expected.length === 0 && running.length === 0) {
-    return false
-  }
   if (expected.length !== running.length) {
     return true
   }
   return expected.some((id, index) => id !== running[index])
 }
 
-export function formatProviderParityMismatchLog(expectedProviderIds: string[], runningProviderIds: string[]): string {
+export function formatProviderParityMismatchLog(
+  expectedProviderIds: string[],
+  runningProviderIds: string[]
+): string {
   return `expected=[${[...expectedProviderIds].sort().join(',')}] running=[${[...runningProviderIds].sort().join(',')}]`
 }

@@ -43,8 +43,12 @@ test('formatUnknownErrorForUi prefers the trimmed Error message and falls back t
 
 test('formatUnknownErrorForUi passes strings through and unwraps nested message objects', () => {
   assert.equal(formatUnknownErrorForUi('plain'), 'plain')
+  assert.equal(formatUnknownErrorForUi('[object Object]'), '[object Object]')
   assert.equal(formatUnknownErrorForUi({ message: { message: 'deep' } }), 'deep')
   assert.equal(formatUnknownErrorForUi({ message: 5 }), '5')
+  assert.equal(formatUnknownErrorForUi({ message: '   ' }), '   ')
+  assert.equal(formatUnknownErrorForUi({ message: null }), '{"message":null}')
+  assert.equal(formatUnknownErrorForUi({ code: 14 }), '{"code":14}')
 })
 
 test('formatUnknownErrorForUi never prints [object Object]', () => {
