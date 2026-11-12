@@ -80,7 +80,8 @@ describe('rewriteBroadCursorDedicatedRules', () => {
       `DOMAIN,cursorapi-eu.example.com,${CURSOR_DEDICATED_GROUP_NAME}`,
       `DOMAIN-SUFFIX,cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
       `DOMAIN-SUFFIX,api.cursorapi.com,${CURSOR_DEDICATED_GROUP_NAME}`,
-      `DOMAIN-KEYWORD,Cursor,${CURSOR_DEDICATED_GROUP_NAME}`
+      `DOMAIN-KEYWORD,Cursor,${CURSOR_DEDICATED_GROUP_NAME}`,
+      `DOMAIN-KEYWORD,my-cursor-app,${CURSOR_DEDICATED_GROUP_NAME}`
     ]
     const profile = profileWith([...rules])
 
@@ -123,9 +124,18 @@ describe('rewriteBroadCursorDedicatedRules', () => {
     ])
   })
 
-  it('recognises Cursor traffic only in domain rules', () => {
+  it('keeps a keyword rule only when the keyword is about Cursor', () => {
+    const profile = profileWith([`DOMAIN-KEYWORD,sh,${CURSOR_DEDICATED_GROUP_NAME}`])
+
+    rewriteBroadCursorDedicatedRules(profile)
+
+    assert.deepEqual(profile.rules, [`DOMAIN-KEYWORD,sh,${AUTO_SELECT_GROUP_NAME}`])
+  })
+
+  it('recognises Cursor traffic only in domain rules, whatever the payload looks like', () => {
     const profile = profileWith([
       `PROCESS-NAME,Cursor Helper,${CURSOR_DEDICATED_GROUP_NAME}`,
+      `GEOSITE,cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
       `IP-CIDR,203.0.113.7/32,${CURSOR_DEDICATED_GROUP_NAME}`
     ])
 
@@ -133,6 +143,7 @@ describe('rewriteBroadCursorDedicatedRules', () => {
 
     assert.deepEqual(profile.rules, [
       `PROCESS-NAME,Cursor Helper,${AUTO_SELECT_GROUP_NAME}`,
+      `GEOSITE,cursor.sh,${AUTO_SELECT_GROUP_NAME}`,
       `IP-CIDR,203.0.113.7/32,${AUTO_SELECT_GROUP_NAME}`
     ])
   })

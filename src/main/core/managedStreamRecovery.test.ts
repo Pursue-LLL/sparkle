@@ -95,6 +95,32 @@ describe('managed stream: failures and recovery', () => {
     assert.equal(rig.sockets.length, 3)
   })
 
+  it('keeps retrying when the first connection after a restart fails', async () => {
+    const rig = createRig()
+    await rig.stream.start()
+    rig.behavior.openError = new Error('core restarting')
+
+    await assert.rejects(rig.stream.restart(), /core restarting/)
+    rig.behavior.openError = undefined
+    await elapse(RETRY_DELAY_MS)
+
+    assert.equal(rig.sockets.length, 2)
+  })
+
+  it('ignores the late close of a connection that a newer one has replaced', async () => {
+    const rig = createRig()
+    await rig.stream.start()
+    const [first] = rig.sockets
+    first.onerror?.()
+    await rig.stream.start()
+    assert.equal(rig.sockets.length, 2)
+
+    first.drop()
+    await elapse(RETRY_DELAY_MS * 3)
+
+    assert.equal(rig.sockets.length, 2)
+  })
+
   it('does not open a second connection when started while a reconnect is pending', async () => {
     const rig = createRig()
     await rig.stream.start()
