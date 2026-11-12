@@ -19,9 +19,12 @@ const dueItem = (): ProfileItem => ({
 const world: {
   items: ProfileItem[]
   listFailure: unknown
+  /** 设置后读取订阅列表会一直等到它完成，模拟一次耗时的检查。 */
+  gate: Promise<void> | undefined
+  logFailure: boolean
   updated: string[]
   logs: string[]
-} = { items: [], listFailure: undefined, updated: [], logs: [] }
+} = { items: [], listFailure: undefined, gate: undefined, logFailure: false, updated: [], logs: [] }
 
 let moduleMocked = false
 
@@ -30,6 +33,7 @@ function loadModule(): typeof import('./profileUpdater') {
     mock.module('../config', {
       exports: {
         getProfileConfig: async () => {
+          await world.gate
           if (world.listFailure !== undefined) {
             throw world.listFailure
           }
@@ -43,6 +47,9 @@ function loadModule(): typeof import('./profileUpdater') {
     mock.module('../utils/log', {
       exports: {
         appendAppLog: async (message: string) => {
+          if (world.logFailure) {
+            throw new Error('disk full')
+          }
           world.logs.push(message)
         }
       }
@@ -63,6 +70,8 @@ describe('profileUpdater', () => {
   beforeEach(() => {
     world.items = [dueItem()]
     world.listFailure = undefined
+    world.gate = undefined
+    world.logFailure = false
     world.updated = []
     world.logs = []
     mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.UTC(2026, 10, 12, 12, 0, 0) })
@@ -122,6 +131,44 @@ describe('profileUpdater', () => {
     assert.deepEqual(world.updated, [])
 
     await advance(30_000)
+    assert.deepEqual(world.updated, ['main'])
+  })
+
+  it('keeps a single heartbeat chain when re-initialised during a running check', async () => {
+    const { initProfileUpdater } = loadModule()
+    let finishCheck = (): void => undefined
+    world.gate = new Promise<void>((resolve) => {
+      finishCheck = resolve
+    })
+    initProfileUpdater()
+    await advance(STARTUP_DELAY_MS)
+
+    initProfileUpdater()
+    world.gate = undefined
+    finishCheck()
+    await settle()
+    assert.deepEqual(world.updated, ['main'])
+
+    await advance(STARTUP_DELAY_MS)
+    assert.deepEqual(world.updated, ['main', 'main'])
+
+    // 被取代的那一代若续排，会在这一刻多检查一次
+    await advance(HEARTBEAT_MS - STARTUP_DELAY_MS)
+    assert.deepEqual(world.updated, ['main', 'main'])
+
+    await advance(STARTUP_DELAY_MS)
+    assert.deepEqual(world.updated, ['main', 'main', 'main'])
+  })
+
+  it('keeps the schedule going when writing the failure log fails too', async () => {
+    world.listFailure = new Error('profile config unreadable')
+    world.logFailure = true
+    loadModule().initProfileUpdater()
+
+    await advance(STARTUP_DELAY_MS)
+    world.listFailure = undefined
+    await advance(HEARTBEAT_MS)
+
     assert.deepEqual(world.updated, ['main'])
   })
 
