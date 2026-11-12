@@ -1,5 +1,5 @@
 // [INPUT] 当前订阅节点 · grok.com HTTP 200 探测缓存
-// [OUTPUT] GROK_NODE_PROVIDER_ID / GROK_NODE_PROVIDER_FILENAME · buildSparkleGrokProviderDocument · buildGrokProbeSnapshot · orderGrokRepairCandidates · grokProviderMembershipChanged
+// [OUTPUT] GROK_NODE_PROVIDER_ID / GROK_NODE_PROVIDER_FILENAME · grokProxyName · buildSparkleGrokProviderDocument · buildGrokProbeSnapshot · orderGrokRepairCandidates · grokProviderMembershipChanged
 // [POS] `grok 专用` 的 provider 文档与代理页快照：provider 只保留 routed 验证通过（真实 HEAD 200 且无 cf-mitigated）的节点，
 //       非香港优先、按 RTT 升序、最多 12 个；缓存为空或全部节点失败时回退全量，保证 provider 不为空（空 provider 会让整组静默退化为 COMPATIBLE 直连）。
 
@@ -50,7 +50,8 @@ export const GROK_POOL_TRUST_MS = 24 * 60 * 60 * 1000
 /** 池子上限：只保留 RTT 最快的 N 个已验证节点，避免"验证通过"变成 129 个节点全量体检。 */
 export const GROK_POOL_MAX_SIZE = 12
 
-function proxyName(proxy: GrokProxyRecord): string {
+/** 节点名：去掉首尾空白，缺失时为空串。 */
+export function grokProxyName(proxy: GrokProxyRecord): string {
   return String(proxy.name ?? '').trim()
 }
 
@@ -58,7 +59,7 @@ function dedupeByName(proxies: readonly GrokProxyRecord[]): GrokProxyRecord[] {
   const seen = new Set<string>()
   const unique: GrokProxyRecord[] = []
   for (const proxy of proxies) {
-    const name = proxyName(proxy)
+    const name = grokProxyName(proxy)
     if (!name || seen.has(name)) {
       continue
     }
@@ -87,7 +88,7 @@ function probeRtt(cache: GrokNodeProbeCache, proxy: GrokProxyRecord): number {
 const HONG_KONG_NAME_PATTERN = /香港|\bHK\b|hong\s*kong|hongkong/i
 
 function isHongKongNamed(proxy: GrokProxyRecord): boolean {
-  return HONG_KONG_NAME_PATTERN.test(proxyName(proxy))
+  return HONG_KONG_NAME_PATTERN.test(grokProxyName(proxy))
 }
 
 /**
@@ -125,7 +126,7 @@ export function orderGrokProxies(
       if (rttA !== rttB) {
         return rttA < rttB ? -1 : 1
       }
-      return proxyName(a).localeCompare(proxyName(b), 'zh-CN')
+      return grokProxyName(a).localeCompare(grokProxyName(b), 'zh-CN')
     })
     .slice(0, GROK_POOL_MAX_SIZE)
 }
@@ -140,7 +141,7 @@ export function buildGrokProbeSnapshot(
 ): GrokProbeSnapshot {
   const snapshot: GrokProbeSnapshot = {}
   for (const proxy of proxies) {
-    const name = proxyName(proxy)
+    const name = grokProxyName(proxy)
     const record = probeCache?.get(computeProxyNodeFingerprint(proxy))
     if (!name || !record) {
       continue

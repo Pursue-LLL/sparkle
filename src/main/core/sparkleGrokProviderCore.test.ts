@@ -77,17 +77,12 @@ describe('sparkleGrokProviderCore', () => {
     const cache = cacheOf([{ proxy: proxies[0], alive: true, rttMs: 90 }])
 
     assert.deepEqual(orderGrokProxies(proxies, cache), [proxies[0]])
-    assert.deepEqual(
-      orderGrokProxies(proxies, cache, Date.now() + GROK_POOL_TRUST_MS + 1),
-      proxies
-    )
+    assert.deepEqual(orderGrokProxies(proxies, cache, Date.now() + GROK_POOL_TRUST_MS + 1), proxies)
   })
 
   it('caps the pool at the fastest verified nodes', () => {
     const proxies = Array.from({ length: GROK_POOL_MAX_SIZE + 3 }, (_, i) => node(`JP-${i}`))
-    const cache = cacheOf(
-      proxies.map((proxy, i) => ({ proxy, alive: true, rttMs: 100 + i * 10 }))
-    )
+    const cache = cacheOf(proxies.map((proxy, i) => ({ proxy, alive: true, rttMs: 100 + i * 10 })))
 
     const ordered = orderGrokProxies(proxies, cache)
 

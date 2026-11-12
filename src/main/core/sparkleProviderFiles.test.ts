@@ -98,7 +98,7 @@ describe('writeSparkleProviderFiles', () => {
     mock.module('./sparkleAgyProbeCache', {
       exports: { loadSparkleAgyProbeCache: loader('agy-cache', () => state.agyCache) }
     })
-    mock.module('./sparkleGrokProbe', {
+    mock.module('./sparkleGrokProbeCache', {
       exports: { loadSparkleGrokProbeCache: loader('grok-cache', () => state.grokCache) }
     })
     write = (await import('./sparkleProviderFiles')).writeSparkleProviderFiles

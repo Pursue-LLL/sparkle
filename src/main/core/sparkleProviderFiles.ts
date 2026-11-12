@@ -76,7 +76,7 @@ const PROVIDER_FILE_BUILDERS: ReadonlyArray<(input: ProviderInput) => Promise<Pr
   async ({ proxies }) => {
     const { buildSparkleGrokProviderDocument, GROK_NODE_PROVIDER_FILENAME } =
       await import('./sparkleGrokProviderCore')
-    const { loadSparkleGrokProbeCache } = await import('./sparkleGrokProbe')
+    const { loadSparkleGrokProbeCache } = await import('./sparkleGrokProbeCache')
     const probeCache = await loadSparkleGrokProbeCache()
     return {
       filename: GROK_NODE_PROVIDER_FILENAME,
