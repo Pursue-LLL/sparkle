@@ -227,10 +227,9 @@ async function trimLogFileToSize(
 async function enforceLogFileSizeLimit(
   target: LogTarget,
   path: string,
-  appendedBytes: number,
+  nextSize: number,
   maxBytes: number
 ): Promise<void> {
-  const nextSize = nextLogFileSizeAfterAppend(getLogFileSize(target, path), appendedBytes)
   logFileSizeMap.set(target, { path, size: nextSize })
 
   if (!shouldTrimLogFile(nextSize, maxBytes)) return
@@ -238,16 +237,19 @@ async function enforceLogFileSizeLimit(
   await trimLogFileToSize(target, path, trimTargetBytes(maxBytes, logTrimLowWatermarkRatio))
 }
 
+const logfmtEscapes: Record<string, string> = {
+  n: '\n',
+  r: '\r',
+  t: '\t',
+  '"': '"',
+  '\\': '\\'
+}
+
+// 单趟解码：逐个替换会把转义的反斜杠与其后的 n/r/t 误认成控制字符（C:\\new → 换行）
 function unquoteLogfmtValue(value: string): string {
   if (!(value.startsWith('"') && value.endsWith('"'))) return value
 
-  return value
-    .slice(1, -1)
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\r')
-    .replace(/\\t/g, '\t')
-    .replace(/\\"/g, '"')
-    .replace(/\\\\/g, '\\')
+  return value.slice(1, -1).replace(/\\([nrt"\\])/g, (_, escaped: string) => logfmtEscapes[escaped])
 }
 
 function parseLogfmtLine(line: string): Record<string, string> {
@@ -292,14 +294,6 @@ function normalizeOutLogLevel(level: string | undefined, fallbackType: LogLevel)
 
 function createControllerLogFromOutLine(line: string, fallbackType: LogLevel): ControllerLog {
   const fields = parseLogfmtLine(line)
-  const hasStructuredFields = Boolean(fields.time || fields.level || fields.msg)
-
-  if (!hasStructuredFields) {
-    return {
-      type: fallbackType,
-      payload: line
-    }
-  }
 
   return {
     type: normalizeOutLogLevel(fields.level, fallbackType),
@@ -345,9 +339,14 @@ function flushCoreLogLines(lineBuffer: string, content: string, type: LogLevel):
   return nextLineBuffer
 }
 
-function normalizeWriteChunk(chunk: string | Buffer): Buffer {
-  return Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf-8')
+function writeToStream(target: LogTarget, content: LogContent): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    getWriteStream(target).write(content, (error) => (error ? reject(error) : resolve()))
+  })
 }
+
+const isMissingFileError = (error: unknown): boolean =>
+  (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'
 
 async function appendLog(target: LogTarget, content: LogContent): Promise<void> {
   if (isEmptyLogContent(content) || !(await shouldSaveLogs())) return
@@ -358,41 +357,23 @@ async function appendLog(target: LogTarget, content: LogContent): Promise<void> 
   const currentQueue = writeQueue[target].catch(() => {})
   writeQueue[target] = (async () => {
     await currentQueue
+    // 写入前读取：缓存缺失时回退到 stat，写入后再读会把本次内容算两遍
+    const sizeBeforeAppend = getLogFileSize(target, path)
     try {
-      await new Promise<void>((resolve, reject) => {
-        const stream = getWriteStream(target)
-        stream.write(content, (error) => {
-          if (error) {
-            reject(error)
-          } else {
-            resolve()
-          }
-        })
-      })
-      await enforceLogFileSizeLimit(target, path, contentSize, maxLogFileSizeBytes)
+      await writeToStream(target, content)
     } catch (error) {
       await closeWriteStream(target)
-      if (
-        error instanceof Error &&
-        'code' in error &&
-        (error as NodeJS.ErrnoException).code === 'ENOENT'
-      ) {
-        ensureLogDir()
-        await new Promise<void>((resolve, reject) => {
-          const stream = getWriteStream(target)
-          stream.write(content, (retryError) => {
-            if (retryError) {
-              reject(retryError)
-            } else {
-              resolve()
-            }
-          })
-        })
-        await enforceLogFileSizeLimit(target, path, contentSize, maxLogFileSizeBytes)
-        return
-      }
-      throw error
+      if (!isMissingFileError(error)) throw error
+      // 日志目录被删：重建后重试一次
+      ensureLogDir()
+      await writeToStream(target, content)
     }
+    await enforceLogFileSizeLimit(
+      target,
+      path,
+      nextLogFileSizeAfterAppend(sizeBeforeAppend, contentSize),
+      maxLogFileSizeBytes
+    )
   })()
 
   await writeQueue[target]
@@ -445,18 +426,14 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
   }
 
   return new Writable({
-    write(chunk, _encoding, callback) {
-      const content = normalizeWriteChunk(chunk)
+    write(content: Buffer, _encoding, callback) {
       if (target === 'core' && mihomoLogSource === 'out') {
         lineBuffer = flushCoreLogLines(lineBuffer, content.toString('utf-8'), type)
       }
       persist(content, callback)
     },
     writev(chunks, callback) {
-      const content =
-        chunks.length === 1
-          ? normalizeWriteChunk(chunks[0].chunk as string | Buffer)
-          : Buffer.concat(chunks.map(({ chunk }) => normalizeWriteChunk(chunk as string | Buffer)))
+      const content = Buffer.concat(chunks.map(({ chunk }) => chunk as Buffer))
       if (target === 'core' && mihomoLogSource === 'out') {
         lineBuffer = flushCoreLogLines(lineBuffer, content.toString('utf-8'), type)
       }
