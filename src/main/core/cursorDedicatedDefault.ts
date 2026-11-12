@@ -47,7 +47,7 @@ export async function applyCursorDedicatedVpsSelection(
       return false
     }
     const restored = await changeProxyApi(CURSOR_DEDICATED_GROUP_NAME, manualSelection, {
-      source: 'manual',
+      source: 'manual'
     })
     if (restored) {
       await appendAppLog(

@@ -17,11 +17,16 @@ describe('sparkleFastLatencyOrderCore', () => {
           name: 'a',
           alive: true,
           history: [{ delay: 999 }],
-          extra: { [URL]: { alive: true, history: [{ delay: 0 }, { delay: 300 }, { delay: 100 }, { delay: 200 }] } },
+          extra: {
+            [URL]: {
+              alive: true,
+              history: [{ delay: 0 }, { delay: 300 }, { delay: 100 }, { delay: 200 }]
+            }
+          }
         },
-        { name: 'b', alive: true, history: [{ delay: 0 }, { delay: 80 }] },
+        { name: 'b', alive: true, history: [{ delay: 0 }, { delay: 80 }] }
       ],
-      URL,
+      URL
     )
     assert.equal(delays.get('a'), 200)
     assert.equal(delays.get('b'), 80)
@@ -31,18 +36,29 @@ describe('sparkleFastLatencyOrderCore', () => {
     const delays = collectNodeDelays(
       [
         { name: 'dead', alive: false, history: [{ delay: 50 }] },
-        { name: 'dead-for-url', alive: true, history: [{ delay: 50 }], extra: { [URL]: { alive: false } } },
+        {
+          name: 'dead-for-url',
+          alive: true,
+          history: [{ delay: 50 }],
+          extra: { [URL]: { alive: false } }
+        },
         { name: 'timeout-only', alive: true, history: [{ delay: 0 }] },
-        { name: 'no-history', alive: true },
+        { name: 'no-history', alive: true }
       ],
-      URL,
+      URL
     )
     assert.equal(delays.size, 0)
   })
 
   it('compares node order by name', () => {
-    assert.equal(hasSameNodeOrder([{ name: 'a' }, { name: 'b' }], [{ name: 'a' }, { name: 'b' }]), true)
-    assert.equal(hasSameNodeOrder([{ name: 'a' }, { name: 'b' }], [{ name: 'b' }, { name: 'a' }]), false)
+    assert.equal(
+      hasSameNodeOrder([{ name: 'a' }, { name: 'b' }], [{ name: 'a' }, { name: 'b' }]),
+      true
+    )
+    assert.equal(
+      hasSameNodeOrder([{ name: 'a' }, { name: 'b' }], [{ name: 'b' }, { name: 'a' }]),
+      false
+    )
     assert.equal(hasSameNodeOrder([{ name: 'a' }], []), false)
   })
 
@@ -80,7 +96,11 @@ describe('sparkleFastLatencyOrderCore', () => {
 })
 
 describe('shouldAdoptLatencyOrder', () => {
-  const delays = new Map([['a', 200], ['b', 90], ['c', 180]])
+  const delays = new Map([
+    ['a', 200],
+    ['b', 90],
+    ['c', 180]
+  ])
 
   it('adopts only when the new first node is clearly faster', () => {
     assert.equal(shouldAdoptLatencyOrder('a', 'b', delays), true)
