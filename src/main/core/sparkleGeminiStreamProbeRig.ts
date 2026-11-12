@@ -94,7 +94,10 @@ export const PAGE_TW = `<html><script>window.WIZ_global_data={${MARKER_TW}};</sc
 export const INCONCLUSIVE: ProbeResult = { definitive: false, eligible: true }
 export const VERDICT_TW: ProbeResult = { definitive: true, eligible: true, countryCode: 'TW' }
 
-export const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+export const flush = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve)
+  })
 
 export function responseHead(...headers: string[]): string {
   return ['HTTP/1.1 200 OK', 'Content-Type: text/html', ...headers].join('\r\n') + '\r\n\r\n'

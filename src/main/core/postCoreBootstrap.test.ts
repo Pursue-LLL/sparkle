@@ -303,9 +303,12 @@ describe('postCoreBootstrap', () => {
     })
 
     it('does not wait forever for the core to finish initialising', async () => {
-      const done = bootstrap.runPostCoreBootstrap(new Promise<void>(() => undefined))
+      const neverReady = new Promise<void>(() => {
+        // 故意不落定：模拟内核一直没有初始化完成
+      })
+      const done = bootstrap.runPostCoreBootstrap(neverReady)
       await settle()
-      assert.deepEqual(calls, [])
+      assert.deepEqual<string[]>(calls, [])
       assert.deepEqual(logs, [])
 
       await advance(8000)
@@ -323,7 +326,7 @@ describe('postCoreBootstrap', () => {
       await advance(31_000)
       await done
 
-      assert.deepEqual(calls, [])
+      assert.deepEqual<string[]>(calls, [])
       assert.ok(logs.some((line) => line.includes('not reachable after 30s')))
     })
 

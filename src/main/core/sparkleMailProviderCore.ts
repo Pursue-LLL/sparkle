@@ -36,7 +36,9 @@ function proxyName(proxy: MailProxyRecord): string {
 }
 
 function proxyType(proxy: MailProxyRecord): string {
-  return String(proxy.type ?? '').trim().toLowerCase()
+  return String(proxy.type ?? '')
+    .trim()
+    .toLowerCase()
 }
 
 /** 冷启动尚未完成首次全量探测时，优先把不封邮件端口的 Hysteria2 / VLESS 直连协议排在前面。 */

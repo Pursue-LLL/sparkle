@@ -306,7 +306,9 @@ export function buildAgyGroupConfig(
     }
   }
 
-  const members = leafNames.map((name) => name.trim()).filter((name) => name && !isBlockedRegionNodeName(name))
+  const members = leafNames
+    .map((name) => name.trim())
+    .filter((name) => name && !isBlockedRegionNodeName(name))
   if (members.length === 0) {
     return null
   }

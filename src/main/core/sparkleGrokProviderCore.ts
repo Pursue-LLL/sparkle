@@ -69,9 +69,7 @@ function dedupeByName(proxies: readonly GrokProxyRecord[]): GrokProxyRecord[] {
 }
 
 /** 未验证节点的候选顺序：非香港优先（香港出口可能轮换到被挑战的 IP），保持原 provider 顺序。 */
-export function orderGrokCandidates(
-  proxies: readonly GrokProxyRecord[]
-): GrokProxyRecord[] {
+export function orderGrokCandidates(proxies: readonly GrokProxyRecord[]): GrokProxyRecord[] {
   const unique = dedupeByName(proxies)
   return [...unique].sort((a, b) => {
     const hkA = isHongKongNamed(a) ? 1 : 0

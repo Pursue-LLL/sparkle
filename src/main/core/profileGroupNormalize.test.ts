@@ -117,6 +117,35 @@ describe('profileGroupNormalize', () => {
     assert.deepEqual(profile.rules, rules)
   })
 
+  it('still sends stale template hop rules to the Cursor group when there is no select group', () => {
+    const profile = {
+      'proxy-groups': [
+        { name: CURSOR_DEDICATED_GROUP_NAME, type: 'select' },
+        { name: '备用', type: 'fallback' }
+      ],
+      rules: ['DOMAIN,cursor.sh,🚀 节点选择', 'DOMAIN,example.com,不存在组']
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, [
+      `DOMAIN,cursor.sh,${CURSOR_DEDICATED_GROUP_NAME}`,
+      'DOMAIN,example.com,不存在组'
+    ])
+  })
+
+  it('does not mistake a rule made only of modifiers for one with a target', () => {
+    const rules = ['no-resolve', 'no-resolve,no-resolve,no-resolve']
+    const profile = {
+      'proxy-groups': [{ name: '主代理', type: 'select' }],
+      rules: [...rules]
+    } as unknown as MihomoConfig
+
+    rewriteMissingRuleProxyGroupTargets(profile)
+
+    assert.deepEqual(profile.rules, rules)
+  })
+
   it('has nothing to point a rule at when the subscription has no select group', () => {
     const rules = ['DOMAIN,example.com,不存在组']
     const profile = {
@@ -222,6 +251,17 @@ describe('profileGroupNormalize', () => {
       { group: '🍃 应用净化', dropped: ['🇭🇰 香港 I0B | AWS'] },
       { group: '空组', dropped: ['已下架节点'] }
     ])
+  })
+
+  it('has no groups to remove when the profile has none', () => {
+    const empty = {} as MihomoConfig
+    const emptyList = { 'proxy-groups': [] } as unknown as MihomoConfig
+
+    removeNonSubscriptionProxyGroups(empty, new Set(['主代理']))
+    removeNonSubscriptionProxyGroups(emptyList, new Set(['主代理']))
+
+    assert.equal(empty['proxy-groups'], undefined)
+    assert.deepEqual(emptyList['proxy-groups'], [])
   })
 
   it('keeps the members that still exist, even when only one is left', () => {

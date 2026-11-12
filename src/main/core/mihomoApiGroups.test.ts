@@ -146,6 +146,34 @@ describe('mihomoApi groups and selection', () => {
       assert.deepEqual(names(await api.mihomoGroups()), ['GLOBAL', '手动'])
     })
 
+    it('moves a GLOBAL listed among the groups to the front without losing its neighbours', async () => {
+      rig.mode = 'global'
+      rig.runtime = { 'proxy-groups': [{ name: '甲' }, { name: 'GLOBAL' }, { name: '乙' }] }
+      serve({
+        甲: group('甲', 'n1', ['n1']),
+        GLOBAL: group('GLOBAL', '甲', ['甲', '乙']),
+        乙: group('乙', 'n1', ['n1']),
+        n1: node('n1')
+      })
+
+      assert.deepEqual(names(await api.mihomoGroups()), ['GLOBAL', '甲', '乙'])
+    })
+
+    it('leaves the groups in their order in global mode while GLOBAL is hidden', async () => {
+      rig.mode = 'global'
+      rig.runtime = { 'proxy-groups': [{ name: '甲' }, { name: '乙' }] }
+      serve({
+        甲: group('甲', 'n1', ['n1']),
+        乙: group('乙', 'n1', ['n1']),
+        GLOBAL: group('GLOBAL', 'n1', ['n1'], { hidden: true }),
+        n1: node('n1')
+      })
+      assert.deepEqual(names(await api.mihomoGroups()), ['甲', '乙'])
+
+      rig.runtime = { 'proxy-groups': [] }
+      assert.deepEqual(await api.mihomoGroups(), [])
+    })
+
     it('still lists the groups when the provider list is unavailable', async () => {
       rig.runtime = { 'proxy-groups': [{ name: '自动选择' }] }
       serve({

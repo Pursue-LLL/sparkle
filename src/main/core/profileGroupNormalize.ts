@@ -55,11 +55,6 @@ function resolveMissingRuleTarget(
   groups: ProxyGroupConfig[],
   groupNames: Set<string>
 ): string | undefined {
-  const mainSelectGroup = resolveSubscriptionMainSelectGroup(groups)
-  if (!mainSelectGroup) {
-    return undefined
-  }
-
   if (
     STALE_TEMPLATE_HOP_GROUP_NAMES.has(missingName) &&
     groupNames.has(CURSOR_DEDICATED_GROUP_NAME)
@@ -67,7 +62,7 @@ function resolveMissingRuleTarget(
     return CURSOR_DEDICATED_GROUP_NAME
   }
 
-  return mainSelectGroup
+  return resolveSubscriptionMainSelectGroup(groups)
 }
 
 export function rewriteMissingRuleProxyGroupTargets(profile: MihomoConfig): void {

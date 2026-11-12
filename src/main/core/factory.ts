@@ -172,7 +172,7 @@ async function generateProfileImpl(): Promise<void> {
     profile = deepMerge(JSON.parse(JSON.stringify(currentProfile)), configToMerge)
   }
 
-  if (profile.proxies && Array.isArray(profile.proxies)) {
+  if (Array.isArray(profile.proxies)) {
     // 必须先统计再归一化：归一化会剥掉 multiplex，之后再统计 stripped 恒为 0
     const muxSummary = summarizeVlessVisionMuxGuard(profile.proxies as unknown[])
     ;(profile as MihomoConfig).proxies = applyVlessVisionMuxGuard(

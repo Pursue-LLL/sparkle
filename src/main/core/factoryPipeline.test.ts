@@ -243,6 +243,53 @@ describe('factory: runtime config pipeline', () => {
     })
   })
 
+  describe('nodes of every shape', () => {
+    it('takes AnyTLS nodes out of an inline url-test group and says so', async () => {
+      state.current = 'default'
+      state.profile = subscription({
+        proxies: [proxy('A', { type: 'anytls' }), proxy('B', { type: 'trojan' })],
+        'proxy-groups': [
+          { name: GROUP, type: 'select', proxies: ['🇭🇰 香港节点', 'DIRECT'] },
+          {
+            name: '🇭🇰 香港节点',
+            type: 'url-test',
+            url: 'https://example.com',
+            interval: 300,
+            proxies: ['A', 'B']
+          }
+        ]
+      })
+
+      const config = await rig.generate()
+
+      assert.deepEqual(groupOf(config, '🇭🇰 香港节点')?.proxies, ['B'])
+      assert.ok(
+        state.logs.includes(
+          '[AutoSelectAnyTlsExclusion]: outcome=executed groups_mutated=1 groups_removed=none proxies_removed=1 removed_leaves=A\n'
+        )
+      )
+    })
+
+    it('copes with nodes that have no usable name or no type, and keeps one-letter names', async () => {
+      state.current = 'default'
+      state.profile = subscription({
+        proxies: [
+          proxy('A'),
+          { type: 'ss', server: 'nameless.example.com', port: 1 },
+          { name: '  ', type: 'ss', server: 'blank.example.com', port: 1 },
+          { name: 5, type: 'ss', server: 'numeric.example.com', port: 1 },
+          { name: '无类型', server: 'untyped.example.com', port: 1 }
+        ],
+        'proxy-groups': [{ name: GROUP, type: 'select', proxies: ['A', '无类型', 'DIRECT'] }]
+      })
+
+      const members = groupOf(await rig.generate(), GROUP)?.proxies as string[]
+
+      assert.ok(members.includes('A'))
+      assert.ok(members.includes('无类型'))
+    })
+  })
+
   describe('controlled settings', () => {
     it('merges controlled DNS and sniffer settings only while they are controlled', async () => {
       state.controlled = { hosts: { 'a.example': '1.1.1.1' }, sniffer: { enable: true } }
