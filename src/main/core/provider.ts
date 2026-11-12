@@ -32,12 +32,8 @@ export { resolveVpsProviderId, partitionLeafProxies } from './vpsProviderSplitCo
 
 /** 从订阅配置中提取 proxies，并拆分为商业节点与自建 VPS 节点。 */
 export function extractProxies(config: MihomoConfig): unknown[] {
-  const proxies = config.proxies || []
-  const stabilized = applyVlessVisionMuxGuard(proxies)
+  const stabilized = applyVlessVisionMuxGuard(config.proxies || [])
   const { commercial, vps } = partitionLeafProxies(stabilized)
-  if (vps.length === 0) {
-    return commercial
-  }
   return [...commercial, ...vps]
 }
 

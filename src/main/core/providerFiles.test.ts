@@ -81,6 +81,34 @@ describe('provider files', () => {
     mkdirSync(workDir, { recursive: true })
   })
 
+  describe('extractProxies', () => {
+    const profileWith = (...proxies: Proxy[]): MihomoConfig =>
+      ({ proxies }) as unknown as MihomoConfig
+
+    it('lists the commercial nodes first and the VPS nodes last', () => {
+      const proxies = provider.extractProxies(
+        profileWith(vpsNode('KR-VPS-HY2'), commercial('a'), commercial('b'))
+      )
+
+      assert.deepEqual(proxies, [commercial('a'), commercial('b'), vpsNode('KR-VPS-HY2')])
+    })
+
+    it('returns just the commercial nodes when there is no VPS node', () => {
+      assert.deepEqual(provider.extractProxies(profileWith(commercial('a'))), [commercial('a')])
+    })
+
+    it('copes with a profile that has no proxies', () => {
+      assert.deepEqual(provider.extractProxies({} as MihomoConfig), [])
+    })
+
+    it('keeps VLESS Vision nodes away from multiplexing', () => {
+      const [node] = provider.extractProxies(profileWith(visionNode('v'))) as Proxy[]
+
+      assert.equal(node.smux, false)
+      assert.equal('multiplex' in node, false)
+    })
+  })
+
   describe('generateProxyProvider', () => {
     it('writes the nodes to the provider file and returns its path', async () => {
       const file = await provider.generateProxyProvider('p1', [commercial('a'), commercial('b')])
