@@ -1,9 +1,8 @@
-// [INPUT] node:test 假时钟与模块替身 · sparkleAgyProbe（被测模块，每个用例重新加载）· 临时目录里的真实 HOME / 数据目录 / provider 文件 · 假的 agy CLI 进程
-// [OUTPUT] useAgyRig · world · NODES · cacheKey/cacheRecord · 文件读写辅助 · runBootstrap · 断言辅助
+// [INPUT] node:test 假时钟与模块替身 · sparkleAgyProbe 及其子模块（被测，每个用例重新加载）· 临时目录里的真实 HOME / 数据目录 / provider 文件 · 假的 agy CLI 进程 · sparkleAgyProbeWorld
+// [OUTPUT] useAgyRig · snapshot · 文件读写辅助 · runBootstrap/expireHangingProbe/settle · 重导出 sparkleAgyProbeWorld 的全部夹具
 // [POS] sparkleAgyProbe 行为测试夹具：配置、mihomo 控制器与日志用替身，agy CLI 用可编排结局的假子进程，
 // 探测缓存、provider 文件与探测目录走临时目录里的真实文件。仅供测试使用。
 
-import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,75 +10,15 @@ import path from 'node:path'
 import { after, afterEach, before, beforeEach, mock } from 'node:test'
 import { parseYaml } from '../utils/yaml'
 import { flush } from './groupFailoverEngineHarness'
-import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import { AGY_NODE_PROVIDER_FILENAME } from './sparkleAgyProviderCore'
 import type * as AgyProbe from './sparkleAgyProbe'
+import type * as AgySnapshot from './sparkleAgyProbeSnapshot'
+import { NOW, resetWorld, world, type CliOutcome, type Proxy } from './sparkleAgyProbeWorld'
+import { AGY_NODE_PROVIDER_FILENAME } from './sparkleAgyProviderCore'
 import { mockFsPromisesSync } from './syncFsPromisesRig'
 
-export const NOW = 1_700_000_000_000
-export const MINUTE_MS = 60 * 1000
-export const HOUR_MS = 60 * MINUTE_MS
-export const AGY_GROUP = '🎯 agy 专用'
+export * from './sparkleAgyProbeWorld'
+
 const CACHE_FILENAME = 'sparkle-agy-nodes.json'
-
-export type Proxy = Record<string, unknown>
-
-const ss = (name: string, host: string): Proxy => ({
-  name,
-  type: 'ss',
-  server: `${host}.example.com`,
-  port: 443
-})
-
-export const TW1 = ss('台湾-1', 'tw1')
-export const TW2 = ss('台湾-2', 'tw2')
-export const JP1 = ss('日本-1', 'jp1')
-export const KR1 = ss('韩国-1', 'kr1')
-export const SG1 = ss('新加坡-1', 'sg1')
-export const US1 = ss('美国-1', 'us1')
-export const HK1 = ss('香港-1', 'hk1')
-export const ANYTLS: Proxy = {
-  name: '台湾-AnyTLS',
-  type: 'anytls',
-  server: 'anytls.example.com',
-  port: 443
-}
-export const NODES: Proxy[] = [TW1, TW2, JP1, KR1, SG1, US1, HK1, ANYTLS]
-/** 进得了 agy 池的节点，顺序同默认地区优先级。 */
-export const POOL = ['台湾-1', '台湾-2', '日本-1', '韩国-1', '新加坡-1', '美国-1']
-
-export const cacheKey = (proxy: Proxy): string => computeProxyNodeFingerprint(proxy)
-
-export function cacheRecord(
-  usable: boolean,
-  rttMs = 100,
-  ageMs = 0
-): { usable: boolean; rttMs: number; checkedAt: number } {
-  return { usable, rttMs, checkedAt: NOW - ageMs }
-}
-
-/** 假 agy CLI 的结局；rttMs 是这次请求「花掉」的耗时，默认 1ms。 */
-export type CliOutcome = (
-  | { kind: 'ok' }
-  | { kind: 'location' }
-  | { kind: 'auth' }
-  | { kind: 'fail' }
-  | { kind: 'hang' }
-  | { kind: 'error' }
-  | { kind: 'throw' }
-  | { kind: 'chunks'; chunks: Array<{ stream: 'stdout' | 'stderr'; text: string }>; code: number }
-) & { rttMs?: number }
-
-export const OK: CliOutcome = { kind: 'ok' }
-export const LOCATION: CliOutcome = { kind: 'location' }
-export const HANG: CliOutcome = { kind: 'hang' }
-export const okAfter = (rttMs: number): CliOutcome => ({ kind: 'ok', rttMs })
-
-export interface Spawned {
-  bin: string
-  args: string[]
-  env: NodeJS.ProcessEnv
-}
 
 class FakeChild extends EventEmitter {
   readonly stdout = new EventEmitter()
@@ -92,65 +31,6 @@ class FakeChild extends EventEmitter {
     }
     return true
   }
-}
-
-export const world = {
-  profile: { current: 'p1' } as { current?: string },
-  profileFailure: undefined as undefined | { reason: unknown },
-  profileReads: 0,
-  profileProxies: NODES as Proxy[],
-  appConfig: {} as { proxySwitchPriority?: string[] },
-  selection: '台湾-1' as string | undefined,
-  members: [...POOL],
-  groupMissing: false,
-  changeRefused: new Set<string>(),
-  closeFailure: false,
-  updateFailure: undefined as undefined | { reason: unknown },
-  /** 按出场顺序消耗；用完后按节点查 outcomeByNode，再回落 defaultOutcome。 */
-  outcomes: [] as CliOutcome[],
-  outcomeByNode: {} as Record<string, CliOutcome>,
-  defaultOutcome: OK as CliOutcome,
-  /** 每次启动 agy 时组里选中的节点（探测结论归属的出口）。 */
-  probedVia: [] as string[],
-  spawns: [] as Spawned[],
-  killed: [] as string[],
-  killFailure: false,
-  /** performance.now() 的假读数：假进程「完成」时按 rttMs 推进，探测耗时因此可精确编排。 */
-  perfNowMs: 0,
-  /** 悬挂中的假进程等多久才会被探测超时杀掉；runBootstrap 据此推进时钟。 */
-  hangingTimeoutMs: undefined as number | undefined,
-  /** 每次启动 agy 之前调用，参数是这是第几次启动（从 1 开始）。 */
-  onSpawn: undefined as undefined | ((count: number) => void),
-  calls: [] as string[],
-  logs: [] as string[],
-  logFailure: false
-}
-
-function resetWorld(): void {
-  world.profile = { current: 'p1' }
-  world.profileFailure = undefined
-  world.profileReads = 0
-  world.profileProxies = NODES
-  world.appConfig = {}
-  world.selection = '台湾-1'
-  world.members = [...POOL]
-  world.groupMissing = false
-  world.changeRefused = new Set()
-  world.closeFailure = false
-  world.updateFailure = undefined
-  world.outcomes = []
-  world.outcomeByNode = {}
-  world.defaultOutcome = OK
-  world.probedVia = []
-  world.spawns = []
-  world.killed = []
-  world.killFailure = false
-  world.perfNowMs = 0
-  world.hangingTimeoutMs = undefined
-  world.onSpawn = undefined
-  world.calls = []
-  world.logs = []
-  world.logFailure = false
 }
 
 /** 整个测试进程共用一个临时根目录，进程结束时清理；用例之间各自重建 home/data/profiles。 */
@@ -168,9 +48,6 @@ export const probeDir = (): string => path.join(dirs.data, 'agy-probe')
 export const probeCliDir = (): string => path.join(probeDir(), 'antigravity-cli')
 const cacheFile = (): string => path.join(dirs.data, CACHE_FILENAME)
 const providerFile = (): string => path.join(dirs.profiles, AGY_NODE_PROVIDER_FILENAME)
-
-export const callsStarting = (prefix: string): string[] =>
-  world.calls.filter((call) => call.startsWith(prefix))
 
 export function writeCache(records: Record<string, unknown>): void {
   writeFileSync(cacheFile(), JSON.stringify(records), 'utf8')
@@ -204,20 +81,6 @@ export async function settle(): Promise<void> {
   }
 }
 
-export function assertLog(fragment: string): void {
-  assert.ok(
-    world.logs.some((line) => line.includes(fragment)),
-    `missing log "${fragment}" in:\n${world.logs.join('')}`
-  )
-}
-
-export function assertNoLog(fragment: string): void {
-  assert.ok(
-    !world.logs.some((line) => line.includes(fragment)),
-    `unexpected log "${fragment}" in:\n${world.logs.join('')}`
-  )
-}
-
 /** 悬挂的假进程到点会被探测超时杀掉：推进时钟到它的超时点；没有悬挂的进程时返回 false。 */
 export function expireHangingProbe(): boolean {
   const wait = world.hangingTimeoutMs
@@ -245,11 +108,6 @@ export async function runBootstrap(agy: typeof AgyProbe): Promise<void> {
   await run
 }
 
-/** 让每个节点各自有一个固定结局。 */
-export function outcomesByNode(outcomes: Record<string, CliOutcome>): void {
-  world.outcomeByNode = outcomes
-}
-
 function emitOutcome(child: FakeChild, outcome: CliOutcome, args: string[]): void {
   queueMicrotask(() => {
     if (outcome.kind !== 'hang') {
@@ -266,14 +124,6 @@ function emitOutcome(child: FakeChild, outcome: CliOutcome, args: string[]): voi
           Buffer.from('Error 400: User location is not supported for the API use.')
         )
         child.emit('close', 1)
-        break
-      case 'auth':
-        child.stderr.emit('data', Buffer.from('error: not logged in, please sign in first'))
-        child.emit('close', 1)
-        break
-      case 'fail':
-        child.stderr.emit('data', Buffer.from('internal error'))
-        child.emit('close', 2)
         break
       case 'error':
         child.emit('error', new Error('spawn agy ENOENT'))
@@ -395,6 +245,19 @@ function installMocks(): void {
   })
 }
 
+/** 每个用例都要从零开始：探针的几个模块各自带着内存状态。 */
+const AGY_MODULES = [
+  './sparkleAgyCli',
+  './sparkleAgyProbeSnapshot',
+  './sparkleAgyGroupControl',
+  './sparkleAgyProbe'
+] as const
+
+/** 本用例里探针当前的展示快照。 */
+export function snapshot(): AgyProbeSnapshot {
+  return (require('./sparkleAgyProbeSnapshot') as typeof AgySnapshot).getSparkleAgyProbeSnapshot()
+}
+
 const SECRET_ENV_NAMES = [
   'GEMINI_API_KEY',
   'GOOGLE_GEMINI_BASE_URL',
@@ -429,7 +292,9 @@ export function useAgyRig(): () => typeof AgyProbe {
     }
     process.env.HOME = dirs.home
     mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: NOW })
-    delete require.cache[require.resolve('./sparkleAgyProbe')]
+    for (const module of AGY_MODULES) {
+      delete require.cache[require.resolve(module)]
+    }
     probe = require('./sparkleAgyProbe') as typeof AgyProbe
   })
   afterEach(() => {
