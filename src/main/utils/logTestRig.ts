@@ -109,13 +109,23 @@ export function writeAndWait(writable: LogWritable, chunk: string): Promise<void
   })
 }
 
-/** 写入全部内容并等到 final 回调（含落盘与缓存发布）完成。 */
+/** 写入全部内容并结束写入端，等到它完全结束（含落盘与缓存发布）。 */
 export async function pipeThrough(writable: LogWritable, ...chunks: string[]): Promise<void> {
   for (const chunk of chunks) {
     writable.write(chunk)
   }
   writable.end()
   await finished(writable)
+}
+
+/** 限时等待：挂起的 Promise 返回 false，而不是让测试进程无限等下去。 */
+export function settlesWithin(promise: Promise<unknown>, milliseconds: number): Promise<boolean> {
+  return Promise.race([
+    promise.then(() => true),
+    new Promise<boolean>((resolve) => {
+      setTimeout(() => resolve(false), milliseconds).unref()
+    })
+  ])
 }
 
 export function resetWorld(): void {

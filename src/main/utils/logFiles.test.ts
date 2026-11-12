@@ -9,6 +9,7 @@ import {
   pipeThrough,
   readLog,
   resetWorld,
+  settlesWithin,
   world,
   writeAndWait
 } from './logTestRig'
@@ -317,7 +318,8 @@ describe('log write streams', () => {
     await appendAppLog('one')
 
     world.streams[0].destroy()
-    await appendAppLog('lost')
+    await streamClosed(world.streams[0])
+    assert.equal(await settlesWithin(appendAppLog('lost'), 3000), true)
     await appendAppLog('three')
 
     const content = readLog('app.log')
