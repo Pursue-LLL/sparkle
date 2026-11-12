@@ -7,6 +7,7 @@ export function parseYaml<T = unknown>(content: string): T {
     yaml.parse(processedContent, {
       merge: true
     }) || {}
+
   return result as T
 }
 
@@ -14,70 +15,78 @@ export function stringifyYaml(data: unknown): string {
   return yaml.stringify(data)
 }
 
-function addYamlTagsToProxiesShortId(yamlContent: string, includeNestedProxies = false): string {
+const shortIdPattern = /^(\s*short-id:\s*)([^\s#]+)(.*)$/
+
+/** `short-id: 12345678` 改写成 `short-id: !!str 12345678`；null、已带标签、内联集合保持原样。 */
+function tagShortIdLine(line: string): string {
+  const match = line.match(shortIdPattern)
+  if (!match) return line
+
+  const [, prefix, value, suffix] = match
+  if (
+    value.toLowerCase() === 'null' ||
+    value === '~' ||
+    value.startsWith('!!') ||
+    value.startsWith('{') ||
+    value.startsWith('[')
+  ) {
+    return line
+  }
+  return `${prefix}!!str ${value}${suffix}`
+}
+
+/**
+ * Reality 的 short-id 是十六进制字符串，纯数字写法（如 01234567、1e5）会被 YAML 解析成数字而失真。
+ * 只处理顶层 proxies 列表里每个代理的 reality-opts.short-id，其他位置的同名键不动。
+ */
+function addYamlTagsToProxiesShortId(yamlContent: string): string {
   if (!yamlContent.includes('proxies:') || !yamlContent.includes('short-id:')) {
     return yamlContent
   }
 
-  const lines = yamlContent.split('\n')
-  const result: string[] = []
-  let ctx = { proxies: false, proxy: false, reality: false }
-  const lvl = { proxies: -1, proxy: -1, reality: -1 }
-  const shortIdRegex = /^(\s*short-id:\s*)([^\s#]+)(.*)$/
+  // 当前所处层级：顶层 proxies 列表 → 其中一个代理条目（`-` 所在缩进，null 表示不在条目内）
+  // → 该代理的 reality-opts 块（`reality-opts:` 所在缩进，null 表示不在块内）
+  let inProxies = false
+  let proxyIndent: number | null = null
+  let realityIndent: number | null = null
 
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) {
-      result.push(line)
-      continue
-    }
+  return yamlContent
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) return line
 
-    const indent = line.length - line.trimStart().length
+      const indent = line.length - line.trimStart().length
+      const isListItem = trimmed.startsWith('-')
 
-    if (trimmed.startsWith('proxies:') && (includeNestedProxies || indent === 0)) {
-      ctx = { proxies: true, proxy: false, reality: false }
-      lvl.proxies = indent
-    } else if (ctx.proxies && indent <= lvl.proxies && !trimmed.startsWith('-')) {
-      ctx = { proxies: false, proxy: false, reality: false }
-    }
+      // 顶层键决定是否在 proxies 列表内；与键同缩进的 `-` 仍是列表项
+      if (indent === 0 && !isListItem) {
+        inProxies = trimmed.startsWith('proxies:')
+        proxyIndent = null
+        realityIndent = null
+        return line
+      }
+      if (!inProxies) return line
 
-    if (ctx.proxies) {
-      if (trimmed.startsWith('-')) {
-        ctx = { ...ctx, proxy: true, reality: false }
-        lvl.proxy = indent
-      } else if (ctx.proxy && indent <= lvl.proxy) {
-        ctx = { ...ctx, proxy: false, reality: false }
+      // 不比当前条目更深的 `-` 才是新条目；更深的 `-` 是条目内部的嵌套列表（如 alpn）
+      if (isListItem && (proxyIndent === null || indent <= proxyIndent)) {
+        proxyIndent = indent
+        realityIndent = null
+        return line
+      }
+      if (proxyIndent === null) return line
+      if (indent <= proxyIndent) {
+        proxyIndent = null
+        realityIndent = null
+        return line
       }
 
-      if (ctx.proxy) {
-        if (trimmed.startsWith('reality-opts:')) {
-          ctx.reality = true
-          lvl.reality = indent
-        } else if (ctx.reality && indent <= lvl.reality) {
-          ctx.reality = false
-        }
-
-        if (ctx.reality && trimmed.includes('short-id:')) {
-          const match = line.match(shortIdRegex)
-          if (match) {
-            const [, prefix, value, suffix] = match
-            if (
-              value.toLowerCase() !== 'null' &&
-              value !== '~' &&
-              !value.startsWith('!!') &&
-              !value.startsWith('{') &&
-              !value.startsWith('[')
-            ) {
-              result.push(`${prefix}!!str ${value}${suffix}`)
-              continue
-            }
-          }
-        }
+      if (trimmed.startsWith('reality-opts:')) {
+        realityIndent = indent
+      } else if (realityIndent !== null && indent <= realityIndent) {
+        realityIndent = null
       }
-    }
-
-    result.push(line)
-  }
-
-  return result.join('\n')
+      return realityIndent !== null && trimmed.includes('short-id:') ? tagShortIdLine(line) : line
+    })
+    .join('\n')
 }

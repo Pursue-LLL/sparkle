@@ -112,6 +112,129 @@ describe('parseYaml', () => {
     assert.equal(parsed.proxies[2]?.['reality-opts']?.['short-id'], '333')
   })
 
+  it('keeps the short-id a string when the proxy has block lists before reality-opts', () => {
+    const content = [
+      'proxies:',
+      '  - name: a',
+      '    alpn:',
+      '      - h2',
+      '      - http/1.1',
+      '    reality-opts:',
+      '      short-id: 01234567',
+      '  - name: b',
+      '    alpn:',
+      '    - h2',
+      '    servername: example.com',
+      '    reality-opts:',
+      '      short-id: 1e5',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{ proxies: RealityNode[] }>(content)
+
+    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '01234567')
+    assert.equal(parsed.proxies[1]?.['reality-opts']?.['short-id'], '1e5')
+  })
+
+  it('supports a list written at the same indent as the proxies key', () => {
+    const content = [
+      'proxies:',
+      '- name: a',
+      '  alpn:',
+      '  - h2',
+      '  reality-opts:',
+      '    short-id: 01234567',
+      '- name: b',
+      '  reality-opts:',
+      '    short-id: 7654321',
+      'mixed-port: 7890',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{ proxies: RealityNode[] }>(content)
+
+    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '01234567')
+    assert.equal(parsed.proxies[1]?.['reality-opts']?.['short-id'], '7654321')
+  })
+
+  it('stops rewriting once reality-opts ends, even for a short-id of the proxy itself', () => {
+    const content = [
+      'proxies:',
+      '  - name: a',
+      '    reality-opts:',
+      '      short-id: 222',
+      '    short-id: 333',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{ proxies: RealityNode[] }>(content)
+
+    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '222')
+    assert.equal(parsed.proxies[0]?.['short-id'], 333)
+  })
+
+  it('recognizes the proxies key with a trailing comment but not look-alike keys', () => {
+    const content = [
+      'proxies: # my nodes',
+      '  - name: a',
+      '    reality-opts:',
+      '      short-id: 111',
+      'x-proxies:',
+      '  - name: b',
+      '    reality-opts:',
+      '      short-id: 222',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{ proxies: RealityNode[]; 'x-proxies': RealityNode[] }>(content)
+
+    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '111')
+    assert.equal(parsed['x-proxies'][0]?.['reality-opts']?.['short-id'], 222)
+  })
+
+  it('leaves reality-opts blocks outside the proxies list untouched, even before it', () => {
+    const content = [
+      'foo:',
+      '  - name: x',
+      '    reality-opts:',
+      '      short-id: 123',
+      'proxies:',
+      '  reality-opts:',
+      '    short-id: 456',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{
+      foo: RealityNode[]
+      proxies: { 'reality-opts': { 'short-id': unknown } }
+    }>(content)
+
+    assert.equal(parsed.foo[0]?.['reality-opts']?.['short-id'], 123)
+    assert.equal(parsed.proxies['reality-opts']['short-id'], 456)
+  })
+
+  it('does not let column-zero comments or blank lines end the block, and keeps them in scalars', () => {
+    const content = [
+      'proxies:',
+      '  - name: a',
+      '    reality-opts:',
+      '# commented out at column zero',
+      '',
+      '      short-id: 111',
+      'note: |',
+      '  first',
+      '',
+      '  # kept',
+      '  last',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{ proxies: RealityNode[]; note: string }>(content)
+
+    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '111')
+    assert.equal(parsed.note, 'first\n\n# kept\nlast\n')
+  })
+
   it('does not touch documents that mention neither proxies nor short-id', () => {
     assert.deepEqual(parseYaml('a: 123\nshort-id: 456\n'), { a: 123, 'short-id': 456 })
   })
