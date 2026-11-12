@@ -122,7 +122,10 @@ describe('mihomoGroupMembersCore', () => {
       interface: '',
       'routing-mark': 0
     })
-    const provider = (name: string, proxy: ControllerProxiesDetail): ControllerProxyProviders['providers'][string] => ({
+    const provider = (
+      name: string,
+      proxy: ControllerProxiesDetail
+    ): ControllerProxyProviders['providers'][string] => ({
       name,
       type: 'file',
       expectedStatus: '204',
@@ -143,5 +146,28 @@ describe('mihomoGroupMembersCore', () => {
       pooled?.extra['https://gemini.google.com'].history.map((entry) => entry.delay),
       [191, 0]
     )
+  })
+
+  it('buildProviderProxyLookup yields an empty lookup when the controller reports no providers', () => {
+    assert.equal(buildProviderProxyLookup(null).size, 0)
+    assert.equal(buildProviderProxyLookup(undefined).size, 0)
+    assert.equal(buildProviderProxyLookup({} as unknown as ControllerProxyProviders).size, 0)
+  })
+
+  it('buildProviderProxyLookup skips providers without proxies and proxies without a name', () => {
+    const named = { name: 'HK-01', type: 'Ss', alive: true, history: [], extra: {} }
+    const lookup = buildProviderProxyLookup({
+      providers: {
+        empty: { name: 'empty', type: 'file', vehicleType: 'File' },
+        mixed: {
+          name: 'mixed',
+          type: 'file',
+          vehicleType: 'File',
+          proxies: [{ name: '', type: 'Ss' }, named]
+        }
+      }
+    } as unknown as ControllerProxyProviders)
+
+    assert.deepEqual([...lookup.keys()], ['HK-01'])
   })
 })

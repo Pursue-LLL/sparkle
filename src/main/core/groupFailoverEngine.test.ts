@@ -55,7 +55,13 @@ function createHarness(groups: Record<string, FailoverGroupSnapshot>) {
   const listeners: ((log: ControllerLog) => void)[] = []
   const loads: string[] = []
   const load = { active: 0, maxActive: 0 }
-  const behavior = { pinResult: true, loadError: undefined as Error | undefined, loadDelayMs: 0 }
+  const behavior = {
+    pinResult: true,
+    loadError: undefined as Error | undefined,
+    unpinError: undefined as Error | undefined,
+    logError: undefined as Error | undefined,
+    loadDelayMs: 0
+  }
 
   const deps: GroupFailoverDeps = {
     subscribeAlerts: (listener) => {
@@ -86,10 +92,16 @@ function createHarness(groups: Record<string, FailoverGroupSnapshot>) {
       return behavior.pinResult
     },
     unpinNode: async (group) => {
+      if (behavior.unpinError) {
+        throw behavior.unpinError
+      }
       unpins.push(group)
       groups[group] = { ...groups[group], fixed: undefined }
     },
     log: async (line) => {
+      if (behavior.logError) {
+        throw behavior.logError
+      }
       logs.push(line)
     },
     now: () => nowMs,
@@ -244,6 +256,107 @@ describe('group failover engine', () => {
     h.scheduled[0].task()
     await flush()
     assert.deepEqual(h.unpins, [])
+  })
+
+  it('ignores a release timer that fired for a pin the engine has since replaced', async () => {
+    const h = createHarness({ [TAIWAN]: taiwanGroup('A') })
+    await h.failTwice(TAIWAN)
+    h.advance(DIAL_FAILURE_DEDUPE_MS)
+    await h.failTwice(TAIWAN)
+    assert.deepEqual(h.pins.at(-1), [TAIWAN, 'D'])
+
+    h.scheduled[0].task()
+    await flush()
+    assert.deepEqual(h.unpins, [])
+    assert.doesNotMatch(h.logs.join(''), /released/)
+
+    h.scheduled[1].task()
+    await flush()
+    assert.deepEqual(h.unpins, [TAIWAN])
+    assert.match(h.logs.join(''), /released group=Sparkle-台湾 node=D/)
+  })
+
+  it('stops treating the pin as its own once the user has taken it over', async () => {
+    const h = createHarness({ [TAIWAN]: taiwanGroup('A') })
+    await h.failTwice(TAIWAN)
+    h.groups[TAIWAN] = taiwanGroup('D', 'D')
+    h.scheduled[0].task()
+    await flush()
+    assert.equal(h.scheduled.length, 1)
+
+    h.advance(DIAL_FAILURE_DEDUPE_MS)
+    await h.failTwice(TAIWAN)
+    assert.deepEqual(h.pins, [[TAIWAN, 'C']])
+    assert.match(h.logs.join(''), /skipped group=Sparkle-台湾 reason=user-pin node=D/)
+  })
+
+  it('forgets the pin without unpinning when the group has disappeared', async () => {
+    const h = createHarness({ [TAIWAN]: taiwanGroup('A') })
+    await h.failTwice(TAIWAN)
+    delete h.groups[TAIWAN]
+    h.scheduled[0].task()
+    await flush()
+    assert.deepEqual(h.unpins, [])
+    assert.equal(h.scheduled.length, 1)
+  })
+
+  it('keeps ownership and retries when handing the group back fails', async () => {
+    const h = createHarness({ [TAIWAN]: taiwanGroup('A') })
+    await h.failTwice(TAIWAN)
+    h.behavior.unpinError = new Error('controller down')
+    h.scheduled[0].task()
+    await flush()
+    assert.match(h.logs.join(''), /release failed group=Sparkle-台湾 err=controller down/)
+    assert.equal(h.scheduled.length, 2)
+    assert.equal(h.scheduled[1].delayMs, FAILOVER_HOLD_MS)
+
+    h.behavior.unpinError = undefined
+    h.scheduled[1].task()
+    await flush()
+    assert.deepEqual(h.unpins, [TAIWAN])
+    assert.match(h.logs.join(''), /released group=Sparkle-台湾 node=C/)
+  })
+
+  it('does not mistake its own pin for a user pin after a failed release', async () => {
+    const h = createHarness({ [TAIWAN]: taiwanGroup('A') })
+    await h.failTwice(TAIWAN)
+    h.behavior.loadError = new Error('controller down')
+    h.scheduled[0].task()
+    await flush()
+    assert.match(h.logs.join(''), /release failed/)
+
+    h.behavior.loadError = undefined
+    h.advance(DIAL_FAILURE_DEDUPE_MS)
+    await h.failTwice(TAIWAN)
+    assert.deepEqual(h.pins.at(-1), [TAIWAN, 'D'])
+    assert.doesNotMatch(h.logs.join(''), /reason=user-pin/)
+  })
+
+  it('keeps the switch and its hold timer when the logger fails', async () => {
+    const h = createHarness({ [TAIWAN]: taiwanGroup('A') })
+    h.behavior.logError = new Error('disk full')
+    await h.failTwice(TAIWAN)
+    assert.deepEqual(h.pins, [[TAIWAN, 'C']])
+    assert.equal(h.scheduled.length, 1)
+
+    h.scheduled[0].task()
+    await flush()
+    assert.deepEqual(h.unpins, [TAIWAN])
+  })
+
+  it('does nothing when the group cannot be read', async () => {
+    const h = createHarness({})
+    await h.failTwice(TAIWAN)
+    assert.deepEqual(h.loads, [TAIWAN])
+    assert.deepEqual(h.pins, [])
+    assert.deepEqual(h.logs, [])
+  })
+
+  it('reports a skip without a node when the group is not a url-test group', async () => {
+    const h = createHarness({ [TAIWAN]: { ...taiwanGroup('A'), type: 'Selector' } })
+    await h.failTwice(TAIWAN)
+    assert.deepEqual(h.logs, ['[GroupFailover]: skipped group=Sparkle-台湾 reason=not-url-test\n'])
+    assert.deepEqual(h.pins, [])
   })
 
   it('survives a failing controller call and keeps handling later failovers', async () => {

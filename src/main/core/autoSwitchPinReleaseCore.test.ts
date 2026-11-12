@@ -21,6 +21,15 @@ describe('isAutoSwitchGroup', () => {
     assert.equal(isAutoSwitchGroup({ name: '🚀 节点选择', type: 'Selector' }), false)
     assert.equal(isAutoSwitchGroup({ name: '🎯 Cursor 专用', type: 'select' }), false)
   })
+
+  it('ignores surrounding spaces in the name and survives a group without a name', () => {
+    assert.equal(isAutoSwitchGroup({ name: ' 自动选择 ', type: 'Selector' }), true)
+
+    const nameless = (type: string): { name: string; type: string } =>
+      ({ type }) as unknown as { name: string; type: string }
+    assert.equal(isAutoSwitchGroup(nameless('URLTest')), true)
+    assert.equal(isAutoSwitchGroup(nameless('Selector')), false)
+  })
 })
 
 describe('planAutoSwitchPinRelease', () => {
@@ -66,5 +75,24 @@ describe('planAutoSwitchPinRelease', () => {
 
   it('returns nothing when no group is pinned', () => {
     assert.deepEqual(planAutoSwitchPinRelease([groups[2], groups[3]], 'all'), [])
+  })
+
+  it('treats a blank pin as no pin and trims the pinned node name', () => {
+    const blank: AutoSwitchGroupSnapshot = {
+      name: 'Sparkle-日本',
+      type: 'URLTest',
+      fixed: '   ',
+      all: ['🇯🇵 日本 01']
+    }
+    const padded: AutoSwitchGroupSnapshot = {
+      name: 'Sparkle-韩国',
+      type: 'URLTest',
+      fixed: ' 🇰🇷 韩国 01 ',
+      all: ['🇰🇷 韩国 01']
+    }
+
+    assert.deepEqual(planAutoSwitchPinRelease([blank, padded], 'all'), [
+      { group: 'Sparkle-韩国', pinnedNode: '🇰🇷 韩国 01', reason: 'cache-restored' }
+    ])
   })
 })
