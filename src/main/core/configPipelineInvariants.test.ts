@@ -117,8 +117,10 @@ describe('cursor rule rewriting (random rule lists)', () => {
       for (const [index, rule] of once.entries()) {
         if (rule === original[index]) continue
         const before = fieldsOf(original[index])
-        assert.equal(before.at(-1), CURSOR_DEDICATED_GROUP_NAME)
-        assert.deepEqual(fieldsOf(rule), [...before.slice(0, -1), AUTO_SELECT_GROUP_NAME])
+        // 策略是 no-resolve 这类修饰符之前的最后一个字段，改写时修饰符原样保留。
+        const policyAt = before.findLastIndex((field) => field !== 'no-resolve')
+        assert.equal(before[policyAt], CURSOR_DEDICATED_GROUP_NAME)
+        assert.deepEqual(fieldsOf(rule), before.with(policyAt, AUTO_SELECT_GROUP_NAME))
       }
     })
   })

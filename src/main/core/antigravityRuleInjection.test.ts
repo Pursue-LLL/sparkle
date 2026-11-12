@@ -111,4 +111,73 @@ describe('antigravityRuleInjection', () => {
     )
     assert.equal(rules[4], GENERIC_GOOGLEAPIS_RULE)
   })
+
+  it('finds the target group among other groups', () => {
+    const withAgy = {
+      'proxy-groups': [{ name: '🔍 Google', type: 'select' }, AGY_GROUP],
+      rules: [GENERIC_GOOGLEAPIS_RULE]
+    } as unknown as MihomoConfig
+    const withAuto = {
+      'proxy-groups': [{ name: '🔍 Google', type: 'select' }, AUTO_GROUP],
+      rules: [GENERIC_GOOGLEAPIS_RULE]
+    } as unknown as MihomoConfig
+
+    injectAntigravityTrafficRules(withAgy)
+    injectAntigravityTrafficRules(withAuto)
+
+    assert.equal(rulesOf(withAgy)[0], `DOMAIN-KEYWORD,cloudcode-pa,${AGY_DEDICATED_GROUP_NAME}`)
+    assert.equal(rulesOf(withAuto)[0], `DOMAIN-KEYWORD,cloudcode-pa,${AUTO_SELECT_GROUP_NAME}`)
+  })
+
+  it('leaves a profile without proxy groups alone', () => {
+    const profile = { rules: [GENERIC_GOOGLEAPIS_RULE] } as unknown as MihomoConfig
+
+    injectAntigravityTrafficRules(profile)
+
+    assert.deepEqual(profile.rules, [GENERIC_GOOGLEAPIS_RULE])
+  })
+
+  it('creates the rules for a profile that has none yet', () => {
+    const profile = { 'proxy-groups': [AGY_GROUP] } as unknown as MihomoConfig
+
+    injectAntigravityTrafficRules(profile)
+
+    assert.deepEqual(profile.rules, [
+      `DOMAIN-KEYWORD,cloudcode-pa,${AGY_DEDICATED_GROUP_NAME}`,
+      `DOMAIN-SUFFIX,aicode.googleapis.com,${AGY_DEDICATED_GROUP_NAME}`,
+      `DOMAIN-SUFFIX,generativelanguage.googleapis.com,${AGY_DEDICATED_GROUP_NAME}`,
+      `DOMAIN,www.googleapis.com,${AGY_DEDICATED_GROUP_NAME}`
+    ])
+  })
+
+  it('only migrates its own rules: others pointing at 自动选择 or DIRECT stay as they are', () => {
+    const others = [
+      `DOMAIN-SUFFIX,example.com,${AUTO_SELECT_GROUP_NAME}`,
+      'DOMAIN-SUFFIX,aicode.googleapis.com,DIRECT',
+      `DOMAIN,www.googleapis.com,extra,${AUTO_SELECT_GROUP_NAME}`,
+      `DOMAIN-SUFFIX,generativelanguage.googleapis.com.example.com,${AUTO_SELECT_GROUP_NAME}`
+    ]
+    const profile = {
+      'proxy-groups': [AGY_GROUP, AUTO_GROUP],
+      rules: [...others]
+    } as unknown as MihomoConfig
+
+    injectAntigravityTrafficRules(profile)
+
+    assert.deepEqual(rulesOf(profile).slice(-others.length), others)
+    assert.equal(rulesOf(profile).length, others.length + 4)
+  })
+
+  it('does not add a second copy of a rule it recognises despite extra spaces', () => {
+    const profile = {
+      'proxy-groups': [AGY_GROUP, AUTO_GROUP],
+      rules: [` DOMAIN-KEYWORD , cloudcode-pa , ${AUTO_SELECT_GROUP_NAME} `]
+    } as unknown as MihomoConfig
+
+    injectAntigravityTrafficRules(profile)
+
+    const rules = rulesOf(profile)
+    assert.equal(rules.length, 4)
+    assert.equal(rules.filter((rule) => rule.includes('cloudcode-pa')).length, 1)
+  })
 })

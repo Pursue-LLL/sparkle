@@ -1,6 +1,4 @@
-
-const RULE_BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'DNS', 'NOOP'])
-const RULE_MODIFIERS = new Set(['no-resolve'])
+import { parseRule, RULE_BUILTIN_TARGETS } from './ruleSyntax'
 
 /** Tier 0 — fake-ip breaks TLS/native DNS for these hosts (Cursor handoff doc). */
 export const TIER0_FAKE_IP_FILTER = [
@@ -21,7 +19,7 @@ export const TIER0_DIRECT_CN_SUFFIXES = [
   '+.apple.com',
   '+.itunes.apple.com',
   '+.weixin.qq.com',
-  '+.wx.qq.com',
+  '+.wx.qq.com'
 ] as const
 
 const FAKE_IP_DIRECT_CIDR_TARGETS = ['198.18.0.0/16', '198.19.0.0/16'] as const
@@ -37,27 +35,6 @@ function isDirectIntentTarget(target: string): boolean {
     return true
   }
   return /直连|全球拦截/.test(target)
-}
-
-function stripRuleModifiers(parts: string[]): string[] {
-  const copy = [...parts]
-  while (copy.length > 0 && RULE_MODIFIERS.has(copy[copy.length - 1].trim())) {
-    copy.pop()
-  }
-  return copy
-}
-
-function resolveRuleTarget(rule: string): string | undefined {
-  const normalized = rule.trim().replace(/\s+/g, ' ')
-  if (!normalized || normalized.startsWith('#')) {
-    return undefined
-  }
-
-  const parts = stripRuleModifiers(normalized.split(','))
-  if (parts.length < 3) {
-    return undefined
-  }
-  return parts[parts.length - 1]?.trim()
 }
 
 function isTldOnlySuffix(payload: string): boolean {
@@ -122,7 +99,10 @@ function collectDomainEntries(rule: string): string[] {
   return entries
 }
 
-export function mergeFakeIpFilterEntries(existing: string[] | undefined, additions: readonly string[]): string[] {
+export function mergeFakeIpFilterEntries(
+  existing: string[] | undefined,
+  additions: readonly string[]
+): string[] {
   const merged = new Set(existing ?? [])
   for (const entry of additions) {
     merged.add(entry)
@@ -131,18 +111,16 @@ export function mergeFakeIpFilterEntries(existing: string[] | undefined, additio
 }
 
 function isFakeIpDirectCidrRule(rule: string): boolean {
-  const normalized = rule.trim().replace(/\s+/g, ' ')
-  if (!normalized || normalized.startsWith('#')) {
+  const parsed = parseRule(rule)
+  if (parsed?.head[0] !== 'IP-CIDR') {
     return false
   }
 
-  const parts = stripRuleModifiers(normalized.split(','))
-  if (parts.length < 3 || parts[0]?.trim() !== 'IP-CIDR') {
-    return false
-  }
-
-  const cidr = parts[1]?.trim()
-  if (!cidr || !FAKE_IP_DIRECT_CIDR_TARGETS.includes(cidr as (typeof FAKE_IP_DIRECT_CIDR_TARGETS)[number])) {
+  const cidr = parsed.head[1]
+  if (
+    !cidr ||
+    !FAKE_IP_DIRECT_CIDR_TARGETS.includes(cidr as (typeof FAKE_IP_DIRECT_CIDR_TARGETS)[number])
+  ) {
     return false
   }
 
@@ -169,7 +147,7 @@ export function collectTier0DirectFakeIpFilterEntries(rules: string[] | undefine
   }
 
   for (const rule of rules) {
-    const target = resolveRuleTarget(rule)
+    const target = parseRule(rule)?.policy
     if (!target || !isDirectIntentTarget(target)) {
       continue
     }
@@ -190,7 +168,7 @@ export function collectTier1FakeIpFilterEntries(rules: string[] | undefined): st
   const entries = new Set<string>()
 
   for (const rule of rules) {
-    const target = resolveRuleTarget(rule)
+    const target = parseRule(rule)?.policy
     if (!target || isDirectIntentTarget(target)) {
       continue
     }
@@ -212,11 +190,8 @@ export function buildTieredFakeIpFilter(options: {
   const tier0Direct = collectTier0DirectFakeIpFilterEntries(options.rules)
   const tier1 = options.includeTier1 === false ? [] : collectTier1FakeIpFilterEntries(options.rules)
   return mergeFakeIpFilterEntries(
-    mergeFakeIpFilterEntries(
-      mergeFakeIpFilterEntries(options.existing, tier0Cursor),
-      tier0Direct,
-    ),
-    tier1,
+    mergeFakeIpFilterEntries(mergeFakeIpFilterEntries(options.existing, tier0Cursor), tier0Direct),
+    tier1
   )
 }
 
@@ -240,7 +215,9 @@ export function sanitizeFakeIpDirectCidrRules(profile: MihomoConfig): number {
 }
 
 /** Layer 3 — ensure fake-ip DNS mapping is active for pure-IP connections (incl. UDP STUN). */
-export function applySnifferIntegrityPatch(sniffer: MihomoSnifferConfig | undefined): MihomoSnifferConfig {
+export function applySnifferIntegrityPatch(
+  sniffer: MihomoSnifferConfig | undefined
+): MihomoSnifferConfig {
   const base = sniffer ?? {}
   return {
     ...base,
@@ -259,14 +236,17 @@ export function ensureFakeIpRoutingIntegrity(profile: MihomoConfig): {
   const removedFakeIpCidrRules = sanitizeFakeIpDirectCidrRules(profile)
 
   if (!isFakeIpRoutingActive(profile)) {
-    return { removedFakeIpCidrRules, fakeIpFilterCount: profile.dns?.['fake-ip-filter']?.length ?? 0 }
+    return {
+      removedFakeIpCidrRules,
+      fakeIpFilterCount: profile.dns?.['fake-ip-filter']?.length ?? 0
+    }
   }
 
   const dns = profile.dns as MihomoDNSConfig
   dns['fake-ip-filter'] = buildTieredFakeIpFilter({
     existing: dns['fake-ip-filter'],
     rules: profile.rules as string[] | undefined,
-    includeTier1: false,
+    includeTier1: false
   })
 
   if (profile.sniffer?.enable !== false) {

@@ -1,12 +1,9 @@
 import {
-  AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
   CURSOR_DEDICATED_DIRECT_PROXY,
   CURSOR_VPS_PROVIDER_FILTER,
   filterCursorEligibleVpsLeaves,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
-  isAutoSwitchingGroupType,
-  isCursorDedicatedGroupName,
   prependCursorDedicatedDirectOption,
   AGY_DEDICATED_GROUP_NAME,
   HONG_KONG_DELAY_TEST_URL,
@@ -25,6 +22,7 @@ import {
   ensureMailProbeListener
 } from './sparkleMailProviderCore'
 import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
+import { rewriteRulePolicies } from './ruleSyntax'
 import { resolveVpsProviderId } from './vpsProviderSplitCore'
 
 /** Sparkle-injected HK filter group — members rebuilt on every generateProfile(). */
@@ -65,13 +63,6 @@ function matchesHongKongNode(name: string): boolean {
   return /香港|\bHK\b|hong\s*kong|hongkong/i.test(name)
 }
 
-const CURSOR_GROUP_REF_BLOCKLIST = new Set([
-  'SDK DNS',
-  'GLOBAL',
-  '🚀 节点选择',
-  AUTO_SELECT_GROUP_NAME,
-  '故障转移'
-])
 const HONG_KONG_HOP_GROUP_NAMES = new Set(['🚀 节点选择', 'GLOBAL'])
 
 function isRedundantHongKongWrapperGroup(group: ProxyGroupConfig): boolean {
@@ -92,34 +83,10 @@ function isRedundantHongKongWrapperGroup(group: ProxyGroupConfig): boolean {
 
 function rewriteRulePolicyTargets(
   profile: MihomoConfig,
-  fromTargets: Set<string>,
+  fromTargets: ReadonlySet<string>,
   toTarget: string
 ): void {
-  const rules = profile.rules as string[] | undefined
-  if (!rules?.length || fromTargets.size === 0) {
-    return
-  }
-
-  profile.rules = rules.map((rule) => {
-    const trimmed = rule.trim()
-    if (!trimmed || trimmed.startsWith('#')) {
-      return rule
-    }
-
-    const parts = trimmed.split(',')
-    if (parts.length < 3) {
-      return rule
-    }
-
-    const policyIndex = parts.length - 1
-    const policy = parts[policyIndex].trim()
-    if (!fromTargets.has(policy)) {
-      return rule
-    }
-
-    parts[policyIndex] = toTarget
-    return parts.join(',')
-  }) as MihomoConfig['rules']
+  rewriteRulePolicies(profile, ({ policy }) => (fromTargets.has(policy) ? toTarget : undefined))
 }
 
 function dropRedundantHongKongWrapperGroups(
@@ -147,31 +114,8 @@ function dropRedundantHongKongWrapperGroups(
   return kept
 }
 
-function collectCursorEligibleGroupNames(groups: ProxyGroupConfig[]): string[] {
-  return groups
-    .filter((group) => {
-      if (CURSOR_GROUP_REF_BLOCKLIST.has(group.name)) {
-        return false
-      }
-      if (group.name === 'GLOBAL' || SPARKLE_INJECTED_GROUP_NAMES.has(group.name)) {
-        return false
-      }
-      if (isRedundantHongKongWrapperGroup(group)) {
-        return false
-      }
-      const type = (group.type ?? 'select').toLowerCase()
-      if (isAutoSwitchingGroupType(type)) {
-        return false
-      }
-      return !['url-test', 'load-balance', 'fallback', 'relay'].includes(type)
-    })
-    .map((group) => group.name)
-}
-
 function buildCursorGroupConfig(
   leafNames: string[],
-  _groupNames: string[],
-  _groups: ProxyGroupConfig[],
   profileId: string | undefined
 ): ProxyGroupConfig {
   const vpsNodes = filterCursorEligibleVpsLeaves([
@@ -270,11 +214,8 @@ export function ensureCustomProxyGroups(
   let subscriptionGroups = existingGroups.filter(
     (group) => !SPARKLE_INJECTED_GROUP_NAMES.has(group.name)
   )
-  const subscriptionGroupNames = collectCursorEligibleGroupNames(existingGroups)
 
-  const injected: ProxyGroupConfig[] = [
-    buildCursorGroupConfig(leafProxyNames, subscriptionGroupNames, existingGroups, profileId)
-  ]
+  const injected: ProxyGroupConfig[] = [buildCursorGroupConfig(leafProxyNames, profileId)]
   const hkGroup = buildHongKongGroupConfig(leafProxyNames, profileId)
   const grokGroup = buildGrokGroupConfig(leafProxyNames, profileId)
   const mailGroup = buildMailGroupConfig(leafProxyNames, profileId)
@@ -308,33 +249,4 @@ export function ensureCustomProxyGroups(
   const legacyGroupMigrated = migrateLegacyCursorDedicatedGroupReferences(profile)
   rewriteBroadCursorDedicatedRules(profile)
   return legacyGroupMigrated
-}
-
-export function isCursorDedicatedFailoverGroup(group: ControllerMixedGroup): boolean {
-  return isCursorDedicatedGroupName(group.name) && group.type === 'Selector'
-}
-
-export function resolveCursorDedicatedGroup(
-  groups: ControllerMixedGroup[]
-): ControllerMixedGroup | undefined {
-  return groups.find((group) => isCursorDedicatedFailoverGroup(group))
-}
-
-/** Prefer Cursor dedicated; otherwise first manual Selector (failover when Cursor group is absent). */
-export function resolveFailoverProxyGroup(
-  groups: ControllerMixedGroup[]
-): ControllerMixedGroup | undefined {
-  const cursorGroup = resolveCursorDedicatedGroup(groups)
-  if (cursorGroup) {
-    return cursorGroup
-  }
-  return groups.find(
-    (group) =>
-      group.type === 'Selector' &&
-      group.name !== 'GLOBAL' &&
-      group.name !== HONG_KONG_FILTER_GROUP_NAME &&
-      group.name !== MAIL_DEDICATED_GROUP_NAME &&
-      group.name !== AGY_DEDICATED_GROUP_NAME &&
-      group.name !== MAIL_PROBE_HIDDEN_GROUP_NAME
-  )
 }

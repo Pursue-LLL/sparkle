@@ -41,7 +41,7 @@ function rankOf(name: string): number {
 }
 
 /**
- * 排序稳定：同档位内保持原有相对顺序（订阅组顺序即订阅给出的顺序）。
+ * 依赖 Array.prototype.sort 的稳定性（ES2019）：同档位内保持原有相对顺序（订阅组顺序即订阅给出的顺序）。
  * 顺序是 mihomo `/proxies` 与自研界面的展示依据，因此必须在写盘前定稿。
  */
 export function orderProxyGroups(profile: MihomoConfig): void {
@@ -50,8 +50,8 @@ export function orderProxyGroups(profile: MihomoConfig): void {
     return
   }
   const ordered = groups
-    .map((group, index) => ({ group, index, rank: rankOf(String(group?.name ?? '')) }))
-    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((group) => ({ group, rank: rankOf(String(group?.name ?? '')) }))
+    .sort((a, b) => a.rank - b.rank)
     .map(({ group }) => group)
   profile['proxy-groups'] = ordered as MihomoConfig['proxy-groups']
 }

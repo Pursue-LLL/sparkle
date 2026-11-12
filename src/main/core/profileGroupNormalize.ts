@@ -9,6 +9,7 @@ import {
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME } from './customProxyGroups'
+import { RULE_BUILTIN_TARGETS, rewriteRulePolicies } from './ruleSyntax'
 
 const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
   CURSOR_DEDICATED_GROUP_NAME,
@@ -22,9 +23,6 @@ const SPARKLE_INJECTED_GROUP_NAMES = new Set<string>([
 
 /** Template hop group names from global overrides tied to other subscriptions. */
 const STALE_TEMPLATE_HOP_GROUP_NAMES = new Set<string>(['🚀 节点选择', '🌍 国外媒体'])
-
-const RULE_BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'DNS', 'NOOP'])
-const RULE_MODIFIERS = new Set(['no-resolve'])
 
 export interface ProxyGroupConfig {
   name: string
@@ -67,43 +65,16 @@ function resolveMissingRuleTarget(
 
 export function rewriteMissingRuleProxyGroupTargets(profile: MihomoConfig): void {
   const groups = (profile['proxy-groups'] as ProxyGroupConfig[] | undefined) ?? []
-  const rules = profile.rules as string[] | undefined
-  if (!groups.length || !rules?.length) {
+  if (!groups.length) {
     return
   }
 
   const groupNames = new Set(groups.map((group) => group.name))
-
-  profile.rules = rules.map((rule) => {
-    const trimmed = rule.trim()
-    if (!trimmed || trimmed.startsWith('#')) {
-      return rule
-    }
-
-    const parts = trimmed.split(',')
-    let modifiersStart = parts.length
-    while (modifiersStart > 0 && RULE_MODIFIERS.has(parts[modifiersStart - 1].trim())) {
-      modifiersStart -= 1
-    }
-    const modifiers = parts.splice(modifiersStart)
-    if (parts.length < 3) {
-      return rule
-    }
-
-    const policyIndex = parts.length - 1
-    const policy = parts[policyIndex].trim()
-    if (!policy || RULE_BUILTIN_TARGETS.has(policy) || groupNames.has(policy)) {
-      return rule
-    }
-
-    const rewriteTarget = resolveMissingRuleTarget(policy, groups, groupNames)
-    if (!rewriteTarget) {
-      return rule
-    }
-
-    parts[policyIndex] = rewriteTarget
-    return [...parts, ...modifiers].join(',')
-  }) as MihomoConfig['rules']
+  rewriteRulePolicies(profile, ({ policy }) =>
+    RULE_BUILTIN_TARGETS.has(policy) || groupNames.has(policy)
+      ? undefined
+      : resolveMissingRuleTarget(policy, groups, groupNames)
+  )
 }
 
 export function removeNonSubscriptionProxyGroups(

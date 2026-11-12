@@ -7,6 +7,7 @@ import {
   CURSOR_DEDICATED_GROUP_NAME,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES
 } from './cursorProxyGroup'
+import { rewriteRulePolicies } from './ruleSyntax'
 
 const CURSOR_RULE_HOST_MARKERS = [
   'cursor.sh',
@@ -66,28 +67,9 @@ export function migrateLegacyCursorDedicatedGroupReferences(profile: MihomoConfi
 
 /** Rewrite non-Cursor subscription rules that hijack general traffic into Cursor 专用. */
 export function rewriteBroadCursorDedicatedRules(profile: MihomoConfig): void {
-  const rules = profile.rules as string[] | undefined
-  if (!rules?.length) {
-    return
-  }
-
-  profile.rules = rules.map((rule) => {
-    const trimmed = rule.trim()
-    if (!trimmed || trimmed.startsWith('#')) {
-      return rule
-    }
-    const parts = trimmed.split(',').map((part) => part.trim())
-    if (parts.length < 3) {
-      return rule
-    }
-    const policy = parts[parts.length - 1]
-    if (policy !== CURSOR_DEDICATED_GROUP_NAME) {
-      return rule
-    }
-    if (isCursorDedicatedTrafficRule(parts)) {
-      return rule
-    }
-    parts[parts.length - 1] = AUTO_SELECT_GROUP_NAME
-    return parts.join(',')
-  }) as MihomoConfig['rules']
+  rewriteRulePolicies(profile, ({ head, policy }) =>
+    policy === CURSOR_DEDICATED_GROUP_NAME && !isCursorDedicatedTrafficRule(head)
+      ? AUTO_SELECT_GROUP_NAME
+      : undefined
+  )
 }
