@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   DEFAULT_REGION_PRIORITY,
+  buildAutoSelectCountryFilter,
   buildRegionProviderFilter,
+  extractRegionKeywords,
+  isBlockedRegionNodeName,
   nodeMatchesRegion,
   normalizeRegionPriority,
   resolveEffectiveRegionPriority
@@ -68,5 +71,73 @@ describe('regionPriority', () => {
   it('matches region keywords only in headline, not service tags after |', () => {
     assert.equal(nodeMatchesRegion('Relay Node | Netflix(SG)', '新加坡'), false)
     assert.equal(nodeMatchesRegion('Relay Node | ChatGPT(SG)', '新加坡'), false)
+  })
+})
+
+describe('regionPriority: blocked regions and the auto-select country filter', () => {
+  it('recognizes Hong Kong in Chinese and Latin spellings, case-insensitively', () => {
+    assert.equal(isBlockedRegionNodeName('🇭🇰 香港 01'), true)
+    assert.equal(isBlockedRegionNodeName('HongKong-02'), true)
+    assert.equal(isBlockedRegionNodeName('HONG KONG 03'), true)
+    assert.equal(isBlockedRegionNodeName('🇯🇵 日本 01'), false)
+  })
+
+  it('lists the five default regions and the extra countries, never Hong Kong', () => {
+    const filter = buildAutoSelectCountryFilter()
+
+    for (const region of DEFAULT_REGION_PRIORITY) {
+      assert.ok(filter.includes(buildRegionProviderFilter(region) ?? '<none>'), region)
+    }
+    assert.ok(filter.includes('英国|德国|法国'))
+    assert.ok(filter.endsWith('|埃及|南非'))
+    assert.equal(filter.includes('香港'), false)
+  })
+})
+
+describe('regionPriority: headline markers', () => {
+  it('lets the first marker of the headline decide, in table order', () => {
+    assert.equal(nodeMatchesRegion('日本台湾 01', '日本'), true)
+    assert.equal(nodeMatchesRegion('日本台湾 01', '台湾'), false)
+    assert.equal(nodeMatchesRegion('新加坡马来西亚 01', '新加坡'), false)
+  })
+
+  it('never matches a Hong Kong or Malaysia headline, whatever the target', () => {
+    assert.equal(nodeMatchesRegion('香港日本 01', '日本'), false)
+    assert.equal(nodeMatchesRegion('马来西亚 01', '新加坡'), false)
+  })
+
+  it('accepts the Latin code of the target region for an explicit headline', () => {
+    assert.equal(nodeMatchesRegion('日本 01', 'jp'), true)
+    assert.equal(nodeMatchesRegion('日本 01', 'KR'), false)
+  })
+})
+
+describe('regionPriority: regions outside the default five', () => {
+  it('returns the alias list of a default region as a copy', () => {
+    const keywords = extractRegionKeywords('日本')
+    keywords.push('changed')
+
+    assert.deepEqual(extractRegionKeywords('日本'), ['日本', 'jp', 'japan', '🇯🇵'])
+    assert.deepEqual(extractRegionKeywords('JP'), ['日本', 'jp', 'japan', '🇯🇵'])
+  })
+
+  it('derives keywords for a custom region from its Chinese words and Latin names', () => {
+    assert.deepEqual(extractRegionKeywords('德国'), ['德国'])
+    assert.deepEqual(extractRegionKeywords('美国西部 US'), ['美国西部', 'us'])
+    assert.deepEqual(extractRegionKeywords('Taiwan 2'), ['taiwan'])
+    assert.deepEqual(extractRegionKeywords('Germany'), [])
+  })
+
+  it('matches a region without keywords by plain substring, in either direction', () => {
+    assert.equal(nodeMatchesRegion('Germany 01', 'germany'), true)
+    assert.equal(nodeMatchesRegion('many', 'Germany'), true)
+    assert.equal(nodeMatchesRegion('France 01', 'Germany'), false)
+  })
+
+  it('builds provider filters for custom regions only when keywords exist', () => {
+    assert.equal(buildRegionProviderFilter('新加坡'), '新加坡|(?i)\\bSG\\b|singapore')
+    assert.equal(buildRegionProviderFilter('德国'), '德国')
+    assert.equal(buildRegionProviderFilter('美国西部 US'), '美国西部|us')
+    assert.equal(buildRegionProviderFilter('Germany'), undefined)
   })
 })
