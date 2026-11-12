@@ -40,10 +40,7 @@ describe('migrateLegacyCursorDefaults', () => {
   it('migrates dual-prefix legacy config to empty', () => {
     const input = {
       ...baseConfig(),
-      cursorProxyAppPathPrefixes: [
-        '/Applications/Cursor-3.1.15.app',
-        '/Applications/Cursor-2.app'
-      ]
+      cursorProxyAppPathPrefixes: ['/Applications/Cursor-3.1.15.app', '/Applications/Cursor-2.app']
     } as AppConfig
 
     const { config, migrated } = migrateLegacyCursorDefaults(input)
@@ -74,6 +71,39 @@ describe('migrateLegacyCursorDefaults', () => {
 
     assert.deepEqual(config.cursorProxyAppPathPrefixes, [])
     assert.equal(migrated, false)
+  })
+
+  it('seeds a missing cursorBidiOptimize with true and reports the migration', () => {
+    const input = {
+      sysProxy: { enable: false, mode: 'manual' },
+      cursorProxyAppPathPrefixes: []
+    } as unknown as AppConfig
+
+    const { config, migrated } = migrateLegacyCursorDefaults(input)
+
+    assert.equal(config.cursorBidiOptimize, true)
+    assert.equal(migrated, true)
+  })
+
+  it('keeps a user-disabled cursorBidiOptimize and never edits the input', () => {
+    const input = { ...baseConfig(), cursorBidiOptimize: false } as AppConfig
+
+    const { config, migrated } = migrateLegacyCursorDefaults(input)
+
+    assert.equal(config.cursorBidiOptimize, false)
+    assert.equal(migrated, false)
+    assert.notEqual(config, input)
+  })
+
+  it('leaves the input untouched when it migrates', () => {
+    const input = {
+      ...baseConfig(),
+      cursorProxyAppPathPrefixes: ['/Applications/Cursor.app']
+    } as AppConfig
+
+    migrateLegacyCursorDefaults(input)
+
+    assert.deepEqual(input.cursorProxyAppPathPrefixes, ['/Applications/Cursor.app'])
   })
 
   it('leaves a user-enabled autoCloseConnection untouched', () => {
