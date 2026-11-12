@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import yaml from 'yaml'
 import { parseYaml, stringifyYaml } from './yaml'
 
 interface RealityNode {
@@ -36,25 +37,61 @@ describe('parseYaml', () => {
     assert.deepEqual(parsed.child, { a: 1, c: 2 })
   })
 
-  it('keeps a Reality short-id a string even when it looks like a number', () => {
-    assert.equal(shortIdOf(withRealityShortId('12345678')), '12345678')
-    assert.equal(shortIdOf(withRealityShortId('01234567')), '01234567')
-    assert.equal(shortIdOf(withRealityShortId('1e5')), '1e5')
+  it('reads documents without a Reality node exactly like the yaml library', () => {
+    const documents = [
+      'a: 1\nb: [x, y]\nc: {d: true, e: null}\n',
+      'text: |\n  first\n\n  # kept\n  last\nfolded: >\n  a\n  b\n',
+      'port: 0o17\nhex: 0x1f\nratio: 1e3\nid: 012\nshort-id: 456\n',
+      'proxies:\n  - {name: a, port: 443}\n  - name: b\n    alpn: [h2]\nx: &n 5\ny: *n\n',
+      '- name: a\n  short-id: 123\n'
+    ]
+
+    for (const document of documents) {
+      assert.deepEqual(parseYaml(document), yaml.parse(document, { merge: true }))
+    }
+  })
+
+  it('throws the first parse error', () => {
+    assert.throws(
+      () => parseYaml('a: [1\n'),
+      (error) => error instanceof yaml.YAMLParseError
+    )
+    assert.throws(() => parseYaml('a: 1\n---\nb: 2\n'), /multiple documents/)
+  })
+
+  it('reports parse warnings and still returns the document', (t) => {
+    const warnings = t.mock.method(process, 'emitWarning', () => undefined)
+
+    assert.deepEqual(parseYaml('a: !foo bar\n'), { a: 'bar' })
+    assert.equal(warnings.mock.callCount(), 1)
+    assert.ok(warnings.mock.calls[0].arguments[0] instanceof yaml.YAMLWarning)
+  })
+})
+
+describe('parseYaml Reality short-id', () => {
+  it('keeps a short-id a string even when it looks like another type', () => {
+    for (const text of ['12345678', '01234567', '1e5', '12e3456', '0x1f', '-12', '.5', 'true']) {
+      assert.equal(shortIdOf(withRealityShortId(text)), text)
+    }
     assert.equal(shortIdOf(withRealityShortId('ab12cd34')), 'ab12cd34')
+    assert.equal(shortIdOf(withRealityShortId('"01234567"')), '01234567')
+    assert.equal(shortIdOf(withRealityShortId("'1e5'")), '1e5')
   })
 
   it('keeps a trailing comment out of the short-id', () => {
     assert.equal(shortIdOf(withRealityShortId('12345678 # from the panel')), '12345678')
   })
 
-  it('leaves null-like, already tagged and inline-collection short-id values alone', (t) => {
-    // 给内联集合硬加 !!str 标签，yaml 库会发出 TAG_RESOLVE_FAILED 警告
+  it('leaves null-like, explicitly tagged and collection short-id values alone', (t) => {
     const warnings = t.mock.method(process, 'emitWarning', () => undefined)
 
     assert.equal(shortIdOf(withRealityShortId('null')), null)
     assert.equal(shortIdOf(withRealityShortId('NULL')), null)
     assert.equal(shortIdOf(withRealityShortId('~')), null)
+    assert.equal(shortIdOf(withRealityShortId('')), null)
+    assert.equal(shortIdOf(withRealityShortId('# nothing yet')), null)
     assert.equal(shortIdOf(withRealityShortId('!!str 123')), '123')
+    assert.equal(shortIdOf(withRealityShortId('!!int 123')), 123)
     assert.deepEqual(shortIdOf(withRealityShortId('[a, b]')), ['a', 'b'])
     assert.deepEqual(shortIdOf(withRealityShortId('{ k: v }')), { k: 'v' })
     assert.deepEqual(shortIdOf(withRealityShortId('{k: v}')), { k: 'v' })
@@ -62,56 +99,139 @@ describe('parseYaml', () => {
     assert.equal(warnings.mock.callCount(), 0)
   })
 
-  it('leaves a short-id line without a value alone', () => {
-    assert.equal(shortIdOf(withRealityShortId('')), null)
-    assert.equal(shortIdOf(withRealityShortId('# nothing yet')), null)
+  it('leaves a reality-opts that is not a mapping alone', () => {
+    const parsed = parseYaml<{ proxies: RealityNode[] }>(
+      [
+        'proxies:',
+        '  - name: a',
+        '    reality-opts:',
+        '  - name: b',
+        '    reality-opts: 123',
+        '  - name: c',
+        '    reality-opts: [1, 2]',
+        ''
+      ].join('\n')
+    )
+
+    assert.deepEqual(
+      parsed.proxies.map((proxy) => proxy['reality-opts']),
+      [null, 123, [1, 2]]
+    )
   })
 
-  it('does not choke on a flow-style reality-opts', () => {
-    const content = 'proxies:\n  - name: a\n    reality-opts: { public-key: pk, short-id: abcd }\n'
+  it('reads a short-id that is an alias by the YAML rules', () => {
+    const withAnchor = (anchored: string): string =>
+      `x-id: &sid ${anchored}\nproxies:\n  - name: a\n    reality-opts: {short-id: *sid}\n`
 
-    assert.deepEqual(parseYaml<{ proxies: RealityNode[] }>(content).proxies[0]['reality-opts'], {
-      'public-key': 'pk',
-      'short-id': 'abcd'
-    })
+    assert.equal(shortIdOf(withAnchor("'012'")), '012')
+    assert.equal(shortIdOf(withAnchor('012')), 12)
   })
 
-  it('only rewrites short-id inside reality-opts of a top-level proxies list', () => {
+  it('restores the text whichever way the proxy is written', () => {
+    const documents: Record<string, string> = {
+      'a flow mapping in a block list':
+        'proxies:\n  - {name: a, type: vless, reality-opts: {public-key: pk, short-id: 01234567}}\n',
+      'a flow reality-opts in a block proxy':
+        'proxies:\n  - name: a\n    reality-opts: { public-key: pk, short-id: 01234567 }\n',
+      'a short-id that comes first in a flow mapping':
+        'proxies:\n  - {name: a, reality-opts: {short-id: 01234567, public-key: pk}}\n',
+      'a flow mapping over several lines':
+        'proxies:\n  - {\n      name: a,\n      reality-opts: {\n        short-id: 01234567,\n        public-key: pk\n      }\n    }\n',
+      'a document written entirely in flow style':
+        '{proxies: [{name: a, reality-opts: {public-key: pk, short-id: 01234567}}]}\n',
+      'a base proxy merged in with <<':
+        'x-base: &base\n  type: vless\n  reality-opts: {public-key: pk, short-id: 01234567}\nproxies:\n  - <<: *base\n    name: a\n'
+    }
+
+    for (const [style, document] of Object.entries(documents)) {
+      assert.equal(shortIdOf(document), '01234567', style)
+    }
+  })
+
+  it('restores the text of an anchored reality-opts and of every alias to it', () => {
     const content = [
       'proxies:',
       '  - name: a',
-      '    short-id: 111',
-      '    reality-opts:',
-      '      short-id: 222',
-      '    other: 1',
+      '    reality-opts: &r {public-key: pk, short-id: 01234567}',
       '  - name: b',
-      '    short-id: 333',
+      '    reality-opts: *r',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{ proxies: RealityNode[] }>(content)
+
+    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '01234567')
+    assert.equal(parsed.proxies[1]?.['reality-opts']?.['short-id'], '01234567')
+  })
+
+  it('restores the text wherever a reality-opts block appears', () => {
+    const content = [
+      'proxy-providers:',
+      '  inline:',
+      '    type: inline',
+      '    payload:',
+      '      - {name: a, reality-opts: {short-id: 111}}',
       'proxy-groups:',
       '  - name: g',
       '    reality-opts:',
-      '      short-id: 444',
+      '      short-id: 222',
       'nested:',
       '  proxies:',
       '    - name: c',
       '      reality-opts:',
-      '        short-id: 555',
+      '        short-id: 333',
       ''
     ].join('\n')
 
     const parsed = parseYaml<{
-      proxies: RealityNode[]
+      'proxy-providers': { inline: { payload: RealityNode[] } }
       'proxy-groups': RealityNode[]
       nested: { proxies: RealityNode[] }
     }>(content)
 
-    assert.equal(parsed.proxies[0]?.['short-id'], 111)
-    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '222')
-    assert.equal(parsed.proxies[1]?.['short-id'], 333)
-    assert.equal(parsed['proxy-groups'][0]?.['reality-opts']?.['short-id'], 444)
-    assert.equal(parsed.nested.proxies[0]?.['reality-opts']?.['short-id'], 555)
+    assert.equal(parsed['proxy-providers'].inline.payload[0]?.['reality-opts']?.['short-id'], '111')
+    assert.equal(parsed['proxy-groups'][0]?.['reality-opts']?.['short-id'], '222')
+    assert.equal(parsed.nested.proxies[0]?.['reality-opts']?.['short-id'], '333')
   })
 
-  it('rewrites every proxy of the list, not just the first reality node', () => {
+  it('restores the text in a document whose root is a list', () => {
+    const parsed = parseYaml<RealityNode[]>('- name: a\n  reality-opts:\n    short-id: 123\n')
+
+    assert.equal(parsed[0]?.['reality-opts']?.['short-id'], '123')
+  })
+
+  it('only touches the short-id of a reality-opts block', () => {
+    const content = [
+      'proxies:',
+      '  - name: a',
+      '    short-id: 111',
+      '    x-reality-opts:',
+      '      short-id: 222',
+      '    reality-opts:',
+      '      short-id: 333',
+      '    short-id-2: 444',
+      '  - name: b',
+      '    reality-opts: # from the panel',
+      '      short-id: 555',
+      '    short-id: 666',
+      'short-id: 777',
+      ''
+    ].join('\n')
+
+    const parsed = parseYaml<{
+      proxies: Array<RealityNode & { 'x-reality-opts'?: { 'short-id': unknown } }>
+      'short-id': unknown
+    }>(content)
+
+    assert.equal(parsed.proxies[0]?.['short-id'], 111)
+    assert.equal(parsed.proxies[0]?.['x-reality-opts']?.['short-id'], 222)
+    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '333')
+    assert.equal(parsed.proxies[1]?.['reality-opts']?.['short-id'], '555')
+    assert.equal(parsed.proxies[1]?.['short-id'], 666)
+    assert.equal(parsed['short-id'], 777)
+  })
+
+  it('restores every proxy of the list, not just the first reality node', () => {
     const content = [
       'proxies:',
       '  - name: a',
@@ -178,63 +298,7 @@ describe('parseYaml', () => {
     assert.equal(parsed.proxies[1]?.['reality-opts']?.['short-id'], '7654321')
   })
 
-  it('stops rewriting once reality-opts ends, even for a short-id of the proxy itself', () => {
-    const content = [
-      'proxies:',
-      '  - name: a',
-      '    reality-opts:',
-      '      short-id: 222',
-      '    short-id: 333',
-      ''
-    ].join('\n')
-
-    const parsed = parseYaml<{ proxies: RealityNode[] }>(content)
-
-    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '222')
-    assert.equal(parsed.proxies[0]?.['short-id'], 333)
-  })
-
-  it('recognizes the proxies key with a trailing comment but not look-alike keys', () => {
-    const content = [
-      'proxies: # my nodes',
-      '  - name: a',
-      '    reality-opts:',
-      '      short-id: 111',
-      'x-proxies:',
-      '  - name: b',
-      '    reality-opts:',
-      '      short-id: 222',
-      ''
-    ].join('\n')
-
-    const parsed = parseYaml<{ proxies: RealityNode[]; 'x-proxies': RealityNode[] }>(content)
-
-    assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '111')
-    assert.equal(parsed['x-proxies'][0]?.['reality-opts']?.['short-id'], 222)
-  })
-
-  it('leaves reality-opts blocks outside the proxies list untouched, even before it', () => {
-    const content = [
-      'foo:',
-      '  - name: x',
-      '    reality-opts:',
-      '      short-id: 123',
-      'proxies:',
-      '  reality-opts:',
-      '    short-id: 456',
-      ''
-    ].join('\n')
-
-    const parsed = parseYaml<{
-      foo: RealityNode[]
-      proxies: { 'reality-opts': { 'short-id': unknown } }
-    }>(content)
-
-    assert.equal(parsed.foo[0]?.['reality-opts']?.['short-id'], 123)
-    assert.equal(parsed.proxies['reality-opts']['short-id'], 456)
-  })
-
-  it('does not let column-zero comments or blank lines end the block, and keeps them in scalars', () => {
+  it('does not let column-zero comments or blank lines disturb the document', () => {
     const content = [
       'proxies:',
       '  - name: a',
@@ -256,28 +320,6 @@ describe('parseYaml', () => {
     assert.equal(parsed.note, 'first\n\n# kept\nlast\n')
   })
 
-  it('recognizes reality-opts with a trailing comment but not look-alike keys', () => {
-    const content = [
-      'proxies:',
-      '  - name: a',
-      '    reality-opts: # from the panel',
-      '      short-id: 111',
-      '    x-reality-opts:',
-      '      short-id: 222',
-      ''
-    ].join('\n')
-
-    const parsed = parseYaml<{
-      proxies: Array<{
-        'reality-opts': { 'short-id': unknown }
-        'x-reality-opts': { 'short-id': unknown }
-      }>
-    }>(content)
-
-    assert.equal(parsed.proxies[0]?.['reality-opts']['short-id'], '111')
-    assert.equal(parsed.proxies[0]?.['x-reality-opts']['short-id'], 222)
-  })
-
   it('starts every proxy outside reality-opts, whatever indentation the previous one used', () => {
     const content = [
       'proxies:',
@@ -294,24 +336,6 @@ describe('parseYaml', () => {
 
     assert.equal(parsed.proxies[0]?.['reality-opts']?.['short-id'], '111')
     assert.equal(parsed.proxies[1]?.['short-id'], 222)
-  })
-
-  it('leaves a document whose root is a list alone', () => {
-    const content = [
-      '- name: a',
-      '  reality-opts:',
-      '    short-id: 123',
-      '# proxies: not a key',
-      ''
-    ].join('\n')
-
-    const parsed = parseYaml<RealityNode[]>(content)
-
-    assert.equal(parsed[0]?.['reality-opts']?.['short-id'], 123)
-  })
-
-  it('does not touch documents that mention neither proxies nor short-id', () => {
-    assert.deepEqual(parseYaml('a: 123\nshort-id: 456\n'), { a: 123, 'short-id': 456 })
   })
 })
 
