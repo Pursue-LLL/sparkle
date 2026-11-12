@@ -34,9 +34,7 @@ const CURRENT_NODE_RECHECK_INTERVAL_MS = 5 * 60 * 1000
 const ACTIVITY_PROBE_DELAY_MS = 30 * 1000
 
 /** 邮件分流规则里的目的域名；日志里出现任一即视为邮件活动（隐藏探测通道自己的日志除外）。 */
-const MAIL_ACTIVITY_HOST_MARKERS = MAIL_TRAFFIC_RULE_BASES.map((rule) => rule.split(',')[1]).filter(
-  (host) => host.length > 0
-)
+const MAIL_ACTIVITY_HOST_MARKERS = MAIL_TRAFFIC_RULE_BASES.map((rule) => rule.split(',')[1])
 
 let lastMailActivityAtMs = 0
 let currentCheckQueued = false

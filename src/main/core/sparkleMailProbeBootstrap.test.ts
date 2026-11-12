@@ -42,6 +42,7 @@ describe('sparkleMailProbe bootstrap without anything to probe', () => {
 
     assert.deepEqual(world.calls, [])
     assert.equal(readProviderMembers(), undefined)
+    assert.equal(world.appConfigReads, 0, 'no nodes, so no reason to read the app config')
   })
 
   it('logs a config failure instead of throwing', async () => {
@@ -63,6 +64,14 @@ describe('sparkleMailProbe bootstrap without anything to probe', () => {
     await mail.probe().bootstrapSparkleMailProvider()
 
     assert.deepEqual(callsStarting('probe:'), ['probe:台湾-SS'])
+  })
+
+  it('probes a node whose name is a single character', async () => {
+    world.profileProxies = [{ name: 'X', type: 'ss', server: 'x.example.com', port: 1 }]
+
+    await mail.probe().bootstrapSparkleMailProvider()
+
+    assert.deepEqual(callsStarting('probe:'), ['probe:X'])
   })
 })
 
@@ -136,29 +145,38 @@ describe('sparkleMailProbe bootstrap probing', () => {
     assert.equal(Object.keys(readCache()).length, 4)
   })
 
-  it('has the first tier already on disk and in mihomo before the second one starts', async () => {
-    let publishedBeforeSecondTier: string[] | undefined
+  it('has the first tier on disk and in mihomo before the second one starts', async () => {
+    let published: string[] | undefined
+    let savedKeys: string[] = []
+    let reloadsBefore = 0
     world.onPortProbe = (node) => {
       if (node === '台湾-SS') {
-        publishedBeforeSecondTier = readProviderMembers()
+        published = readProviderMembers()
+        savedKeys = Object.keys(readCache())
+        reloadsBefore = callsStarting('update:').length
       }
     }
 
     await mail.probe().bootstrapSparkleMailProvider()
 
-    assert.deepEqual(publishedBeforeSecondTier, ['台湾-HY2', '日本-VLESS'])
+    assert.deepEqual(published, ['台湾-HY2', '日本-VLESS'])
+    assert.deepEqual(savedKeys.sort(), [cacheKey(HY2_TW), cacheKey(VLESS_JP)].sort())
+    assert.equal(reloadsBefore, 1)
   })
 
-  it('records a dead node and keeps it out of the provider', async () => {
+  it('records the dead nodes of both tiers and keeps them out of the provider', async () => {
     world.portVerdictOf = (node) =>
-      node === '台湾-HY2' ? { alive: false, rttMs: 0 } : { alive: true, rttMs: 60 }
+      node === '台湾-HY2' || node === '台湾-SS'
+        ? { alive: false, rttMs: 0 }
+        : { alive: true, rttMs: 60 }
 
     await mail.probe().bootstrapSparkleMailProvider()
 
     assert.equal(readCache()[cacheKey(HY2_TW)].alive, false)
-    assert.deepEqual(readProviderMembers(), ['台湾-SS', '日本-VLESS', '美国-SS'])
+    assert.equal(readCache()[cacheKey(SS_TW)].alive, false)
+    assert.deepEqual(readProviderMembers(), ['日本-VLESS', '美国-SS'])
     assertLog('fast-tier probed=2 newly_alive=1 active_pool=1')
-    assertLog('full-tier probed=2 newly_alive=2 active_pool=3')
+    assertLog('full-tier probed=2 newly_alive=1 active_pool=2')
   })
 
   it('only reports the fast tier when nothing else is unprobed', async () => {
