@@ -5,7 +5,7 @@ export interface LogFileSizeState {
 
 export function resolveCachedLogFileSize(
   state: LogFileSizeState | undefined,
-  path: string,
+  path: string
 ): number | null {
   if (state?.path === path && state.size !== null) {
     return state.size

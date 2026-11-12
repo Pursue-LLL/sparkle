@@ -7,7 +7,7 @@ import {
   nextLogFileSizeAfterAppend,
   resolveCachedLogFileSize,
   shouldTrimLogFile,
-  trimTargetBytes,
+  trimTargetBytes
 } from './logFileSizeCore'
 
 type LogTarget = 'app' | 'core' | 'substore'
@@ -78,6 +78,13 @@ function getWriteStream(target: LogTarget): WriteStream {
   }
 
   const stream = createWriteStream(nextPath, { flags: 'a', highWaterMark: logStreamHighWaterMark })
+  // 写入失败已通过 write 回调交给 appendLog 处理；没有 'error' 监听时同一个错误还会升级成
+  // 主进程未捕获异常。出错的流已销毁，摘掉后下一次写入会重新打开文件。
+  stream.on('error', () => {
+    if (streamMap.get(target)?.stream === stream) {
+      streamMap.delete(target)
+    }
+  })
   streamMap.set(target, { path: nextPath, stream })
   return stream
 }
@@ -428,6 +435,14 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
     released = true
     releaseTarget(target)
   }
+  // 落盘失败（磁盘满、权限等）只丢这一段日志：把错误交给 pipe 的目标流，
+  // 会让整条子进程输出管道出错并升级成主进程未捕获异常。
+  const persist = (content: Buffer, done: () => void): void => {
+    void appendLog(target, content).then(
+      () => done(),
+      () => done()
+    )
+  }
 
   return new Writable({
     write(chunk, _encoding, callback) {
@@ -435,10 +450,7 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
       if (target === 'core' && mihomoLogSource === 'out') {
         lineBuffer = flushCoreLogLines(lineBuffer, content.toString('utf-8'), type)
       }
-      void appendLog(target, content).then(
-        () => callback(),
-        (error) => callback(error as Error)
-      )
+      persist(content, callback)
     },
     writev(chunks, callback) {
       const content =
@@ -448,10 +460,7 @@ export function createLogWritable(target: LogTarget, type: LogLevel = 'info'): W
       if (target === 'core' && mihomoLogSource === 'out') {
         lineBuffer = flushCoreLogLines(lineBuffer, content.toString('utf-8'), type)
       }
-      void appendLog(target, content).then(
-        () => callback(),
-        (error) => callback(error as Error)
-      )
+      persist(content, callback)
     },
     final(callback) {
       if (target === 'core' && mihomoLogSource === 'out' && lineBuffer.trim()) {
