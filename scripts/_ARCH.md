@@ -1,6 +1,6 @@
 # scripts — 运维与构建脚本
 
-Shell/TS 脚本：本地升级、安装门禁、post-upgrade 验收。
+Shell/TS 脚本：本地升级、安装门禁、post-upgrade 验收、内核契约校验。
 
 ## 文件清单
 
@@ -11,6 +11,8 @@ Shell/TS 脚本：本地升级、安装门禁、post-upgrade 验收。
 | `install-sparkle-local.sh` | 仅安装 `dist/mac-arm64/Sparkle.app` → `/Applications` |
 | `verify-sparkle-main-asar.mts` | Stage-B：app.asar 内 main bundle marker 门禁 |
 | `verify-sparkle-bundle.mts` | Stage-A：vite 后 out/main bundle marker 门禁 |
+| `verify-group-failover.mts` | 故障转移引擎对真实 mihomo 内核的端到端校验（隔离实例，约 2 分钟）：升级或切换内核（含 alpha）后运行 `pnpm run verify:failover [内核路径]`，内核告警文案或拨号失败语义变化时在第一步失败 |
+| `mihomoIsolatedHarness.ts` | 隔离 mihomo 端到端校验的公共夹具：随机回环端口、模拟 HTTP 目标与 SOCKS5 节点、内核子进程与控制器客户端；只接触自己创建的进程、端口与目录 |
 | `lib/login-home.sh` | `sparkle_pin_login_home`：把 `HOME` 固定为登录用户真实主目录（Agent 沙箱会改写 `HOME`，门禁/护栏需读真实日志与状态目录）；`upgrade-sparkle-local.sh` 构建后、`install-sparkle-local.sh` 开头调用 |
 | `upgradeSparklePostInstallGateCore.ts` | 装包后门禁纯函数：按安装行偏移计 PostCoreBootstrap 失败 / API 就绪 / headless 引导完成 |
 | `open-sparkle-gui-macos26.sh` | macOS 26 SSOT：带 GUI 启动（`--sparkle-force-gui`） |
