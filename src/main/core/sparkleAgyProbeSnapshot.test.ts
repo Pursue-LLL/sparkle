@@ -12,6 +12,7 @@ import {
   runBootstrap,
   settle,
   snapshot,
+  syncSnapshot,
   TW1,
   TW2,
   useAgyRig,
@@ -153,6 +154,45 @@ describe('getSparkleAgyProbeSnapshot', () => {
       await runWithSampleAge(-120_000)
 
       assert.equal(snapshot()['台湾-1'].state, 'usable')
+    })
+  })
+
+  describe('when the subscription changes', () => {
+    async function runWithoutTaiwan(): Promise<void> {
+      const remaining = [JP1, KR1, SG1, US1]
+      world.profileProxies = remaining
+      world.selection = '日本-1'
+      world.members = remaining.map((proxy) => String(proxy.name))
+      outcomesByNode({})
+      await runBootstrap(agy())
+    }
+
+    it('stops showing the failed probe of a node that is no longer subscribed', async () => {
+      outcomesByNode({ '台湾-1': HANG })
+      await runBootstrap(agy())
+      assert.equal(snapshot()['台湾-1'].state, 'failed')
+
+      await runWithoutTaiwan()
+
+      assert.deepEqual(Object.keys(snapshot()), ['日本-1'])
+    })
+
+    it('stops showing the rejection of a node that is no longer subscribed', async () => {
+      writeCache({ [cacheKey(TW2)]: cacheRecord(false, 77, 5 * MINUTE_MS) })
+      await runBootstrap(agy())
+      assert.equal(snapshot()['台湾-2'].state, 'unusable')
+
+      await runWithoutTaiwan()
+
+      assert.deepEqual(Object.keys(snapshot()), ['日本-1'])
+    })
+
+    it('never lists a node that has no name', () => {
+      const nameless: Proxy = { type: 'ss', server: 'nameless.example.com', port: 8388 }
+
+      syncSnapshot([nameless], new Map([[cacheKey(nameless), cacheRecord(false)]]))
+
+      assert.deepEqual(snapshot(), {})
     })
   })
 })

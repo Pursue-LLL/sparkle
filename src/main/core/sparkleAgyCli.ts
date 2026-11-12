@@ -116,13 +116,9 @@ export async function requestNativeAgy(timeoutMs: number): Promise<NativeAgyResp
 
     let stdout = ''
     let stderr = ''
-    let settled = false
 
+    // promise 只会兑现一次，先到的结局（退出 / 报错 / 超时）为准；兑现时一并清掉超时器。
     const finish = (value: NativeAgyResponse): void => {
-      if (settled) {
-        return
-      }
-      settled = true
       clearTimeout(timer)
       resolve(value)
     }

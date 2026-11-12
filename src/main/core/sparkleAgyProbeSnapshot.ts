@@ -10,8 +10,8 @@ import {
   type AgyProxyRecord
 } from './sparkleAgyProviderCore'
 
-/** 代理页展示用的内存快照：只包含「最近一次真实 agy 请求成功」的节点，避免回读磁盘/重建订阅。 */
-const agyProbeSnapshot = new Map<string, AgyProbeSample>()
+/** 代理页展示用的内存快照：每次同步按当前订阅整体重建，订阅里已经没有的节点不会留下来。 */
+let probeSnapshot: AgyProbeSnapshot = {}
 
 /** 最近一次真实探测的结论（含失败），用于把"未测"与"探测失败"区分开。 */
 const agyLastAttempts = new Map<
@@ -24,15 +24,11 @@ export function recordAgyAttempt(
   state: 'usable' | 'unusable' | 'failed',
   reason?: string
 ): void {
-  const name = node.trim()
-  if (!name) {
-    return
-  }
-  agyLastAttempts.set(name, { state, reason, checkedAt: Date.now() })
+  agyLastAttempts.set(node, { state, reason, checkedAt: Date.now() })
 }
 
 export function getSparkleAgyProbeSnapshot(): AgyProbeSnapshot {
-  return Object.fromEntries(agyProbeSnapshot)
+  return { ...probeSnapshot }
 }
 
 export function syncAgyProbeSnapshot(
@@ -46,11 +42,13 @@ export function syncAgyProbeSnapshot(
   }
 
   // 已确认锁区（400 location）的节点：有记录就展示真实结论，而不是笼统的"未测"。
+  const subscribed = new Set<string>()
   for (const proxy of proxies) {
     const name = String(proxy.name ?? '').trim()
     if (!name) {
       continue
     }
+    subscribed.add(name)
     const record = cache.get(computeProxyNodeFingerprint(proxy))
     if (!record || record.usable) {
       continue
@@ -66,9 +64,9 @@ export function syncAgyProbeSnapshot(
     }
   }
 
-  // 最近一次探测失败（超时/网络/CLI 不可用）：比已有样本新才覆盖。
+  // 最近一次探测失败（超时/网络/CLI 不可用）：比已有样本新才覆盖；已不在订阅里的节点不展示。
   for (const [name, attempt] of agyLastAttempts) {
-    if (attempt.state === 'usable') {
+    if (attempt.state === 'usable' || !subscribed.has(name)) {
       continue
     }
     const current = next.get(name)
@@ -83,8 +81,5 @@ export function syncAgyProbeSnapshot(
     })
   }
 
-  agyProbeSnapshot.clear()
-  for (const [name, sample] of next) {
-    agyProbeSnapshot.set(name, sample)
-  }
+  probeSnapshot = Object.fromEntries(next)
 }

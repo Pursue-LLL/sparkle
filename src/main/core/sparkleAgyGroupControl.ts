@@ -102,10 +102,9 @@ export async function probeSingleNode(node: string, timeoutMs: number): Promise<
   return { verdict, rttMs, fatal: verdict === 'fatal' }
 }
 
+/** provider 文档里的节点一定有名字：没有名字的节点在生成文档时就被排除了。 */
 function providerNames(documentProxies: readonly AgyProxyRecord[]): string[] {
-  return documentProxies
-    .map((proxy) => String(proxy.name ?? '').trim())
-    .filter((name) => name.length > 0)
+  return documentProxies.map((proxy) => String(proxy.name ?? '').trim())
 }
 
 function sameMemberSet(left: readonly string[], right: readonly string[]): boolean {

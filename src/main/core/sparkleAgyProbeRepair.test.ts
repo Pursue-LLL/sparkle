@@ -138,6 +138,7 @@ describe('sparkleAgyProbe repair: choosing a replacement', () => {
     assert.deepEqual(world.probedVia, ['香港-1', '香港-1'])
     assertLog('repair start')
     assertNoLog('WARN')
+    assertNoLog('error=')
     assert.equal(readProviderMembers(), undefined)
   })
 })
