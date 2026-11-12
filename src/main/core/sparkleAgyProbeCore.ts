@@ -73,10 +73,7 @@ export function resolveAgyAuditBackoffMs(
   intervalMs: number,
   consecutiveEmptyRounds: number
 ): number {
-  if (consecutiveEmptyRounds <= 0) {
-    return 0
-  }
-  const multiplier = Math.min(consecutiveEmptyRounds, 3)
+  const multiplier = Math.min(Math.max(consecutiveEmptyRounds, 0), 3)
   return intervalMs * multiplier
 }
 

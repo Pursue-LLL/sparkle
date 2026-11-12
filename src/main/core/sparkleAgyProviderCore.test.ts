@@ -9,6 +9,7 @@ import {
   buildSparkleAgyProviderDocument,
   classifyAgyProbeResponse,
   collectEligibleAgyProxies,
+  isEligibleAgyNode,
   orderAgyProxies,
   orderAgyRepairProxies,
   type AgyNodeProbeRecord,
@@ -34,6 +35,16 @@ function names(proxies: readonly AgyProxyRecord[]): string[] {
   return proxies.map((proxy) => String(proxy.name))
 }
 
+function vmess(name: string): AgyProxyRecord {
+  return { name, type: 'vmess', server: `${name}.example`, port: 443 }
+}
+
+function cacheOf(
+  entries: Array<[AgyProxyRecord, AgyNodeProbeRecord]>
+): Map<string, AgyNodeProbeRecord> {
+  return new Map(entries.map(([proxy, probe]) => [computeProxyNodeFingerprint(proxy), probe]))
+}
+
 describe('classifyAgyProbeResponse', () => {
   it('treats HTTP 200 as a usable node', () => {
     assert.equal(classifyAgyProbeResponse(200, '{"choices":[]}'), 'usable')
@@ -54,6 +65,16 @@ describe('classifyAgyProbeResponse', () => {
   it('flags 404/405 as fatal (magpie model/route mismatch)', () => {
     assert.equal(classifyAgyProbeResponse(404, 'not found'), 'fatal')
     assert.equal(classifyAgyProbeResponse(405, 'method not allowed'), 'fatal')
+  })
+})
+
+describe('isEligibleAgyNode', () => {
+  it('accepts a named regular node and rejects nameless, AnyTLS and Hong Kong nodes', () => {
+    assert.equal(isEligibleAgyNode(NODES[0]!), true)
+    assert.equal(isEligibleAgyNode({ type: 'vmess', server: 'a.example', port: 1 }), false)
+    assert.equal(isEligibleAgyNode({ name: '  ', type: 'vmess' }), false)
+    assert.equal(isEligibleAgyNode(NODES[5]!), false)
+    assert.equal(isEligibleAgyNode(NODES[4]!), false)
   })
 })
 
@@ -111,6 +132,65 @@ describe('orderAgyProxies', () => {
       '美国LA-优化3-GPT',
       '美国LA-优化2-GPT'
     ])
+  })
+
+  it('keeps a lone eligible node, cold or verified', () => {
+    const lone = vmess('日本-A')
+
+    assert.deepEqual(names(orderAgyProxies([lone], REGION_PRIORITY)), ['日本-A'])
+    assert.deepEqual(
+      names(orderAgyProxies([lone], REGION_PRIORITY, cacheOf([[lone, record(true, 100)]]))),
+      ['日本-A']
+    )
+  })
+
+  it('returns nothing when no node is eligible', () => {
+    assert.deepEqual(orderAgyProxies([NODES[4]!, NODES[5]!], REGION_PRIORITY), [])
+  })
+
+  it('appends nodes of unlisted regions after every listed region, verified or not', () => {
+    const jp = vmess('日本-A')
+    const de = vmess('德国-A')
+    const verified = cacheOf([
+      [jp, record(true, 500)],
+      [de, record(true, 100)]
+    ])
+
+    assert.deepEqual(names(orderAgyProxies([de, jp], REGION_PRIORITY)), ['日本-A', '德国-A'])
+    assert.deepEqual(names(orderAgyProxies([de, jp], REGION_PRIORITY, verified)), [
+      '日本-A',
+      '德国-A'
+    ])
+  })
+
+  it('keeps subscription order inside a region while every node is confirmed unusable', () => {
+    const slow = vmess('日本-A')
+    const fast = vmess('日本-B')
+    const cache = cacheOf([
+      [slow, record(false, 900)],
+      [fast, record(false, 100)]
+    ])
+
+    assert.deepEqual(names(orderAgyProxies([slow, fast], REGION_PRIORITY, cache)), [
+      '日本-A',
+      '日本-B'
+    ])
+  })
+
+  it('narrows the fallback pool to a single node that is not confirmed unusable', () => {
+    const rejected = vmess('日本-A')
+    const untested = vmess('日本-B')
+
+    assert.deepEqual(
+      names(
+        orderAgyProxies(
+          [rejected, untested],
+          REGION_PRIORITY,
+          cacheOf([[rejected, record(false, 90)]])
+        )
+      ),
+      ['日本-B']
+    )
   })
 
   it('falls back to the whole pool when every node is confirmed unusable', () => {
@@ -185,6 +265,75 @@ describe('orderAgyRepairProxies', () => {
     assert.deepEqual(
       names(orderAgyRepairProxies(strictNodes, REGION_PRIORITY, undefined, 10, now, attempted)),
       ['台湾-A', '台湾-B', '日本-A']
+    )
+  })
+
+  it('places nodes of unlisted regions after the listed ones but before rejected nodes', () => {
+    const de = vmess('德国-A')
+    const jp = vmess('日本-A')
+    const rejected = vmess('台湾-A')
+    const cache = cacheOf([[rejected, record(false, 120)]])
+
+    assert.deepEqual(names(orderAgyRepairProxies([de, jp, rejected], REGION_PRIORITY, cache, 10)), [
+      '日本-A',
+      '德国-A',
+      '台湾-A'
+    ])
+  })
+
+  it('treats a verified record as fresh for less than 30 minutes, not for exactly 30', () => {
+    const slow = vmess('日本-A')
+    const fast = vmess('日本-B')
+    const now = 10_000_000
+    const agedBy = (ageMs: number): Map<string, AgyNodeProbeRecord> =>
+      cacheOf([
+        [slow, { usable: true, rttMs: 900, checkedAt: now - ageMs }],
+        [fast, { usable: true, rttMs: 100, checkedAt: now - ageMs }]
+      ])
+
+    assert.deepEqual(
+      names(orderAgyRepairProxies([slow, fast], REGION_PRIORITY, agedBy(1_800_000), 10, now)),
+      ['日本-A', '日本-B']
+    )
+    assert.deepEqual(
+      names(orderAgyRepairProxies([slow, fast], REGION_PRIORITY, agedBy(1_799_999), 10, now)),
+      ['日本-B', '日本-A']
+    )
+  })
+
+  it('defers an attempt until it is exactly 15 minutes old', () => {
+    const tw1 = vmess('台湾-A')
+    const tw2 = vmess('台湾-B')
+    const jp = vmess('日本-A')
+    const now = 10_000_000
+    const attemptedAgo = (ageMs: number): Map<string, number> =>
+      new Map([[computeProxyNodeFingerprint(tw1), now - ageMs]])
+
+    assert.deepEqual(
+      names(
+        orderAgyRepairProxies(
+          [tw1, tw2, jp],
+          REGION_PRIORITY,
+          undefined,
+          10,
+          now,
+          attemptedAgo(900_000)
+        )
+      ),
+      ['台湾-A', '台湾-B', '日本-A']
+    )
+    assert.deepEqual(
+      names(
+        orderAgyRepairProxies(
+          [tw1, tw2, jp],
+          REGION_PRIORITY,
+          undefined,
+          10,
+          now,
+          attemptedAgo(899_999)
+        )
+      ),
+      ['台湾-B', '日本-A', '台湾-A']
     )
   })
 
@@ -302,10 +451,7 @@ describe('buildAgyGroupConfig', () => {
   })
 
   it('falls back to flat leaf names without a provider profile', () => {
-    const group = buildAgyGroupConfig(
-      ['🇯🇵 日本 02', '🇭🇰 香港 01', '  '],
-      undefined
-    )
+    const group = buildAgyGroupConfig(['🇯🇵 日本 02', '🇭🇰 香港 01', '  '], undefined)
     assert.deepEqual(group, {
       name: AGY_DEDICATED_GROUP_NAME,
       type: 'select',
@@ -315,5 +461,9 @@ describe('buildAgyGroupConfig', () => {
 
   it('returns null when no eligible leaf exists', () => {
     assert.equal(buildAgyGroupConfig(['🇭🇰 香港 01'], undefined), null)
+  })
+
+  it('returns null in provider mode when the profile has no leaf at all', () => {
+    assert.equal(buildAgyGroupConfig([], 'profile-1'), null)
   })
 })

@@ -62,6 +62,12 @@ let repairSkipUntilMs = 0
 let pinUnknownStreak = 0
 let agyState: 'healthy' | 'repairing' | 'exhausted' = 'healthy'
 
+/** pin 回到可用 / 修复成功：全灭退避作废，下一次出问题从第 1 轮重新计。 */
+function resetRepairBackoff(): void {
+  consecutiveEmptyRounds = 0
+  repairSkipUntilMs = 0
+}
+
 /** 修复扫描的「本轮已试」记录：超时不会写缓存，必须单独记时间，否则下一轮会重复同一批节点。 */
 const agyRepairAttempts = new Map<string, number>()
 
@@ -158,8 +164,7 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
       const ordered = await convergeAgyProvider(proxies, regionPriority, cache)
       await selectAgyNode(ordered, pinName)
       if (pinVerdict === 'usable') {
-        consecutiveEmptyRounds = 0
-        repairSkipUntilMs = 0
+        resetRepairBackoff()
         if (agyState !== 'healthy') {
           await appendAppLog(
             `[SparkleAgyProbe]: pin ${pinName ?? 'n/a'} healthy again, pool=${ordered.length}\n`
@@ -221,8 +226,7 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
     const ordered = await convergeAgyProvider(proxies, regionPriority, cache)
     if (audit.usableNode) {
       await selectAgyNode(ordered, audit.usableNode)
-      consecutiveEmptyRounds = 0
-      repairSkipUntilMs = 0
+      resetRepairBackoff()
       agyState = 'healthy'
       await appendAppLog(
         `[SparkleAgyProbe]: repaired pin ${pinName ?? 'n/a'} -> ${audit.usableNode} probed=${audit.probed} usable=${audit.usable} pool=${ordered.length}\n`
