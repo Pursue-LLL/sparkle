@@ -27,7 +27,8 @@ import {
   useGrokRig,
   world,
   writeCache,
-  writeProviderMembers
+  writeProviderMembers,
+  type Proxy
 } from './sparkleGrokProbeRig'
 
 const POOL_DELAYS = { '日本-1': 100, '美国-1': 200, '台湾-1': 300 }
@@ -185,6 +186,15 @@ describe('sparkleGrokProbe：试过的节点殿后', () => {
     assert.deepEqual(via().slice(5, 7), ['美国-1', '台湾-1'])
   })
 
+  it('满 15 分钟的尝试不再殿后：窗口是不含 15 分钟整的', async () => {
+    const endedAt = await failEverywhereOnce()
+
+    setNow(endedAt + 15 * MINUTE_MS)
+    await runBootstrap(grok())
+
+    assert.deepEqual(via().slice(5, 7), ['美国-1', '台湾-1'])
+  })
+
   it('1 小时后旧的尝试记录被清理，行为与过窗口一致', async () => {
     const endedAt = await failEverywhereOnce()
 
@@ -198,8 +208,8 @@ describe('sparkleGrokProbe：试过的节点殿后', () => {
 describe('sparkleGrokProbe：单轮预算', () => {
   const grok = useGrokRig()
 
-  it('池内扫描途中预算（10 分钟）用完就停，发现阶段也不再开始', async () => {
-    const nodes = makeNodes(6)
+  /** 稳态起点：这些节点都已验证通过并在池里，组里选中第一个。 */
+  function seedPool(nodes: Proxy[]): string[] {
     const names = nodes.map(nameOf)
     world.profileProxies = nodes
     writeCache(
@@ -211,13 +221,31 @@ describe('sparkleGrokProbe：单轮预算', () => {
     world.members = names
     world.selection = names[0]
     skipPoolRefresh()
-    world.defaultRouted = challenge(250 * 1000)
+    return names
+  }
+
+  it('池内扫描途中预算（10 分钟）一到点就停，发现阶段也不再开始', async () => {
+    seedPool(makeNodes(6))
+    world.defaultRouted = challenge(200 * 1000)
 
     await runBootstrap(grok())
 
-    // 复核当前节点 250s，扫描第 1 个 500s，第 2 个 750s 之后预算耗尽。
+    // 复核当前节点 200s，扫描第 1 个 400s，第 2 个 600s：刚好用完预算，不再开始下一个。
     assert.equal(world.requests.length, 3)
     assertLog('discovery probed=0 working=0')
     assertNoLog('selected=')
+  })
+
+  it('池内扫描每轮最多验证 6 个节点（当前节点不算），之后由发现阶段接着试', async () => {
+    const names = seedPool(makeNodes(9))
+    world.defaultRouted = challenge()
+
+    await runBootstrap(grok())
+
+    const via = world.requests.map((request) => request.via)
+    assert.deepEqual(via.slice(1, 7), names.slice(1, 7))
+    // 发现阶段：本轮没试过的（当前节点与最后两个）排在前面，再轮到试过的。
+    assert.deepEqual(via.slice(7), [names[0], names[7], names[8], names[1], names[2], names[3]])
+    assertLog('discovery probed=6 working=0')
   })
 })

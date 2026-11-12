@@ -26,8 +26,10 @@ import {
   readProviderMembers,
   runBootstrap,
   setNow,
+  skipPoolRefresh,
   useGrokRig,
-  world
+  world,
+  writeCache
 } from './sparkleGrokProbeRig'
 
 describe('sparkleGrokProbe：没有订阅或读不到订阅', () => {
@@ -160,6 +162,17 @@ describe('sparkleGrokProbe：冷启动发现', () => {
     assertLog('discovery probed=4 working=3 pool=3')
   })
 
+  it('切换时 mihomo 接口报错：当作没切成，不发请求、不写结论，也不让这一轮出错', async () => {
+    world.changeFailure = true
+
+    await runBootstrap(grok())
+
+    assert.equal(world.requests.length, 0)
+    assert.deepEqual(readCache(), {})
+    assertLog('discovery probed=5 working=0')
+    assertNoLog('error=')
+  })
+
   it('关闭旧连接失败不影响验证与选择', async () => {
     world.closeFailure = true
 
@@ -180,13 +193,13 @@ describe('sparkleGrokProbe：冷启动发现', () => {
     assertLog('discovery probed=6 working=0')
   })
 
-  it('单轮预算（10 分钟）用完就停，已测结果照常保存', async () => {
+  it('单轮预算（10 分钟）一到点就停，已测结果照常保存', async () => {
     world.profileProxies = makeNodes(8)
-    world.defaultRouted = networkFailure('timeout', 250 * SECOND_MS)
+    world.defaultRouted = networkFailure('timeout', 200 * SECOND_MS)
 
     await runBootstrap(grok())
 
-    // 第 3 次验证结束时已过 750 秒，超过 600 秒预算。
+    // 第 3 次验证结束时刚好 600 秒，等于预算，不再开始第 4 次。
     assert.equal(world.requests.length, 3)
     assertLog('discovery probed=3 working=0')
     assert.equal(Object.keys(readCache()).length, 3)
@@ -239,6 +252,28 @@ describe('sparkleGrokProbe：发现失败后的退避', () => {
 
     assert.equal(world.requests.length, requestsAfterFirstRound + 1)
     assertLog('pin failed, repair backoff 30s remaining (empty_rounds=1)')
+  })
+
+  it('冷启动选出节点后，之前累计的空轮次与退避一并清零', async () => {
+    world.defaultRouted = challenge()
+    await runBootstrap(grok())
+    assertLog('WARN discovery found nothing (empty_rounds=1)')
+
+    // 缓存被清空：下一轮又是冷启动（不受退避约束），这次选出了节点。
+    writeCache({})
+    skipPoolRefresh()
+    world.defaultRouted = ok()
+    advance(10 * SECOND_MS)
+    await runBootstrap(grok())
+    assertLog('discovery probed=3 working=3 pool=3')
+
+    // 之后全灭：应当从第 1 轮计起，并且立刻扫描，而不是还困在旧的退避里。
+    world.defaultRouted = challenge()
+    advance(10 * SECOND_MS)
+    await runBootstrap(grok())
+
+    assertLog('WARN no usable node (empty_rounds=1 next_repair_in=60s)')
+    assertNoLog('pin failed')
   })
 
   it('连续全灭时退避按 1×、2×、3× 拉长并封顶在 3×，到点才再次扫描', async () => {
