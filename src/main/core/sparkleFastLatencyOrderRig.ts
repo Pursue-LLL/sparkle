@@ -16,7 +16,7 @@ import { FAST_NODE_PROVIDER_FILENAME, FAST_NODE_PROVIDER_ID } from './sparkleFas
 import { mockFsPromisesSync } from './syncFsPromisesRig'
 import type * as FastOrder from './sparkleFastLatencyOrder'
 
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000
+export const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 const SNAPSHOT_FILENAME = 'sparkle-fast-delays.json'
 
 type Proxy = Record<string, unknown>

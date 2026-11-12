@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { describe, it, mock } from 'node:test'
+import { describe, it } from 'node:test'
 import {
   callsStarting,
   changes,
@@ -7,6 +7,7 @@ import {
   GEMINI_ALIVE,
   GEMINI_DEAD,
   poll,
+  POLL_INTERVAL_MS,
   restricted,
   settle,
   useStickyPinRig,
@@ -15,6 +16,7 @@ import {
 import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
 import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { spyOnTimer } from './timerSpyHarness'
 
 describe('autoSelectStickyPin', () => {
   const sticky = useStickyPinRig()
@@ -280,37 +282,16 @@ describe('autoSelectStickyPin', () => {
       assert.equal(world.detailCalls, 2)
     })
 
-    it('registers one timer however often it is asked to start', () => {
-      const setIntervalSpy = mock.method(globalThis, 'setInterval')
+    it('registers one timer that does not keep the process alive', () => {
+      const timers = spyOnTimer('setInterval')
       try {
         sticky.start()
         sticky.start()
 
-        assert.equal(setIntervalSpy.mock.callCount(), 1)
+        assert.deepEqual(timers.delays, [POLL_INTERVAL_MS])
+        assert.equal(timers.unrefs(), 1)
       } finally {
-        setIntervalSpy.mock.restore()
-      }
-    })
-
-    it('does not keep the process alive just to poll', () => {
-      const realSetInterval = globalThis.setInterval
-      let unrefCalls = 0
-      const setIntervalSpy = mock.method(globalThis, 'setInterval', ((
-        ...args: Parameters<typeof setInterval>
-      ) => {
-        const timer = realSetInterval(...args)
-        mock.method(timer, 'unref', () => {
-          unrefCalls += 1
-          return timer
-        })
-        return timer
-      }) as typeof setInterval)
-      try {
-        sticky.start()
-
-        assert.equal(unrefCalls, 1)
-      } finally {
-        setIntervalSpy.mock.restore()
+        timers.restore()
       }
     })
   })

@@ -19,6 +19,7 @@ import {
   world,
   writeCache
 } from './sparkleMailProbeRig'
+import { spyOnTimer } from './timerSpyHarness'
 
 const WARM_UP = 'delay:📧 邮件专用:https://mail.google.com'
 
@@ -298,37 +299,16 @@ describe('sparkleMailProbe hourly loop', () => {
     assertLog('loaded 1 verified mail nodes from cache')
   })
 
-  it('registers one timer however often it is asked to start', () => {
-    const setIntervalSpy = mock.method(globalThis, 'setInterval')
+  it('registers one hourly timer that does not keep the process alive', () => {
+    const timers = spyOnTimer('setInterval')
     try {
       mail.probe().startSparkleMailProbeLoop()
       mail.probe().startSparkleMailProbeLoop()
 
-      assert.equal(setIntervalSpy.mock.callCount(), 1)
+      assert.deepEqual(timers.delays, [HOUR_MS])
+      assert.equal(timers.unrefs(), 1)
     } finally {
-      setIntervalSpy.mock.restore()
-    }
-  })
-
-  it('does not keep the process alive just to probe', () => {
-    const realSetInterval = globalThis.setInterval
-    let unrefCalls = 0
-    const setIntervalSpy = mock.method(globalThis, 'setInterval', ((
-      ...args: Parameters<typeof setInterval>
-    ) => {
-      const timer = realSetInterval(...args)
-      mock.method(timer, 'unref', () => {
-        unrefCalls += 1
-        return timer
-      })
-      return timer
-    }) as typeof setInterval)
-    try {
-      mail.probe().startSparkleMailProbeLoop()
-
-      assert.equal(unrefCalls, 1)
-    } finally {
-      setIntervalSpy.mock.restore()
+      timers.restore()
     }
   })
 })

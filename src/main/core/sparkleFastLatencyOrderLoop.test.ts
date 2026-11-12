@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict'
-import { describe, it, mock } from 'node:test'
+import { describe, it } from 'node:test'
 import {
   assertLog,
   callsStarting,
   readOrder,
+  REFRESH_INTERVAL_MS,
   samplesFor,
   tickRefresh,
   useFastOrderRig,
   world,
   writeSnapshot
 } from './sparkleFastLatencyOrderRig'
+import { spyOnTimer } from './timerSpyHarness'
 
 const PROVIDER = 'sparkle-fast'
 const FILE_ORDER = ['台湾-1', '台湾-2', '日本-1', '美国-1']
@@ -104,37 +106,16 @@ describe('sparkleFastLatencyOrder periodic recheck', () => {
     assert.deepEqual(world.logs, [])
   })
 
-  it('registers one timer however often it is asked to start', () => {
-    const setIntervalSpy = mock.method(globalThis, 'setInterval')
+  it('registers one timer that does not keep the process alive', () => {
+    const timers = spyOnTimer('setInterval')
     try {
       fast.startLoop()
       fast.startLoop()
 
-      assert.equal(setIntervalSpy.mock.callCount(), 1)
+      assert.deepEqual(timers.delays, [REFRESH_INTERVAL_MS])
+      assert.equal(timers.unrefs(), 1)
     } finally {
-      setIntervalSpy.mock.restore()
-    }
-  })
-
-  it('does not keep the process alive just to recheck', () => {
-    const realSetInterval = globalThis.setInterval
-    let unrefCalls = 0
-    const setIntervalSpy = mock.method(globalThis, 'setInterval', ((
-      ...args: Parameters<typeof setInterval>
-    ) => {
-      const timer = realSetInterval(...args)
-      mock.method(timer, 'unref', () => {
-        unrefCalls += 1
-        return timer
-      })
-      return timer
-    }) as typeof setInterval)
-    try {
-      fast.startLoop()
-
-      assert.equal(unrefCalls, 1)
-    } finally {
-      setIntervalSpy.mock.restore()
+      timers.restore()
     }
   })
 })
