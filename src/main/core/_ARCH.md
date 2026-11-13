@@ -207,13 +207,24 @@ pnpm run upgrade:mac         # 本地装 /Applications + PostCoreBootstrap 门�
 
 | 组件                                  | 职责                                                                |
 | ------------------------------------- | ------------------------------------------------------------------- |
-| `src/main/core/buildDriftPureCore.ts` | 判定 SSOT：`detectBuildDrift` / `normalizeCommit`                   |
-| `src/main/core/buildDriftCore.ts`     | 运行时入口：读仓库 git 事实，写 `[BuildDrift]` 日志（进程内仅一次） |
+| `src/main/core/buildDriftPureCore.ts` | 判定 SSOT：`detectBuildDrift` / `normalizeCommit` / `isBinaryRelevantPath`（纯函数，不碰 git） |
+| `src/main/core/buildDriftGit.ts`      | git 读取（运行时与脚本共用）：`createGitRunner` / `readRepoGitFacts` / `listPathsChangedSince`（`git diff --name-only <app 提交> HEAD`）/ `evaluateBuildDrift` |
+| `src/main/core/buildDriftCore.ts`     | 运行时入口：定位仓库、调 `evaluateBuildDrift`，写 `[BuildDrift]` 日志（进程内仅一次） |
 | `src/main/core/factory.ts`            | `generateProfileImpl` 首步调用 `logBuildDriftAtStartup`             |
 | `scripts/check-build-drift.ts`        | `pnpm run check:drift` 主动查询（按内容读 app.asar 内的构建标记），退出码 1 = 漂移 |
 
-四种判定结果：`match`（一致）/ `commit_mismatch`（app 旧于仓库）/ `app_dirty`（构建时
-工作区不干净，构建不可复现）/ `app_unknown`（无 commit 事实的旧构建）。仓库侧 dirty
-**不算**漂移——commit 仍是权威标识，未提交改动本就不会进入 app。
+五种判定结果：`match`（commit 相同）/ `non_binary_ahead`（commit 不同，但 app 构建提交之后
+只改了文档、测试、`src/shared/buildStamp.ts`，二进制内容没变，不算漂移）/ `commit_mismatch`
+（app 旧于仓库，有会进二进制的改动，或查不到差异）/ `app_dirty`（构建时工作区不干净，构建
+不可复现）/ `app_unknown`（无 commit 事实的旧构建）。
+
+- 「会进二进制」的判定偏保守：除 `*.md`、`*.test.*`、`buildStamp.ts` 外一律算；`extra/`、
+  `resources/` 整目录算（随 `extraResources` 拷进 app，里面的文档也一样）。纯注释 / 格式化
+  改动看不出来，会照常判为需要重建。
+- app 构建提交在本仓库里解析不出来（被 gc、换了仓库）或 git 失败时不猜，按
+  `commit_mismatch`（`ahead_check=unavailable`）处理。
+- 仓库侧 dirty **不读也不算**漂移——commit 仍是权威标识，未提交改动本就不会进入 app。
+- 构建流程「构建 → 安装 → 提交 buildStamp」会让 HEAD 比 app 的 commit 多一个提交，
+  `non_binary_ahead` 就是为它而设，否则每次安装之后都会误报 `commit_mismatch`。
 
 详见 [src/shared/\_ARCH.md](../../shared/_ARCH.md)。
