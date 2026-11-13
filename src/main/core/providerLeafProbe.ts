@@ -1,5 +1,5 @@
-// [INPUT] mihomo provider 列表 · Gemini 探测目标（与 `自动选择` 同源） ·
-//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS/AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+// [INPUT] mihomo provider 列表 · 测速目标（与 `自动选择` 同源） ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS/AUTO_SELECT_DELAY_PROBE_URL (POS: 自动选择与地区组默认配置) ·
 //         mihomoApi::mihomoProviderLeafDelay/mihomoProxyProviders (POS: mihomo 控制器访问层) ·
 //         providerLeafProbeCore::listUnconfirmedLeafNames/mapWithConcurrency (POS: 低并发拨测纯逻辑) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志)
@@ -8,8 +8,8 @@
 
 import { appendAppLog } from '../utils/log'
 import {
-  AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
-  AUTO_SELECT_GEMINI_PROBE_URL
+  AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
+  AUTO_SELECT_DELAY_PROBE_URL
 } from './defaultAutoSwitchProxy'
 import { mihomoProviderLeafDelay, mihomoProxyProviders } from './mihomoApi'
 import { listUnconfirmedLeafNames, mapWithConcurrency } from './providerLeafProbeCore'
@@ -34,8 +34,8 @@ async function probeLeaves(
     await mihomoProviderLeafDelay(
       providerName,
       name,
-      AUTO_SELECT_GEMINI_PROBE_URL,
-      AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS
+      AUTO_SELECT_DELAY_PROBE_URL,
+      AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS
     )
   })
   return attempted
@@ -63,7 +63,7 @@ export async function verifyUnconfirmedFailures(): Promise<number> {
     if (provider.vehicleType === INLINE_GROUP_VEHICLE_TYPE) {
       continue
     }
-    const names = listUnconfirmedLeafNames(provider.proxies ?? [], AUTO_SELECT_GEMINI_PROBE_URL)
+    const names = listUnconfirmedLeafNames(provider.proxies ?? [], AUTO_SELECT_DELAY_PROBE_URL)
     probed += await probeLeaves(providerName, names, deadlineMs)
   }
   await appendAppLog(`[ProviderLeafProbe]: verified unconfirmed failures probed=${probed}\n`)

@@ -4,8 +4,8 @@ import {
   callsStarting,
   changes,
   ELIGIBLE,
-  GEMINI_ALIVE,
-  GEMINI_DEAD,
+  DELAY_ALIVE,
+  DELAY_DEAD,
   poll,
   POLL_INTERVAL_MS,
   restricted,
@@ -14,7 +14,7 @@ import {
   world
 } from './autoSelectStickyPinRig'
 import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
-import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
+import { AUTO_SELECT_DELAY_PROBE_URL } from './defaultAutoSwitchProxy'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import { spyOnTimer } from './timerSpyHarness'
 
@@ -23,7 +23,7 @@ describe('autoSelectStickyPin', () => {
 
   describe('pinning', () => {
     it('pins the selected node once it stays selected for two polls in a row', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
       sticky.start()
 
       await poll()
@@ -36,7 +36,7 @@ describe('autoSelectStickyPin', () => {
     })
 
     it('does not ask about the region again right after pinning', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
       sticky.start()
       await poll(2)
       world.calls = []
@@ -48,8 +48,8 @@ describe('autoSelectStickyPin', () => {
 
     it('starts counting again when the selected node changes in between', async () => {
       world.leaves = [
-        { name: 'A', extra: GEMINI_ALIVE },
-        { name: 'B', extra: GEMINI_ALIVE }
+        { name: 'A', extra: DELAY_ALIVE },
+        { name: 'B', extra: DELAY_ALIVE }
       ]
       sticky.start()
 
@@ -91,7 +91,7 @@ describe('autoSelectStickyPin', () => {
     })
 
     it('trusts a cached Gemini verdict over a new probe', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_DEAD }]
+      world.leaves = [{ name: 'A', extra: DELAY_DEAD }]
       sticky.start()
 
       await poll(3)
@@ -116,7 +116,7 @@ describe('autoSelectStickyPin', () => {
 
       assert.deepEqual(changes(), ['A'])
       assert.ok(
-        world.calls.includes(`delay:${FAST_NODE_PROVIDER_ID}:A:${AUTO_SELECT_GEMINI_PROBE_URL}`)
+        world.calls.includes(`delay:${FAST_NODE_PROVIDER_ID}:A:${AUTO_SELECT_DELAY_PROBE_URL}`)
       )
     })
 
@@ -131,7 +131,7 @@ describe('autoSelectStickyPin', () => {
     })
 
     it('rejects a node in a restricted region and counts again from zero', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
       world.regionOf = () => restricted('CN')
       sticky.start()
 
@@ -146,7 +146,7 @@ describe('autoSelectStickyPin', () => {
     })
 
     it('lets a region check without a verdict through', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
       world.regionOf = () => ({ eligible: false, definitive: false })
       sticky.start()
 
@@ -156,7 +156,7 @@ describe('autoSelectStickyPin', () => {
     })
 
     it('leaves the group alone when it changed while the node was being checked', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
       sticky.start()
       await poll()
       world.onDetail = (call) => {
@@ -170,7 +170,7 @@ describe('autoSelectStickyPin', () => {
     })
 
     it('leaves the group alone when the node stopped being the selected one meanwhile', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
       sticky.start()
       await poll()
       world.onDetail = (call) => {
@@ -183,7 +183,7 @@ describe('autoSelectStickyPin', () => {
     })
 
     it('does not pin a node whose check was invalidated by a release', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
       world.regionOf = () => {
         sticky.notifyUnfixed(AUTO_SELECT_GROUP_NAME)
         return ELIGIBLE
@@ -197,8 +197,8 @@ describe('autoSelectStickyPin', () => {
 
     it('mentions the node it left when the pinned node disappears and another is pinned', async () => {
       world.leaves = [
-        { name: 'A', extra: GEMINI_ALIVE },
-        { name: 'B', extra: GEMINI_ALIVE }
+        { name: 'A', extra: DELAY_ALIVE },
+        { name: 'B', extra: DELAY_ALIVE }
       ]
       sticky.start()
       await poll(2)
@@ -213,7 +213,7 @@ describe('autoSelectStickyPin', () => {
     })
 
     it('names a node somebody else pinned as the one it left', async () => {
-      world.leaves = [{ name: 'B', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'B', extra: DELAY_ALIVE }]
       world.group = { type: 'Fallback', now: 'A', fixed: 'X', all: ['A', 'B', 'X'] }
       sticky.start()
       await poll()
@@ -226,8 +226,8 @@ describe('autoSelectStickyPin', () => {
 
     it('does not claim to have left a node that was released on purpose', async () => {
       world.leaves = [
-        { name: 'A', extra: GEMINI_ALIVE },
-        { name: 'B', extra: GEMINI_ALIVE }
+        { name: 'A', extra: DELAY_ALIVE },
+        { name: 'B', extra: DELAY_ALIVE }
       ]
       sticky.start()
       await poll(2)
@@ -243,7 +243,7 @@ describe('autoSelectStickyPin', () => {
 
   describe('the polling loop', () => {
     it('keeps polling after a failed poll and forgets what it saw before it', async () => {
-      world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+      world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
       sticky.start()
       await poll(2)
       world.calls = []

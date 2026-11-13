@@ -3,7 +3,7 @@
 //         mihomoApi::mihomoGroupDetail/mihomoChangeProxy/mihomoUnfixedProxy (POS: mihomo 控制器访问层) ·
 //         sparkle-fast provider 探测结果与单点拨测 ·
 //         cursorProxyGroup::AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
-//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS/AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS/AUTO_SELECT_DELAY_PROBE_URL (POS: 自动选择与地区组默认配置) ·
 //         sparkleFastProviderCore::FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] startAutoSelectStickyPin · notifyAutoSelectUnfixed
@@ -25,8 +25,8 @@ import {
 } from './autoSelectStickyPinCore'
 import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
 import {
-  AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
-  AUTO_SELECT_GEMINI_PROBE_URL
+  AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
+  AUTO_SELECT_DELAY_PROBE_URL
 } from './defaultAutoSwitchProxy'
 import {
   mihomoChangeProxy,
@@ -59,13 +59,13 @@ export function notifyAutoSelectUnfixed(group: string): void {
   lastPinned = ''
 }
 
-async function probeNodeGeminiAlive(node: string): Promise<boolean> {
+async function probeNodeAlive(node: string): Promise<boolean> {
   try {
     const result = await mihomoProviderLeafDelay(
       FAST_NODE_PROVIDER_ID,
       node,
-      AUTO_SELECT_GEMINI_PROBE_URL,
-      AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS
+      AUTO_SELECT_DELAY_PROBE_URL,
+      AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS
     )
     return typeof result.delay === 'number' && result.delay > 0
   } catch {
@@ -74,22 +74,22 @@ async function probeNodeGeminiAlive(node: string): Promise<boolean> {
 }
 
 /**
- * 确认候选节点对 Gemini 存活：
- * - 已有 Gemini 探测记录时直接读 `extra[Gemini].alive`（避免全挂时反复固定死节点）；
- * - 尚无 Gemini 记录时（刚启动或 provider 刚重载，顶层 `alive` 仅代表 gstatic 或默认 true），
- *   必须做一次单点 Gemini 实测，防止把「gstatic 通但 Gemini 不通」的节点固定住。
+ * 确认候选节点存活（与自动组同一测速口径）：
+ * - 已有测速记录时直接读 `extra[测速目标].alive`（避免全挂时反复固定死节点）；
+ * - 尚无测速记录时（刚启动或 provider 刚重载，顶层 `alive` 默认 true 不可信），
+ *   必须做一次单点实测。能否使用 Gemini 由随后的地区校验单独把关。
  */
-async function ensureNodeAliveForGemini(node: string): Promise<boolean> {
+async function ensureNodeAlive(node: string): Promise<boolean> {
   const provider = (await mihomoProxyProviders()).providers[FAST_NODE_PROVIDER_ID]
   const leaf = provider?.proxies?.find((proxy) => proxy.name === node)
   if (!leaf) {
     return true
   }
-  const geminiProbe = leaf.extra?.[AUTO_SELECT_GEMINI_PROBE_URL]
-  if (geminiProbe !== undefined) {
-    return geminiProbe.alive
+  const delayProbe = leaf.extra?.[AUTO_SELECT_DELAY_PROBE_URL]
+  if (delayProbe !== undefined) {
+    return delayProbe.alive
   }
-  return probeNodeGeminiAlive(node)
+  return probeNodeAlive(node)
 }
 
 async function pollOnce(): Promise<void> {
@@ -126,7 +126,7 @@ async function pollOnce(): Promise<void> {
   }
 
   if (action.kind === 'verify-lost-pin') {
-    const alive = await probeNodeGeminiAlive(action.node)
+    const alive = await probeNodeAlive(action.node)
     if (!alive) {
       await appendAppLog(`[AutoSelectSticky]: confirmed dead ${action.node}\n`)
       return
@@ -152,7 +152,7 @@ async function pollOnce(): Promise<void> {
     return
   }
 
-  if (action.kind === 'pin' && (await ensureNodeAliveForGemini(action.node))) {
+  if (action.kind === 'pin' && (await ensureNodeAlive(action.node))) {
     const regionCheck = await verifyNodeGeminiRegion(action.node)
     if (regionCheck.definitive && !regionCheck.eligible) {
       memory = INITIAL_STICKY_PIN_MEMORY

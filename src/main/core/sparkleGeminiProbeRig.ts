@@ -1,5 +1,5 @@
 // [INPUT] node:test 假时钟与模块替身 · sparkleGeminiProbe（被测模块，每个用例重新加载）· 临时目录里的真实缓存与 provider 文件 ·
-//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_DELAY_PROBE_URL (POS: 自动选择与地区组默认配置) ·
 //         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         sparkleFastProviderCore::FAST_NODE_PROVIDER_FILENAME/FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, before, beforeEach, mock } from 'node:test'
 import { parseYaml } from '../utils/yaml'
-import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
+import { AUTO_SELECT_DELAY_PROBE_URL } from './defaultAutoSwitchProxy'
 import { flush } from './groupFailoverEngineHarness'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { FAST_NODE_PROVIDER_FILENAME, FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
@@ -51,7 +51,7 @@ export function leaf(name: string, alive: boolean, geminiAlive?: boolean): Proxy
     name,
     alive,
     extra:
-      geminiAlive === undefined ? {} : { [AUTO_SELECT_GEMINI_PROBE_URL]: { alive: geminiAlive } }
+      geminiAlive === undefined ? {} : { [AUTO_SELECT_DELAY_PROBE_URL]: { alive: geminiAlive } }
   }
 }
 

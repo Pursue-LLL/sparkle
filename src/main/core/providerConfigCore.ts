@@ -14,8 +14,8 @@ import {
   MAIL_DELAY_TEST_URL
 } from './cursorProxyGroup'
 import {
-  AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
-  AUTO_SELECT_GEMINI_PROBE_URL
+  AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
+  AUTO_SELECT_DELAY_PROBE_URL
 } from './defaultAutoSwitchProxy'
 
 export interface ProviderHealthCheckOverride {
@@ -74,9 +74,9 @@ export function buildBaseConfigWithProviders(
     path: resolveProviderPath(FAST_NODE_PROVIDER_ID),
     'health-check': {
       enable: commercialHealthCheck.enable,
-      url: AUTO_SELECT_GEMINI_PROBE_URL,
+      url: AUTO_SELECT_DELAY_PROBE_URL,
       interval: commercialHealthCheck.interval,
-      timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
+      timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
       lazy: true
     }
   }
@@ -88,7 +88,7 @@ export function buildBaseConfigWithProviders(
       enable: commercialHealthCheck.enable,
       url: MAIL_DELAY_TEST_URL,
       interval: commercialHealthCheck.interval,
-      timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
+      timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
       lazy: true
     }
   }
@@ -102,7 +102,7 @@ export function buildBaseConfigWithProviders(
       enable: commercialHealthCheck.enable,
       url: GEMINI_REACHABILITY_PROBE_URL,
       interval: commercialHealthCheck.interval,
-      timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
+      timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
       lazy: true
     }
   }

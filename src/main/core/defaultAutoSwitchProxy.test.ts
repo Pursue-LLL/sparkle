@@ -42,7 +42,7 @@ describe('defaultAutoSwitchProxy', () => {
     ])
   })
 
-  it('probes 自动选择 and every regional group with Gemini', () => {
+  it('probes 自动选择 and every regional group with the shared lightweight delay probe', () => {
     const profile = {
       'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }]
     } as unknown as MihomoConfig
@@ -66,7 +66,7 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(regionalGroups.length, 5)
     for (const group of regionalGroups) {
       assert.equal(group.type, 'url-test')
-      assert.equal(group.url, 'https://gemini.google.com')
+      assert.equal(group.url, 'https://www.gstatic.com/generate_204')
       assert.equal(group.tolerance, 2000)
       assert.equal(group.timeout, 5000)
       assert.equal(group.interval, 300)
@@ -76,7 +76,7 @@ describe('defaultAutoSwitchProxy', () => {
 
     const autoSelect = groups.find((group) => group.name === '自动选择')
     assert.equal(autoSelect?.type, 'fallback')
-    assert.equal(autoSelect?.url, 'https://gemini.google.com')
+    assert.equal(autoSelect?.url, 'https://www.gstatic.com/generate_204')
     assert.equal(autoSelect?.timeout, 5000)
     assert.equal(autoSelect?.interval, 300)
     assert.equal(autoSelect?.lazy, true)

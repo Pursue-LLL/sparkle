@@ -2,7 +2,7 @@
 //         sparkleGeminiStreamProbe::streamProbeGeminiRegionViaLocalListener (POS: 流式地区探测) · 当前订阅节点 · sparkle-gemini-nodes.json ·
 //         config::getAppConfig/getProfile/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
 //         cursorProxyGroup::AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
-//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_DELAY_PROBE_URL (POS: 自动选择与地区组默认配置) ·
 //         mihomoApi::mihomoGroupDetail/mihomoProxyProviders/mihomoUnfixedProxy/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
 //         provider::extractProxies (POS: 订阅节点 → provider 文件) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
@@ -26,7 +26,7 @@ import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { stringifyYaml } from '../utils/yaml'
 import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
-import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
+import { AUTO_SELECT_DELAY_PROBE_URL } from './defaultAutoSwitchProxy'
 import {
   mihomoGroupDetail,
   mihomoProxyProviders,
@@ -284,7 +284,7 @@ export async function bootstrapSparkleGeminiRegionAudit(): Promise<void> {
 
     const unverifiedAliveNames = leaves
       .filter((leaf) => {
-        const alive = leaf.extra?.[AUTO_SELECT_GEMINI_PROBE_URL]?.alive ?? leaf.alive
+        const alive = leaf.extra?.[AUTO_SELECT_DELAY_PROBE_URL]?.alive ?? leaf.alive
         if (!alive) return false
         const fp = fingerprintByName.get(leaf.name)
         return !(fp && cache.has(fp)) && !cache.has(leaf.name)

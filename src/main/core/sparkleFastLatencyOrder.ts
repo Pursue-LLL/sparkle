@@ -1,7 +1,7 @@
 // [INPUT] sparkleFastDelaySnapshotCore (POS: 延迟快照指纹/覆盖率/序列化) · sparkleFastLatencyOrderCore (POS: 历史折算与迟滞) · sparkleFastProviderCore (POS: provider 排序) · mihomo provider 探测历史 · sparkle-fast-proxies.yaml · proxySwitchPriority ·
 //         config::getAppConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
 //         cursorProxyGroup::AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
-//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_DELAY_PROBE_URL (POS: 自动选择与地区组默认配置) ·
 //         mihomoApi::mihomoGroupDetail/mihomoProxyProviders/mihomoUnfixedProxy/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
 //         providerLeafProbe::probeProviderLeavesGently (POS: provider 叶子低并发拨测) ·
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
@@ -23,7 +23,7 @@ import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
-import { AUTO_SELECT_GEMINI_PROBE_URL } from './defaultAutoSwitchProxy'
+import { AUTO_SELECT_DELAY_PROBE_URL } from './defaultAutoSwitchProxy'
 import {
   mihomoGroupDetail,
   mihomoProxyProviders,
@@ -81,7 +81,7 @@ async function resolveSparkleFastDelayMap(
 ): Promise<NodeDelayMap> {
   const fingerprintProxies =
     currentProxies.length > 0 ? currentProxies : (providerProxies as unknown as ProxyRecord[])
-  const measured = collectNodeDelays(providerProxies, AUTO_SELECT_GEMINI_PROBE_URL)
+  const measured = collectNodeDelays(providerProxies, AUTO_SELECT_DELAY_PROBE_URL)
   if (measured.size === 0) {
     return loadSparkleFastDelaySnapshot(fingerprintProxies)
   }
@@ -174,7 +174,7 @@ async function readCurrentSparkleFastProxies(): Promise<ProxyRecord[]> {
 
 /**
  * API 就绪后的启动处理：
- * - 内存里已有 ≥80% Gemini 样本：直接按现有历史重排；
+ * - 内存里已有 ≥80% 测速样本：直接按现有历史重排；
  * - 否则只有磁盘快照与当前 provider 配置指纹一致且覆盖率 ≥80% 时才沿用；
  * - 快照缺失、配置变化或覆盖不足时强制逐点补测，不能拿残缺快照跳过探测。
  */
@@ -184,7 +184,7 @@ export async function bootstrapSparkleFastLatencyOrder(): Promise<void> {
   const currentProxies = await readCurrentSparkleFastProxies()
   const fingerprintProxies =
     currentProxies.length > 0 ? currentProxies : (providerProxies as unknown as ProxyRecord[])
-  const memorySamples = collectNodeDelays(providerProxies, AUTO_SELECT_GEMINI_PROBE_URL)
+  const memorySamples = collectNodeDelays(providerProxies, AUTO_SELECT_DELAY_PROBE_URL)
   if (!hasSufficientSnapshotCoverage(fingerprintProxies, memorySamples)) {
     const snapshot = await loadSparkleFastDelaySnapshot(fingerprintProxies)
     if (hasSufficientSnapshotCoverage(fingerprintProxies, snapshot)) {
