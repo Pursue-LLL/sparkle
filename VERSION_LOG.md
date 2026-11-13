@@ -6,7 +6,7 @@
 
 ---
 
-## 2026-11-12 自动切换加固：行为测试 + 变异测试逐模块暴露并修复 28 个潜在缺陷（代码已完成 · 未装包 · 未推送）
+## 2026-11-12 自动切换加固：行为测试 + 变异测试逐模块暴露并修复 28 个潜在缺陷（代码已完成 · 已装包 2026-11-13 · 未推送）
 
 | 项 | 内容 |
 |---|---|
@@ -14,11 +14,11 @@
 | 根因 | 自动切换链路及它依赖的日志 / YAML / 订阅更新里潜伏着 28 个缺陷（明细见 `src/main/core/core_20261107_20261113_BUGFIX_LOG.md` 的 BUG-2026-11-12-001）。较重的几个：日志写失败升级为主进程未捕获异常；`appendAppLog` 失败连带 133 处调用方的业务流程；Reality 纯数字 short-id 被 YAML 解析成数字（块风格与订阅转换器常用的 flow 风格都中招，`12e3456` 会变成 Infinity）；悬空的 `MATCH` 规则让内核拒绝整份配置；规则改写丢掉 `no-resolve` 修饰符、把 `src` 参数当成策略改写；故障转移释放失败后永远跳过自己设的固定 |
 | 实现 | 规则文本解析与策略改写收敛到 `ruleSyntax`；YAML 解析改在文档树上还原 Reality short-id 的原文；Agy / Grok 探针按职责拆分；日志拆出 `logLineParseCore` 与 `logFileSizeCore.trimLogContent`，`appendAppLog` 永不 reject；删除无人调用的代码与不可达守卫；`test:node-quality` 改用 glob，所有测试文件都在门禁内 |
 | 验证 | 全量 1682 用例 / 347 套件 0 失败（满载下连跑 6 次稳定）；typecheck（node + web）0；ESLint 与 prettier 覆盖自基线改动的 206 个 `.ts` 文件，全部通过；行覆盖率（每个测试文件单独一个进程再按行取并集）已加载模块 `src/main/core` 98.6%、`src/main` 98.6%、全部 97.5%，相对基线的改动行 99.6%；变异测试存活者均已归类；真实运行态配置回放（3783 条规则、26 个组）的规则解析、改写与流水线均无意外差异；规则解析器与真实内核逐形态差分（20 种形态）0 处不一致；`parseYaml` 新旧实现在 29 个真实 YAML 文件与 6000 个随机文档上结果一致；46.4 万行真实核心日志全部解析成功；5 个地区的内核 provider `filter` 与 JS 地区判定在真实订阅上台湾 / 日本 / 韩国 / 美国完全一致（新加坡 6/130 个节点口径不同）；`pnpm run verify:failover` 在隔离 mihomo v1.19.32 上 PASS；`electron-vite build` 与 `verify:bundle` Stage-A OK |
-| 已知边界 | 未装包，运行中的内核仍是旧配置，两个原始症状（国内软件没走直连、台湾节点超时不自动切换）在线上仍未修复；未推送（`dist.zip` 的历史提交仍在）；`src/main` 有 63 个 I/O 接线文件（约 6991 行）没有被任何测试加载，计入后 `src/main` 覆盖率 63.8%，`scripts` 已加载模块 65.0%；除 Reality short-id 外，其他字段的纯数字写法解析后会丢前导零（本机数据无此情形）；日志落盘失败是静默的 |
+| 已知边界 | 已于 2026-11-13 10:05 装包；台湾节点超时自动切换的线上触发尚未发生，仅在隔离内核验证过；未推送（`dist.zip` 的历史提交仍在）；`src/main` 有 63 个 I/O 接线文件（约 6991 行）没有被任何测试加载，计入后 `src/main` 覆盖率 63.8%，`scripts` 已加载模块 65.0%；除 Reality short-id 外，其他字段的纯数字写法解析后会丢前导零（本机数据无此情形）；日志落盘失败是静默的 |
 
 ---
 
-## 2026-11-11 自动切换统一：运行时配置对账重载 + 国内直连基线 + 故障转移引擎 + 分组策略表（代码已完成 · 未装包）
+## 2026-11-11 自动切换统一：运行时配置对账重载 + 国内直连基线 + 故障转移引擎 + 分组策略表（已装包 2026-11-13）
 
 | 项 | 内容 |
 |---|---|
@@ -26,7 +26,8 @@
 | 根因 | ① 服务模式保留的旧内核只载入 131 条规则，磁盘配置已有 3788 条：订阅刷新只热重载 provider，从不让内核采用新规则；订阅 base 一度没有规则也没有国内基线。② url-test 的复测对 Gemini 仍通过，真实流量却持续超时；内核对「连续拨号失败」只打 warning 并复测，不会换节点；固定节点失活本由内核原生处理（URLTest 仅在固定节点存活时遵循 `fixed`，Fallback 清除失活固定），旧 10 秒看门狗的前提不成立 |
 | 实现 | `runtimeConfigSync`：规则 / 分组 / provider 指纹变化即整配置重载（`PUT /configs?force=true`，失败不重启内核），启动时再用 `GET /rules` 条数对账；`cnDirectBaseline`：订阅无国内感知规则时在 `MATCH` 前补 `GEOSITE,CN` / `GEOIP,CN` → `DIRECT`；`autoSwitchPinRelease` 取代看门狗，按生命周期释放固定（启动 / 整重载 `all`，订阅刷新 `orphans`）；`autoSwitchPolicy` 单一策略表（谁来切节点只声明一次，源码扫描测试防漏填）；`groupFailover*`：订阅独立告警流，同一组 180 s 内两次计数告警（30 s 去重）即为 `Sparkle-<地区>` url-test 组改选最近探测成功且延迟最低的节点，失败节点隔离 10 分钟、保留期满交还内核，用户固定的节点不动；`mihomoApi` 拆出 `mihomoStreams`，`factory` / `profile` / `sparkleGeminiProbe` 按职责拆分；删除 `updateProvider` 与未引用的 `sparkleAgyMagpieClient`；新增 `pnpm run verify:failover`（故障转移引擎对真实内核的端到端校验） |
 | 验证 | 隔离 mihomo（3788 条规则、26 组、5 provider，TUN 关闭）连续整配置重载 8 次耗时 13–39 ms，1323 次新建连接探测 0 失败（不含真实 TUN / DNS）；`mihomo -t` 通过；真实 mihomo v1.19.32 上 `/logs?level=warning` 收到告警帧且被解析器识别，URLTest 组 `PUT` 固定 / `DELETE` 解除 / 非成员 400 与引擎假设一致；2026-11-11 11:15–11:41 的 21 条真实告警折算出 6 次转移（回归夹具）；对线上只读快照干跑，6 个 `Sparkle-*` url-test 组入选、其余分组均不入选；`test:node-quality` 420/420；typecheck node + web 0；ESLint 0；`electron-vite build` 生产构建通过且 Stage-A 门禁 OK；`pnpm run verify:failover`（隔离 mihomo + 模拟节点复现「探测通过、真实流量拨号失败」，真实引擎 + 真实告警流）在 v1.19.32 与 alpha-68ec4fa 上各通过一次：第二条计数告警后改选并固定、在途请求恢复、保留期满解除固定、用户固定的节点被跳过 |
-| 已知边界 | 未装包，运行中的内核仍是旧配置；磁盘与内核规则条数相同但内容不同的旧内核无法被条数对账发现；故障转移要同一组两次独立故障才动作，且依赖内核的告警文案（升级或切换内核后运行 `pnpm run verify:failover` 复核，该校验只覆盖引擎与内核的契约，不含 Electron 内的控制器接线、真实协议故障与 TUN / DNS）；整网中断时候选节点的最近探测均失败，引擎不会盲切；远端 push 被 `dist.zip`（234 MB，历史提交 `82193a93`）拦截，需改写历史，未处理 |
+| 线上验证（装包后） | 2026-11-13 10:05 装包（CDHash `838f6d00`，`BuildDrift drift=none`）：内核 v1.19.32 规则 3788 条 = 磁盘 3788 条，26 个配置分组 + `GLOBAL` 共 27 组；规则表末尾 `GEOIP,CN,🎯 全球直连` → `MATCH,🐟 漏网之鱼`；`sogou.com` 连接走 `DomainSuffix → DIRECT > 🎯 全球直连`，活动连接里 `GeoIP → 🎯 全球直连` 4 条；`verify:agygeo` PASS、数据面就绪门禁 OK、`:7890` 出网 204；启动日志 `[AutoSwitchPin]: released 自动选择 … reason=cache-restored scope=all`；故障转移在线上尚未遇到触发条件 |
+| 已知边界 | 磁盘与内核规则条数相同但内容不同的旧内核无法被条数对账发现；故障转移要同一组两次独立故障才动作，且依赖内核的告警文案（升级或切换内核后运行 `pnpm run verify:failover` 复核，该校验只覆盖引擎与内核的契约，不含 Electron 内的控制器接线、真实协议故障与 TUN / DNS）；整网中断时候选节点的最近探测均失败，引擎不会盲切；远端 push 被 `dist.zip`（234 MB，历史提交 `82193a93`）拦截，需改写历史，未处理 |
 
 ---
 
