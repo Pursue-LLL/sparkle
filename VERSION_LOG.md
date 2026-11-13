@@ -6,7 +6,7 @@
 
 ---
 
-## 2026-11-12 自动切换加固：行为测试 + 变异测试逐模块暴露并修复 28 个潜在缺陷（代码已完成 · 已装包 2026-11-13 · 未推送）
+## 2026-11-12 自动切换加固：行为测试 + 变异测试逐模块暴露并修复 28 个潜在缺陷（代码已完成 · 已装包 2026-11-13 · 已推送）
 
 | 项 | 内容 |
 |---|---|
@@ -14,7 +14,7 @@
 | 根因 | 自动切换链路及它依赖的日志 / YAML / 订阅更新里潜伏着 28 个缺陷（明细见 `src/main/core/core_20261107_20261113_BUGFIX_LOG.md` 的 BUG-2026-11-12-001）。较重的几个：日志写失败升级为主进程未捕获异常；`appendAppLog` 失败连带 133 处调用方的业务流程；Reality 纯数字 short-id 被 YAML 解析成数字（块风格与订阅转换器常用的 flow 风格都中招，`12e3456` 会变成 Infinity）；悬空的 `MATCH` 规则让内核拒绝整份配置；规则改写丢掉 `no-resolve` 修饰符、把 `src` 参数当成策略改写；故障转移释放失败后永远跳过自己设的固定 |
 | 实现 | 规则文本解析与策略改写收敛到 `ruleSyntax`；YAML 解析改在文档树上还原 Reality short-id 的原文；Agy / Grok 探针按职责拆分；日志拆出 `logLineParseCore` 与 `logFileSizeCore.trimLogContent`，`appendAppLog` 永不 reject；删除无人调用的代码与不可达守卫；`test:node-quality` 改用 glob，所有测试文件都在门禁内 |
 | 验证 | 全量 1682 用例 / 347 套件 0 失败（满载下连跑 6 次稳定）；typecheck（node + web）0；ESLint 与 prettier 覆盖自基线改动的 206 个 `.ts` 文件，全部通过；行覆盖率（每个测试文件单独一个进程再按行取并集）已加载模块 `src/main/core` 98.6%、`src/main` 98.6%、全部 97.5%，相对基线的改动行 99.6%；变异测试存活者均已归类；真实运行态配置回放（3783 条规则、26 个组）的规则解析、改写与流水线均无意外差异；规则解析器与真实内核逐形态差分（20 种形态）0 处不一致；`parseYaml` 新旧实现在 29 个真实 YAML 文件与 6000 个随机文档上结果一致；46.4 万行真实核心日志全部解析成功；5 个地区的内核 provider `filter` 与 JS 地区判定在真实订阅上台湾 / 日本 / 韩国 / 美国完全一致（新加坡 6/130 个节点口径不同）；`pnpm run verify:failover` 在隔离 mihomo v1.19.32 上 PASS；`electron-vite build` 与 `verify:bundle` Stage-A OK |
-| 已知边界 | 已于 2026-11-13 10:05 装包；台湾节点超时自动切换的线上触发尚未发生，仅在隔离内核验证过；未推送（`dist.zip` 的历史提交仍在）；`src/main` 有 63 个 I/O 接线文件（约 6991 行）没有被任何测试加载，计入后 `src/main` 覆盖率 63.8%，`scripts` 已加载模块 65.0%；除 Reality short-id 外，其他字段的纯数字写法解析后会丢前导零（本机数据无此情形）；日志落盘失败是静默的 |
+| 已知边界 | 已于 2026-11-13 10:05 装包；台湾节点超时自动切换的线上触发尚未发生，仅在隔离内核验证过；`src/main` 有 63 个 I/O 接线文件（约 6991 行）没有被任何测试加载，计入后 `src/main` 覆盖率 63.8%，`scripts` 已加载模块 65.0%；除 Reality short-id 外，其他字段的纯数字写法解析后会丢前导零（本机数据无此情形）；日志落盘失败是静默的 |
 
 ---
 
@@ -27,7 +27,7 @@
 | 实现 | `runtimeConfigSync`：规则 / 分组 / provider 指纹变化即整配置重载（`PUT /configs?force=true`，失败不重启内核），启动时再用 `GET /rules` 条数对账；`cnDirectBaseline`：订阅无国内感知规则时在 `MATCH` 前补 `GEOSITE,CN` / `GEOIP,CN` → `DIRECT`；`autoSwitchPinRelease` 取代看门狗，按生命周期释放固定（启动 / 整重载 `all`，订阅刷新 `orphans`）；`autoSwitchPolicy` 单一策略表（谁来切节点只声明一次，源码扫描测试防漏填）；`groupFailover*`：订阅独立告警流，同一组 180 s 内两次计数告警（30 s 去重）即为 `Sparkle-<地区>` url-test 组改选最近探测成功且延迟最低的节点，失败节点隔离 10 分钟、保留期满交还内核，用户固定的节点不动；`mihomoApi` 拆出 `mihomoStreams`，`factory` / `profile` / `sparkleGeminiProbe` 按职责拆分；删除 `updateProvider` 与未引用的 `sparkleAgyMagpieClient`；新增 `pnpm run verify:failover`（故障转移引擎对真实内核的端到端校验） |
 | 验证 | 隔离 mihomo（3788 条规则、26 组、5 provider，TUN 关闭）连续整配置重载 8 次耗时 13–39 ms，1323 次新建连接探测 0 失败（不含真实 TUN / DNS）；`mihomo -t` 通过；真实 mihomo v1.19.32 上 `/logs?level=warning` 收到告警帧且被解析器识别，URLTest 组 `PUT` 固定 / `DELETE` 解除 / 非成员 400 与引擎假设一致；2026-11-11 11:15–11:41 的 21 条真实告警折算出 6 次转移（回归夹具）；对线上只读快照干跑，6 个 `Sparkle-*` url-test 组入选、其余分组均不入选；`test:node-quality` 420/420；typecheck node + web 0；ESLint 0；`electron-vite build` 生产构建通过且 Stage-A 门禁 OK；`pnpm run verify:failover`（隔离 mihomo + 模拟节点复现「探测通过、真实流量拨号失败」，真实引擎 + 真实告警流）在 v1.19.32 与 alpha-68ec4fa 上各通过一次：第二条计数告警后改选并固定、在途请求恢复、保留期满解除固定、用户固定的节点被跳过 |
 | 线上验证（装包后） | 2026-11-13 10:05 装包（CDHash `838f6d00`，`BuildDrift drift=none`）：内核 v1.19.32 规则 3788 条 = 磁盘 3788 条，26 个配置分组 + `GLOBAL` 共 27 组；规则表末尾 `GEOIP,CN,🎯 全球直连` → `MATCH,🐟 漏网之鱼`；`sogou.com` 连接走 `DomainSuffix → DIRECT > 🎯 全球直连`，活动连接里 `GeoIP → 🎯 全球直连` 4 条；`verify:agygeo` PASS、数据面就绪门禁 OK、`:7890` 出网 204；启动日志 `[AutoSwitchPin]: released 自动选择 … reason=cache-restored scope=all`；故障转移在线上尚未遇到触发条件 |
-| 已知边界 | 磁盘与内核规则条数相同但内容不同的旧内核无法被条数对账发现；故障转移要同一组两次独立故障才动作，且依赖内核的告警文案（升级或切换内核后运行 `pnpm run verify:failover` 复核，该校验只覆盖引擎与内核的契约，不含 Electron 内的控制器接线、真实协议故障与 TUN / DNS）；整网中断时候选节点的最近探测均失败，引擎不会盲切；远端 push 被 `dist.zip`（234 MB，历史提交 `82193a93`）拦截，需改写历史，未处理 |
+| 已知边界 | 磁盘与内核规则条数相同但内容不同的旧内核无法被条数对账发现；故障转移要同一组两次独立故障才动作，且依赖内核的告警文案（升级或切换内核后运行 `pnpm run verify:failover` 复核，该校验只覆盖引擎与内核的契约，不含 Electron 内的控制器接线、真实协议故障与 TUN / DNS）；整网中断时候选节点的最近探测均失败，引擎不会盲切 |
 
 ---
 
@@ -213,7 +213,7 @@
 | 现象 | 10-14 约 15 小时内 `自动选择` 切换 201–207 次（10-08 基线 17 次/天），38% 的切换离开了失败率 <20% 的健康节点 |
 | 根因 | ① 原生 `fallback` 无迟滞：前序节点单次探测失败即被放弃，恢复后立即回切；② 周期重排（30 分钟）每次采用都 `DELETE /proxies/自动选择` 解除固定；③ 订阅刷新（`reloadMihomoProfileProviders`）漏热重载 `sparkle-fast`，旧失效节点触发 1,863 次全量并发体检风暴；同时 `sparkle-fast` 原配置使用非懒加载 `gstatic` 体检造成双倍并发压力；④ 若仅固定而不拦截单次探测误杀，每次并发体检超时都会造成单向不可逆降级；⑤ 高优先级地区全挂时，未测/死节点仍排在低优先级地区的活节点前面 |
 | 修复 | ① `autoSelectStickyPinCore.ts` + `autoSelectStickyPin.ts`：每 3 秒检查 `自动选择`（纯本机内存读取，0 网络请求），`now` 连续 2 次稳定后 `PUT` 固定（无 Gemini 样本时先单点拨测验活）；固定被 mihomo 清除且节点仍在组内时，先单点独立复测 Gemini（并发度 1），存活则立即恢复固定（10 分钟冷却窗内再次丢固定则视为节点不稳不再救回）；清理孤儿固定；主动解锁同步重置记忆；② `sparkleFastLatencyOrder.ts` + `sparkleFastProviderCore.ts`：启动阶段若磁盘已有延迟快照则直接沿用（`hasPreferredUrlSamples` 要求 ≥80% 节点已探测，防冷启动少量节点刚测完触发残缺样本重排与 46s 全量重测）、仅当原固定节点不在存活表内才解除固定；周期重排保留固定；有实测延迟时将无样本节点全局垫底；③ `provider.ts` + `providerConfigCore.ts` + `vpsProviderSplitCore.ts`：订阅刷新同步热重载 `sparkle-fast`，`sparkle-fast` 对齐为 `Gemini + lazy: true`（mihomo 内部与 `自动选择` 自动按 URL 去重为单次任务），主订阅商业 provider 同样开启 `lazy: true` |
-| 线上验证 | 2026-10-15 11:04 装包（CDHash `590cd0e8`）完成首次重排并记录 `[AutoSelectSticky]: pinned 🇨🇳 台湾 I0 | AI、动态IP | 2x`，随后 80 分钟内 0 次切换；13:24 二次装包（CDHash `d19fd1a18c4013367c42052db0719eae82dbb710`，`BuildDrift: app_commit=3b60710 app_dirty=0 drift=none`）：`work/config.yaml` 中主订阅 `1a11e783a18` 与 `sparkle-fast` 均生效 `lazy: true`；冷启动输出 `[SparkleFastOrder]: bootstrap using disk snapshot samples=43`（0 残缺重排、0 重复全量重测，原有健康固定节点 `台湾 I0` 保持不中断） |
+| 线上验证 | 2026-10-15 11:04 装包（CDHash `590cd0e8`）完成首次重排并记录 `[AutoSelectSticky]: pinned 🇨🇳 台湾 I0 | AI、动态IP | 2x`，随后 80 分钟内 0 次切换；13:24 二次装包（CDHash `d19fd1a18c4013367c42052db0719eae82dbb710`，`BuildDrift: app_commit=fc53a28 app_dirty=0 drift=none`）：`work/config.yaml` 中主订阅 `1a11e783a18` 与 `sparkle-fast` 均生效 `lazy: true`；冷启动输出 `[SparkleFastOrder]: bootstrap using disk snapshot samples=43`（0 残缺重排、0 重复全量重测，原有健康固定节点 `台湾 I0` 保持不中断） |
 
 ## 2026-10-13 Cursor 主 / Latest 默认走 🎯 Cursor 专用（已装包 @1.30.71）
 
@@ -260,7 +260,7 @@
 - 地区组 `Sparkle-<地区>`（日本/台湾/韩国/新加坡/美国）= url-test（tolerance 2000，`exclude-type: anytls`），由用户在父组手动选择，组内节点自动选延迟最低的存活节点，**不被 `自动选择` 引用**；没有可用节点的地区不建组（空组会被 mihomo 变成直连型 `COMPATIBLE`）。香港为专用组。
 - **铁律**：`proxies` 里只能引用组名，不得按名字引用 provider 节点（mihomo 解析期不识别，自检必失败导致内核无法启动）；`sparkle-fast` 文件必须随每次配置生成重写并在订阅刷新（`reloadMihomoProfileProviders`）时同步热重载。
 1. **不会因卡顿整核重启**：`restartCoreEmergency`/bridge/oscillation/smoke 已从代码删除；emergency 只决策+记录 `emergency_core_restart_removed`。
-2. **选点防抖**：地区组 url-test `interval:300` + `tolerance:2000` + `lazy:true`；`自动选择` fallback 同为 `interval:300`、`timeout:5000`、`lazy:true`（`defaultAutoSwitchProxy.ts`）。**应用层不自动切换 `自动选择`**：`proxyHealthMonitor.ts` 已于 2026-09-29（`febdc08`）删除，其配置项（`autoProxySwitch` / `proxyHealthCheckInterval` / `proxyTimeoutThreshold` / `proxySwitchMaxTargetDelayMs` / `autoSelectMaxNodeDelayMs`）与 `isMarathonQuiesceProxyHealthPaused`、`proxy_health_monitor` 拨号类别已一并清理；应用层对 `自动选择` 只做固定与单点复测保活，不主动离开存活节点；节点切换只来自 mihomo fallback 在当前节点确认真挂掉时重选，以及启动重排发现原固定节点不存活时解除固定（见上方 `自动选择` 条目）。`proxySwitchPriority`（默认 台湾→日本→韩国→新加坡→美国）仍决定 `sparkle-fast` 与地区组的地区顺序。
+2. **选点防抖**：地区组 url-test `interval:300` + `tolerance:2000` + `lazy:true`；`自动选择` fallback 同为 `interval:300`、`timeout:5000`、`lazy:true`（`defaultAutoSwitchProxy.ts`）。**应用层不自动切换 `自动选择`**：`proxyHealthMonitor.ts` 已于 2026-09-29（`4370bda`）删除，其配置项（`autoProxySwitch` / `proxyHealthCheckInterval` / `proxyTimeoutThreshold` / `proxySwitchMaxTargetDelayMs` / `autoSelectMaxNodeDelayMs`）与 `isMarathonQuiesceProxyHealthPaused`、`proxy_health_monitor` 拨号类别已一并清理；应用层对 `自动选择` 只做固定与单点复测保活，不主动离开存活节点；节点切换只来自 mihomo fallback 在当前节点确认真挂掉时重选，以及启动重排发现原固定节点不存活时解除固定（见上方 `自动选择` 条目）。`proxySwitchPriority`（默认 台湾→日本→韩国→新加坡→美国）仍决定 `sparkle-fast` 与地区组的地区顺序。
 3. **无应用层长流干预**：Marathon / quiesce / keepalive / 探针平面 / 恢复编排 / 质量基准全部移除（见下方 2026-10-09 条目）；Sparkle 不再按 Cursor 流量做运行时干预。
 4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁只校验 `appendAppLog` 存在、`[CoreReadiness]` 门控与无 PCRE 内联 flag 的非法正则；装后门禁只要求日志出现 `[PostCoreBootstrap]: mihomo API ready`。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
@@ -286,7 +286,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **当前状态** | 本条的「专用组」「专用组守卫」已不在代码中：专用组于 2026-10-03 删除（`97d328f`），三条前置规则现指向 `自动选择` fallback（`antigravityRuleInjection.ts:38`），`verify:agygeo` 改为断言 `自动选择`（`scripts/verify-antigravity-geo-routing.mts`）。以顶部「当前最佳基线」第 7 条为准；以下行保留为当时记录。 |
+| **当前状态** | 本条的「专用组」「专用组守卫」已不在代码中：专用组于 2026-10-03 删除（`dafb2fa`），三条前置规则现指向 `自动选择` fallback（`antigravityRuleInjection.ts:38`），`verify:agygeo` 改为断言 `自动选择`（`scripts/verify-antigravity-geo-routing.mts`）。以顶部「当前最佳基线」第 7 条为准；以下行保留为当时记录。 |
 | **版本** | `/Applications/Sparkle.app` → **1.30.67**（installed=expected，装包入口 `pnpm run agent:upgrade:mac`；agent 场景需 `SPARKLE_UPGRADE_BREAK_GLASS=1` 跳过 safe-window idle 等待——agent 会话自身占活跃连接必然死锁） |
 | **专用组** | `🎯 Antigravity 专用` = **fallback**：`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`（Reality 优先确定性、HY2 冷备、绝不 DIRECT），url `https://gemini.google.com`、interval 300、timeout 5000、lazy |
 | **前置规则** | rules 数组最前注入 3 条：`DOMAIN-KEYWORD,cloudcode-pa` + `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`（gemini CLI 未来同样受益；host 均纯 AI-API 端点零附带伤害） |
@@ -339,7 +339,7 @@
 | 字段 | 内容 |
 | --- | --- |
 | **版本** | `/Applications/Sparkle.app` → **1.30.66** · CDHash **`97e2c21491129f18589e18c5371b7b1edbed78ea`** · stamp `2026.0915.1159` |
-| **Git** | 基于 `a86f154`（含工作区 BUG-011~016 WIP） |
+| **Git** | 基于 `872628f`（含工作区 BUG-011~016 WIP） |
 | **T0** | 装包 2026-09-15 **12:08 CST** · Sparkle GUI 运行 · mihomo root · TUN `utun4` 39 路由 · 代理 `:7890` HTTP 200 |
 | **关键改动** | ① `LongflowEvidence` 判别联合（measured/unknown），消除 `?? 0` 静默降级（3/4 生产调用点曾因此永不升级）② `selectLeafProbeTargets` 停止伪造 `leaf_probes=…:fail` ③ 报告按日历日选日志 + 30min 窗口 ④ asar 硬门 `missing_longflow_evidence_contract` |
 | **物理根因（本次同证）** | 断网触发根因 = 本机**中国电信国际出口**劣化（出国段 10% 丢包 / 253ms 抖动 / 202.97＝1094ms）；本地 WiFi 0% 丢包；韩国 VPS 自证健康。代码层无法修复物理链路。 |
@@ -400,7 +400,7 @@
 | 字段 | 内容 |
 | --- | --- |
 | **版本** | `/Applications/Sparkle.app` → **1.30.55** · CDHash **`7464c014d110ebd9ec53b14c467376aec814d841`** |
-| **Git** | commit **`eb71107`** · dist stamp `2026.0903.1534` · break-glass install |
+| **Git** | commit **`270bbdd`** · dist stamp `2026.0903.1534` · break-glass install |
 | **T0** | 装包 2026-09-03 **15:38 CST** · mihomo 0s · proxy api2 **200** |
 | **状态** | **INSTALLED · 当前 Agent 迭代基线** — 004/005 在 1.30.54 **部分生效**，本版补全闭环 |
 
@@ -451,7 +451,7 @@
 | 字段 | 内容 |
 | --- | --- |
 | **版本** | `/Applications/Sparkle.app` → **1.30.54** · CDHash **`1a48fd504ae71c14affe4257f2578648f6c2dc33`** |
-| **Git** | commit **`82193a9`** · break-glass install（`SPARKLE_UPGRADE_BREAK_GLASS=1` + `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1`） |
+| **Git** | commit **`c61b2ec`** · break-glass install（`SPARKLE_UPGRADE_BREAK_GLASS=1` + `SPARKLE_OVERRIDE_P23_MARATHON_INSTALL=1`） |
 | **T0** | 装包 2026-09-03 15:25 CST · mihomo 0s · proxy api2 **200** |
 | **状态** | **INSTALLED · 待 30min soak** — 覆盖 13:25 误 failover + 14:41 Reality 锁死 + **15:13 HY2 deadline 静默断** |
 

@@ -41,7 +41,7 @@
 > **2026-11-02 上一版**：**BUG-2026-11-02-001 CODE-DONE @1.30.71 git** · `tagss.pro` 报「Sorry, you have been blocked」：机场节点缺 `udp: true` → 浏览器 HTTP/3(UDP 443) 与 WebRTC STUN 回落 `DIRECT`，与 TCP 的台湾节点形成双出口 IP 分裂 → 新增 `quicTrafficRuleInjection.ts` 在规则链最前端注入 UDP 443 / `stun.cloudflare.com` 的 `REJECT`（浏览器按 RFC 9114 回退 HTTP/2 over TCP）· 运行态热修 + 全局 Override 持久化 · 干净浏览器实测拿到 `cf_clearance` · 单测 253/253 · **未装包（asar 仍为旧构建）**
 > **2026-10-17 上一版**：**BUG-2026-10-17-001 @1.30.71** · `自动选择` 选中「名为日本/韩国/美国、实被 Google 送中（`vXmutd="ZZ"` / `google.cn`）」节点导致 `gemini.google.com` 报「目前不支持你所在的地区」：mihomo 探测仅看 `HTTP 200` 状态码无法识别应用层地区锁 → 新增 `sparkleGeminiProbeCore.ts` + `sparkleGeminiProbe.ts` 流式校验 `vXmutd` 国家码 + `autoSelectStickyPin` 固定前拦截 + `sparkle-fast` 自动剔除送中节点并热重载（网络抖动 fail-open 绝不误杀）· 单测 250/250 · ESLint 0 warning
 > **2026-10-16 上一版**：**BUG-2026-10-16-001 INSTALLED @1.30.71** · macOS Mail 收 Gmail SSL `-9806`：Gmail IMAP/SMTP 走通用 `自动选择` 节点，部分机场封 993/465 → 新增 `📧 邮件专用` + `sparkle-mail` provider（Sparkle 主进程 993/465 TLS 双通探测 + 前置邮件域名规则）；mihomo 不可用 IMAPS 作 url-test 目标 · 单测 + `_ARCH`/`VERSION_LOG` 同步
-> **2026-10-15 13:24 上一版**：**BUG-2026-10-14-001 INSTALLED @1.30.71 3b60710**（CDHash `d19fd1a1`）· `自动选择` 粘性固定与单点复测保活（连续 2 次轮询稳定即 `PUT` 固定、丢固定时单点独立 Gemini 复测过滤并发体检假超时、10 分钟防抖冷却、孤儿锁清理）+ `sparkle-fast` 体检统一对齐 `Gemini + lazy:true` 并在订阅刷新时同步热重载 + 主商业 provider 开启 `lazy:true` + 冷启动沿用磁盘快照防残缺样本重排 · 单测 236/236 · ESLint 0 warning
+> **2026-10-15 13:24 上一版**：**BUG-2026-10-14-001 INSTALLED @1.30.71 fc53a28**（CDHash `d19fd1a1`）· `自动选择` 粘性固定与单点复测保活（连续 2 次轮询稳定即 `PUT` 固定、丢固定时单点独立 Gemini 复测过滤并发体检假超时、10 分钟防抖冷却、孤儿锁清理）+ `sparkle-fast` 体检统一对齐 `Gemini + lazy:true` 并在订阅刷新时同步热重载 + 主商业 provider 开启 `lazy:true` + 冷启动沿用磁盘快照防残缺样本重排 · 单测 236/236 · ESLint 0 warning
 > **2026-09-15 后续7**：**BUG-2026-09-15-007** · AI 工具长流被"选点抖动"打断：url-test 组 60s 无迟滞切换（api2 实测在新/日/美/台间乱跳）→ 加 **`tolerance=200ms` 迟滞 + `interval=300` + `lazy`**；failover 目标改为 **只挑 ≤`proxySwitchMaxTargetDelayMs`(500ms)**；切换触发 `proxyTimeoutThreshold` 5000→**2000**；区域优先级改 **新加坡→台湾→日本→韩国→美国**
 > **2026-09-15 后续5**：**BUG-2026-09-15-006** · 产品包泄漏内部文档：`electron-builder.yml` 未排除仓库 md，实包内含 `BUGFIX_LOG/VERSION_LOG/ARCHITECTURE/VPS-INFRA/…`；已加 `!*.md` + `!reports/**` + `!temp-docs/**`
 > **2026-09-15 后续4**：**BUG-2026-09-15-005 元凶级修复** · DistFreshness 门禁因 `execFileSync` 默认 1MB `maxBuffer` 被 3MB 的 `git diff HEAD` 撑爆（ENOBUFS 被吞成空串）→ 树指纹恒为 `sha256("")` → **永远判 fresh → 永远 install-only 装旧包**。已提高上限并对"diff 不可用"做 fail-safe（判为 stale）。**这就是"一次次修复达不到预期"的根因。**
@@ -154,7 +154,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-02 11:30 CST 用户访问 `tagss.pro` 被 Cloudflare 阻断）；代码修复：`d008713`（2026-11-02 14:26 CST）；运行态生效：14:33 热加载 + 全局 Override 持久化；**未装包**（`/Applications/Sparkle.app/Contents/Resources/app.asar` 内 `grep -c quicTrafficRuleInjection` = 0）。 |
+| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-02 11:30 CST 用户访问 `tagss.pro` 被 Cloudflare 阻断）；代码修复：`77fa5f4`（2026-11-02 14:26 CST）；运行态生效：14:33 热加载 + 全局 Override 持久化；**未装包**（`/Applications/Sparkle.app/Contents/Resources/app.asar` 内 `grep -c quicTrafficRuleInjection` = 0）。 |
 | **症状** | Arc 浏览器访问 `https://tagss.pro` 显示 Cloudflare「Sorry, you have been blocked / 安全验证」。Arc 历史库实测时间线：`11:30:19` 首次进入「安全验证」质询页 → `11:30:23` 标题变为「Attention Required! \| Cloudflare」，**4 秒内质询失败**。同期 `curl https://tagss.pro` 返回 `HTTP/2 403` + `cf-mitigated: challenge`。 |
 | **根因（协议层）** | ① 主订阅 `profiles/1a11e783a18-proxies.yaml` 的 Trojan 节点**均无 `udp: true`**，mihomo 判定节点不支持 UDP；② 浏览器对 `tagss.pro` 同时发起 TCP(443) 与 UDP(443, HTTP/3) 及 UDP(3478, WebRTC STUN)，内核日志 `core-2026-11-2.log:35952/35955/35960` 显示 **TCP 走 `🐟 漏网之鱼 → 🚀 节点选择 → 🇨🇳 台湾 V1`，UDP 全部 `doesn't match any rule using DIRECT`**；③ 同一会话出现两套出口 IP（台湾机房 IP + 本地大陆宽带 IP），Cloudflare 判定代理伪造/自动化异常，质询直接失败。旁证：`stun.l.google.com:19302` 同样 6 次 `DIRECT`（WebRTC 泄漏未收敛）。 |
 | **放大因素（非确定性）** | `11:30:23.290` 沉浸式翻译插件向 `ai.immersivetranslate.com` 发起请求，与页面跳变同秒；Turnstile 对质询页 DOM 完整性敏感。**该因素未被证伪，仅被消除**：修复后用干净 Chrome 配置（无扩展、非自动化）实测可过盾并拿到 `cf_clearance`，说明网络层已干净，扩展影响需用无痕窗口对照确认。 |
@@ -200,7 +200,7 @@
 | **根因** | ① `自动选择` 是平铺 `fallback`，每次都取文件序里第一个存活节点：任一在前节点单次探测失败即被放弃，恢复后立刻回切（BUG-2026-10-09-001 已记载，当时只靠重排缓解，未消除）。② 每次周期重排（10-14 当天 18 次采用）都 `DELETE /proxies/自动选择` 解除固定，等于强制 fallback 重选。③ 订阅刷新（`reloadMihomoProfileProviders`）重写了 `sparkle-fast-proxies.yaml` 却未热重载 `sparkle-fast` provider，旧节点/失效配置触发 mihomo 并发强制体检（1863 次），5 秒超时把健康节点误判为死亡；同时 `sparkle-fast` provider 原配置使用非懒加载 `gstatic` 体检，与 `自动选择` 的 `Gemini` 体检形成双倍全量并发探测风暴。④ 若仅固定而不拦截单次探测误判，每次并发体检误杀都会让节点单向不可逆地往后退化（台湾→日本→…→末尾）。⑤ 原地区分段排序仅在同地区段内将无延迟（死/超时）节点置后，高优先级地区全军覆没时死节点仍排在低优先级地区的活节点前面。 |
 | **修复** | ① 新增 `autoSelectStickyPinCore.ts`（纯决策）+ `autoSelectStickyPin.ts`（轮询）：每 3 秒 `GET /proxies/自动选择`（本机内存读取，0 网络请求），fallback 选出的 `now` 连续稳定 2 次轮询即 `PUT` 固定（若尚无 `extra[Gemini]` 样本则先单点 Gemini 拨测验活，防止把仅 `gstatic` 通而 Gemini 不通的节点固定住）；**原固定节点被 mihomo 清除固定时（仍在组内），先做一次单点独立 Gemini 复测（并发度 1）：复测存活则立即恢复固定（过滤并发体检单次误报），同一节点 10 分钟冷却窗口内再次丢固定则视为确实不稳、不再救回**；固定节点已不在组内时 `DELETE` 解除；主动解除固定（`mihomoUnfixedProxy`）同步重置记忆。② `sparkleFastLatencyOrder.ts` + `sparkleFastProviderCore.ts`：`hasPreferredUrlSamples` 要求 ≥80% 节点已探测（防冷启动被少量初始样本骗过触发残缺重排与 46s 全量重测），冷启动若已有磁盘快照则直接沿用并仅在原固定节点不在存活表内时解除固定；有实测延迟样本时将所有无样本（超时/死）节点全局垫底。③ `provider.ts` + `providerConfigCore.ts` + `vpsProviderSplitCore.ts`：`reloadMihomoProfileProviders` 同步热重载 `sparkle-fast`；`sparkle-fast` 的 `health-check` 统一对齐为 `AUTO_SELECT_GEMINI_PROBE_URL` + `lazy: true`（mihomo 内部按 URL 自动去重），主订阅商业 provider 同样开启 `lazy: true`。 |
 | **实测依据（mihomo v1.19.32 隔离实例，非线上）** | ① 固定节点存活时一直保持；挂掉时 `fixed` 自动清空，首次求值返回「固定节点的下一个成员」，随后回到首个存活成员（稠密采样观察到 0.5–1.5 秒的过渡节点）。② **单点复测保活**：节点 A 因单次探测失败变成 `alive: false` 且 `fixed` 被清为 `''` 后，调用 `/providers/proxies/P/A/healthcheck` 单点复测成功（110ms），mihomo 立即将 `extra[url].alive` 恢复为 `true`，`PUT /proxies/G` 立即恢复固定 `('A','A')`。③ 固定会写入 cache.db，内核重启后恢复。④ **孤儿固定**：固定节点被 provider 重载移除后，`fixed` 不清除，`now` 恒为首个成员，首个成员已死、其余存活时仍不切换，`DELETE` 后恢复——故必须解除。⑤ 同一脚本事件序列（依次杀/起 A、B、A、C）：纯 fallback 4 次切换（A→B、B→A、A→B、B→A）；固定后高优先级恢复不再回切，仅当前节点确认真死时切换。⑥ 否决方案：`fallback` 套地区 `url-test`——杀掉地区内当前节点时外层 fallback 会短暂跳到下一个地区约 5 秒再回来，不是真粘性。 |
-| **验证** | `autoSelectStickyPinCore.test.ts` 8 条 + `sparkleFastLatencyOrderCore.test.ts` 7 条 + `sparkleFastProviderCore.test.ts` + `provider.split.test.ts` + `test:node-quality` 236 条全量通过；`tsc` node/web 通过；eslint 无告警。2026-10-15 11:04 装包（CDHash `590cd0e8`）输出 `[AutoSelectSticky]: pinned 🇨🇳 台湾 I0 | AI、动态IP | 2x` 且随后 80 分钟 0 切换；13:24 二次装包（CDHash `d19fd1a18c4013367c42052db0719eae82dbb710`），`app-2026-10-15.log:617,643` 实测 `BuildDrift: app_commit=3b60710 app_dirty=0 drift=none` 且冷启动输出 `[SparkleFastOrder]: bootstrap using disk snapshot samples=43`。 |
+| **验证** | `autoSelectStickyPinCore.test.ts` 8 条 + `sparkleFastLatencyOrderCore.test.ts` 7 条 + `sparkleFastProviderCore.test.ts` + `provider.split.test.ts` + `test:node-quality` 236 条全量通过；`tsc` node/web 通过；eslint 无告警。2026-10-15 11:04 装包（CDHash `590cd0e8`）输出 `[AutoSelectSticky]: pinned 🇨🇳 台湾 I0 | AI、动态IP | 2x` 且随后 80 分钟 0 切换；13:24 二次装包（CDHash `d19fd1a18c4013367c42052db0719eae82dbb710`），`app-2026-10-15.log:617,643` 实测 `BuildDrift: app_commit=fc53a28 app_dirty=0 drift=none` 且冷启动输出 `[SparkleFastOrder]: bootstrap using disk snapshot samples=43`。 |
 | **不能保证的** | 当前节点挂掉时首次求值可能把 1 个连接送到「固定节点的下一个成员」（可能是另一地区），随后回首个存活成员；高优先级地区恢复后不再自动回切（需重启或在 UI 解除固定）；3 秒轮询的窗口内若原节点瞬断又恢复仍可能切换一次；线上 lazy=true / interval=300 的真实时序未测。 |
 | **验收指标** | 日志 `[AutoSelectSticky]: pinned X (left Y)` 与 `restored X after single probe blip` 的每日次数；core 日志 `using 🐟 漏网之鱼[<node>]` 的叶子切换次数与失败率分桶（基线 201 次/15 小时，38% 离开 <20% 失败率节点）。 |
 | **关联** | `src/main/core/autoSelectStickyPinCore.ts` · `src/main/core/autoSelectStickyPin.ts` · `src/main/core/sparkleFastLatencyOrder.ts` · `src/main/core/sparkleFastLatencyOrderCore.ts` · `src/main/core/sparkleFastProviderCore.ts` · `src/main/core/providerConfigCore.ts` · `src/main/core/provider.ts` · `src/main/core/mihomoApi.ts`（`mihomoGroupDetail` / `mihomoUnfixedProxy`）· `src/main/core/postCoreBootstrap.ts` |
@@ -216,7 +216,7 @@
 | **修复** | ① 新增 `scripts/lib/login-home.sh`（`sparkle_pin_login_home`：按 passwd 记录把 `HOME` 固定为登录用户真实主目录，目录不存在则不动）；`upgrade-sparkle-local.sh` 在构建完成后调用（构建仍用原 `HOME`，避免工具链找不到），`install-sparkle-local.sh` 开头调用。子进程（`.mts`、`preflight-sparkle-1280.sh`）继承。② headless 分支仅在 macOS ≥ 26 **且** `macos26ForceGui` ≠ true 时启用，否则走 GUI 就绪门禁。③ 新增 `hasApi2ProbePlaneSettledSinceLine`（`Api2ProbePlane ON` 或上述「有意跳过」均算就绪），取代 `hasApi2ProbePlaneOnSinceLine`，用于 `upgrade-sparkle-local.sh` 与 `upgrade-sparkle-post-install-recovery.mts`。 |
 | **验证** | `bash -n` 三个脚本通过；`upgradeSparklePostInstallGateCore.test.ts` 6/6（新增「GUI 跳过算就绪」用例）；eslint 无告警；用 2026-10-09 15:22 装包后的真实 app 日志按新逻辑评估：走 GUI 分支，`failed=0 apiReady=true probeSettled=true`；`HOME` 固定实测 `.cursor-latest` → `/Users/yululiu`，传入不存在的 `HOME` 也被纠正。 |
 | **未验证** | 全脚本端到端未重跑。GUI 分支后续的 close smoke、45 秒 BUG-014 观察、`preflight-sparkle-1280.sh`（`:9-11` 用 `$HOME` 拼路径，作为子进程会继承固定后的 `HOME`，应同时消除 BUG-2026-10-02-001「验证」栏记载的沙箱 `HOME` 假性 FAIL）均未实跑。 |
-| **关联** | `scripts/lib/login-home.sh` · `scripts/upgrade-sparkle-local.sh` · `scripts/install-sparkle-local.sh` · `scripts/upgradeSparklePostInstallGateCore.ts` · `scripts/upgrade-sparkle-post-install-recovery.mts` · 提交 `a380be8` |
+| **关联** | `scripts/lib/login-home.sh` · `scripts/upgrade-sparkle-local.sh` · `scripts/install-sparkle-local.sh` · `scripts/upgradeSparklePostInstallGateCore.ts` · `scripts/upgrade-sparkle-post-install-recovery.mts` · 提交 `ceccd9d` |
 
 ---
 
@@ -261,14 +261,14 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **当前状态** | 下文「🎯 Antigravity 专用」组已于 2026-10-03 删除（`97d328f`），三条前置规则现指向 `自动选择` fallback（`antigravityRuleInjection.ts:38`），`verify:agygeo` 改为断言 `自动选择`。以 `VERSION_LOG.md` 当前基线第 7 条为准；下文保留为当时记录。 |
+| **当前状态** | 下文「🎯 Antigravity 专用」组已于 2026-10-03 删除（`dafb2fa`），三条前置规则现指向 `自动选择` fallback（`antigravityRuleInjection.ts:38`），`verify:agygeo` 改为断言 `自动选择`。以 `VERSION_LOG.md` 当前基线第 7 条为准；下文保留为当时记录。 |
 | **症状** | `agy` CLI 报 400 `User location is not supported for the API use.`（FAILED_PRECONDITION / UPSTREAM_ERROR）。proxy_logs.db（`~/.antigravity_tools/`）20:44 两条 400，上游 `cloudcode-pa.googleapis.com/v1internal`；core 日志同刻 `daily-cloudcode-pa.sandbox.googleapis.com:443 ... using 🔍 Google[🇹🇼 台湾 02]`，10-02 全天 173/183 条 googleapis 连接走台湾 02（hyster2 端口跳跃机场节点，落地 IP 动态漂移）；同刻两个账号同报 400 → 纯出口 IP 地域判定，非账号封禁。 |
 | **根因** | Google Code Assist 边缘按**出口 IP 地域**硬限制。`DOMAIN-SUFFIX,googleapis.com` 通用规则把 AI API 流量送进 `🔍 Google` fallback → sparkle-fast 机场节点（台湾优先级第一），机场落地 IP 漂移踩中受限地区出口即整连接 400。**2026-09-15 曾手补两条规则进 mihomo 运行时配置**（`work/config.yaml.bak-agygeo-20260915-185248`），但从未进仓库代码 → BUG-2026-10-01-003 的 5 分钟配置再生把手补规则静默冲掉（旧规则指向的 `🚀 节点选择` 组也已不存在）→ 09-29 起复发。 |
 | **修复** | 把手补规则升级为**代码能力**（配置再生后依然存在），仿 HK 注入模式（`hongKongTrafficRuleInjection.ts` + `customProxyGroups.ts`）：① 新组 `🎯 Antigravity 专用` = **fallback**（`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`，Reality 优先确定性、HY2 冷备，url `https://gemini.google.com`、interval 300、timeout 5000、lazy）——VPS 落地为固定地域（KR）非受限区，不受机场节点 IP 漂移影响；② 三条规则**前置注入** rules 数组最前（必然先于通用 googleapis 规则命中）：`DOMAIN-KEYWORD,cloudcode-pa`（一条盖全 3 个实测 host）+ `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`，gemini CLI 未来同样受益，host 均为纯 AI-API 端点零附带伤害。 |
 | **守卫** | 无 profileId 或无 VPS leaf → 组不建、注入跳过（安全降级到原通用规则）；注入幂等；组名加进 `customProxyGroups.ts` 与 `profileGroupNormalize.ts` 两处 `SPARKLE_INJECTED_GROUP_NAMES` 防 `removeNonSubscriptionProxyGroups` 删除。 |
 | **验证** | `tsc` 0；改动文件 eslint 0；目标测试 **51/51**（新增 `antigravityRuleInjection.test.ts` 3 用例 + `customProxyGroups.test.ts` 2 用例；连带修正一处 HEAD 既有陈旧断言 `(?i)-VPS-HY2$` → `(?i)-VPS-(Reality|HY2)$`）；部署门禁 `pnpm run verify:agygeo`。**LIVE 已验（2026-10-03 装包 @1.30.67）**：`verify:agygeo` PASS（组+3 规则行 594-596 前置于通用 googleapis 规则 1433）；core 日志实测 `cloudcode-pa.googleapis.com` 与 `daily-cloudcode-pa.sandbox.googleapis.com` 均 `match DomainKeyword(cloudcode-pa) using 🎯 Antigravity 专用[KR-VPS-Reality]`，HTTP 404 正常响应（Google 边缘接受 KR 出口，无地域 400）；`www.googleapis.com` 照旧走 `🔍 Google`（零附带伤害）；post-upgrade preflight `ALL PASS`。注：装包门禁若在非真实 `$HOME` 沙箱跑会因 `preflight-sparkle-1280.sh:10` 的 `$HOME` 拼路径出现 `mihomo_close_api`/`connection_hygiene_off` 假性 FAIL，用 `HOME=<真实 home>` 重跑即 ALL PASS。 |
 | **代码位置** | `src/main/core/antigravityRuleInjection.ts`（新）· `customProxyGroups.ts`（`buildAntigravityGroupConfig`）· `cursorProxyGroup.ts`（组名/测速 URL 常量）· `factory.ts`（注入调用）· `profileGroupNormalize.ts`（防删名单）· `scripts/verify-antigravity-geo-routing.mts`（新门禁） |
-| **2026-10-04 用户裁决 @1.30.71** | KR VPS 不续费（"马上到期了，不要用了"）→ 固定物理出口架构失去地基；用户裁决"**别走 Cursor 专用，Cursor 专用是给 Cursor 用的。agy 走自动选择，我再试试**" → 回退 1.30.70 全部特有改动（commit `3289909`）：agy 三规则 target 回 `自动选择` 组、`🎯 Cursor 专用` 归还 Cursor 原 select 语义（删 fallback 顺位/furl 探测/`CURSOR_GROUP_FALLBACK_BASE`）。**技术边界（2026-10-04 机场 6 节点×5 样本矩阵实测，KR VPS 上跑）**：TW/JP/KR/SG/US/MO 全 200，出口 IP 分别 104.28.198.5/211.106/211.29/222.43/195.192/205.193（全 CF AS13335 共享段、节点内固定、hop 只换入站端口）；Google 地域判定为 **IP 段级**（官方 available-regions 表含 TW/KR 但实际判定随会话/时段波动，台湾 02 同日 400 与 200 并存、出口 IP 时段内固定）→ 微观不可预测，宏观可手动规避：**遇 400 时在 Sparkle 把 `自动选择` 手动切其他节点**（矩阵佐证其余节点当前可用）。无认证探测 cloudcode-pa 返回 401 先于地域判定、带认证探测不可行（sparkle 接管 Google OAuth + 探测风暴触发风控）→ 探针无法感知 400。VPS 订阅刷新后 provider 自然清空，`自动选择` 组注入 guard 与 VPS 无关 → 1.30.71 架构对 VPS 退场免疫。 |
+| **2026-10-04 用户裁决 @1.30.71** | KR VPS 不续费（"马上到期了，不要用了"）→ 固定物理出口架构失去地基；用户裁决"**别走 Cursor 专用，Cursor 专用是给 Cursor 用的。agy 走自动选择，我再试试**" → 回退 1.30.70 全部特有改动（commit `0f1b5a9`）：agy 三规则 target 回 `自动选择` 组、`🎯 Cursor 专用` 归还 Cursor 原 select 语义（删 fallback 顺位/furl 探测/`CURSOR_GROUP_FALLBACK_BASE`）。**技术边界（2026-10-04 机场 6 节点×5 样本矩阵实测，KR VPS 上跑）**：TW/JP/KR/SG/US/MO 全 200，出口 IP 分别 104.28.198.5/211.106/211.29/222.43/195.192/205.193（全 CF AS13335 共享段、节点内固定、hop 只换入站端口）；Google 地域判定为 **IP 段级**（官方 available-regions 表含 TW/KR 但实际判定随会话/时段波动，台湾 02 同日 400 与 200 并存、出口 IP 时段内固定）→ 微观不可预测，宏观可手动规避：**遇 400 时在 Sparkle 把 `自动选择` 手动切其他节点**（矩阵佐证其余节点当前可用）。无认证探测 cloudcode-pa 返回 401 先于地域判定、带认证探测不可行（sparkle 接管 Google OAuth + 探测风暴触发风控）→ 探针无法感知 400。VPS 订阅刷新后 provider 自然清空，`自动选择` 组注入 guard 与 VPS 无关 → 1.30.71 架构对 VPS 退场免疫。 |
 | **2026-10-03 裁决** | **用户明确要求删除专用组**（「不要新增组，乱套了」），agy 流量改走**现有 `自动选择` fallback**：删 `buildAntigravityGroupConfig`/`ANTIGRAVITY_*` 常量/两处防删名单项；`antigravityRuleInjection.ts` 三条规则保留、目标组改 `自动选择`（`defaultAutoSwitchProxy.ts:65`）；门禁 `verify:agygeo` 改断言 `自动选择` 组 + 三规则前置。tsc/eslint 0，目标测试 34/34。**同日 A/B 对照归因**：10:02-10:34 KR-VPS-Reality 窗口 agy 20 条连接零报错；10:34 后台湾 02 窗口 21 条连接、11:00 报 400（Error ID 尾 22677）——三次 400 全落台湾 02 窗口。1.30.67 专用组方案另有实锤缺陷：订阅刷新流程把 VPS 节点 split 出主 leaf 列表 → 组构建 guard 拦截 → **组+规则被 10:34 配置再生冲掉**（即 11:00 400 的直接原因）。1.30.68 曾有注入时序 bug（guard 依赖的 `自动选择` 组建于 `auto_switch_groups` 步骤、注入原在 `injectHongKongTrafficRules` 后执行早于组构建 → guard 永假不注入）——1.30.69 修复：注入移至 `integrity_patches` 后（所有组构建完成后）。**LIVE-VERIFIED @1.30.69（12:01）**：`verify:agygeo` PASS（规则 479-481 前置于通用 1425）；core 日志 `cloudcode-pa.googleapis.com` → `match DomainKeyword(cloudcode-pa) using 自动选择`。**技术边界如实记录**：`自动选择` 第一顺位为台湾节点（三次 400 元凶）且 fallback 不感知应用层 400——400 若间歇复发，恢复路径=规则直指 `KR-VPS-Reality` 节点（同日 20 条连接零报错实证）。 |
 | **2026-10-04 复发与实测根治** | 1.30.69 方案（走 `自动选择`）**实测证伪**：当天 agy 23 条连接 100% 走 `自动选择[🇹🇼 台湾 02]`，13:41 第 4 次 400（Error ID `59c05ec2-...-21881`）——完全按预告发生（fallback 首顺位=机场节点，且探测感知不到应用层 400）。**用户质疑归因证据 → 直接实测链**：① 用 agy 真实 OAuth token（refresh_token + 从 agy-native 二进制提取的 client_id/secret 刷新获得）对 Code Assist 端点 `v1internal:loadCodeAssist` 做认证实测；② `自动选择` 当时出口（日本 02）200、KR VPS 直连 200；③ **台湾 02 强制锁定出口（KR VPS 上起独立 mihomo 拨 hysteria2）连测 12 次全部 200** → 结论修正：台湾 02 不是坏节点，是** hysteria2 端口跳跃（ports 15001-16000、hop 15s）→ 出口 IP 池漂移 → 好坏 IP 段间歇抽签**（4 次 400 全落坏 IP 窗口）；④ `mihomo -t` 实测规则 target 直指 provider 节点报 `proxy [KR-VPS-Reality] not found` → 规则必须经组。**根治 @1.30.70**：`🎯 Cursor 专用` 组改 **fallback** 型（DIRECT 首位保留公司网/手动直连语义 + KR-VPS-Reality → KR-VPS-HY2 冷备；`appendRegionalAutoGroupsToCursorDedicated` 对 fallback 型组**不追加「自动选择」**——机场出口探测 gemini 主页 200 会偷住顺位但 Google API 对同 IP 仍 400）；agy 三规则 target 改指 `🎯 Cursor 专用`；`cursorProxyGroup.ts` 新增 `GEMINI_REACHABILITY_PROBE_URL`（SSOT）与 `isCursorDedicatedGroupType`（select + fallback 白名单，`resolveCursorStableSelectorGroup`/`isCursorDedicatedFailoverGroup` 放行 fallback——固定出口钉住语义）；`resolveGeneralProxySelectGroup` 刻意**不放行** fallback（「自动选择」fallback 不得被认作 stock Cursor 的手动选择组）。tsc 0 · 改动文件 eslint 0 · 目标测试 **41/41**（新增 fallback 组不挂自动选择 + fallback 类型放行 2 用例）。**LIVE-VERIFIED @1.30.70（14:14 装包）**：`verify:agygeo` PASS（规则 482-484 指向 `🎯 Cursor 专用`、前置于通用 googleapis 规则 1424；组块断言 fallback/use/DIRECT 全过）；core 日志实测 `cloudcode-pa.googleapis.com → match DomainKeyword(cloudcode-pa) using 🎯 Cursor 专用[KR-VPS-Reality]`；带真实 OAuth token 的 `loadCodeAssist` 认证实测 **HTTP 200**（固定 KR 出口被 Google 接受）。KR VPS 上测试残留（独立 mihomo + 临时文件）已清理。 |
 
@@ -494,13 +494,13 @@
 | **未解决** | profile.yaml **谁写入 0B** 未抓到栈（mtime 10:34 无对应 app log）— 防写空已加，写入者待 observability |
 | **验收** | 侧边栏显示「移动订阅」· 刷新转圈 · 远端更新 200 · 代理 302 OK · **待用户确认刷新 UI** |
 
-### BUG-2026-09-03-004 · 误报 UDP-absent → failover Reality 锁死 → 14:41 集体 dial timeout · **INSTALLED @1.30.54 82193a9**
+### BUG-2026-09-03-004 · 误报 UDP-absent → failover Reality 锁死 → 14:41 集体 dial timeout · **INSTALLED @1.30.54 c61b2ec**
 
 | 字段 | 内容 |
 | --- | --- |
 | **状态** | **R1 部分 INSTALLED → R2 由 006 @1.30.55 补全** · 1.30.54 @15:25 · CDHash `1a48fd504ae71c14affe4257f2578648f6c2dc33` |
 | **发生版本/时间** | **1.30.53 @c0cba9f INSTALLED** · 2026-09-03 **13:25 CST** emergency + **14:39–14:41 CST** 集体断 |
-| **修复版本/时间** | **1.30.54** `82193a9`（部分）→ **1.30.55** `eb71107`（failback 门控补全）· replay **5/5** · 单测 **46/46** |
+| **修复版本/时间** | **1.30.54** `c61b2ec`（部分）→ **1.30.55** `270bbdd`（failback 门控补全）· replay **5/5** · 单测 **46/46** |
 | **同族反复** | UDP-absent 误升级类 **第 3 次**（Aug/ Sep 001 emergency 循环 · Sep2 84s tier0 已修 · **本次是 failover→Reality 锁死新分支**） |
 | **严重度** | P0 — 三端 Cursor 集体断 · 误 emergency toast · 1.5h Reality TCP:443 路径 |
 
@@ -568,13 +568,13 @@
 - [x] INSTALLED @1.30.55 15:38 · proxy **200**
 - [ ] T0 30min 三端马拉松 soak · 0 次 Reality 锁死 >60s
 
-### BUG-2026-09-03-005 · HY2 66h 会话退化 + sidecar cooldown 锁死 → 15:12–15:14 集体 deadline exceeded · **INSTALLED @1.30.54 82193a9**
+### BUG-2026-09-03-005 · HY2 66h 会话退化 + sidecar cooldown 锁死 → 15:12–15:14 集体 deadline exceeded · **INSTALLED @1.30.54 c61b2ec**
 
 | 字段 | 内容 |
 | --- | --- |
 | **状态** | **R1 部分 → R2 @1.30.55 补全** · 1.30.54 @15:25 |
 | **发生版本/时间** | **1.30.53 @c0cba9f** · 2026-09-03 **15:12:03–15:14:30 CST** 集体断 |
-| **修复版本/时间** | **1.30.54** `82193a9`（集群检测）→ **1.30.55** `eb71107`（age SSOT 进 rotate/quiesce） |
+| **修复版本/时间** | **1.30.54** `c61b2ec`（集群检测）→ **1.30.55** `270bbdd`（age SSOT 进 rotate/quiesce） |
 | **同族反复** | HY2 parent 老化 + 静默恢复盲区 **第 2 次当日**（14:41 Reality timeout · 15:13 HY2 deadline） |
 | **严重度** | P0 — 三端 Cursor 集体断 ~2.5min · stall=0 无 emergency toast |
 
@@ -628,13 +628,13 @@
 - [x] INSTALLED @1.30.55 · proxy **200**
 - [ ] live dial 集群 + 8h refresh 触发（待 soak）
 
-### BUG-2026-09-03-006 · age SSOT 分裂 + failback 马拉松门控 + Reality absent 恶性循环 · **INSTALLED @1.30.55 eb71107**
+### BUG-2026-09-03-006 · age SSOT 分裂 + failback 马拉松门控 + Reality absent 恶性循环 · **INSTALLED @1.30.55 270bbdd**
 
 | 字段 | 内容 |
 | --- | --- |
 | **状态** | **R1 INSTALLED** · 2026-09-03 **15:38 CST** · CDHash `7464c014d110ebd9ec53b14c467376aec814d841` |
-| **发现版本/时间** | **1.30.54 @82193a9 装包后 3min** · 2026-09-03 **15:28–15:29 CST** live 证伪 004/005 未闭环 |
-| **修复版本/时间** | **1.30.55** · git **`eb71107`** · 单测 **46/46 PASS** |
+| **发现版本/时间** | **1.30.54 @c61b2ec 装包后 3min** · 2026-09-03 **15:28–15:29 CST** live 证伪 004/005 未闭环 |
+| **修复版本/时间** | **1.30.55** · git **`270bbdd`** · 单测 **46/46 PASS** |
 | **同族反复** | 004 failback **第 2 次修** · age=0 欺骗 **第 N 次**（Aug 4.1h parent · Sep3 66h） |
 | **严重度** | P0 — 装 1.30.54 后仍锁 Reality + 误 emergency |
 
