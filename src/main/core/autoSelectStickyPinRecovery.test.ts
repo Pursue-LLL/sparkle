@@ -4,7 +4,7 @@ import {
   callsStarting,
   changes,
   ELIGIBLE,
-  GEMINI_ALIVE,
+  DELAY_ALIVE,
   jump,
   poll,
   restricted,
@@ -22,7 +22,7 @@ describe('autoSelectStickyPin recovery', () => {
   const sticky = useStickyPinRig()
 
   async function pinA(): Promise<void> {
-    world.leaves = [{ name: 'A', extra: GEMINI_ALIVE }]
+    world.leaves = [{ name: 'A', extra: DELAY_ALIVE }]
     sticky.start()
     await poll(2)
     assert.deepEqual(changes(), ['A'])

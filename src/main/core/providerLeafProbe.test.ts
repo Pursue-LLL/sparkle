@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { afterEach, before, beforeEach, describe, it, mock } from 'node:test'
 import {
-  AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS,
-  AUTO_SELECT_GEMINI_PROBE_URL
+  AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
+  AUTO_SELECT_DELAY_PROBE_URL
 } from './defaultAutoSwitchProxy'
 import { flush } from './groupFailoverEngineHarness'
 import type * as LeafProbe from './providerLeafProbe'
@@ -30,12 +30,12 @@ const world = {
 const okLeaf = (name: string): Leaf => ({
   name,
   extra: {
-    [AUTO_SELECT_GEMINI_PROBE_URL]: { alive: true, history: [{ time: ISO(0), delay: 120 }] }
+    [AUTO_SELECT_DELAY_PROBE_URL]: { alive: true, history: [{ time: ISO(0), delay: 120 }] }
   }
 })
 const failedLeaf = (name: string): Leaf => ({
   name,
-  extra: { [AUTO_SELECT_GEMINI_PROBE_URL]: { alive: false, history: [{ time: ISO(0), delay: 0 }] } }
+  extra: { [AUTO_SELECT_DELAY_PROBE_URL]: { alive: false, history: [{ time: ISO(0), delay: 0 }] } }
 })
 const untestedLeaf = (name: string): Leaf => ({ name })
 
@@ -101,7 +101,7 @@ describe('providerLeafProbe', () => {
 
       assert.equal(await probe.probeProviderLeavesGently('sparkle-fast'), 2)
 
-      const target = `${AUTO_SELECT_GEMINI_PROBE_URL}|${AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS}`
+      const target = `${AUTO_SELECT_DELAY_PROBE_URL}|${AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS}`
       assert.deepEqual(world.probes.sort(), [
         `sparkle-fast/a|${target}`,
         `sparkle-fast/b|${target}`

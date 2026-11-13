@@ -1,10 +1,10 @@
 // [INPUT] autoSwitchPolicy::resolveGroupPolicy (POS: 分组「谁来切节点」单一策略表) ·
-//         cursorProxyGroup::AUTO_SELECT_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/DEFAULT_GENERAL_DELAY_TEST_URL/GEMINI_REACHABILITY_PROBE_URL… (POS: Sparkle 分组名常量与判定谓词) ·
+//         cursorProxyGroup::AUTO_SELECT_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/DEFAULT_GENERAL_DELAY_TEST_URL… (POS: Sparkle 分组名常量与判定谓词) ·
 //         mihomoApi::MihomoChangeProxyOptions (POS: mihomo 控制器访问层) ·
 //         regionPriority::DEFAULT_REGION_PRIORITY/resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
 //         regionalAutoSelectGroupsCore::buildRegionalUrlTestGroup/ProxyCatalogEntry (POS: 地区 url-test 组构建) ·
 //         sparkleFastProviderCore::FAST_NODE_PROVIDER_ID/listFlatAutoSelectProxyNames (POS: sparkle-fast provider 文件生成)
-// [OUTPUT] MihomoAutoSwitchApi · EnsureAutoSwitchOptions · AUTO_SELECT_GEMINI_PROBE_* · ensureSelectGroupsDefaultToAutoSwitch · appendRegionalAutoGroupsToCursorDedicated
+// [OUTPUT] MihomoAutoSwitchApi · EnsureAutoSwitchOptions · AUTO_SELECT_DELAY_PROBE_* · ensureSelectGroupsDefaultToAutoSwitch · appendRegionalAutoGroupsToCursorDedicated
 // [POS] 自动选择与地区组的配置层：建出 `自动选择`（fallback，探测 Gemini 可达性；有订阅时成员来自 `sparkle-fast` provider）与 `Sparkle-<地区>` url-test 组；订阅没有自动选路组时先放默认 url-test；把自动选路组引用追加到订阅 select 组；旧版订阅 `♻️ 自动选择` 的引用迁到当前名称。
 
 import { resolveGroupPolicy } from './autoSwitchPolicy'
@@ -12,7 +12,6 @@ import {
   AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
   DEFAULT_GENERAL_DELAY_TEST_URL,
-  GEMINI_REACHABILITY_PROBE_URL,
   isSparkleAutoSelectSubGroup,
   isSparkleRegionalAutoSelectGroup,
   filterCursorEligibleVpsLeaves,
@@ -59,21 +58,24 @@ export interface EnsureAutoSwitchOptions {
   regionPriority?: string[]
 }
 
-/** 自动选择 探测目标：用户主用 Gemini——探测即验证目标站可达（SSOT: cursorProxyGroup）。 */
-export const AUTO_SELECT_GEMINI_PROBE_URL = GEMINI_REACHABILITY_PROBE_URL
+/**
+ * 自动选择 测速目标：轻量 204 只量存活与延迟，让各协议在同一口径下公平竞争；
+ * 节点能否使用 Gemini 由 sparkleGeminiProbe 的地区校验在固定前把关，不由测速兼任。
+ */
+export const AUTO_SELECT_DELAY_PROBE_URL = DEFAULT_GENERAL_DELAY_TEST_URL
 /** 全 HTTPS 握手探测的合理余量（2000 会误杀可用节点）。 */
-export const AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS = 5000
+export const AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS = 5000
 
 const DEFAULT_URL_TEST_INTERVAL = 300
 /** url-test 仅在新节点比当前节点快出该值以上才切换，避免延迟抖动引起来回切。 */
 const DEFAULT_URL_TEST_TOLERANCE_MS = 2000
 
-/** 自动选择 与其地区组共用的探测口径：Gemini 可达性，每 5 分钟一次，5 秒超时。 */
+/** 自动选择 与其地区组共用的探测口径：204 存活与延迟，每 5 分钟一次，5 秒超时。 */
 const AUTO_SELECT_PROBE = {
-  url: AUTO_SELECT_GEMINI_PROBE_URL,
+  url: AUTO_SELECT_DELAY_PROBE_URL,
   interval: DEFAULT_URL_TEST_INTERVAL,
   tolerance: DEFAULT_URL_TEST_TOLERANCE_MS,
-  timeout: AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS
+  timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS
 } as const
 
 /** Subscription url-test auto-select — replaced by Sparkle {@link AUTO_SELECT_GROUP_NAME}. */
