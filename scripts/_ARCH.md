@@ -35,6 +35,7 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 | `sparkleMainAsarSourceCore.ts` / `upgradeSparkleAsarGateCore.ts` | 两阶段共用：收集 main 进程源码文本（磁盘 `out/main/*.js` 或 asar）· `assertSparkleMainAsarBundle` 断言 bundle 含 `appendAppLog`、不含 PCRE 内联标志正则（如 `/(?i)/`，启动即 SyntaxError）、含 Core Readiness 门 |
 | `upgradeSparklePostInstallGateCore.ts` | 装包后门禁纯函数：按安装行偏移计 PostCoreBootstrap 失败 / API 就绪 / headless 引导完成 |
 | `sparkle-data-plane-readiness.mts` | 数据面就绪探针：经本机代理端口（默认 `127.0.0.1:7890`）重试探测，Agent 装后门禁的 SSOT |
+| `measure-connections-payload.mts` | 只读性能测量：经 service socket（Auth V2 签名）拉取真实 `/core/controller/connections` 负载，量出连接数、字节数、`JSON.parse` 与结构化克隆序列化的中位数/P95，并按 500ms 间隔折算常驻 CPU 占比。用于判断「连接流常驻」是否值得按需启停——实测 103 条连接时为 0.04% 单核，故当前规模不优化 |
 | `sparkle-mihomo-close-smoke.mts` | 关闭连接烟测：`DELETE /connections/{id}` 必须到达控制器（直连或 service 模式） |
 | `check-build-drift.ts` / `sparkleBakedBuildStampCore.ts` | `pnpm run check:drift`：从 `/Applications` 里 `app.asar` 的主进程 bundle 按内容读出烧进去的 commit 与 dirty（不依赖打包器的 chunk 文件名，独立 chunk 与内联进 `index.js` 两种产物都能读），对比仓库 HEAD（commit 不同时再看构建提交之后是否只改了文档 / 测试 / buildStamp，是则不算漂移，判定在 `src/main/core/buildDriftPureCore.ts`），退出码 1 = 漂移 |
 | `verify-group-failover.mts` | `pnpm run verify:failover [内核路径]`：故障转移引擎对真实 mihomo 内核的端到端校验（隔离实例，约 2 分钟）；升级或切换内核（含 alpha）后运行，内核告警文案或拨号失败语义变化时在第一步失败 |
