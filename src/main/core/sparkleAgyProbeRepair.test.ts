@@ -51,9 +51,9 @@ describe('sparkleAgyProbe repair: choosing a replacement', () => {
 
     await runBootstrap(agy())
 
-    assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1', '台湾-2', '日本-1'])
-    assert.equal(world.selection, '日本-1')
-    assert.deepEqual(readProviderMembers(), ['日本-1'])
+    assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1', '台湾-2', '台湾-AnyTLS'])
+    assert.equal(world.selection, '台湾-AnyTLS')
+    assert.deepEqual(readProviderMembers(), ['台湾-AnyTLS'])
     assertLog('probed=2 usable=1 pool=1')
   })
 
@@ -72,8 +72,8 @@ describe('sparkleAgyProbe repair: choosing a replacement', () => {
 
     await runBootstrap(agy())
 
-    assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1', '日本-1'])
-    assert.equal(world.selection, '日本-1')
+    assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1', '台湾-AnyTLS'])
+    assert.equal(world.selection, '台湾-AnyTLS')
     assert.equal(readCache()[cacheKey(TW2)], undefined, 'an unswitchable node gets no verdict')
     assertLog('probed=1 usable=1 pool=1')
   })
@@ -93,24 +93,24 @@ describe('sparkleAgyProbe repair: choosing a replacement', () => {
 
     assert.deepEqual(world.probedVia.slice(2), [
       '台湾-2',
+      '台湾-AnyTLS',
       '日本-1',
       '日本-2',
       '日本-3',
-      '韩国-1',
-      '韩国-2'
+      '韩国-1'
     ])
     assertLog('(probed=6)')
   })
 
   it('tries nodes that timed out last time only after the untried ones', async () => {
-    outcomesByNode({ '台湾-1': LOCATION, '台湾-2': HANG, '日本-1': OK })
+    outcomesByNode({ '台湾-1': LOCATION, '台湾-2': HANG, '台湾-AnyTLS': LOCATION, '日本-1': OK })
     await runBootstrap(agy())
-    assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1', '台湾-2', '日本-1'])
+    assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1', '台湾-2', '台湾-AnyTLS', '日本-1'])
 
     outcomesByNode({ '台湾-1': LOCATION, '台湾-2': HANG, '日本-1': LOCATION, '韩国-1': OK })
     await runBootstrap(agy())
 
-    assert.deepEqual(world.probedVia.slice(4), ['日本-1', '日本-1', '韩国-1'])
+    assert.deepEqual(world.probedVia.slice(5), ['日本-1', '日本-1', '韩国-1'])
     assert.equal(world.selection, '韩国-1')
   })
 
@@ -153,6 +153,7 @@ describe('sparkleAgyProbe repair: when nothing works', () => {
       '台湾-1',
       '台湾-1',
       '台湾-2',
+      '台湾-AnyTLS',
       '日本-1',
       '韩国-1',
       '新加坡-1',
@@ -163,7 +164,7 @@ describe('sparkleAgyProbe repair: when nothing works', () => {
     for (const proxy of [TW1, TW2, JP1, KR1, SG1, US1]) {
       assert.equal(readCache()[cacheKey(proxy)].usable, false)
     }
-    assertLog('WARN no node passed the real agy check (probed=5); keep 台湾-1 empty_rounds=1')
+    assertLog('WARN no node passed the real agy check (probed=6); keep 台湾-1 empty_rounds=1')
   })
 
   it('backs off 1x, 2x, 3x and then stays at 3x between scans', async () => {
@@ -211,7 +212,7 @@ describe('sparkleAgyProbe repair: when nothing works', () => {
     assertNoLog('healthy again')
     assert.equal(world.logs.filter((line) => line.includes('repair start')).length, 1)
     assert.equal(world.logs.filter((line) => line.includes('WARN')).length, warnings)
-    assert.equal(world.probedVia.length, 7 + 2, 'only the pin was probed while backing off')
+    assert.equal(world.probedVia.length, 8 + 2, 'only the pin was probed while backing off')
   })
 
   it('names the node it stays on when the rejected pin left the pool', async () => {

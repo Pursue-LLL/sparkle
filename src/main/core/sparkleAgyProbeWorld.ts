@@ -34,7 +34,7 @@ export const ANYTLS: Proxy = {
 }
 export const NODES: Proxy[] = [TW1, TW2, JP1, KR1, SG1, US1, HK1, ANYTLS]
 /** 进得了 agy 池的节点，顺序同默认地区优先级。 */
-export const POOL = ['台湾-1', '台湾-2', '日本-1', '韩国-1', '新加坡-1', '美国-1']
+export const POOL = ['台湾-1', '台湾-2', '台湾-AnyTLS', '日本-1', '韩国-1', '新加坡-1', '美国-1']
 
 export const cacheKey = (proxy: Proxy): string => computeProxyNodeFingerprint(proxy)
 

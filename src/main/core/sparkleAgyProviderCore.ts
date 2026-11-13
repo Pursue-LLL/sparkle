@@ -1,5 +1,4 @@
 // [INPUT] 当前订阅节点 · 地区优先级 · agy（daily-cloudcode-pa）真实请求探测缓存 ·
-//         autoSelectAnyTlsExclusionCore::isAnyTlsProxyType (POS: url-test 自动组剔除 AnyTLS) ·
 //         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
@@ -8,7 +7,6 @@
 // 为什么不能复用 gemini.google.com 探测：cloudcode-pa 的地域校验发生在认证之后，无凭证请求
 // 只会拿到 401，无法区分「地区被拒」与「未认证」；只有让 magpie 真的发一次请求才能判定。
 
-import { isAnyTlsProxyType } from './autoSelectAnyTlsExclusionCore'
 import { AGY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { isBlockedRegionNodeName, nodeMatchesRegion } from './regionPriority'
@@ -64,17 +62,17 @@ export function agyProxyName(proxy: AgyProxyRecord): string {
   return String(proxy.name ?? '').trim()
 }
 
-/** 单个节点是否可能进 agy 池：命名有效、非 AnyTLS、非香港（香港不在 Antigravity 地区可用表内）。 */
+/** 单个节点是否可能进 agy 池：命名有效、非香港（香港不在 Antigravity 地区可用表内）。 */
 export function isEligibleAgyNode(proxy: AgyProxyRecord): boolean {
   const name = agyProxyName(proxy)
-  if (!name || isAnyTlsProxyType(String(proxy.type ?? ''))) {
+  if (!name) {
     return false
   }
   return !isBlockedRegionNodeName(name)
 }
 
 /**
- * 候选池：去重 + 剔除 AnyTLS（Sparkle 全局约定）+ 剔除香港
+ * 候选池：去重 + 剔除香港
  * （香港不在 Antigravity 的地区可用表内，进池只会白白浪费一次探测）。
  */
 export function collectEligibleAgyProxies(proxies: readonly AgyProxyRecord[]): AgyProxyRecord[] {

@@ -1,5 +1,4 @@
 // [INPUT] 当前订阅节点 · 地区优先级 · 真实邮件端口（IMAPS 993 + SMTPS 465）探测缓存 ·
-//         autoSelectAnyTlsExclusionCore::isAnyTlsProxyType (POS: url-test 自动组剔除 AnyTLS) ·
 //         cursorProxyGroup::CURSOR_DEDICATED_DIRECT_PROXY/MAIL_DEDICATED_GROUP_NAME/MAIL_DELAY_TEST_URL/MAIL_PROBE_HIDDEN_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
@@ -7,7 +6,7 @@
 //          buildMailProbeHiddenGroupConfig · ensureMailProbeListener · mailProviderMembershipChanged
 // [POS] `📧 邮件专用` 的专属 provider 与组配置生成逻辑：
 // 只保留通过了 `imap.gmail.com:993` 与 `smtp.gmail.com:465` 双端口 TLS 握手与 Banner 校验的节点；
-// 组为 `fallback`（按 provider 地区优先级取首个存活，台湾优先）；冷启动无已验证节点时排除已知封禁端口节点与 AnyTLS，
+// 组为 `fallback`（按 provider 地区优先级取首个存活，台湾优先）；冷启动无已验证节点时排除已知封禁端口节点，
 // 并优先将 Hysteria2/VLESS 候选节点排在前面兜底，避免空 provider 让整组退化为直连。
 
 import {
@@ -16,7 +15,6 @@ import {
   MAIL_DELAY_TEST_URL,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
-import { isAnyTlsProxyType } from './autoSelectAnyTlsExclusionCore'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { isBlockedRegionNodeName, nodeMatchesRegion } from './regionPriority'
 
@@ -111,10 +109,9 @@ function orderCandidatesByRegion(
 
 /**
  * 筛选并排序 `📧 邮件专用` 的节点：
- * 1. 永远剔除 AnyTLS；
- * 2. 若 `probeCache` 中已有当前订阅的已验证存活节点（`alive === true`），只保留这些 100% 确认 993+465 双通的节点；
- * 3. 若首次冷启动尚无已验证存活节点，则剔除已知 `alive === false` 的节点，并将 Hysteria2/VLESS 优先排在各地区前面；
- * 4. 极端兜底：绝不返回空数组（除非输入本身无非 AnyTLS 节点），防止空 provider 让整组退化为 COMPATIBLE 直连。
+ * 1. 若 `probeCache` 中已有当前订阅的已验证存活节点（`alive === true`），只保留这些 100% 确认 993+465 双通的节点；
+ * 2. 若首次冷启动尚无已验证存活节点，则剔除已知 `alive === false` 的节点，并将 Hysteria2/VLESS 优先排在各地区前面；
+ * 3. 极端兜底：绝不返回空数组（除非输入本身为空），防止空 provider 让整组退化为 COMPATIBLE 直连。
  */
 export function orderMailProxies(
   proxies: MailProxyRecord[],
@@ -126,7 +123,7 @@ export function orderMailProxies(
 
   for (const proxy of proxies) {
     const name = proxyName(proxy)
-    if (!name || seenNames.has(name) || isAnyTlsProxyType(String(proxy.type ?? ''))) {
+    if (!name || seenNames.has(name)) {
       continue
     }
     seenNames.add(name)

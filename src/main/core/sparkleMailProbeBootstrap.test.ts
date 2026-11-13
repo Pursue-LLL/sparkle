@@ -54,7 +54,7 @@ describe('sparkleMailProbe bootstrap without anything to probe', () => {
     assertLog('[SparkleMailProbe]: error=profile config unreadable')
   })
 
-  it('never probes AnyTLS or unnamed nodes, and probes names without their padding', async () => {
+  it('never probes unnamed nodes, and probes names without their padding', async () => {
     world.profileProxies = [
       ANYTLS_TW,
       { type: 'ss', server: 'nameless.example.com' },
@@ -64,7 +64,7 @@ describe('sparkleMailProbe bootstrap without anything to probe', () => {
 
     await mail.probe().bootstrapSparkleMailProvider()
 
-    assert.deepEqual(callsStarting('probe:'), ['probe:台湾-SS'])
+    assert.deepEqual(callsStarting('probe:'), ['probe:台湾-AnyTLS', 'probe:台湾-SS'])
   })
 
   it('probes a node whose name is a single character', async () => {
@@ -79,7 +79,7 @@ describe('sparkleMailProbe bootstrap without anything to probe', () => {
 describe('sparkleMailProbe bootstrap from the cache', () => {
   const mail = useMailRig()
 
-  it('publishes the verified nodes without probing them again', async () => {
+  it('publishes the verified nodes, then probes the one node the cache does not know', async () => {
     writeCache(
       Object.fromEntries(
         [HY2_TW, VLESS_JP, SS_TW, SS_US].map((proxy) => [cacheKey(proxy), cacheRecord(true, 60)])
@@ -88,15 +88,29 @@ describe('sparkleMailProbe bootstrap from the cache', () => {
 
     await mail.probe().bootstrapSparkleMailProvider()
 
-    assert.deepEqual(callsStarting('probe:'), [])
-    assert.deepEqual(readProviderMembers(), ['台湾-HY2', '台湾-SS', '日本-VLESS', '美国-SS'])
-    assert.deepEqual(world.calls, ['update:sparkle-mail', WARM_UP])
+    assert.deepEqual(callsStarting('probe:'), ['probe:台湾-AnyTLS'])
+    // 新探测的 AnyTLS 往返 50ms，比缓存里 60ms 的已验证节点更靠前。
+    assert.deepEqual(readProviderMembers(), [
+      '台湾-AnyTLS',
+      '台湾-HY2',
+      '台湾-SS',
+      '日本-VLESS',
+      '美国-SS'
+    ])
+    assert.deepEqual(world.calls, [
+      'update:sparkle-mail',
+      WARM_UP,
+      'probe:台湾-AnyTLS',
+      'update:sparkle-mail',
+      WARM_UP
+    ])
     assert.deepEqual(world.logs, [
-      '[SparkleMailProbe]: loaded 4 verified mail nodes from cache active_pool=4\n'
+      '[SparkleMailProbe]: loaded 4 verified mail nodes from cache active_pool=4\n',
+      '[SparkleMailProbe]: full-tier probed=1 newly_alive=1 active_pool=5\n'
     ])
   })
 
-  it('leaves the provider alone when the cache only holds dead nodes', async () => {
+  it('probes the one node the cache does not know when every cached node is dead', async () => {
     writeCache(
       Object.fromEntries(
         [HY2_TW, VLESS_JP, SS_TW, SS_US].map((proxy) => [cacheKey(proxy), cacheRecord(false)])
@@ -105,9 +119,12 @@ describe('sparkleMailProbe bootstrap from the cache', () => {
 
     await mail.probe().bootstrapSparkleMailProvider()
 
-    assert.deepEqual(world.calls, [])
-    assert.deepEqual(world.logs, [])
-    assert.equal(readProviderMembers(), undefined)
+    assert.deepEqual(callsStarting('probe:'), ['probe:台湾-AnyTLS'])
+    assert.deepEqual(world.calls, ['probe:台湾-AnyTLS', 'update:sparkle-mail', WARM_UP])
+    assert.deepEqual(world.logs, [
+      '[SparkleMailProbe]: full-tier probed=1 newly_alive=1 active_pool=1\n'
+    ])
+    assert.deepEqual(readProviderMembers(), ['台湾-AnyTLS'])
   })
 
   it('probes again the nodes whose record expired, and only those', async () => {
@@ -135,15 +152,22 @@ describe('sparkleMailProbe bootstrap probing', () => {
       'probe:台湾-HY2',
       'probe:日本-VLESS',
       'probe:台湾-SS',
-      'probe:美国-SS'
+      'probe:美国-SS',
+      'probe:台湾-AnyTLS'
     ])
     assert.deepEqual(callsStarting('update:'), ['update:sparkle-mail', 'update:sparkle-mail'])
-    assert.deepEqual(readProviderMembers(), ['台湾-HY2', '台湾-SS', '日本-VLESS', '美国-SS'])
+    assert.deepEqual(readProviderMembers(), [
+      '台湾-HY2',
+      '台湾-SS',
+      '台湾-AnyTLS',
+      '日本-VLESS',
+      '美国-SS'
+    ])
     assert.deepEqual(world.logs, [
       '[SparkleMailProbe]: fast-tier probed=2 newly_alive=2 active_pool=2\n',
-      '[SparkleMailProbe]: full-tier probed=2 newly_alive=2 active_pool=4\n'
+      '[SparkleMailProbe]: full-tier probed=3 newly_alive=3 active_pool=5\n'
     ])
-    assert.equal(Object.keys(readCache()).length, 4)
+    assert.equal(Object.keys(readCache()).length, 5)
   })
 
   it('has the first tier on disk and in mihomo before the second one starts', async () => {
@@ -175,9 +199,9 @@ describe('sparkleMailProbe bootstrap probing', () => {
 
     assert.equal(readCache()[cacheKey(HY2_TW)].alive, false)
     assert.equal(readCache()[cacheKey(SS_TW)].alive, false)
-    assert.deepEqual(readProviderMembers(), ['日本-VLESS', '美国-SS'])
+    assert.deepEqual(readProviderMembers(), ['台湾-AnyTLS', '日本-VLESS', '美国-SS'])
     assertLog('fast-tier probed=2 newly_alive=1 active_pool=1')
-    assertLog('full-tier probed=2 newly_alive=1 active_pool=2')
+    assertLog('full-tier probed=3 newly_alive=2 active_pool=3')
   })
 
   it('only reports the fast tier when nothing else is unprobed', async () => {
@@ -220,8 +244,14 @@ describe('sparkleMailProbe bootstrap probing', () => {
 
     assert.equal(world.logs.filter((line) => line.includes('provider reload failed')).length, 1)
     assertLog('fast-tier probed=2')
-    assertLog('full-tier probed=2')
-    assert.deepEqual(readProviderMembers(), ['台湾-HY2', '台湾-SS', '日本-VLESS', '美国-SS'])
+    assertLog('full-tier probed=3')
+    assert.deepEqual(readProviderMembers(), [
+      '台湾-HY2',
+      '台湾-SS',
+      '台湾-AnyTLS',
+      '日本-VLESS',
+      '美国-SS'
+    ])
   })
 })
 
@@ -254,7 +284,7 @@ describe('sparkleMailProbe bootstrap failures', () => {
 
     await mail.probe().bootstrapSparkleMailProvider()
 
-    assert.equal(callsStarting('probe:').length, 4)
+    assert.equal(callsStarting('probe:').length, 5)
   })
 
   it('ignores a second bootstrap while one is still running', async () => {

@@ -7,7 +7,6 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   AGY_GROUP,
-  ANYTLS,
   HANG,
   HK1,
   LOCATION,
@@ -183,11 +182,7 @@ describe('probeSingleNode：把 agy 的结局变成结论', () => {
 
 describe('convergeAgyProvider：provider 收敛到目标集合', () => {
   it('没有任何节点有资格进 agy 池：返回空数组，不写盘不重载', async () => {
-    const names = await groupControl().convergeAgyProvider(
-      [HK1, ANYTLS],
-      DEFAULT_PRIORITY,
-      undefined
-    )
+    const names = await groupControl().convergeAgyProvider([HK1], DEFAULT_PRIORITY, undefined)
 
     assert.deepEqual(names, [])
     assert.deepEqual(callsStarting('update:'), [])

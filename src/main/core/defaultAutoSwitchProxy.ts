@@ -1,9 +1,8 @@
-// [INPUT] autoSelectAnyTlsExclusionCore::excludeAnyTlsFromAutoSelectUrlTestGroups/AutoSelectAnyTlsExclusionResult/ProxyCatalogEntry (POS: url-test 自动组剔除 AnyTLS) ·
-//         autoSwitchPolicy::resolveGroupPolicy (POS: 分组「谁来切节点」单一策略表) ·
+// [INPUT] autoSwitchPolicy::resolveGroupPolicy (POS: 分组「谁来切节点」单一策略表) ·
 //         cursorProxyGroup::AUTO_SELECT_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/DEFAULT_GENERAL_DELAY_TEST_URL/GEMINI_REACHABILITY_PROBE_URL… (POS: Sparkle 分组名常量与判定谓词) ·
 //         mihomoApi::MihomoChangeProxyOptions (POS: mihomo 控制器访问层) ·
 //         regionPriority::DEFAULT_REGION_PRIORITY/resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
-//         regionalAutoSelectGroupsCore::buildRegionalUrlTestGroup (POS: 地区 url-test 组构建) ·
+//         regionalAutoSelectGroupsCore::buildRegionalUrlTestGroup/ProxyCatalogEntry (POS: 地区 url-test 组构建) ·
 //         sparkleFastProviderCore::FAST_NODE_PROVIDER_ID/listFlatAutoSelectProxyNames (POS: sparkle-fast provider 文件生成)
 // [OUTPUT] MihomoAutoSwitchApi · EnsureAutoSwitchOptions · AUTO_SELECT_GEMINI_PROBE_* · ensureSelectGroupsDefaultToAutoSwitch · appendRegionalAutoGroupsToCursorDedicated
 // [POS] 自动选择与地区组的配置层：建出 `自动选择`（fallback，探测 Gemini 可达性；有订阅时成员来自 `sparkle-fast` provider）与 `Sparkle-<地区>` url-test 组；订阅没有自动选路组时先放默认 url-test；把自动选路组引用追加到订阅 select 组；旧版订阅 `♻️ 自动选择` 的引用迁到当前名称。
@@ -22,11 +21,9 @@ import {
 import { DEFAULT_REGION_PRIORITY, resolveEffectiveRegionPriority } from './regionPriority'
 import type { MihomoChangeProxyOptions } from './mihomoApi'
 import {
-  excludeAnyTlsFromAutoSelectUrlTestGroups,
-  type AutoSelectAnyTlsExclusionResult,
+  buildRegionalUrlTestGroup,
   type ProxyCatalogEntry
-} from './autoSelectAnyTlsExclusionCore'
-import { buildRegionalUrlTestGroup } from './regionalAutoSelectGroupsCore'
+} from './regionalAutoSelectGroupsCore'
 import { FAST_NODE_PROVIDER_ID, listFlatAutoSelectProxyNames } from './sparkleFastProviderCore'
 
 export interface MihomoAutoSwitchApi {
@@ -255,10 +252,10 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
   profile: MihomoConfig,
   profileId?: string,
   options: EnsureAutoSwitchOptions = {}
-): AutoSelectAnyTlsExclusionResult {
+): void {
   const groups = (profile['proxy-groups'] as ProxyGroupConfig[] | undefined) ?? []
   if (groups.length === 0) {
-    return { groupsMutated: 0, proxiesRemoved: 0, removedLeaves: [], groupsRemoved: [] }
+    return
   }
 
   const regionPriority = resolveEffectiveRegionPriority(
@@ -274,10 +271,6 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
     options.leafProxyCatalog
   )
   rewriteLegacySubscriptionAutoSelectInGroups(groups)
-  const anyTlsExclusion = excludeAnyTlsFromAutoSelectUrlTestGroups(
-    groups,
-    options.leafProxyCatalog ?? []
-  )
   rewriteLegacyAutoSelectRuleTargets(profile)
 
   const autoSwitchRefs = collectSparkleAutoSelectGroupRefs(groups)
@@ -289,7 +282,6 @@ export function ensureSelectGroupsDefaultToAutoSwitch(
   }
 
   appendRegionalAutoGroupsToCursorDedicated(profile)
-  return anyTlsExclusion
 }
 
 /**

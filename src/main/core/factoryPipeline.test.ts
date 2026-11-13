@@ -231,53 +231,39 @@ describe('factory: runtime config pipeline', () => {
       )
     })
 
-    it('keeps AnyTLS nodes out of the automatic groups', async () => {
-      state.current = 'default'
-      state.profile = subscription({
-        proxies: [proxy('台湾 01', { type: ' AnyTLS ' }), proxy('台湾 02'), proxy('日本 01')]
-      })
-
-      const config = await rig.generate()
-
-      assert.deepEqual(groupOf(config, 'Sparkle-台湾')?.proxies, ['台湾 02'])
+  it('keeps AnyTLS nodes in the automatic groups like any other protocol', async () => {
+    state.current = 'default'
+    state.profile = subscription({
+      proxies: [proxy('台湾 01', { type: ' AnyTLS ' }), proxy('台湾 02'), proxy('日本 01')]
     })
+
+    const config = await rig.generate()
+
+    assert.deepEqual(groupOf(config, 'Sparkle-台湾')?.proxies, ['台湾 01', '台湾 02'])
+  })
   })
 
   describe('nodes of every shape', () => {
-    it('takes AnyTLS nodes out of an inline url-test group and says so', async () => {
-      state.current = 'default'
-      state.profile = subscription({
-        proxies: [proxy('A', { type: 'anytls' }), proxy('B', { type: 'trojan' })],
-        'proxy-groups': [
-          { name: GROUP, type: 'select', proxies: ['🇭🇰 香港节点', 'DIRECT'] },
-          {
-            name: '🇭🇰 香港节点',
-            type: 'url-test',
-            url: 'https://example.com',
-            interval: 300,
-            proxies: ['A', 'B']
-          }
-        ]
-      })
-
-      const config = await rig.generate()
-
-      assert.deepEqual(groupOf(config, '🇭🇰 香港节点')?.proxies, ['B'])
-      assert.ok(
-        state.logs.includes(
-          '[AutoSelectAnyTlsExclusion]: outcome=executed groups_mutated=1 groups_removed=none proxies_removed=1 removed_leaves=A\n'
-        )
-      )
+  it('keeps AnyTLS nodes in an inline url-test group', async () => {
+    state.current = 'default'
+    state.profile = subscription({
+      proxies: [proxy('A', { type: 'anytls' }), proxy('B', { type: 'trojan' })],
+      'proxy-groups': [
+        { name: GROUP, type: 'select', proxies: ['🇭🇰 香港节点', 'DIRECT'] },
+        {
+          name: '🇭🇰 香港节点',
+          type: 'url-test',
+          url: 'https://example.com',
+          interval: 300,
+          proxies: ['A', 'B']
+        }
+      ]
     })
 
-    it('stays quiet about AnyTLS when no group had to change', async () => {
-      await rig.generate()
+    const config = await rig.generate()
 
-      assert.equal(
-        state.logs.some((line) => line.includes('AutoSelectAnyTlsExclusion')),
-        false
-      )
-    })
+    assert.deepEqual(groupOf(config, '🇭🇰 香港节点')?.proxies, ['A', 'B'])
+  })
 
     it('copes with nodes that have no usable name or no type, and keeps one-letter names', async () => {
       state.current = 'default'
