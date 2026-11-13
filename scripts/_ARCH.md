@@ -78,3 +78,4 @@ bash scripts/agent-sparkle-upgrade.sh
 
 - `package.json` version = 目标 semver
 - `BUGFIX_LOG.md` §「Sparkle 本地安装」· §「AI Agent 操作约束」
+- 本目录按「模块 + 7 日」归档的缺陷日志 `scripts_<起>_<止>_BUGFIX_LOG.md`，最新一份 [scripts_20261107_20261113_BUGFIX_LOG.md](scripts_20261107_20261113_BUGFIX_LOG.md)（构建 chunk、测试门禁、Dock 残留注册）
