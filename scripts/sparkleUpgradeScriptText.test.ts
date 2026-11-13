@@ -14,6 +14,7 @@ const UPGRADE_PATH_SCRIPTS = [
   'upgrade-sparkle-local.sh',
   'agent-sparkle-upgrade.sh',
   'install-sparkle-gui-watchdog.sh',
+  'lib/core-setuid.sh',
 ] as const
 
 const SCRIPTS_DIR = join(import.meta.dirname)
@@ -37,17 +38,29 @@ describe('install path safety', () => {
     }
   })
 
-  it('keeps the setuid judgement in pure bash so a check cannot abort mid-install', () => {
-    const text = readScript('install-sparkle-local.sh')
-    assert.match(text, /is_setuid_mode\(\)/, 'setuid helper must exist')
-    assert.match(text, /mode:3:1/, 'setuid helper must inspect the owner execute bit')
+  it('keeps the setuid judgement in a sourced pure-bash library', () => {
+    const lib = readScript('lib/core-setuid.sh')
+    assert.match(lib, /^is_setuid_mode\(\)/m, 'setuid helper must exist')
+    assert.match(lib, /mode:3:1/, 'setuid helper must inspect the owner execute bit')
+    // source 库本身不得带任何顶层副作用（只定义函数与常量）。
+    assert.equal(/^set -[eux]/m.test(lib), false, 'the library must not flip shell options')
+    assert.equal(/^exit\b/m.test(lib), false, 'the library must not exit the caller')
+
+    const installer = readScript('install-sparkle-local.sh')
+    assert.match(installer, /source "\$ROOT\/scripts\/lib\/core-setuid\.sh"/)
+    assert.match(
+      installer,
+      /restore_core_setuid "\$DEST" \|\| fail/,
+      'install must abort when setuid cannot be restored'
+    )
   })
 
   it('only ever elevates for the core that is actually enabled', () => {
-    const text = readScript('install-sparkle-local.sh')
+    const lib = readScript('lib/core-setuid.sh')
     // 给未启用的内核提权等于凭空多要一次密码。
-    assert.match(text, /enabled_core_name/)
-    assert.match(text, /config\.yaml/)
+    assert.match(lib, /enabled_core_name/)
+    assert.match(lib, /config\.yaml/)
+    assert.match(lib, /mihomo-alpha/)
   })
 
   it('does not relaunch the app by default when post-install bootstrap fails', () => {
@@ -69,5 +82,13 @@ describe('install path safety', () => {
       shortCircuitAt < quitAt,
       'the short-circuit must be decided before the app is quit'
     )
+  })
+
+  it('serializes upgrades with an atomic directory lock on both entry points', () => {
+    for (const name of ['agent-sparkle-upgrade.sh', 'upgrade-sparkle-local.sh']) {
+      const text = readScript(name)
+      assert.match(text, /mkdir "\$[A-Z_]*LOCK_DIR"/, `${name} must take an atomic mkdir lock`)
+      assert.match(text, /trap /, `${name} must release the lock on exit`)
+    }
   })
 })

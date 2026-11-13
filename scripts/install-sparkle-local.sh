@@ -21,70 +21,11 @@ CDHASH_FILE="${STATE_DIR}/last-sparkle-cdhash"
 fail() { echo "[install-sparkle] FAIL: $*" >&2; exit 1; }
 log() { echo "[install-sparkle] $*" >&2; }
 
-# 内核 setuid 恢复：ditto 不会把文件变成 root 属主、也不保留 setuid 位，
-# 所以每次安装后 App 启动都会判定「内核缺权限」再弹一次系统密码框。
-# 这里在安装时一次性补齐（与 src/main/core/permission.ts 的授权命令完全一致），
-# 把重复弹框收敛成一次；非交互模式绝不弹框。
-#
-# 只修「当前启用的内核」——App 的 tunStartupGuard 也只检查这一个（config.yaml 的 `core`），
-# 给未在用的内核提权等于凭空多要一次密码，属于副作用。
-CORE_SIDECAR_REL="Contents/Resources/sidecar"
-
-enabled_core_name() {
-  local cfg="$HOME/Library/Application Support/sparkle/config.yaml"
-  local name=""
-  if [[ -f "$cfg" ]]; then
-    name="$(sed -n 's/^core:[[:space:]]*\([A-Za-z0-9_-]*\).*$/\1/p' "$cfg" | head -1)"
-  fi
-  if [[ "$name" == "mihomo-alpha" ]]; then echo "mihomo-alpha"; else echo "mihomo"; fi
-}
-
-core_mode_of() {
-  stat -f '%Sp' "$1" 2>/dev/null || true
-}
-
-# 纯 bash 判定 setuid：权限位第 4 个字符（owner execute）为 s/S 即带 setuid。
-# 刻意不调 `tsx -e`——tsx 会把额外参数当 node 选项解析（bad option），
-# 让一个「检查」变成「脚本中途崩溃」，这是不能出现在安装路径上的失败模式。
-is_setuid_mode() {
-  local mode="$1"
-  [[ "${#mode}" -ge 4 && ( "${mode:3:1}" == "s" || "${mode:3:1}" == "S" ) ]]
-}
-
-core_setuid_intact() {
-  local dir="$1" name file mode
-  name="$(enabled_core_name)"
-  file="$dir/$name"
-  [[ -f "$file" ]] || return 0
-  mode="$(core_mode_of "$file")"
-  is_setuid_mode "$mode"
-}
-
-restore_core_setuid() {
-  local app="$1"
-  local sidecar="$app/$CORE_SIDECAR_REL"
-  local core_name core_path
-  [[ -d "$sidecar" ]] || fail "missing sidecar dir: $sidecar"
-  core_name="$(enabled_core_name)"
-  core_path="$sidecar/$core_name"
-  if core_setuid_intact "$sidecar"; then
-    log "Core setuid already intact ($core_name) — no elevation needed"
-    return 0
-  fi
-  if [[ "${SPARKLE_NONINTERACTIVE:-0}" == "1" ]]; then
-    fail "core $core_name lacks setuid and non-interactive mode forbids elevation — run: sudo chown root:admin \"$core_path\" && sudo chmod +sx \"$core_path\""
-  fi
-
-  log "Restoring core setuid for $core_name (single password prompt per install)..."
-  if ! osascript -e "do shell script \"chown root:admin \\\"$core_path\\\" && chmod +sx \\\"$core_path\\\"\" with administrator privileges" >/dev/null 2>&1; then
-    fail "could not restore core setuid — approve the admin prompt or run: sudo chown root:admin \"$core_path\" && sudo chmod +sx \"$core_path\""
-  fi
-  xattr -cr "$sidecar" 2>/dev/null || true
-
-  core_setuid_intact "$sidecar" \
-    || fail "core setuid still missing after elevation — refusing to install a build the app cannot run without another prompt"
-  log "Core setuid restored (app will not prompt for kernel permission on launch)"
-}
+# 内核 setuid 恢复：ditto 不保留 root 属主与 setuid 位，不补的话 App 每次启动
+# 都会判定「内核缺权限」再弹一次系统密码框。判定与提权实现见 lib/core-setuid.sh
+# （可 source 的纯函数库，有独立测试；只修当前启用的内核）。
+# shellcheck source=lib/core-setuid.sh
+source "$ROOT/scripts/lib/core-setuid.sh"
 
 get_cdhash() {
   codesign -dv --verbose=4 "$1" 2>&1 | awk '/^CDHash=/ { print substr($0, 8); exit }'
@@ -232,8 +173,9 @@ NEW_CDHASH="$(get_cdhash "$DEST")"
 [[ "$NEW_CDHASH" == "$SRC_CDHASH" ]] || fail "CDHash mismatch after install (expected $SRC_CDHASH, got $NEW_CDHASH)"
 
 # 安装后立即补齐内核 setuid（ditto 会丢），这样 App 启动时不再弹「需要内核权限」。
-# 放在 CDHash 校验之后：先把包换对，再动内核权限位。
-restore_core_setuid "$DEST"
+# 放在 CDHash 校验之后：先把包换对，再动内核权限位。失败必须中止——带着缺 setuid
+# 的包交付，用户下次启动就要再输一次密码。
+restore_core_setuid "$DEST" || fail "core setuid not restored — aborting install (see [core-setuid] above)"
 
 mkdir -p "$STATE_DIR"
 VER="$(defaults read "$DEST/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo unknown)"
