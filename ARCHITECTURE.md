@@ -49,6 +49,7 @@ mihomo (TUN) → 节点 leaf → 目标站点
 15. **规则策略只经 `ruleSyntax` 读写** — 规则的字段布局、策略读取与改写在 `ruleSyntax` 一处定义（改写只换策略字段，`no-resolve`、`src` 等参数原样保留）；`antigravityRuleInjection` / `profileGroupNormalize` / `fakeIpRoutingIntegrity` / `cursorRuleInjection` / `cursorDedicatedRuleRewrite` / `customProxyGroups` 读写策略目标一律经它，不各自 `split(',')`。`vpsDirectBypass` / `aiApiDirectRules` 只按「类型 + 载荷」两个前导字段判断是否已有规则，不读不改策略。兜底 `MATCH` 的目标只能是内置出口、订阅组或顶层内联节点。
 16. **YAML 读写保 Reality `short-id` 原文** — 纯数字写法（`01234567`、`1e5`）经 `parseYaml` 仍是原字符串，不丢前导零、不变成 Infinity；服务端要求逐字相同。
 17. **测试门禁收集全部测试** — `pnpm run test:node-quality` 以 glob 收集 `src/**` 与 `scripts/**` 的全部 `*.test.ts`，新增测试文件无需登记；随机化不变量测试用固定 seed，失败可原样重放。
+18. **升级一次到位，禁止反复重启试错** — 任何改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交），再只执行一次 `pnpm run agent:upgrade:mac` 完成构建/安装/重启，一次命令对应一次启停；升级被中断后先查 dist 新鲜度、`/Applications` 落盘与 App 日志再决定续跑，验收失败先离线分析根因，不得以重复安装代替排查（事故记录：`scripts/scripts_20261107_20261113_BUGFIX_LOG.md` BUG-2026-11-13-003）。
 
 ## 外部依赖
 

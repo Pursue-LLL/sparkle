@@ -74,6 +74,8 @@ bash scripts/agent-sparkle-upgrade.sh
 
 等价 `pnpm run agent:upgrade:mac`。禁止 Agent 裸跑 `pnpm build:mac` 或后台 build 后忘记 install。
 
+**一次到位（铁律）**：改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交）再触发升级；一次升级命令只跑一次、只对应一次 App 启停，禁止并发或重复触发；命令被中断后先用 `evaluate-sparkle-dist-freshness.mts`、`/Applications/Sparkle.app` 落盘时间与 App 日志核查已完成到哪一步，再决定续跑或收尾，禁止不查状态直接重跑；装后验收只用只读门禁（`mihomo API ready` 日志、`sparkle-data-plane-readiness.mts`），失败先离线定位根因，不拿反复重装试错（事故记录：`scripts_20261107_20261113_BUGFIX_LOG.md` BUG-2026-11-13-003）。
+
 ## 依赖
 
 - `package.json` version = 目标 semver
