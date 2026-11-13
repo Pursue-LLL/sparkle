@@ -33,6 +33,10 @@
 
 `🎯 agy 专用` / `grok 专用` 不走 mihomo 的延迟样本：`useAgyProbeSnapshot` / `useGrokProbeSnapshot` 每 30s 经 IPC 读取主进程内存快照（`sparkleAgyProbe.ts` 的 `agyProbeSnapshot`、`sparkleGrokProbe.ts` 的 `grokProbeSnapshot`），节点卡片显示真实请求的 `rttMs` 与「N分前」；grok 的失败样本同时保留 HTTP 状态与原因（403 挑战 / 超时）。无样本显示「未测」/「—」。两组都不显示 mihomo 测速柱图与手动测速按钮。
 
+## gemini专用 组数据源
+
+`gemini专用` **不做任何渲染层特判**，走通用 `fallback` 组渲染：节点延迟直接来自 mihomo provider 的 `https://www.gstatic.com/generate_204` 健康检查样本，与它实际的选路口径一致（成员资格由主进程 vXmutd 地区探测决定，界面只展示存活与延迟）。因此该组保留通用的测速柱图与手动测速按钮。
+
 ## 依赖
 
 - `@renderer/utils/proxy-delay-sample-age` — 测速样本年龄、柱图过滤
