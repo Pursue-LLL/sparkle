@@ -35,10 +35,11 @@
 
 ---
 
-> **2026-11-03 17:00 最新**：**BUG-2026-11-03-003 CODE-DONE @1.30.71 git · 已装包 · 截图已验证** · 代理页 `🎯 agy 专用` 的延迟显示的是 mihomo 到 gstatic 的网络 RTT（200~400ms），与真实 agy 响应时间（3~50s）是两个口径 → 主进程维护真实请求快照 + IPC + `AgyDelayControl`（`3.9s · N 分前` / 「未测」），组头改「agy 实测」并隐藏手动测速与 mihomo 柱图 · 单测 318/318 PASS · typecheck/eslint 0
+> **2026-11-13 最新**：**本周（2026-11-07 ~ 11-13）缺陷明细改按「模块 + 7 日」归档，不再追加到本文件**：`src/main/core/core_20261107_20261113_BUGFIX_LOG.md`（grok 403、Google 直连、悬空成员、agy 未测、国内软件走代理、台湾节点超时不切换、22 个潜在缺陷）· `src/main/utils/utils_20261107_20261113_BUGFIX_LOG.md`（日志写入链路、YAML Reality short-id）· `scripts/scripts_20261107_20261113_BUGFIX_LOG.md`（Dock 双图标、构建 chunk、测试门禁）。版本标识：`1.30.71` 本周未递增，以「构建提交 + `app_dirty` + buildStamp」区分，2026-11-13 10:05 起线上为 `53cca758`（buildStamp `2026.1113.1003`，CDHash `838f6d00`）
+> **2026-11-03 17:00 上一版**：**BUG-2026-11-03-003 CODE-DONE @1.30.71 git · 已装包 · 截图已验证** · 代理页 `🎯 agy 专用` 的延迟显示的是 mihomo 到 gstatic 的网络 RTT（200~400ms），与真实 agy 响应时间（3~50s）是两个口径 → 主进程维护真实请求快照 + IPC + `AgyDelayControl`（`3.9s · N 分前` / 「未测」），组头改「agy 实测」并隐藏手动测速与 mihomo 柱图 · 单测 318/318 PASS · typecheck/eslint 0
 > **2026-11-03 15:30 上一版**：**BUG-2026-11-03-002 CODE-DONE @1.30.71 git · 已装包 · 运行态已验证** · `🎯 agy 专用` 巡检结论张冠李戴：mihomo `select` 只影响新建连接，magpie 的 HTTP/2 长连接继续复用旧出口（8 个节点同判可用，实际全部走同一个土耳其出口）→ 任何切组后强制 `mihomoCloseConnections`；巡检改为每 3min pin 就地复测 + pin 400 先二次确认、超时连续两轮才做地区轮转修复扫描（第一个 200 立即停）；实测修复耗时 110s → 4~21s，`台湾-优化` 端到端 HTTP 200 / 2.8s · 单测 311/311 PASS · typecheck/eslint 0
-> **2026-11-03 上一版**：**BUG-2026-11-03-001 CODE-DONE @1.30.71 git** · `📧 邮件专用` 当前节点只封 993/465 时 443 体检仍判活，且邮件端口缓存 alive 最长 12h、provider 成员删除后未热重载 → 新增按需复测当前节点 993/465（仅邮件组有活动/最近 30 分钟用过）+ 成员集合变化即热重载 + 探测通道拆分；地区组启动预热改为仅活动/选中组；`自动选择` 固定节点 Gemini 地区复核 5 分钟节流 · 单测全量 PASS（本次新增 8 项）· typecheck/eslint 0
-> **2026-11-02 上一版**：**BUG-2026-11-02-001 CODE-DONE @1.30.71 git** · `tagss.pro` 报「Sorry, you have been blocked」：机场节点缺 `udp: true` → 浏览器 HTTP/3(UDP 443) 与 WebRTC STUN 回落 `DIRECT`，与 TCP 的台湾节点形成双出口 IP 分裂 → 新增 `quicTrafficRuleInjection.ts` 在规则链最前端注入 UDP 443 / `stun.cloudflare.com` 的 `REJECT`（浏览器按 RFC 9114 回退 HTTP/2 over TCP）· 运行态热修 + 全局 Override 持久化 · 干净浏览器实测拿到 `cf_clearance` · 单测 253/253 · **未装包（asar 仍为旧构建）**
+> **2026-11-03 上一版**：**BUG-2026-11-03-001 CODE-DONE @1.30.71 git · 已装包（2026-11-13 10:05 起，asar 含 `sparkleMailCurrentNodeProbe`）** · `📧 邮件专用` 当前节点只封 993/465 时 443 体检仍判活，且邮件端口缓存 alive 最长 12h、provider 成员删除后未热重载 → 新增按需复测当前节点 993/465（仅邮件组有活动/最近 30 分钟用过）+ 成员集合变化即热重载 + 探测通道拆分；地区组启动预热改为仅活动/选中组；`自动选择` 固定节点 Gemini 地区复核 5 分钟节流 · 单测全量 PASS（本次新增 8 项）· typecheck/eslint 0
+> **2026-11-02 上一版**：**BUG-2026-11-02-001 CODE-DONE @1.30.71 git** · `tagss.pro` 报「Sorry, you have been blocked」：机场节点缺 `udp: true` → 浏览器 HTTP/3(UDP 443) 与 WebRTC STUN 回落 `DIRECT`，与 TCP 的台湾节点形成双出口 IP 分裂 → 新增 `quicTrafficRuleInjection.ts` 在规则链最前端注入 UDP 443 / `stun.cloudflare.com` 的 `REJECT`（浏览器按 RFC 9114 回退 HTTP/2 over TCP）· 运行态热修 + 全局 Override 持久化 · 干净浏览器实测拿到 `cf_clearance` · 单测 253/253 · **已装包（2026-11-13 10:05 起，asar 含 QUIC / STUN 两条 `REJECT` 规则）**
 > **2026-10-17 上一版**：**BUG-2026-10-17-001 @1.30.71** · `自动选择` 选中「名为日本/韩国/美国、实被 Google 送中（`vXmutd="ZZ"` / `google.cn`）」节点导致 `gemini.google.com` 报「目前不支持你所在的地区」：mihomo 探测仅看 `HTTP 200` 状态码无法识别应用层地区锁 → 新增 `sparkleGeminiProbeCore.ts` + `sparkleGeminiProbe.ts` 流式校验 `vXmutd` 国家码 + `autoSelectStickyPin` 固定前拦截 + `sparkle-fast` 自动剔除送中节点并热重载（网络抖动 fail-open 绝不误杀）· 单测 250/250 · ESLint 0 warning
 > **2026-10-16 上一版**：**BUG-2026-10-16-001 INSTALLED @1.30.71** · macOS Mail 收 Gmail SSL `-9806`：Gmail IMAP/SMTP 走通用 `自动选择` 节点，部分机场封 993/465 → 新增 `📧 邮件专用` + `sparkle-mail` provider（Sparkle 主进程 993/465 TLS 双通探测 + 前置邮件域名规则）；mihomo 不可用 IMAPS 作 url-test 目标 · 单测 + `_ARCH`/`VERSION_LOG` 同步
 > **2026-10-15 13:24 上一版**：**BUG-2026-10-14-001 INSTALLED @1.30.71 fc53a28**（CDHash `d19fd1a1`）· `自动选择` 粘性固定与单点复测保活（连续 2 次轮询稳定即 `PUT` 固定、丢固定时单点独立 Gemini 复测过滤并发体检假超时、10 分钟防抖冷却、孤儿锁清理）+ `sparkle-fast` 体检统一对齐 `Gemini + lazy:true` 并在订阅刷新时同步热重载 + 主商业 provider 开启 `lazy:true` + 冷启动沿用磁盘快照防残缺样本重排 · 单测 236/236 · ESLint 0 warning
@@ -129,13 +130,13 @@
 
 ---
 
-### BUG-2026-11-02-002 · magpie 的 agy 请求报 `User location is not supported`：`自动选择` 按延迟把流量钉在新加坡节点，而 gemini.com 探测测不出 cloudcode-pa 地域拒绝 · **CODE-DONE @1.30.71 git（未装包）**
+### BUG-2026-11-02-002 · magpie 的 agy 请求报 `User location is not supported`：`自动选择` 按延迟把流量钉在新加坡节点，而 gemini.com 探测测不出 cloudcode-pa 地域拒绝 · **CODE-DONE @1.30.71 git（已装包 2026-11-13 10:05）**
 
 > **已被 BUG-2026-11-03-002 取代**：巡检已重做为 pin 就地复测 + 地区轮转 + 切组强制断连；本条仅保留当日归因与首版实现记录。
 
 | 字段 | 内容 |
 | --- | --- |
-| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-02 15:43 / 16:07 / 16:08 / 17:57 CST 多次 400）；代码修复：本次（git，未装包）。 |
+| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-02 15:43 / 16:07 / 16:08 / 17:57 CST 多次 400）；代码修复：本次（git）；2026-11-13 10:05 起随干净构建装包（asar 含 `sparkle-agy` provider）。 |
 | **症状** | magpie 的 `antigravity/gemini-3.8-flash` 返回 `400 {"error":{"message":"Antigravity: User location is not supported for the API use."}}`；`~/.config/magpie/usage.jsonl` 与 Sparkle core 日志同秒对应。 |
 | **证据链** | ① 规则：`work/config.yaml:305` `DOMAIN-KEYWORD,cloudcode-pa,自动选择`；② 连接：`core-2026-11-2.log` 17:57:59 `[TCP] ...(magpie) --> daily-cloudcode-pa.googleapis.com:443 match DomainKeyword(cloudcode-pa) using 自动选择[新加坡-优化2-GPT]`；③ 应用层：`usage.jsonl` 17:57:58 `status=400` 两条，同一节点；④ 出口 IP 实测：按同一规则请求 IP 回显得到 `66.90.98.146`（Singapore / FDCservers，ip-api 标记 `proxy:true, hosting:true`）。 |
 | **根因（三层叠加）** | ① **选路层**：`自动选择` 是 fallback（`defaultAutoSwitchProxy.ts:205`），成员来自 `sparkle-fast` provider，按地区优先级分段 + 段内延迟升序（`sparkleFastProviderCore.ts:20-30`）；当日池内台湾/日本/韩国只有 `02` 节点且无延迟样本（垫到队尾），新加坡-优化2 以 325ms 成为首选，`autoSelectStickyPin` 再把它钉死。<br>② **探测层**：健康检查 URL 是 `https://gemini.google.com`，而 Gemini 网页对这类出口返回 200（探测缓存 `{eligible:true, countryCode:"SG"}`）；官方地区表（antigravity.google/docs/faq）本身就把 Singapore 列为支持地区 → 「Gemini 网页可达」「国家码合法」两条都不足以证明 Code Assist 可用。<br>③ **协议层**：`daily-cloudcode-pa` 的地域校验发生在认证之后——无凭证请求实测返回 `HTTP 401 CREDENTIALS_MISSING`，不存在可用的无凭证探测端点，因此任何 HTTP 探活都天然测不到这个 400。 |
@@ -150,18 +151,18 @@
 
 ---
 
-### BUG-2026-11-02-001 · `tagss.pro` 报「Sorry, you have been blocked」：节点缺 UDP 支持 → HTTP/3 与 STUN 回落 `DIRECT` → TCP/UDP 双出口 IP 分裂被 Cloudflare 拦截 · **CODE-DONE @1.30.71 git（运行态热修已验证 · 未装包）**
+### BUG-2026-11-02-001 · `tagss.pro` 报「Sorry, you have been blocked」：节点缺 UDP 支持 → HTTP/3 与 STUN 回落 `DIRECT` → TCP/UDP 双出口 IP 分裂被 Cloudflare 拦截 · **CODE-DONE @1.30.71 git（运行态热修已验证 · 已装包 2026-11-13 10:05）**
 
 | 字段 | 内容 |
 | --- | --- |
-| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-02 11:30 CST 用户访问 `tagss.pro` 被 Cloudflare 阻断）；代码修复：`77fa5f4`（2026-11-02 14:26 CST）；运行态生效：14:33 热加载 + 全局 Override 持久化；**未装包**（`/Applications/Sparkle.app/Contents/Resources/app.asar` 内 `grep -c quicTrafficRuleInjection` = 0）。 |
+| **发生与修复标识** | 发生版本：`1.30.71`（2026-11-02 11:30 CST 用户访问 `tagss.pro` 被 Cloudflare 阻断）；代码修复：`77fa5f4`（2026-11-02 14:26 CST）；运行态生效：14:33 热加载 + 全局 Override 持久化；装包：2026-11-13 10:05 起含修复（当前 `app.asar` 内 `AND,((DST-PORT,443),(NETWORK,UDP)),REJECT` 与 `DOMAIN-SUFFIX,stun.cloudflare.com,REJECT` 各命中 1 处；模块名被打进其他 chunk，按模块名 grep 不再有意义）。 |
 | **症状** | Arc 浏览器访问 `https://tagss.pro` 显示 Cloudflare「Sorry, you have been blocked / 安全验证」。Arc 历史库实测时间线：`11:30:19` 首次进入「安全验证」质询页 → `11:30:23` 标题变为「Attention Required! \| Cloudflare」，**4 秒内质询失败**。同期 `curl https://tagss.pro` 返回 `HTTP/2 403` + `cf-mitigated: challenge`。 |
 | **根因（协议层）** | ① 主订阅 `profiles/1a11e783a18-proxies.yaml` 的 Trojan 节点**均无 `udp: true`**，mihomo 判定节点不支持 UDP；② 浏览器对 `tagss.pro` 同时发起 TCP(443) 与 UDP(443, HTTP/3) 及 UDP(3478, WebRTC STUN)，内核日志 `core-2026-11-2.log:35952/35955/35960` 显示 **TCP 走 `🐟 漏网之鱼 → 🚀 节点选择 → 🇨🇳 台湾 V1`，UDP 全部 `doesn't match any rule using DIRECT`**；③ 同一会话出现两套出口 IP（台湾机房 IP + 本地大陆宽带 IP），Cloudflare 判定代理伪造/自动化异常，质询直接失败。旁证：`stun.l.google.com:19302` 同样 6 次 `DIRECT`（WebRTC 泄漏未收敛）。 |
 | **放大因素（非确定性）** | `11:30:23.290` 沉浸式翻译插件向 `ai.immersivetranslate.com` 发起请求，与页面跳变同秒；Turnstile 对质询页 DOM 完整性敏感。**该因素未被证伪，仅被消除**：修复后用干净 Chrome 配置（无扩展、非自动化）实测可过盾并拿到 `cf_clearance`，说明网络层已干净，扩展影响需用无痕窗口对照确认。 |
 | **本次根治方案** | ① 新增 `src/main/core/quicTrafficRuleInjection.ts`：`AND,((DST-PORT,443),(NETWORK,UDP)),REJECT` + `DOMAIN-SUFFIX,stun.cloudflare.com,REJECT`，幂等、空规则数组安全；② `factory.ts:306` 在所有规则改写函数之后、写盘之前注入（避免被 `removeNonSubscriptionProxyGroups` / `rewriteMissingRuleProxyGroupTargets` 洗掉；`REJECT` 属 `RULE_BUILTIN_TARGETS` 不会被改写）；③ `package.json` 登记 `quicTrafficRuleInjection.test.ts` 进 `test:node-quality`（253/253 PASS）；④ 未装包期间的持久化：磁盘 `work/config.yaml` 写回 + 全局 Override `override/sparkle-quic-guard.js`（脚本异常时 `runOverrideScript` 兜底返回原配置，不会中断生成）。 |
 | **物理证据** | ① 运行态命中：`core-2026-11-2.log` 自 `14:49:13` 起共 **666 条** `match AND(((DstPort,443) && (Network,udp))) using REJECT`；② 规则语法：`mihomo -t` → `test is successful`；③ 端到端：15:14:54 干净 Chrome 打开 `tagss.pro`，历史记录标题 `TAG Internet`，Cookies 出现 `.tagss.pro cf_clearance`（Cloudflare 放行凭证，仅质询通过才下发）。 |
 | **防再翻车铁律** | 1. **改文件 ≠ 改运行态**：上一轮仅凭 `work/config.yaml` 被覆盖就断言"修复 0% 生效"，实际内核内存仍持有 14:33 加载的规则（`reload` 后配置再生不一定触发内核重载）。判定生效必须看**内核日志命中**，不能只看磁盘文件。<br>2. **代理节点缺 `udp: true` 时，任何 UDP 业务都会静默回落 `DIRECT`**：新增依赖 UDP 的能力前，先确认节点是否支持，否则等于把真实 IP 直连出去。<br>3. **Cloudflare 拦截页是"结果"不是"证据"**：`cf-mitigated: challenge` 只说明质询下发，失败原因需用「TCP/UDP 出口是否一致 + 浏览器是否被扩展篡改 + 出口 IP 信誉」三条分别验证，禁止单因归因。 |
-| **未完成项** | 重装固化（停 root 权限 `sparkle-service` 需管理员密码，未擅自执行）；装包后应删除 `override/sparkle-quic-guard.js` 并复跑 UDP 443 探测 + 无痕窗口验证。 |
+| **未完成项** | 重装固化已于 2026-11-13 10:05 完成；`override/sparkle-quic-guard.js` 仍登记在 `override.yaml`（与代码功能重复，幂等不冲突，未删除，待用户决定）；UDP 443 探测 + 无痕窗口验证装包后未复跑。 |
 
 ---
 
@@ -261,7 +262,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **当前状态** | 下文「🎯 Antigravity 专用」组已于 2026-10-03 删除（`dafb2fa`），三条前置规则现指向 `自动选择` fallback（`antigravityRuleInjection.ts:38`），`verify:agygeo` 改为断言 `自动选择`。以 `VERSION_LOG.md` 当前基线第 7 条为准；下文保留为当时记录。 |
+| **当前状态** | 下文「🎯 Antigravity 专用」组（VPS provider + fallback）已于 2026-10-03 删除（`dafb2fa`），2026-11-02 起由 `🎯 agy 专用` 取代：`select` 组，成员来自 `sparkle-agy` provider（只含真实 agy 请求通过的节点）；现在是**四条**前置规则（`cloudcode-pa`、`aicode.googleapis.com`、`generativelanguage.googleapis.com`、`www.googleapis.com`）指向 `🎯 agy 专用`，该组缺席时退回 `自动选择`（`antigravityRuleInjection.ts`）；`verify:agygeo` 断言 `🎯 agy 专用` 组与四条规则（`scripts/verify-antigravity-geo-routing.mts`，运行态已核对：`work/config.yaml` 中四条规则都指向 `🎯 agy 专用`）。以 `VERSION_LOG.md` 当前基线第 7 条为准；下文保留为当时记录。 |
 | **症状** | `agy` CLI 报 400 `User location is not supported for the API use.`（FAILED_PRECONDITION / UPSTREAM_ERROR）。proxy_logs.db（`~/.antigravity_tools/`）20:44 两条 400，上游 `cloudcode-pa.googleapis.com/v1internal`；core 日志同刻 `daily-cloudcode-pa.sandbox.googleapis.com:443 ... using 🔍 Google[🇹🇼 台湾 02]`，10-02 全天 173/183 条 googleapis 连接走台湾 02（hyster2 端口跳跃机场节点，落地 IP 动态漂移）；同刻两个账号同报 400 → 纯出口 IP 地域判定，非账号封禁。 |
 | **根因** | Google Code Assist 边缘按**出口 IP 地域**硬限制。`DOMAIN-SUFFIX,googleapis.com` 通用规则把 AI API 流量送进 `🔍 Google` fallback → sparkle-fast 机场节点（台湾优先级第一），机场落地 IP 漂移踩中受限地区出口即整连接 400。**2026-09-15 曾手补两条规则进 mihomo 运行时配置**（`work/config.yaml.bak-agygeo-20260915-185248`），但从未进仓库代码 → BUG-2026-10-01-003 的 5 分钟配置再生把手补规则静默冲掉（旧规则指向的 `🚀 节点选择` 组也已不存在）→ 09-29 起复发。 |
 | **修复** | 把手补规则升级为**代码能力**（配置再生后依然存在），仿 HK 注入模式（`hongKongTrafficRuleInjection.ts` + `customProxyGroups.ts`）：① 新组 `🎯 Antigravity 专用` = **fallback**（`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`，Reality 优先确定性、HY2 冷备，url `https://gemini.google.com`、interval 300、timeout 5000、lazy）——VPS 落地为固定地域（KR）非受限区，不受机场节点 IP 漂移影响；② 三条规则**前置注入** rules 数组最前（必然先于通用 googleapis 规则命中）：`DOMAIN-KEYWORD,cloudcode-pa`（一条盖全 3 个实测 host）+ `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`，gemini CLI 未来同样受益，host 均为纯 AI-API 端点零附带伤害。 |

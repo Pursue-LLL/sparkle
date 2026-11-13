@@ -2,7 +2,7 @@
 
 Electron 主进程核心：mihomo 控制、订阅与配置生成、运行时配置与内核对账重载、自动选择延迟序、分组策略表与故障转移、Cursor / 邮件 / grok / agy 专用组与路由规则；邮件当前节点按需复测 993/465，grok 当前节点每 60 秒真实请求复核，agy 出口每 30min 就地复测、坏时按地区优先级修复，地区组按需预热。
 
-用户可感知网络僵死 / TUN 恢复缺陷台账：[BUGFIX_LOG.md](../../BUGFIX_LOG.md)（例：BUG-2026-07-09-001 mihomo 出站池僵死）。
+缺陷台账：仓库级 [BUGFIX_LOG.md](../../../BUGFIX_LOG.md)（用户可感知的网络僵死 / TUN 恢复等，例：BUG-2026-07-09-001 mihomo 出站池僵死）；本目录按「模块 + 7 日」归档的缺陷日志为 `core_<起>_<止>_BUGFIX_LOG.md`，最新一份 [core_20261107_20261113_BUGFIX_LOG.md](core_20261107_20261113_BUGFIX_LOG.md)（版本与构建标识、根因、遗漏、踩坑清单、复发统计）。新缺陷先查同一周的文件，没有就按该命名新建。
 
 Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择、默认节点）与 Cursor 路由 / DNS 规则。Sparkle 不按 Cursor 流量做任何运行时干预（没有 keepalive / quiesce / 探针平面 / 恢复编排；故障转移引擎只依据内核按组上报的连续拨号失败告警，对 `Sparkle-<地区>` url-test 组一视同仁，不识别流量归属，也不改写 `🎯 Cursor 专用` 的选择）。
 
@@ -216,4 +216,4 @@ pnpm run upgrade:mac         # 本地装 /Applications + PostCoreBootstrap 门�
 工作区不干净，构建不可复现）/ `app_unknown`（无 commit 事实的旧构建）。仓库侧 dirty
 **不算**漂移——commit 仍是权威标识，未提交改动本就不会进入 app。
 
-详见 [src/shared/\_ARCH.md](../shared/_ARCH.md)。
+详见 [src/shared/\_ARCH.md](../../shared/_ARCH.md)。

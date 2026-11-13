@@ -13,7 +13,7 @@
 | 现象 | 无新增用户报障；为让自动切换不再反复出问题，对 2026-11-11 的实现补全行为测试、随机化不变量测试与变异测试 |
 | 根因 | 自动切换链路及它依赖的日志 / YAML / 订阅更新里潜伏着 28 个缺陷（明细见 `src/main/core/core_20261107_20261113_BUGFIX_LOG.md` 的 BUG-2026-11-12-001）。较重的几个：日志写失败升级为主进程未捕获异常；`appendAppLog` 失败连带 133 处调用方的业务流程；Reality 纯数字 short-id 被 YAML 解析成数字（块风格与订阅转换器常用的 flow 风格都中招，`12e3456` 会变成 Infinity）；悬空的 `MATCH` 规则让内核拒绝整份配置；规则改写丢掉 `no-resolve` 修饰符、把 `src` 参数当成策略改写；故障转移释放失败后永远跳过自己设的固定 |
 | 实现 | 规则文本解析与策略改写收敛到 `ruleSyntax`；YAML 解析改在文档树上还原 Reality short-id 的原文；Agy / Grok 探针按职责拆分；日志拆出 `logLineParseCore` 与 `logFileSizeCore.trimLogContent`，`appendAppLog` 永不 reject；删除无人调用的代码与不可达守卫；`test:node-quality` 改用 glob，所有测试文件都在门禁内 |
-| 验证 | 全量 1682 用例 / 347 套件 0 失败（满载下连跑 6 次稳定）；typecheck（node + web）0；ESLint 与 prettier 覆盖自基线改动的 206 个 `.ts` 文件，全部通过；行覆盖率（每个测试文件单独一个进程再按行取并集）已加载模块 `src/main/core` 98.6%、`src/main` 98.6%、全部 97.5%，相对基线的改动行 99.6%；变异测试存活者均已归类；真实运行态配置回放（3783 条规则、26 个组）的规则解析、改写与流水线均无意外差异；规则解析器与真实内核逐形态差分（20 种形态）0 处不一致；`parseYaml` 新旧实现在 29 个真实 YAML 文件与 6000 个随机文档上结果一致；46.4 万行真实核心日志全部解析成功；5 个地区的内核 provider `filter` 与 JS 地区判定在真实订阅上台湾 / 日本 / 韩国 / 美国完全一致（新加坡 6/130 个节点口径不同）；`pnpm run verify:failover` 在隔离 mihomo v1.19.32 上 PASS；`electron-vite build` 与 `verify:bundle` Stage-A OK |
+| 验证 | 全量 1682 用例 / 347 套件 0 失败（满载下连跑 6 次稳定；随后删除两个无引用模块及其测试，当前为 1677 / 345，0 失败）；typecheck（node + web）0；ESLint 与 prettier 覆盖自基线改动的 206 个 `.ts` 文件，全部通过；行覆盖率（每个测试文件单独一个进程再按行取并集）已加载模块 `src/main/core` 98.6%、`src/main` 98.6%、全部 97.5%，相对基线的改动行 99.6%；变异测试存活者均已归类；真实运行态配置回放（3783 条规则、26 个组）的规则解析、改写与流水线均无意外差异；规则解析器与真实内核逐形态差分（20 种形态）0 处不一致；`parseYaml` 新旧实现在 29 个真实 YAML 文件与 6000 个随机文档上结果一致；46.4 万行真实核心日志全部解析成功；5 个地区的内核 provider `filter` 与 JS 地区判定在真实订阅上台湾 / 日本 / 韩国 / 美国完全一致（新加坡 6/130 个节点口径不同）；`pnpm run verify:failover` 在隔离 mihomo v1.19.32 上 PASS；`electron-vite build` 与 `verify:bundle` Stage-A OK |
 | 已知边界 | 已于 2026-11-13 10:05 装包；台湾节点超时自动切换的线上触发尚未发生，仅在隔离内核验证过；`src/main` 有 63 个 I/O 接线文件（约 6991 行）没有被任何测试加载，计入后 `src/main` 覆盖率 63.8%，`scripts` 已加载模块 65.0%；除 Reality short-id 外，其他字段的纯数字写法解析后会丢前导零（本机数据无此情形）；日志落盘失败是静默的 |
 
 ---
@@ -67,8 +67,9 @@
 | 实现 | ① `profileGroupNormalize.dropUnknownGroupMembers`：写盘前剔除无法解析的组成员（组被清空时补 `DIRECT`），并记录 `[Factory]: dropped unknown group members`；② Grok 池信任窗口 6h → 24h；③ 探测单轮 10 分钟预算 + `probeRunning` 超时强复位，避免一轮卡死永久停摆 |
 | 验证 | 全量 `test:node-quality` **349/349 PASS**；typecheck node+web 0；改动文件 eslint 0；单测覆盖悬空成员剔除、空组补 `DIRECT`、成员变化 |
 | 已知边界 | 订阅自身的组引用错误被静默修正（不再阻止启动），但订阅方下次更新仍可能引入新的悬空引用；同一机制会继续兜底 |
+| 当前状态 | 「组被清空时补 `DIRECT`」只对**没有 provider 兜底**的组成立：provider 里还有成员的组不再塞 `DIRECT`（否则 fallback / url-test 会把排在最前且必然存活的 `DIRECT` 选成出口，`profileGroupNormalize.ts:185-188`），该缺陷由本条引入，2026-11-12 `c997c897` 修复，见 `core_20261107_20261113_BUGFIX_LOG.md` 的 BUG-2026-11-12-001 #8 |
 
-## 2026-11-09 grok.com 独立分流组（Cloudflare 403 挑战不再被当作健康节点）
+## 2026-11-09 grok.com 独立分流组（Cloudflare 403 挑战不再被当作健康节点 · 已装包 2026-11-13 · 组类型与探测节奏已被 2026-11-10 `grok 专用` 取代）
 
 | 项 | 内容 |
 |---|---|
@@ -78,8 +79,9 @@
 | 验证 | 新增 `sparkleGrokProviderCore` 7 例、组/规则/排序相关共 30+ 例 PASS；全量 `test:node-quality` **348/348 PASS**；typecheck node+web 0；改动文件 eslint 0；独立 mihomo 实测：129 节点池 → 选中 JP、`grok.com` 200；3 节点小池（香港 403 排第一）→ **4 秒内选中 JP、200** |
 | 常态化开销 | 稳态：池内 12 个节点 × 每 5 分钟（provider health-check）+ 每 10 分钟（应用层复测）≈ **3.6 次探测/分钟**；池外 117 个节点每 6 小时才扫一次 |
 | 已知边界 | 首轮全量探测（129 节点、4 并发）约 1–2 分钟，期间沿用全量 provider；之后冷启动直接走缓存小池；全部节点都 403 时 provider 回退全量，由 `expected-status: 200` 继续拦截 |
+| 当前状态 | 本条里仍成立：`sparkle-grok` provider、`GROK_POOL_MAX_SIZE=12`、`DOMAIN-SUFFIX,grok.com` 指向 grok 组、`dedicatedTrafficRuleInjection.ts`。已被取代：组名 `Sparkle-Grok` → `grok 专用`、`url-test` → `select`（`cursorProxyGroup.ts:32`）；「池内 10 分钟复测 / 3.6 次探测每分钟」的节奏被 `sparkleGrokProbe` 的稳态 60 s 巡检取代（`RECHECK_INTERVAL_MS`，`sparkleGrokProbe.ts:41`），provider 内置 health-check 已关闭；`GROK_POOL_TRUST_MS` 6h → 24h。以下 11-10 / 11-12 条目与 `src/main/core/core_20261107_20261113_BUGFIX_LOG.md` 为准 |
 
-## 2026-11-05 `open-design.ai`（opendesign 插件）模型端点默认直连（CODE-DONE @1.30.71 git · 未装包 · 运行态经覆写生效）
+## 2026-11-05 `open-design.ai`（opendesign 插件）模型端点默认直连（CODE-DONE @1.30.71 git · 已装包 2026-11-13 · 覆写 `sparkle-ai-direct` 仍登记）
 
 | 项 | 内容 |
 |---|---|
@@ -88,7 +90,7 @@
 | 实现 | `AI_API_DIRECT_HOSTS` 增列 `open-design.ai`（`DOMAIN-SUFFIX` 覆盖 amr-link / amr-api 及未来子域）；让路语义不变；`fakeIpRoutingIntegrity` 自动把该后缀并入 `fake-ip-filter` |
 | 单测 | `aiApiDirectRules.test.ts` 把写死 `[0]` 的断言改为 `defaultsExcept('opencode.ai')`，新增域名不再改测试；5 例 PASS · `typecheck:node` 0 · eslint 0 |
 | 运行态 | `work/config.yaml` 是生成物：19:22 手改的两行在 19:39 重新生成时被抹掉。改用**覆写**桥接：`override/sparkle-ai-direct.js`（`global: true`，前置/让路/幂等语义与内置一致，已按当前 profile 验证）并在 `override.yaml` 登记 `sparkle-ai-direct`；经 service socket `PUT /core/controller/configs?force=true` reload 后，内核日志 `[TCP] ... amr-link.open-design.ai:443 match DomainSuffix(open-design.ai) using DIRECT`，DNS 从 fake-ip `198.18.0.28` 变为真实 CF IP `104.21.45.58` |
-| 已知边界 | 覆写需重启一次 Sparkle 才进 `config/override.ts` 的内存缓存（读取不带 force）；装包后代码即覆盖该域名，可删覆写避免双来源；直连无回落，CF 边缘异常时用覆写指回代理组 |
+| 已知边界 | 覆写需重启一次 Sparkle 才进 `config/override.ts` 的内存缓存（读取不带 force）；2026-11-13 10:05 装包后代码已覆盖该域名（`open-design.ai` 在当前 asar 内命中），覆写 `sparkle-ai-direct` 仍登记在 `override.yaml`（幂等、不冲突，未删除，待用户决定）；直连无回落，CF 边缘异常时用覆写指回代理组 |
 
 ## 2026-11-03 agy 探测 5min + 邮件/agy 地区优先（台湾优先）+ 邮件组 fallback（CODE-DONE @1.30.71 git · 已装包）
 
@@ -129,7 +131,7 @@
 
 
 
-## 2026-11-03 自动组按需探测：邮件当前节点 993/465 failover + 地区预热按需（CODE-DONE @1.30.71 git · 未装包）
+## 2026-11-03 自动组按需探测：邮件当前节点 993/465 failover + 地区预热按需（CODE-DONE @1.30.71 git · 已装包 2026-11-13）
 
 | 项 | 内容 |
 |---|---|
@@ -159,7 +161,7 @@
 | 单测 | `aiApiDirectRules.test.ts`（前置顺序 / SUFFIX·DOMAIN·KEYWORD 三种覆写写法 / 部分覆盖 / 幂等 / 空 rules）5 例 PASS；`typecheck:node` 0；改动文件 eslint 0；`pnpm run agent:upgrade:mac` exit 0（DistFreshness 判定 commit drift → 全量重建），装后 `work/config.yaml` 仅各一条规则，内核日志 `match DomainSuffix(...) using DIRECT` |
 | 已知边界 | 直连**无回落**：Cloudflare 边缘偶发不可用（实测 `172.67.69.147` 曾 6s 超时恢复；同机 `ifconfig.me` / `api.ipify.org` 直连被 reset/refused），需要回落时由覆写把这两个域名指回代理组；`RULE-SET` / `GEOSITE` 等动态规则源不参与"是否命中"的判断 |
 
-## 2026-11-02 `🎯 agy 专用` 组：cloudcode-pa 只能按**真实 agy 请求**筛节点（CODE-DONE @1.30.71 git · 未装包）
+## 2026-11-02 `🎯 agy 专用` 组：cloudcode-pa 只能按**真实 agy 请求**筛节点（CODE-DONE @1.30.71 git · 已装包 2026-11-13）
 
 > **已被顶部 2026-11-03 条目取代**：巡检已重做为 pin 就地复测 + 地区轮转 + 切组强制断连；本条仅保留当日归因与首版实现记录。
 
@@ -172,9 +174,9 @@
 | 单测 | `sparkleAgyProviderCore.test.ts`（响应分类 / 地区排序 / 冷启动 / 全灭兜底 / 组构建）· `antigravityRuleInjection.test.ts`（目标切换 / 旧规则改写 / 幂等）· `pnpm run test:node-quality` **267/267 PASS** · `typecheck:node` 0 · 改动文件 eslint 0 · `mihomo -t` 校验 `select + use: sparkle-agy` 形态 `test is successful` |
 | 已知边界 | 巡检需要能切到每个候选节点，而 mihomo 只能切到 provider 内的节点 → 巡检窗口内 provider 会临时扩为全量候选（不改当前选择，线上出口不变），巡检结束再收敛；无任何可用节点时保留候选池，避免空 provider（mihomo v1.19.32 实测：重载不报错，但引用它的组会静默退化为 `COMPATIBLE` 直连） |
 | **2026-11-03 结论修正** | 逐节点实测 11 个出口（TW/JP/KR/US/SG/IN/TR/CA/GB，覆盖 FDCservers / G-Core Labs / OVH）10:11–10:26 **全部 400**；同刻官方 `agy` CLI + 原生模型同样 400。但 **10:31 起未改任何配置**，`台湾-优化2-GPT` / `美国LA-优化2-GPT` / `新加坡-优化2-GPT` **9/9 全部 200** → 该 400 是**时变**的（叠加账号侧限制：同日 `yululiu2018` gemini 8 次全 400，`claude-opus-4-6-thinking` 却 200）。Google 官方论坛 2026-11-02 明确要求「支持地区住宅直连」，VPN/代理/机房 IP 会被判 FAILED_PRECONDITION。据此把「不可用」缓存 TTL 从 6h 降为 30min、巡检 15min 一轮、单轮最多 8 个节点，保证半小时内自愈且不触发风控 |
-| 未完成项 | 未装包（`/Applications/Sparkle.app` 仍是旧构建）；装包后需 `pnpm run verify:agygeo` 复核规则目标与 provider 文件，并跑一轮真实巡检确认 `[SparkleAgyProbe]` 日志 |
+| 未完成项 | 已于 2026-11-13 10:05 装包；`verify:agygeo` 已 PASS（见 2026-11-11 条目的线上验证）；装包后真实巡检已跑：10:39:37 pin `🇨🇳 台湾 V2` verdict=unknown 连续 2 次 → repair start，10:40:15 修复到 `🇨🇳 台湾 V1`（`probed=1 usable=1 pool=2`，约 38 s）；agy 真实请求被 400 时的线上表现未单独复核 |
 
-## 2026-11-02 QUIC / STUN 泄漏防护：消除 TCP·UDP 双出口 IP 分裂（CODE-DONE @1.30.71 git · 运行态已验证 · 未装包）
+## 2026-11-02 QUIC / STUN 泄漏防护：消除 TCP·UDP 双出口 IP 分裂（CODE-DONE @1.30.71 git · 运行态已验证 · 已装包 2026-11-13）
 
 | 项 | 内容 |
 |---|---|
@@ -183,7 +185,7 @@
 | 实现 | ① 新增 `quicTrafficRuleInjection.ts`：`AND,((DST-PORT,443),(NETWORK,UDP)),REJECT` + `DOMAIN-SUFFIX,stun.cloudflare.com,REJECT`，幂等且空规则安全；② `factory.ts:306` 在全部规则改写之后、写盘之前注入（`REJECT` 属内置目标，不会被 `rewriteMissingRuleProxyGroupTargets` 改写）；③ 浏览器按 RFC 9114 自动回退 HTTP/2 over TCP，出口单一 |
 | 单测 | `quicTrafficRuleInjection.test.ts`（并入 `pnpm run test:node-quality`，253/253 PASS）· `typecheck` / `eslint` 全绿 |
 | 运行态验证 | `mihomo -t` 语法通过；`core-2026-11-2.log` 自 `14:49:13` 起 666 条 `match AND(((DstPort,443) && (Network,udp))) using REJECT`；15:14:54 干净 Chrome 打开 `tagss.pro` 得到标题 `TAG Internet` 与 `.tagss.pro cf_clearance` |
-| 未装包说明 | `/Applications/Sparkle.app` 仍是旧构建（asar 内 `grep -c quicTrafficRuleInjection` = 0）。当前生效依靠「磁盘 `work/config.yaml` 写回 + 全局 Override `override/sparkle-quic-guard.js`」；重装后应删除该 Override 改由代码接管（停 root 权限 `sparkle-service` 需管理员密码，脚本 `pnpm run agent:upgrade:mac`） |
+| 装包说明 | 2026-11-13 10:05 已装包，由代码接管（当前 `app.asar` 内两条 `REJECT` 规则字符串各命中 1 处）；全局 Override `override/sparkle-quic-guard.js` 仍登记在 `override.yaml`（与代码重复、幂等，未删除，待用户决定） |
 | 已知未覆盖 | `stun.l.google.com:19302` 等非 Cloudflare STUN 仍走 `DIRECT`（WebRTC 场景）；国内站点 HTTP/3 一并降级 TCP，功能可用但首屏可能略慢 |
 
 ## 2026-10-17 `自动选择` Gemini 真实地区解锁校验与「送中」节点自动剔除（@1.30.71）
@@ -247,12 +249,12 @@
 | 线上验证 | 2026-10-13 11:53（装包后约 20 分钟）：`自动选择` 63 个成员 = 45 正常 / 9 不稳定 / 9 超时 / 0 未测（11:49 时为 49 / 4 / 10，「不稳定」节点在两次采样间会跳动，属预期）；9 个超时中 8 个通用地址（`gstatic`）可用、仅 Gemini 不通，1 个（美国 G2）整个节点不通。「重排后立即补测」只在 30 分钟复查真的发生重排时才触发，尚未观察到；界面渲染未做目视验证 |
 | 说明 | `自动选择` 与地区组以 Gemini 探测为准（香港为 grok），Gemini 不通即该组眼中的不可用，显示超时是预期语义，不是误报 |
 
-## 📌 当前最佳基线（Agent 迭代 SSOT）· 代码状态 2026-11-03
+## 📌 当前最佳基线（Agent 迭代 SSOT）· 代码状态 2026-11-13
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.30.71** · 代码基线 2026-11-03（含 `sparkleGeminiProbe` 真实地区解锁校验、`sparkleMailProbe` 993/465 双通校验、邮件当前节点按需复测） |
-| 装包 | `/Applications/Sparkle.app`，GUI + mihomo + `:7890` 可用；当前装包版本以应用内 build stamp 为准；最近一次实测 `自动选择` = `Fallback`、`📧 邮件专用` = `URLTest`、`🎯 Cursor 专用` = `Selector` |
+| 版本 | **1.30.71**（semver 自 2026-10-04 `0f1b5a9b` 起未递增；构建的真实标识 = 构建提交 + `app_dirty` + buildStamp，见 `core_20261107_20261113_BUGFIX_LOG.md` 第一节）· 代码基线 2026-11-13（含 `sparkleGeminiProbe` 真实地区解锁校验、`sparkleMailProbe` 993/465 双通校验、`sparkleAgyProbe` / `sparkleGrokProbe` 真实请求选路、运行时配置对账、故障转移引擎） |
+| 装包 | `/Applications/Sparkle.app`，2026-11-13 10:05 安装，构建提交 `53cca758`（历史重写前为 `76ac0dd`），buildStamp `2026.1113.1003`，CDHash `838f6d0088553f9a5f8bcf985aa6bf2d6a2caecd`；GUI + mihomo + `:7890` 可用。装包之后的提交只含头注释、prettier 格式化与删除无引用的模块（`openaiDnsIntegrity`、`providerHealthCheckCore`、`upgrade-incident-registry.default.json`），`git diff 53cca758..HEAD` 逐行核对无行为变更；2026-11-13 实测 `自动选择` = `Fallback`、`📧 邮件专用` = `Fallback`、`🎯 agy 专用` / `grok 专用` / `🎯 Cursor 专用` = `Selector` |
 
 **能力/行为基线（后续不得回退）**
 - `自动选择` = mihomo 原生 **fallback**：成员 = `sparkle-fast` provider 文件（每次配置生成时把订阅节点按 `proxySwitchPriority` 排序平铺写入：默认 台湾→日本→韩国→新加坡→美国→其他国家，地区内按 Gemini 探测延迟升序，有实测延迟时无样本节点按地区序统一垫在文件末尾；**香港、AnyTLS 以及经 `sparkleGeminiProbe` 实测确认为 Gemini 锁区/送中（`vXmutd` 为 `ZZ`/`CN`/`HK`/`MO`/`RU`/`BY`/`KP`/`IR`/`SY`/`CU` 或含 `www.google.cn`）的节点一律排除**；不区分其他节点类型，hy2 在所属地区的正常位置）。fallback 语义 = 按顺序用第一个可用节点；原生 fallback 无迟滞（高优先级节点恢复立刻回切、任一节点单次探测失败即被放弃）。**`自动选择` 粘性固定（pin）**：fallback 选出的存活节点连续稳定 2 次轮询（3 秒间隔）后由 `autoSelectStickyPin.ts` 固定（无 Gemini 样本时先单点拨测验活，并通过 `verifyNodeGeminiRegion` 确认非送中/锁区节点；若发现送中节点立即拒绝/解除固定并从 `sparkle-fast` 热移除），之后只有该节点真挂掉才换，高优先级节点恢复不回切；固定期间地区码每 5 分钟/节点变化复核，固定被 mihomo 清除时先做单点独立 Gemini 复测（过滤并发体检单次超时误杀，防止单向不可逆降级；10 分钟冷却窗口内再次丢固定则视为节点不稳不再救回）；固定节点已不在组内（订阅刷新 / cache.db 恢复旧固定）时立即解除，否则 mihomo 会一直返回首个成员而不判存活（BUG-2026-10-14-001 / BUG-2026-10-17-001）。内核就绪后按实测延迟重排文件序，仅当原固定节点不在实测存活表内时解除固定（`sparkleFastLatencyOrder.ts`，重排重载后自动回填 Gemini 样本），之后每 30 分钟复查，新首选须比当前首选快 ≥50ms 且 ≥30% 才换文件序，复查不解除固定（BUG-2026-10-09-001 / BUG-2026-10-14-001）。
@@ -265,11 +267,15 @@
 4. **构建门禁可信**：`DistFreshness` 已修（源码变即全量重编，杜绝 install-only 装旧包）；asar 门禁只校验 `appendAppLog` 存在、`[CoreReadiness]` 门控与无 PCRE 内联 flag 的非法正则；装后门禁只要求日志出现 `[PostCoreBootstrap]: mihomo API ready`。
 5. **产品包不含仓库内部文档**（`!*.md` 等）。
 6. **保留的 fork 功能**：Cursor 专用组、地区自动组、定时更新、TUN、订阅刷新。
-7. **Antigravity 专用路由**（2026-10-04 用户裁决版 @1.30.71）：`DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` 三条前置规则把纯 AI-API 端点送进**现有 `自动选择` fallback 组**（不新增组；`🎯 Cursor 专用` 归还 Cursor 原 select 语义，不再承载 agy）——用户裁决"agy 走自动选择，Cursor 专用是给 Cursor 用的"（KR VPS 不续费，固定物理出口架构失去地基）。**Google 按出口 IP 段判地域**（2026-10-04 机场 6 节点矩阵实测全 200：TW/JP/KR/SG/US/MO 出口 IP 均为 CF AS13335 共享段且节点内固定，hop 只换入站端口；`available-regions` 官方表含 TW/KR 但实际判定是 IP 段级、随会话/时段波动，同节点同日 400 与 200 并存）。`自动选择` 组缺席时注入跳过（安全降级）。mihomo 硬约束（实测 `mihomo -t` 报 `proxy not found`）：规则 target 不能直指 provider 节点，必须经组。**遇 400 时手动在 Sparkle 把 `自动选择` 切到其他节点**（矩阵实测其余节点当前均可用）。
+7. **Antigravity 专用路由**（2026-11-02 起，取代 2026-10-04「agy 走 `自动选择`」的裁决）：四条前置规则 `DOMAIN-KEYWORD,cloudcode-pa` / `DOMAIN-SUFFIX,aicode.googleapis.com` / `DOMAIN-SUFFIX,generativelanguage.googleapis.com` / `DOMAIN,www.googleapis.com`（agy CLI 的资格检查域名）指向 `🎯 agy 专用`（`select` 组，成员来自 `sparkle-agy` provider，只含真实 agy 请求通过的节点）；该组缺席时退回 `自动选择`，两者都缺则不注入（`antigravityRuleInjection.ts`）。**Google 按出口 IP 段判地域**且 cloudcode-pa 鉴权后才判地区，`gemini.google.com` 能打开不代表可用，所以只能按真实 agy 请求筛节点：`sparkleAgyProbe` 只测当前节点，当前节点真实请求失败（400 / 连续 unknown）才在候选里按地区优先序修复切换，非当前节点在代理页显示「—」。mihomo 硬约束（实测 `mihomo -t` 报 `proxy not found`）：规则 target 不能直指 provider 节点，必须经组。校验：`pnpm run verify:agygeo`。
 8. **延迟展示口径**（2026-10-09 起，详见该日条目）：节点结论按组实际探测地址取样（`extra[url]`，同一目标的 http / https 记录按时间合并，同一节点在多个 provider 的样本合并），窗口内一次都没成功才显示「超时」，最近失败但近期成功过为「不稳定」，详情浮窗另列「其它探测地址」；代理页、浮窗、托盘、复测范围共用 `proxyDelayVerdictCore`，**不得回退到读混杂各地址样本的顶层 `history`**。
 9. **订阅自动更新**（2026-10-12 起，详见该日条目）：远程订阅以「`updated` 是否早于最近一个计划时刻」判定到期，合并版以「任一来源的 `updated` 晚于自己」判定到期；GUI 5 分钟心跳与 LaunchAgent 共用 `createDueProfileUpdateRunner`，失败不推进 `updated`、下次心跳自动重试；合并版无独立定时。**不得改回按定时器触发时刻 / 固定时间窗口判断，心跳读 `profile.yaml` 不得强制重读**（非原子写入，强读可能读到半截文件并触发恢复写入）。
-10. **邮件专用**（2026-10-16 起，详见该日条目）：`imap.gmail.com` / `smtp.gmail.com` 等海外邮件客户端域名 → `📧 邮件专用`；成员来自 `sparkle-mail` provider（Sparkle 主进程 **993+465 双通** 探测 + `sparkle-mail-nodes.json` 缓存）；组内 lazy url-test 用 `mail.google.com` 测 RTT。当前节点只在邮件组最近被使用时按需复测 993/465（拨号失败后 30s 提前触发、5 分钟兜底；未使用 0 探测），失败后 provider 成员集合变化时热重载触发切换；重载失败保留 pending 重试。**不得**用 mihomo 直接 url-test IMAPS 端口，**不得**仅用 443 探测代替邮件端口筛选；国内邮箱与 Gmail 网页流量保持原路由。
+10. **邮件专用**（2026-10-16 起，详见该日条目）：`imap.gmail.com` / `smtp.gmail.com` 等海外邮件客户端域名 → `📧 邮件专用`；成员来自 `sparkle-mail` provider（Sparkle 主进程 **993+465 双通** 探测 + `sparkle-mail-nodes.json` 缓存）；组类型 `fallback`（2026-11-03 起：按 provider 的地区序取首个存活节点，台湾优先），延迟展示 URL 为 `https://mail.google.com`（`MAIL_DELAY_TEST_URL`）。当前节点只在邮件组最近被使用时按需复测 993/465（拨号失败后 30s 提前触发、5 分钟兜底；未使用 0 探测），失败后 provider 成员集合变化时热重载触发切换；重载失败保留 pending 重试。**不得**用 mihomo 直接 url-test IMAPS 端口，**不得**仅用 443 探测代替邮件端口筛选；国内邮箱与 Gmail 网页流量保持原路由。
 11. **Gemini 真实地区解锁校验**（2026-10-17 起，详见该日条目与 BUG-2026-10-17-001）：mihomo 对 `https://gemini.google.com` 的健康检查只看 HTTP 200 状态码，无法识别「HTTP 200 但 HTML 内嵌 `vXmutd="ZZ"/"CN"/"HK"` 或 `www.google.cn`」的机场送中节点；Sparkle 主进程通过 `sparkleGeminiProbe.ts`（与邮件探测共享 `sparkleMailPortProbe.ts::withLocalProbeChannelLock` 串行复用 `127.0.0.1:17899`）流式校验 `vXmutd` 国家码，在 `autoSelectStickyPin` 固定前拦截、固定期间每 5 分钟/节点变化复核，并在 `sparkle-fast-proxies.yaml` 生成/重排时自动剔除送中节点（持久化至 `sparkle-gemini-nodes.json`）。**铁律**：网络超时/连接错误必须返回 `definitive: false`（fail-open），绝不可把瞬时网络抖动的节点记入地区锁区黑名单。
+12. **运行时配置对账**（2026-11-11 起）：配置生成后必须让运行内核采用最新规则 / 分组（`runtimeConfigSync.ts`）。订阅刷新只热重载 provider 从不让内核换规则，服务模式保留的旧内核曾只载入 131 条规则而磁盘已有 3788 条（BUG-2026-11-11-001）。**不得**把「磁盘配置已更新」当作「内核已采用」：是否需要整配置重载由 `runtimeConfigSyncCore` 对规则 / 分组 / provider 定义做指纹对比决定。
+13. **配置生成不变量**（2026-11-10 ~ 11-12）：① 生成配置没有 `MATCH` 时追加 `MATCH,🚀 节点选择`（缺省退 `自动选择` → `DIRECT`）（`ensureMatchFallbackRule`）；② 订阅降级到 0 规则时补国内直连基线（`cnDirectBaseline.ts`）；③ 写盘前剔除无法解析的组成员（`dropUnknownGroupMembers`），**provider 里仍有成员的组不得塞 `DIRECT`**（fallback / url-test 会把它选成出口）；④ 规则目标指向不存在的分组时改指主选择组（内置出口、订阅组与顶层内联节点视为合法目标）；⑤ 规则文本解析与策略改写只走 `ruleSyntax.ts`，改写策略时其余字段（`no-resolve`、`src` 等）原样保留，字段布局以真实内核差分为准，不靠猜。
+14. **自动切换分工**（2026-11-11 起）：`autoSwitchPolicy.ts` 是「谁来切节点」的单一策略表（新增分组类型 = 补一行，源码扫描测试拦漏填）；`groupFailoverCore / Engine` 把内核「连续拨号失败」的 warning 折算成「节点持续不可用」，只管 url-test 型地区组：改选并固定、隔离失败节点、到期释放；`autoSwitchPinRelease` 在内核启动 / 整配置重载后释放缓存恢复的固定、订阅刷新后只释放孤儿固定；`自动选择`、邮件 / grok / agy 专用组、`🎯 Cursor 专用` 各自保持上文规则，不被转移引擎接管。
+15. **日志与 YAML 底座**（2026-11-12）：`appendAppLog` 永不 reject（落盘失败静默，调用方不必再 `.catch`）；`parseYaml` 在文档树上还原 Reality `short-id` 的原文（块风格与 flow 风格都覆盖，纯数字 / 科学计数法写法不会被解析成数字）；**不得**把这两处改回「日志失败向上抛」或「先解析再修补」（BUG-2026-11-12-002 / -003，见 `utils_20261107_20261113_BUGFIX_LOG.md`）。
 
 **2026-10-09 移除 Cursor 长流子系统（待装包验证）**
 - **保留**：`🎯 Cursor 专用` 组（成员、仅手动选择、默认节点）+ Cursor 路由 / DNS 规则（`cursorBidiOptimize`、`cursorProxyAppPathPrefixes`）。
@@ -286,7 +292,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| **当前状态** | 本条的「专用组」「专用组守卫」已不在代码中：专用组于 2026-10-03 删除（`dafb2fa`），三条前置规则现指向 `自动选择` fallback（`antigravityRuleInjection.ts:38`），`verify:agygeo` 改为断言 `自动选择`（`scripts/verify-antigravity-geo-routing.mts`）。以顶部「当前最佳基线」第 7 条为准；以下行保留为当时记录。 |
+| **当前状态** | 本条的「专用组」「专用组守卫」（VPS provider + fallback 的 `🎯 Antigravity 专用`）已不在代码中：专用组于 2026-10-03 删除（`dafb2fa`），2026-11-02 起由 `🎯 agy 专用`（`select` + `sparkle-agy` provider，只含真实 agy 请求通过的节点）取代，**四条**前置规则指向它，该组缺席时退回 `自动选择`（`antigravityRuleInjection.ts`），`verify:agygeo` 断言该组与四条规则（`scripts/verify-antigravity-geo-routing.mts`）。以本文件「📌 当前最佳基线」第 7 条为准；以下行保留为当时记录。 |
 | **版本** | `/Applications/Sparkle.app` → **1.30.67**（installed=expected，装包入口 `pnpm run agent:upgrade:mac`；agent 场景需 `SPARKLE_UPGRADE_BREAK_GLASS=1` 跳过 safe-window idle 等待——agent 会话自身占活跃连接必然死锁） |
 | **专用组** | `🎯 Antigravity 专用` = **fallback**：`use` = VPS provider、`filter (?i)-VPS-(Reality|HY2)$`（Reality 优先确定性、HY2 冷备、绝不 DIRECT），url `https://gemini.google.com`、interval 300、timeout 5000、lazy |
 | **前置规则** | rules 数组最前注入 3 条：`DOMAIN-KEYWORD,cloudcode-pa` + `DOMAIN-SUFFIX,aicode.googleapis.com` + `DOMAIN-SUFFIX,generativelanguage.googleapis.com`（gemini CLI 未来同样受益；host 均纯 AI-API 端点零附带伤害） |
