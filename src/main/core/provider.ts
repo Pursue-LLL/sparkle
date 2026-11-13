@@ -1,3 +1,18 @@
+// [INPUT] autoSwitchPinRelease::releaseAutoSwitchPins (POS: 自动组固定释放接线) ·
+//         mihomoApi::mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
+//         providerConfigCore::buildBaseConfigWithProviders (POS: provider 文档与健康检查配置) ·
+//         sparkleAgyProviderCore::AGY_NODE_PROVIDER_ID (POS: agy provider 与分组配置) ·
+//         sparkleFastProviderCore::FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
+//         sparkleGrokProviderCore::GROK_NODE_PROVIDER_ID (POS: grok provider 与快照) ·
+//         sparkleMailProviderCore::MAIL_NODE_PROVIDER_ID (POS: 邮件 provider 与分组配置) ·
+//         utils/dirs::mihomoWorkDir/profilesDir (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         utils/yaml::stringifyYaml (POS: YAML 解析与序列化) ·
+//         vlessVisionMuxGuardCore::applyVlessVisionMuxGuard/summarizeVlessVisionMuxGuard (POS: VLESS Vision 与 mux 互斥防护) ·
+//         vpsProviderSplitCore::partitionLeafProxies/resolveVpsProviderId (POS: VPS 节点拆分与 provider id)
+// [OUTPUT] extractProxies · generateProxyProvider · setupProfileProviders · reloadMihomoProfileProviders · generateBaseConfigWithProvider · deleteProvider
+// [POS] 订阅节点到 provider 文件的转换层：节点经 VLESS Vision 防护后拆成商用与 VPS provider 文件落盘，生成使用 provider 的基础配置，订阅刷新时让内核热重载 provider。
+
 import { writeFile, rm } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'

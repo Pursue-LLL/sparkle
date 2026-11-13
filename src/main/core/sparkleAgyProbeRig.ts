@@ -1,4 +1,11 @@
-// [INPUT] node:test 假时钟与模块替身 · sparkleAgyProbe 及其子模块（被测，每个用例重新加载）· 临时目录里的真实 HOME / 数据目录 / provider 文件 · 假的 agy CLI 进程 · sparkleAgyProbeWorld
+// [INPUT] node:test 假时钟与模块替身 · sparkleAgyProbe 及其子模块（被测，每个用例重新加载）· 临时目录里的真实 HOME / 数据目录 / provider 文件 · 假的 agy CLI 进程 · sparkleAgyProbeWorld ·
+//         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
+//         sparkleAgyCli (POS: 官方 agy CLI 请求) ·
+//         sparkleAgyGroupControl (POS: agy 组操作) ·
+//         sparkleAgyProbeSnapshot (POS: agy 展示快照) ·
+//         sparkleAgyProviderCore::AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
+//         syncFsPromisesRig::mockFsPromisesSync (POS: fs/promises 同步化夹具) ·
+//         utils/yaml::parseYaml (POS: YAML 解析与序列化)
 // [OUTPUT] useAgyRig · snapshot/syncSnapshot/groupControl/agyCli · 文件读写辅助 · runBootstrap/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeWorld 的全部夹具
 // [POS] sparkleAgyProbe 行为测试夹具：配置、mihomo 控制器与日志用替身，agy CLI 用可编排结局的假子进程，
 // 探测缓存、provider 文件与探测目录走临时目录里的真实文件。仅供测试使用。

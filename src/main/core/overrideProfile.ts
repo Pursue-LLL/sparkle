@@ -1,4 +1,7 @@
-// [INPUT] override 配置（yaml / js 脚本）· 当前订阅的 override 绑定 · overrideScript::runOverrideScript (POS: 覆写脚本执行器)
+// [INPUT] override 配置（yaml / js 脚本）· 当前订阅的 override 绑定 · overrideScript::runOverrideScript (POS: 覆写脚本执行器) ·
+//         config::getOverride/getOverrideConfig/getOverrideItem/getProfileItem (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         utils/dirs::overridePath (POS: 应用目录与路径常量) ·
+//         utils/merge::deepMerge (POS: 对象深合并)
 // [OUTPUT] overrideProfile: 依次应用全局与订阅级覆写
 // [POS] runtime 配置生成流水线的覆写层：yaml 深合并，js 脚本交给沙箱执行器，失败时保留原配置。
 

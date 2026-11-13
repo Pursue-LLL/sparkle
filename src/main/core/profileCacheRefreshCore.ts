@@ -1,4 +1,6 @@
-// [INPUT] profilesDir disk yaml · runtimeConfigSync::regenerateAndSyncProfile (POS: 运行时配置对齐执行层)
+// [INPUT] profilesDir disk yaml · runtimeConfigSync::regenerateAndSyncProfile (POS: 运行时配置对齐执行层) ·
+//         utils/dirs::profilePath (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] reloadCurrentProfileFromDiskCache · readProfileDiskUpdatedMs · formatMissingSubscriptionUrlError
 // [POS] 无订阅 URL 时从磁盘缓存重新生成配置并让内核采用（BUG-2026-09-03-003 侧边栏刷新）
 

@@ -1,16 +1,16 @@
 # Sparkle — 系统架构
 
-Electron 桌面代理 GUI，主进程驱动 mihomo 内核；`自动选择` 按地区优先级与延迟选节点（延迟快照仅在 provider 指纹一致且成功覆盖 ≥80% 时复用，否则启动补测）；`🎯 Cursor 专用` 与 Cursor 路由规则固定 Cursor 流量；`📧 邮件专用` 经 Sparkle 侧 993/465 真实探测筛节点（全量入库 + 当前节点按需复测）后承载 macOS Mail 等海外 IMAP/SMTP；`grok 专用` 以 mixed-port 真实 HEAD 请求（200 且无 Cloudflare challenge）筛选可用出口并每 60 秒复核；AI API 端点（`api.commandcode.ai` / `opencode.ai` / `open-design.ai`）在无人指定规则时**默认直连**。
+Electron 桌面代理 GUI，主进程驱动 mihomo 内核；`自动选择` 按地区优先级与延迟选节点（延迟快照仅在 provider 指纹一致且成功覆盖 ≥80% 时复用，否则启动补测）；`🎯 Cursor 专用` 与 Cursor 路由规则固定 Cursor 流量；`📧 邮件专用` 经 Sparkle 侧 993/465 真实探测筛节点（全量入库 + 当前节点按需复测）后承载 macOS Mail 等海外 IMAP/SMTP；`grok 专用` 以 mixed-port 真实 HEAD 请求（200 且无 Cloudflare challenge）筛选可用出口并每 60 秒复核；`🎯 agy 专用` 只收录通过官方 agy CLI 真实请求的节点；运行时配置与内核对账重载，`Sparkle-<地区>` 组由故障转移引擎兜底；AI API 端点（`api.commandcode.ai` / `opencode.ai` / `open-design.ai`）在无人指定规则时**默认直连**。
 
 ## 模块导航
 
 | 路径                                                                                          | 职责                                                                         |
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| [src/main/core/\_ARCH.md](src/main/core/_ARCH.md)                                             | 主进程核心：mihomo 控制、配置生成、自动选择延迟序、Cursor / 邮件专用组与规则 |
+| [src/main/core/\_ARCH.md](src/main/core/_ARCH.md)                                             | 主进程核心：mihomo 控制、配置生成与对账、自动选路与故障转移、Cursor / 邮件 / grok / agy 专用组与规则 |
 | [src/renderer/src/components/proxies/\_ARCH.md](src/renderer/src/components/proxies/_ARCH.md) | 代理页 UI、节点详情弹窗、build stamp                                         |
 | [src/shared/\_ARCH.md](src/shared/_ARCH.md)                                                   | 跨进程类型与构建标识                                                         |
 | [BUGFIX_LOG.md](BUGFIX_LOG.md)                                                                | 网络/安装缺陷台账与 ship 门禁记录                                            |
-| [scripts/\_ARCH.md](scripts/_ARCH.md)                                                         | 构建/安装/验收脚本（含 Agent SSOT `agent-sparkle-upgrade.sh`）               |
+| [scripts/\_ARCH.md](scripts/_ARCH.md)                                                         | 构建/安装/验收脚本、GUI 看门狗（含 Agent SSOT `agent-sparkle-upgrade.sh`）   |
 
 ## 进程与数据流
 
@@ -19,7 +19,7 @@ Renderer (React)
   ↔ preload ↔ Main (Electron)
                   ├ manager.ts — mihomo 生命周期
                   ├ factory.ts — runtime config 生成（provider / 分组 / 规则 / DNS）
-                  └ postCoreBootstrap.ts — 运行时配置对齐与自动组固定释放 · 延迟序 · 自动选择粘性固定 · 故障转移 · 邮件端口探测（全量补测 + 当前节点按需复测） · 订阅更新 · Cursor 默认节点 · 地区组按需预热
+                  └ postCoreBootstrap.ts — 内核就绪后的启动编排：运行时配置对齐与自动组固定释放 · 延迟序 · Gemini 地区审计 / 邮件 / grok / agy 探测（后台并行） · 自动选择粘性固定 · 故障转移 · 订阅更新 · Cursor 默认节点 · 地区组按需预热
 
 mihomo (TUN) → 节点 leaf → 目标站点
 ```
@@ -36,14 +36,19 @@ mihomo (TUN) → 节点 leaf → 目标站点
 8. **分组展示顺序固定** — `proxyGroupOrder` 在写盘前统一排序：`自动选择` → 四个专用组（`🎯 Cursor 专用` / `grok 专用` / `📧 邮件专用` / `🎯 agy 专用`，隐藏探测组 `__sparkle_mail_probe__` 紧随邮件组）→ `Sparkle-<地区>` → 其余；同档位保持订阅原顺序，代理页按该顺序渲染。
 9. **延迟快照必须可验证** — `sparkle-fast-delays.json` 只保存带 `providerFingerprint` 的 v2 快照；加载时指纹必须匹配当前 provider 配置，且成功样本覆盖率必须 ≥80%。旧格式、配置变化、覆盖不足一律视为无快照并强制逐点补测，禁止用残缺/过期样本跳过探测。
 10. **合并订阅不得丢失来源 DNS** — 来源订阅自带 `dns.proxy-server-nameserver`（如 YYSSR 的 carrier DoH）时，合并结果必须按来源节点 `server` 域名写入 `proxy-server-nameserver-policy`；只对来源自身域名生效，base 的 DNS 不得覆盖来源节点入口解析。
-11. **agy 探测必须绑定出口** — `🎯 agy 专用` 的地域结论只能来自「真实 agy 请求 + 该请求确实从被测节点出去」：mihomo `select` 只影响新建连接，magpie 的 HTTP/2 长连接会复用旧出口，因此任何切组后必须 `mihomoCloseConnections('🎯 agy 专用')`，连接清不掉就记 `unknown` 不写缓存。巡检顺序固定为「pin 就地复测（5min，不切组，30s 超时）→ 400 同节点二次确认 / 超时连续两轮才做修复扫描（严格地区优先 台湾→日本→韩国→新加坡→美国→其余、15s 超时、12 个上限、5min 预算、第一个 200 立即停；15 分钟内试过的节点（含超时）降级到「已尝试」组，保证下一轮先试未试候选、防饿死）」，禁止再用定期全量切换把生产流量拖到候选节点上。代理页对 `🎯 agy 专用` 只展示真实 agy 结论：可用显示秒级 + 距上次探测时间，失败显示「失败」+ 原因，锁区显示「锁区」，未探测显示「—」；不展示 gstatic 网络延迟、不提供该组手动测速。
+11. **agy 探测必须绑定出口** — `🎯 agy 专用` 的地域结论只能来自「真实 agy 请求 + 该请求确实从被测节点出去」：mihomo `select` 只影响新建连接，magpie 的 HTTP/2 长连接会复用旧出口，因此任何切组后必须 `mihomoCloseConnections('🎯 agy 专用')`，连接清不掉就记 `unknown` 不写缓存。巡检顺序固定为「pin 就地复测（30 分钟一轮，不切组，90s 超时）→ 400 同节点二次确认 / 超时连续两轮才做修复扫描（严格地区优先 台湾→日本→韩国→新加坡→美国→其余、60s 超时、6 个上限、5min 预算、第一个 200 立即停；15 分钟内试过的节点（含超时）降级到「已尝试」组，保证下一轮先试未试候选、防饿死）；全灭后按 1×/2×/3× 退避」，不用定期全量切换，避免把生产流量拖到候选节点上。代理页对 `🎯 agy 专用` 只展示真实 agy 结论：可用显示秒级 + 距上次探测时间，失败显示「失败」+ 原因，锁区显示「锁区」，未探测显示「—」；不展示 gstatic 网络延迟、不提供该组手动测速。
 12. **自动切换由单一策略表声明，各机制互不重叠** — 「谁来切节点」只在 `autoSwitchPolicy` 声明一次：`自动选择`（粘性固定）、`Sparkle-<地区>`（url-test + 故障转移）、`🎯 Cursor 专用`（只手动）、邮件 / grok / agy 专用（各自探测）、订阅自带分组（内核原生 / 手动）。新增一类分组 = 补策略表一行，源码扫描测试会拦住漏填；不得新增轮询或跳过名单。
     - **运行时配置必须与磁盘一致**：`runtimeConfigSync` 在每次重新生成配置后，按 `rules` / `sub-rules` / `rule-providers` / `proxy-groups` / `proxy-providers` 的指纹对账，变化则整配置重载（`PUT /configs?force=true` 采用磁盘 `config.yaml`；失败只记日志，不重启内核）；内核就绪时再用 `GET /rules` 条数与磁盘对账（服务模式可能保留更早会话的旧内核）。仅热重载 provider 会让内核长期运行旧规则，这是「国内软件没走直连」的根因。
-    - **固定释放按生命周期**：`store-selected: true` 下内核会把 `cache.db` 的历史选点读回为 `fixed`。`autoSwitchPinRelease` 在内核启动 / 整配置重载后释放全部自动组的固定（`all`），在订阅刷新后只释放节点已不在组内的孤儿固定（`orphans`）。节点失活本身由内核原生处理：URLTest 仅在固定节点存活时才遵循 `fixed`，Fallback 会清除失活的固定，无需看门狗。
+    - **固定释放按生命周期**：`store-selected: true` 下内核会把 `cache.db` 的历史选点读回为 `fixed`。`autoSwitchPinRelease` 在内核启动 / 整配置重载后释放全部自动组的固定（`all`），在订阅刷新后只释放节点已不在组内的孤儿固定（`orphans`）。节点失活本身由内核原生处理：URLTest 仅在固定节点存活时才遵循 `fixed`，Fallback 会清除失活的固定，Sparkle 不另设看门狗。
     - **故障转移**：内核对一个组连续拨号失败时只打一条 warning 告警并复测一次，url-test 复测常常照旧通过，节点仍被选中而真实流量持续超时。`groupFailover*` 订阅独立于界面日志级别的告警流（`/logs?level=warning`），同一组窗口内两次计数告警（30 s 去重、180 s 窗口）即为 `Sparkle-<地区>` url-test 组改选最近一次探测成功、延迟最低的节点，失败节点隔离 10 分钟，保留期满把组交还内核；用户固定且内核正在遵循的节点不动；`自动选择` 与专用组不参与。内核的告警文案是它唯一的外部契约：升级或切换内核（含 alpha）后运行 `pnpm run verify:failover`（隔离实例，约 2 分钟）。
     - **国内直连基线**：订阅没有任何国内感知规则（`GEOSITE/GEOIP,CN` 或 `RULE-SET`）时，`cnDirectBaseline` 在最后一条 `MATCH` 前补 `GEOSITE,CN,DIRECT` 与 `GEOIP,CN,DIRECT`，避免国内流量全部走代理。
     - **交互可逆**：代理页 `ProxyItem` 对已处于锁定状态的卡片支持点击一键解钉（Toggle Off），杜绝误触后无法自愈。
 13. **Grok 选路必须用真实请求口径** — `grok 专用` 为 `select`，成员来自 `sparkle-grok` provider；节点可用性只能由「通过 mixed-port 真实请求 `https://grok.com/` 得到 200 且无 `cf-mitigated: challenge`」判定（发现阶段同样逐个切换并真实请求验证）。稳态 60 秒只复核当前节点（网络超时重试一次），失败才按池内 RTT 顺序切换；池内全灭才扩到全量发现（3 个可用即停）。候选顺序非香港优先；provider 不做周期健康检查。
+
+14. **旁路不得改变主流程** — 日志只用于诊断：`appendAppLog` 落盘失败只丢这一段、永不 reject，编排层经 `bestEffortLog` 包装注入的日志函数；`postCoreBootstrap` 的每个服务经 `guarded` 隔离，任一服务失败只记日志，不影响其余（尤其故障转移）。
+15. **规则策略只经 `ruleSyntax` 读写** — 规则的字段布局、策略读取与改写在 `ruleSyntax` 一处定义（改写只换策略字段，`no-resolve`、`src` 等参数原样保留）；`antigravityRuleInjection` / `profileGroupNormalize` / `fakeIpRoutingIntegrity` / `cursorRuleInjection` / `cursorDedicatedRuleRewrite` / `customProxyGroups` 读写策略目标一律经它，不各自 `split(',')`。`vpsDirectBypass` / `aiApiDirectRules` 只按「类型 + 载荷」两个前导字段判断是否已有规则，不读不改策略。兜底 `MATCH` 的目标只能是内置出口、订阅组或顶层内联节点。
+16. **YAML 读写保 Reality `short-id` 原文** — 纯数字写法（`01234567`、`1e5`）经 `parseYaml` 仍是原字符串，不丢前导零、不变成 Infinity；服务端要求逐字相同。
+17. **测试门禁收集全部测试** — `pnpm run test:node-quality` 以 glob 收集 `src/**` 与 `scripts/**` 的全部 `*.test.ts`，新增测试文件无需登记；随机化不变量测试用固定 seed，失败可原样重放。
 
 ## 外部依赖
 

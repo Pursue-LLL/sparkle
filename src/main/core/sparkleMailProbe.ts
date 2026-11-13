@@ -1,6 +1,15 @@
 // [INPUT] sparkleMailPortProbe::probeSingleNodeMailPorts (POS: 单节点 993/465 TLS Banner 校验) ·
 //         sparkleMailProviderCore::buildSparkleMailProviderDocument (POS: sparkle-mail provider 文档生成) ·
-//         当前订阅节点 · sparkle-mail-nodes.json
+//         当前订阅节点 · sparkle-mail-nodes.json ·
+//         autoSelectAnyTlsExclusionCore::isAnyTlsProxyType (POS: url-test 自动组剔除 AnyTLS) ·
+//         config::getAppConfig/getProfile/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         cursorProxyGroup::MAIL_DEDICATED_GROUP_NAME/MAIL_DELAY_TEST_URL (POS: Sparkle 分组名常量与判定谓词) ·
+//         mihomoApi::mihomoGroupDelay/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
+//         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] loadSparkleMailProbeCache · saveSparkleMailProbeCache · writeSparkleMailProviderFromCache · ensureMailProviderReloaded · reloadAndWarmMailGroup · bootstrapSparkleMailProvider · loadCurrentMailProxies · runSparkleMailProbeExclusive · startSparkleMailProbeLoop
 // [POS] 邮件 provider 的全量探测与同步：对订阅叶子执行真实 993/465 校验，把结果写入 `sparkle-mail-proxies.yaml`；成员集合变化时热重载 `📧 邮件专用`，
 // 热重载失败保留 pending 由后续按需/每小时探测重试。

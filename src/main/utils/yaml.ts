@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] parseYaml · stringifyYaml: YAML 解析与序列化
+// [POS] YAML 读写的统一入口：解析在文档树上还原 Reality `short-id` 的原文（块 / flow / 锚点 / 合并键写法一致），纯数字写法不会丢前导零，也不会变成数字或 Infinity。
+
 import yaml, { type Document, type Scalar } from 'yaml'
 
 const REALITY_OPTS_KEY = 'reality-opts'

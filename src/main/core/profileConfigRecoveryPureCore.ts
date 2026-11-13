@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] isBlankProfileConfigRaw · isEmptyPersistableProfileConfig · profileIdFromSubscriptionFile · mergeProfileConfigItems · buildRecoveredProfileItemFromDisk
+// [POS] 订阅配置恢复的纯决策层：判定 `profile.yaml` 是否空 / 损坏、从磁盘订阅文件名反推订阅 id、合并条目与构造恢复条目。不含 IO。
+
 /** 只看有没有订阅条目（`- id:` 行）：空文件、`items: []`、`items:` 都没有条目。 */
 export function isBlankProfileConfigRaw(raw: string): boolean {
   return !/^\s*-\s+id:/m.test(raw)

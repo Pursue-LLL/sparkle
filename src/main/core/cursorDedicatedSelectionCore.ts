@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] CursorDedicatedManualSelection · resolveCursorDedicatedSelectionPath · readCursorDedicatedManualSelection · writeCursorDedicatedManualSelection
+// [POS] Cursor 专用组用户手选节点的持久化：`~/.sparkle/cursor-dedicated-selection.json`（`SPARKLE_CURSOR_SELECTION_FILE` 可覆盖）；读失败或空值返回 undefined，空节点名不写。
+
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -35,7 +39,7 @@ export async function writeCursorDedicatedManualSelection(node: string): Promise
   await mkdir(path.dirname(filePath), { recursive: true })
   const body: CursorDedicatedManualSelection = {
     node: trimmed,
-    updatedAtMs: Date.now(),
+    updatedAtMs: Date.now()
   }
   await writeFile(filePath, JSON.stringify(body), 'utf8')
 }

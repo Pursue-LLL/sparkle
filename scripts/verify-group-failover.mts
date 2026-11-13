@@ -1,4 +1,11 @@
 #!/usr/bin/env tsx
+// [INPUT] groupFailoverCore::FailoverGroupSnapshot (POS: 故障转移纯决策层) ·
+//         groupFailoverEngine::createGroupFailoverEngine (POS: 故障转移编排引擎) ·
+//         mihomoGroupMembersCore::buildProviderProxyLookup/resolveGroupMemberProxies (POS: 分组成员解析) ·
+//         mihomoIsolatedHarness::closeServer/openAlertStream/proxiedGet/reserveFreePorts… (POS: 隔离内核端到端夹具)
+// [OUTPUT] pnpm run verify:failover [内核路径]: 退出码 0 = 引擎与内核的契约成立
+// [POS] 故障转移引擎对真实 mihomo 内核的端到端校验（隔离实例，约 2 分钟）。内核告警文案或拨号失败语义变化时在第一步失败；只接触自己创建的进程、端口与目录。
+
 /**
  * 故障转移引擎 × 真实 mihomo 内核的端到端校验。
  * 隔离实例（项目缓存目录 + 随机回环端口），不接触正在运行的内核。

@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] resolveCachedLogFileSize · nextLogFileSizeAfterAppend · shouldTrimLogFile · trimTargetBytes · trimLogContent
+// [POS] 日志文件大小记账与裁剪的纯函数：缓存大小的命中、追加后的累计、超限判定与按行裁剪到低水位。不含 IO。
+
 export interface LogFileSizeState {
   path: string
   size: number | null

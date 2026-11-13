@@ -1,3 +1,9 @@
+// [INPUT] config::addProfileItem/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         profileUpdaterCore::createDueProfileUpdateRunner (POS: 订阅到期判定与更新执行) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
+// [OUTPUT] runDueProfileUpdates · initProfileUpdater: 订阅到期检查与 GUI 心跳
+// [POS] 订阅自动更新的运行时接线：GUI 每 5 分钟心跳（启动后 60 秒首次）与 LaunchAgent 共用同一个到期检查；每次 init 换新一代，旧一代在途检查结束后不再续排。
+
 import { addProfileItem, getProfileConfig } from '../config'
 import { appendAppLog } from '../utils/log'
 import { createDueProfileUpdateRunner } from './profileUpdaterCore'

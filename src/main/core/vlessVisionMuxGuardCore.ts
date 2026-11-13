@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] isVlessVisionProxy · normalizeVlessVisionProxy · applyVlessVisionMuxGuard · summarizeVlessVisionMuxGuard
+// [POS] VLESS xtls-rprx-vision 与 sing-mux / Mux.Cool 互斥防护：识别 Vision 节点，移除其 `multiplex` 并显式写 `smux: false`（内核在 smux 缺省时可能隐式启用 sing-mux），避免 TLS BAD_DECRYPT。
+
 /**
  * VLESS xtls-rprx-vision is incompatible with sing-box/clash multiplex (sing-mux / Mux.Cool).
  * @see https://github.com/SagerNet/sing-box/issues/1535 — TLS BAD_DECRYPT / bad record mac with both enabled.
@@ -21,7 +25,9 @@ export interface VlessVisionMuxGuardResult {
   ensuredSmuxOff: boolean
 }
 
-export function normalizeVlessVisionProxy(proxy: Record<string, unknown>): VlessVisionMuxGuardResult {
+export function normalizeVlessVisionProxy(
+  proxy: Record<string, unknown>
+): VlessVisionMuxGuardResult {
   const next = { ...proxy }
   let strippedMultiplex = false
 

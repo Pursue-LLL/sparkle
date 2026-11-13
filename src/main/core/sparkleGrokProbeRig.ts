@@ -1,4 +1,12 @@
-// [INPUT] node:test 假时钟与模块替身 · sparkleGrokProbe 及其子模块（被测，每个用例重新加载）· 临时目录里的真实数据 / provider 文件 · 假的 axios · sparkleGrokProbeWorld
+// [INPUT] node:test 假时钟与模块替身 · sparkleGrokProbe 及其子模块（被测，每个用例重新加载）· 临时目录里的真实数据 / provider 文件 · 假的 axios · sparkleGrokProbeWorld ·
+//         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
+//         sparkleGrokProbeCache (POS: grok 探测缓存) ·
+//         sparkleGrokProbeSnapshot (POS: grok 展示快照) ·
+//         sparkleGrokProviderCore::GROK_NODE_PROVIDER_FILENAME/GrokProbeSnapshot (POS: grok provider 与快照) ·
+//         sparkleGrokRoutedCheck (POS: grok 真实请求判定口径) ·
+//         syncFsPromisesRig::mockFsPromisesSync (POS: fs/promises 同步化夹具) ·
+//         timerSpyHarness::spyOnTimer/TimerSpy (POS: 定时器记录夹具) ·
+//         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] useGrokRig · snapshot/loadCache/routedCheck · 文件读写辅助 · runBootstrap/settle/advance/setNow · 重导出 sparkleGrokProbeWorld 的全部夹具
 // [POS] sparkleGrokProbe 行为测试夹具：配置、mihomo 控制器与日志用替身，grok.com 请求用可编排结局的假 axios，
 // 探测缓存与 provider 文件走临时目录里的真实文件。仅供测试使用。

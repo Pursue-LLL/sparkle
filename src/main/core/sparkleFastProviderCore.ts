@@ -1,4 +1,6 @@
-// [INPUT] 当前订阅节点 · 地区优先级 · 可选的节点延迟
+// [INPUT] 当前订阅节点 · 地区优先级 · 可选的节点延迟 ·
+//         autoSelectAnyTlsExclusionCore::isAnyTlsProxyType (POS: url-test 自动组剔除 AnyTLS) ·
+//         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
 // [OUTPUT] FAST_NODE_PROVIDER_ID · orderProxiesByRegionPriority · buildSparkleFastProviderDocument · listFlatAutoSelectProxyNames
 // [POS] `自动选择` 的专属 provider 文件：按地区优先级分段，剔除 AnyTLS 与香港；
 // 有实测延迟样本时，存活节点按地区分段 + 段内延迟升序排在前，无样本（超时/未测）节点按地区序统一垫在文件末尾（无延迟数据时保持订阅顺序）。

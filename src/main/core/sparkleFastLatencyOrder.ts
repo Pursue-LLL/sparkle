@@ -1,4 +1,13 @@
-// [INPUT] sparkleFastDelaySnapshotCore (POS: 延迟快照指纹/覆盖率/序列化) · sparkleFastLatencyOrderCore (POS: 历史折算与迟滞) · sparkleFastProviderCore (POS: provider 排序) · mihomo provider 探测历史 · sparkle-fast-proxies.yaml · proxySwitchPriority
+// [INPUT] sparkleFastDelaySnapshotCore (POS: 延迟快照指纹/覆盖率/序列化) · sparkleFastLatencyOrderCore (POS: 历史折算与迟滞) · sparkleFastProviderCore (POS: provider 排序) · mihomo provider 探测历史 · sparkle-fast-proxies.yaml · proxySwitchPriority ·
+//         config::getAppConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         cursorProxyGroup::AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         mihomoApi::mihomoGroupDetail/mihomoProxyProviders/mihomoUnfixedProxy/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
+//         providerLeafProbe::probeProviderLeavesGently (POS: provider 叶子低并发拨测) ·
+//         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
+//         sparkleGeminiProbe::loadGeminiBlockedNodeNames (POS: Gemini 地区探测与缓存) ·
+//         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] bootstrapSparkleFastLatencyOrder · loadSparkleFastDelaySnapshot · startSparkleFastLatencyOrderLoop
 // [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变，无样本节点全局垫底），并让 mihomo 重读 provider。
 // 启动时先看内存成功样本覆盖率；不足再看磁盘 v2 快照（provider 指纹一致且覆盖 ≥80% 才沿用）；仍不足则逐点补测后重排。

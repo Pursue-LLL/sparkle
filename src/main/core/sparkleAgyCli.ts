@@ -1,4 +1,5 @@
-// [INPUT] 官方 agy CLI（~/.local/bin/agy，keychain 登录）· 探测专用干净目录
+// [INPUT] 官方 agy CLI（~/.local/bin/agy，keychain 登录）· 探测专用干净目录 ·
+//         utils/dirs::dataDir (POS: 应用目录与路径常量)
 // [OUTPUT] AGY_PROBE_MODEL · requestNativeAgy · NativeAgyResponse
 // [POS] 跑一次官方 agy CLI 的真实请求，把输出归类成 HTTP 状态：地区被拒 → 400，退出码 0 → 200，登录问题 → 403，其余 → 500。
 // 干净目录不加载用户的 skills / MCP / 全局规则（34k → 6.9k input），同时保留官方客户端的全部请求特征。

@@ -1,3 +1,7 @@
+// [INPUT] cursorProxyGroup::CURSOR_DELAY_TEST_URL (POS: Sparkle 分组名常量与判定谓词)
+// [OUTPUT] VPS_PROVIDER_ID_SUFFIX · resolveVpsProviderId · isVpsProviderId · isVpsLeafProxy · partitionLeafProxies · buildCommercialProviderHealthCheck · buildVpsProviderHealthCheck
+// [POS] VPS 节点与商用节点的拆分：名含 vps 的叶子归 `<订阅 id>-vps` provider，两类 provider 各自的健康检查配置。
+
 import { CURSOR_DELAY_TEST_URL } from './cursorProxyGroup'
 
 export const VPS_PROVIDER_ID_SUFFIX = '-vps' as const
@@ -57,9 +61,11 @@ export function buildCommercialProviderHealthCheck(
   }
 }
 
-export function buildVpsProviderHealthCheck(
-  options?: { enable?: boolean; interval?: number; lazy?: boolean }
-): ProviderHealthCheckConfig {
+export function buildVpsProviderHealthCheck(options?: {
+  enable?: boolean
+  interval?: number
+  lazy?: boolean
+}): ProviderHealthCheckConfig {
   return {
     enable: options?.enable ?? true,
     url: CURSOR_DELAY_TEST_URL,

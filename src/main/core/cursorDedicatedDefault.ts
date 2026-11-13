@@ -1,3 +1,10 @@
+// [INPUT] cursorDedicatedSelectionCore::readCursorDedicatedManualSelection (POS: Cursor 专用组手选持久化) ·
+//         cursorProxyGroup::CURSOR_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         defaultAutoSwitchProxy::MihomoAutoSwitchApi (POS: 自动选择与地区组默认配置) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
+// [OUTPUT] CURSOR_DEFAULT_VPS_NODE · shouldApplyCursorDedicatedDefault · resolveCursorDefaultVpsNode · applyCursorDedicatedVpsSelection
+// [POS] Cursor 专用组的启动选择：手选记录仍在组内则恢复手选；否则组当前选择为空或 `SDK DNS` 时落到 `KR-VPS-Reality`，该节点不在组内则跳过；组已有其它选择则不动。
+
 import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { readCursorDedicatedManualSelection } from './cursorDedicatedSelectionCore'
 import type { MihomoAutoSwitchApi } from './defaultAutoSwitchProxy'

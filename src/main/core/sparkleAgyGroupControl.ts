@@ -1,4 +1,12 @@
-// [INPUT] `🎯 agy 专用` 组（mihomo）· `sparkle-agy` provider 文件 · agy CLI 探测 · 探测缓存
+// [INPUT] `🎯 agy 专用` 组（mihomo）· `sparkle-agy` provider 文件 · agy CLI 探测 · 探测缓存 ·
+//         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         mihomoApi::mihomoChangeProxy/mihomoCloseConnections/mihomoGroupDetail/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
+//         sparkleAgyCli::requestNativeAgy (POS: 官方 agy CLI 请求) ·
+//         sparkleAgyProbeCore::AgyAuditOutcome (POS: agy 巡检状态机) ·
+//         sparkleAgyProbeSnapshot::recordAgyAttempt (POS: agy 展示快照) ·
+//         sparkleAgyProviderCore::AGY_NODE_PROVIDER_FILENAME/AGY_NODE_PROVIDER_ID/agyProxyName/buildSparkleAgyProviderDocument… (POS: agy provider 与分组配置) ·
+//         utils/dirs::profilesDir (POS: 应用目录与路径常量) ·
+//         utils/yaml::stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] probeSingleNode · convergeAgyProvider · selectAgyNode
 // [POS] 对 agy 组的全部操作：归因安全的单节点探测、provider 收敛、切换选择。
 // 归因约束：agy 每次探测都是新进程，切组后由 mihomo 的新连接接管；仍保留 mihomoCloseConnections 清掉旧连接。

@@ -1,3 +1,8 @@
+// [INPUT] cursorProxyGroup::GROK_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         customProxyGroups::HONG_KONG_FILTER_GROUP_NAME (POS: Sparkle 自有分组注入)
+// [OUTPUT] injectDedicatedTrafficRules: X / Twitter / Stripe → Sparkle-香港，grok.com → grok 专用
+// [POS] 香港与 grok 专用流量的前置规则：对应分组存在才注入，已有同文规则不重复，排在订阅的节点选择 / OpenAI 规则之前。
+
 import { GROK_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME } from './customProxyGroups'
 

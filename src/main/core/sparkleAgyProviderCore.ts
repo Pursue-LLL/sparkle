@@ -1,4 +1,8 @@
-// [INPUT] 当前订阅节点 · 地区优先级 · agy（daily-cloudcode-pa）真实请求探测缓存
+// [INPUT] 当前订阅节点 · 地区优先级 · agy（daily-cloudcode-pa）真实请求探测缓存 ·
+//         autoSelectAnyTlsExclusionCore::isAnyTlsProxyType (POS: url-test 自动组剔除 AnyTLS) ·
+//         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
 // [OUTPUT] AGY_NODE_PROVIDER_ID · orderAgyProxies · orderAgyRepairProxies · buildSparkleAgyProviderDocument · buildAgyGroupConfig
 // [POS] `🎯 agy 专用` 的专属 provider：只收录通过了真实 agy 请求（HTTP 200）的节点。
 // 为什么不能复用 gemini.google.com 探测：cloudcode-pa 的地域校验发生在认证之后，无凭证请求

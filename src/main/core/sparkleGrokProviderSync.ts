@@ -1,4 +1,9 @@
-// [INPUT] 当前订阅节点 · 探测缓存 · `sparkle-grok` provider 文件 · mihomo provider 重载接口
+// [INPUT] 当前订阅节点 · 探测缓存 · `sparkle-grok` provider 文件 · mihomo provider 重载接口 ·
+//         mihomoApi::mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
+//         sparkleGrokProviderCore::buildSparkleGrokProviderDocument/grokProviderMembershipChanged/grokProxyName/GROK_NODE_PROVIDER_FILENAME… (POS: grok provider 与快照) ·
+//         utils/dirs::profilesDir (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] readGrokProviderMembers · writeProviderDocument · writeGrokProviderFromCache · reloadGrokProvider · ensureGrokProviderReloaded
 // [POS] provider 文件落盘与热重载：只有成员集合变化才标记待重载（顺序变化不打断 mihomo）；
 // 重载失败只记一次日志，之后每轮继续重试，直到成功。

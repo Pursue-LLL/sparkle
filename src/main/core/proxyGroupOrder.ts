@@ -1,5 +1,6 @@
 /**
- * [INPUT] MihomoConfig profile（分组全部构建完成、写盘之前）
+ * [INPUT] MihomoConfig profile（分组全部构建完成、写盘之前） ·
+ *         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME/AUTO_SELECT_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/GROK_DEDICATED_GROUP_NAME… (POS: Sparkle 分组名常量与判定谓词)
  * [OUTPUT] orderProxyGroups: 统一 proxy-groups 的展示顺序
  * [POS] 只调整分组顺序（自动选择 → 三个专用组 → Sparkle 地区组 → 其余），不改组内容与成员顺序。
  */

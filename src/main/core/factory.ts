@@ -1,3 +1,36 @@
+// [INPUT] aiApiDirectRules::ensureAiApiDirectRules (POS: AI API 默认直连规则) ·
+//         antigravityRuleInjection::injectAntigravityTrafficRules (POS: agy 专用组前置规则) ·
+//         autoSelectAnyTlsExclusionCore::formatAutoSelectAnyTlsExclusionLogLine/ProxyCatalogEntry (POS: url-test 自动组剔除 AnyTLS) ·
+//         buildDriftCore::logBuildDriftAtStartup (POS: 构建漂移日志) ·
+//         cnDirectBaseline::ensureCnDirectBaseline (POS: 国内直连兜底规则) ·
+//         config::getControledMihomoConfig/getProfileConfig/getProfile/getProfileStr… (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         corporateDirectRules::ensureCorporateDirectRules/ensureCorporateDnsPolicy (POS: 公司内网直连规则与 DNS 策略) ·
+//         cursorProxyGroup::CURSOR_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         cursorRuleInjection::injectCursorDomainRules (POS: Cursor 路由规则注入) ·
+//         customProxyGroups::ensureCustomProxyGroups (POS: Sparkle 自有分组注入) ·
+//         dedicatedTrafficRuleInjection::injectDedicatedTrafficRules (POS: 香港 / grok 专用流量前置规则) ·
+//         defaultAutoSwitchProxy::ensureSelectGroupsDefaultToAutoSwitch (POS: 自动选择与地区组默认配置) ·
+//         dnsFallbackIntegrity::ensureDnsFallbackIntegrity/ensureTunStrictRoute (POS: DNS 引导与 fallback 完整性) ·
+//         fakeIpRoutingIntegrity::ensureFakeIpRoutingIntegrity (POS: fake-ip 路由一致性) ·
+//         mailTrafficRuleInjection::injectMailTrafficRules (POS: 海外邮件客户端前置规则) ·
+//         overrideProfile::overrideProfile (POS: 覆写层) ·
+//         profileGroupNormalize::collectSubscriptionGroupNames/dropUnknownGroupMembers/ensureMatchFallbackRule/removeNonSubscriptionProxyGroups… (POS: 订阅分组归一与规则目标修复) ·
+//         provider::extractProxies/setupProfileProviders/generateBaseConfigWithProvider (POS: 订阅节点 → provider 文件) ·
+//         proxyGroupOrder::orderProxyGroups (POS: 分组展示顺序) ·
+//         quicTrafficRuleInjection::injectQuicTrafficRules (POS: QUIC / STUN 阻断规则) ·
+//         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
+//         runtimeConfigSanitize::cleanProfile/dedupeProxyGroupProviderUse (POS: 配置清洗层) ·
+//         sparkleProviderFiles::writeSparkleProviderFiles (POS: sparkle provider 文件层) ·
+//         utils/dirs::mihomoProfileWorkDir/mihomoWorkConfigPath/mihomoWorkDir (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         utils/merge::deepMerge (POS: 对象深合并) ·
+//         utils/notification::showNotification (POS: 应用通知) ·
+//         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化) ·
+//         vlessVisionMuxGuardCore::applyVlessVisionMuxGuard/summarizeVlessVisionMuxGuard (POS: VLESS Vision 与 mux 互斥防护) ·
+//         vpsDirectBypass::ensureVpsDirectBypass (POS: VPS 直连规则)
+// [OUTPUT] generateProfile: 生成 work/config.yaml · loadRuntimeConfigFromDisk · hydrateRuntimeConfigFromDiskIfEmpty · getRuntimeConfig(Str) · getRawProfileStr · getCurrentProfileStr · getOverrideProfileStr
+// [POS] runtime 配置生成流水线的编排与落盘：覆写 → 节点 provider 与基础配置 → Vision 防护 → Sparkle 分组与专用流量规则 → 规则目标修复 → 自动选路组 → 分组排序与成员清理 → provider 文件 → VPS 直连旁路、Cursor / 公司 / AI 直连规则、DNS 与 fake-ip 完整性 → agy 规则 → 国内直连基线 → 兜底 `MATCH` → QUIC 阻断 → 序列化写盘；每一步职责在各自模块。
+
 import {
   getControledMihomoConfig,
   getProfileConfig,

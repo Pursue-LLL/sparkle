@@ -1,6 +1,7 @@
 // [INPUT] config::getAppConfig/getControledMihomoConfig · utils/dirs::mihomoIpcPath/serviceIpcPath ·
 //         service/api::getServiceAuthHeaders · index::mainWindow · resolve/tray · resolve/floatingWindow · utils/log::publishMihomoLog ·
-//         managedStream::createManagedStream (POS: 数据流连接生命周期) · listenerHub::createListenerHub (POS: 订阅者广播)
+//         managedStream::createManagedStream (POS: 数据流连接生命周期) · listenerHub::createListenerHub (POS: 订阅者广播) ·
+//         utils/calc::calcTraffic (POS: 流量数值格式化)
 // [OUTPUT] start/stop MihomoTraffic·Memory·Logs·Connections · restartMihomoLogs/Connections · subscribeMihomoLogs · subscribeMihomoAlerts
 // [POS] mihomo 控制器 WebSocket 数据流层。traffic / memory / logs / connections 随界面与内核生命周期启停（断线重连 10 次）；
 //       alerts 是故障转移引擎专用的 warning 级日志流：级别固定、不受界面日志级别影响，随订阅者增减启停，断线持续重连。

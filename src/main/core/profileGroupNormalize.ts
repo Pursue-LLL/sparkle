@@ -1,3 +1,9 @@
+// [INPUT] cursorProxyGroup::AGY_DEDICATED_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/AUTO_SELECT_GROUP_NAME/GENERAL_PROXY_GROUP_NAME… (POS: Sparkle 分组名常量与判定谓词) ·
+//         customProxyGroups::HONG_KONG_FILTER_GROUP_NAME (POS: Sparkle 自有分组注入) ·
+//         ruleSyntax::RULE_BUILTIN_TARGETS/rewriteRulePolicies (POS: 规则文本解析与策略改写)
+// [OUTPUT] ProxyGroupConfig · collectSubscriptionGroupNames · resolveSubscriptionMainSelectGroup · rewriteMissingRuleProxyGroupTargets · removeNonSubscriptionProxyGroups · ensureMatchFallbackRule · dropUnknownGroupMembers
+// [POS] 订阅分组归一：识别订阅主选择组，修复指向不存在分组的规则目标与兜底 `MATCH`（内置出口、订阅组与顶层内联节点为合法目标），清掉非订阅残留分组与失效成员。规则文本经 `ruleSyntax` 读取。
+
 import {
   AGY_DEDICATED_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,

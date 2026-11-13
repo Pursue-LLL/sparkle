@@ -1,4 +1,9 @@
-// [INPUT] node:test 假时钟与模块替身 · sparkleMailProbe / sparkleMailCurrentNodeProbe（被测模块，每个用例重新加载）· 临时目录里的真实缓存与 provider 文件
+// [INPUT] node:test 假时钟与模块替身 · sparkleMailProbe / sparkleMailCurrentNodeProbe（被测模块，每个用例重新加载）· 临时目录里的真实缓存与 provider 文件 ·
+//         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         sparkleMailProviderCore::MAIL_NODE_PROVIDER_FILENAME (POS: 邮件 provider 与分组配置) ·
+//         syncFsPromisesRig::mockFsPromisesSync (POS: fs/promises 同步化夹具) ·
+//         utils/yaml::parseYaml (POS: YAML 解析与序列化)
 // [OUTPUT] useMailRig · world · NODES · cacheRecord/cacheKey · 文件读写辅助 · 断言辅助
 // [POS] 邮件 provider 探测的行为测试夹具：配置、mihomo 控制器、端口探测与日志用替身，
 // 探测缓存与 sparkle-mail provider 文件走临时目录里的真实文件。仅供测试使用。

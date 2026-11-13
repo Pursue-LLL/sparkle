@@ -1,4 +1,5 @@
-// [INPUT] cursorProxyGroup::AUTO_SELECT_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/LEGACY_CURSOR_DEDICATED_GROUP_NAMES (POS: 分组名单一出处)
+// [INPUT] cursorProxyGroup::AUTO_SELECT_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/LEGACY_CURSOR_DEDICATED_GROUP_NAMES (POS: 分组名单一出处) ·
+//         ruleSyntax::rewriteRulePolicies (POS: 规则文本解析与策略改写)
 // [OUTPUT] migrateLegacyCursorDedicatedGroupReferences · rewriteBroadCursorDedicatedRules
 // [POS] 订阅规则里指向 Cursor 专用组的规则整理：旧组名迁到当前组名；非 Cursor 流量的规则改回自动选择。
 

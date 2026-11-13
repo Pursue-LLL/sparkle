@@ -1,3 +1,8 @@
+// [INPUT] cursorProxyGroup::AGY_DEDICATED_GROUP_NAME/AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         ruleSyntax::parseRule/rewriteRulePolicies (POS: 规则文本解析与策略改写)
+// [OUTPUT] injectAntigravityTrafficRules: 把 agy / Code Assist 端点规则前置到规则链
+// [POS] Antigravity（Google Code Assist）流量前置规则：`cloudcode-pa`、`aicode.googleapis.com`、`generativelanguage.googleapis.com` 与 agy CLI 的资格检查域名 `www.googleapis.com` 指向 `🎯 agy 专用`（该组缺席退回 `自动选择`），排在订阅通用 `googleapis.com` 规则之前；已有同类规则只改目标、不重复。
+
 import { AGY_DEDICATED_GROUP_NAME, AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
 import { parseRule, rewriteRulePolicies } from './ruleSyntax'
 

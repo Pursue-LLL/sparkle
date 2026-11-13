@@ -1,3 +1,7 @@
+// [INPUT] utils/errorMessage::describeError (POS: 异常文本化)
+// [OUTPUT] Random · createRandom · forSeeds · forSeedsAsync: 带种子的随机化测试工具
+// [POS] 随机化不变量测试的公共工具：固定 seed 1..N、失败信息带 seed，可原样重放。仅供测试使用。
+
 import { describeError } from '../utils/errorMessage'
 
 export interface Random {

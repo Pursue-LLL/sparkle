@@ -1,4 +1,8 @@
-// [INPUT] mihomo provider 列表 · Gemini 探测目标（与 `自动选择` 同源）
+// [INPUT] mihomo provider 列表 · Gemini 探测目标（与 `自动选择` 同源） ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS/AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         mihomoApi::mihomoProviderLeafDelay/mihomoProxyProviders (POS: mihomo 控制器访问层) ·
+//         providerLeafProbeCore::listUnconfirmedLeafNames/mapWithConcurrency (POS: 低并发拨测纯逻辑) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] probeProviderLeavesGently · verifyUnconfirmedFailures
 // [POS] 冷启动阶段的低并发拨测：逐点探测并复测「超时/不稳定/未测」节点，让界面看到的是确认过的结论而非批量并发的误报。
 

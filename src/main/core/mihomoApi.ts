@@ -1,5 +1,15 @@
 // [INPUT] factory::getRuntimeConfig/loadRuntimeConfigFromDisk (POS: runtime 配置生成/落盘) ·
-//         service/api (POS: service 模式签名请求) · mihomo unix socket / controller
+//         service/api (POS: service 模式签名请求) · mihomo unix socket / controller ·
+//         autoSelectStickyPin::notifyAutoSelectUnfixed (POS: `自动选择` 粘性固定) ·
+//         config::getAppConfig/getControledMihomoConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         cursorDedicatedManualOnlyCore::isCursorDedicatedManualOnlySwitchAllowed/formatCursorDedicatedManualOnlyBlockedLogLine (POS: Cursor 专用组仅手动切换判定) ·
+//         cursorDedicatedSelectionCore::writeCursorDedicatedManualSelection (POS: Cursor 专用组手选持久化) ·
+//         cursorProxyGroup::DEFAULT_GENERAL_DELAY_TEST_URL/isCursorSelectorGroupName (POS: Sparkle 分组名常量与判定谓词) ·
+//         mihomoGroupMembersCore::buildProviderProxyLookup/resolveGroupMemberProxies (POS: 分组成员解析) ·
+//         mihomoProbeCoordinator::withMihomoDelayProbeSlot (POS: 全局 delay 并发槽) ·
+//         mihomoProxyDelayCore::isMihomoApiResourceNotFoundError/resolveProviderNameForLeaf (POS: 节点延迟探测判定) ·
+//         utils/dirs::mihomoIpcPath/serviceIpcPath (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] mihomo REST 封装 · mihomoGetConnections · mihomoGroupDetail · mihomoChangeProxy/mihomoUnfixedProxy · delay/provider 单点拨测 ·
 //          mihomoStreams 数据流（traffic/memory/logs/connections/alerts）的统一出口
 // [POS] mihomo 控制器访问层：统一封装 REST、延迟探测与选点/解固定操作；WebSocket 数据流实现在 mihomoStreams，由此统一对外导出。

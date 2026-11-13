@@ -1,5 +1,19 @@
 // [INPUT] sparkleMailPortProbe::withLocalProbeChannelLock (POS: 邮件/Gemini 共享探测通道) ·
-//         sparkleGeminiStreamProbe::streamProbeGeminiRegionViaLocalListener (POS: 流式地区探测) · 当前订阅节点 · sparkle-gemini-nodes.json
+//         sparkleGeminiStreamProbe::streamProbeGeminiRegionViaLocalListener (POS: 流式地区探测) · 当前订阅节点 · sparkle-gemini-nodes.json ·
+//         config::getAppConfig/getProfile/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         cursorProxyGroup::AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         mihomoApi::mihomoGroupDetail/mihomoProxyProviders/mihomoUnfixedProxy/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
+//         provider::extractProxies (POS: 订阅节点 → provider 文件) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
+//         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
+//         sparkleFastProviderCore::buildSparkleFastProviderDocument/FAST_NODE_PROVIDER_FILENAME/FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
+//         sparkleGeminiProbeCore::resolveGeminiBlockedNodeNames/GeminiRegionProbeRecord (POS: Gemini 地区判定纯函数) ·
+//         sparkleMailProviderCore::MailProxyRecord (POS: 邮件 provider 与分组配置) ·
+//         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         utils/yaml::stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] loadSparkleGeminiRegionCache · loadGeminiBlockedNodeNames · verifyNodeGeminiRegion · bootstrapSparkleGeminiRegionAudit · startSparkleGeminiRegionAuditLoop
 // [POS] 识别「HTTP 200 但被 Google GeoIP 判定为送中/不支持地区（如 vXmutd="ZZ"/"CN"/"HK" 或 google.cn）」的节点，
 // 将确认锁区/送中的节点从 `sparkle-fast-proxies.yaml`（`自动选择`）中剔除并热重载。

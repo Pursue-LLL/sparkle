@@ -1,3 +1,22 @@
+// [INPUT] config/controledMihomo::getControledMihomoConfig (POS: 内核控制配置读写) ·
+//         config/mergeProfile::rebuildDependentMergeProfiles (POS: 合并订阅构建) ·
+//         manager::restartCore (POS: 内核进程生命周期) ·
+//         mergeProfileCore::findDependentMergeItems (POS: 合并订阅) ·
+//         profileCacheRefreshCore::formatMissingSubscriptionUrlError/readProfileDiskUpdatedMs/reloadCurrentProfileFromDiskCache (POS: 订阅缓存重新生成) ·
+//         profileConfigRecoveryCore::isBlankProfileConfigRaw/isEmptyPersistableProfileConfig/recoverProfileConfigFromDisk (POS: 订阅配置恢复) ·
+//         profileSubscriptionDisplayCore::normalizeSubscriptionExpireTimestamp (POS: 订阅到期展示) ·
+//         provider::deleteProvider (POS: 订阅节点 → provider 文件) ·
+//         resolve/server::subStorePort (POS: 本地服务端口) ·
+//         runtimeConfigSync::regenerateAndSyncProfile (POS: 运行时配置对齐接线) ·
+//         utils/dirs::mihomoProfileWorkDir/profileConfigPath/profilePath (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         utils/merge::deepMerge (POS: 对象深合并) ·
+//         utils/template::defaultProfile (POS: 默认模板) ·
+//         utils/userAgent::getUserAgent (POS: 请求 User-Agent) ·
+//         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化)
+// [OUTPUT] getProfileConfig · setProfileConfig · createProfile · changeCurrentProfile · addProfileItem · updateProfileItem · removeProfileItem · getProfileStr · setProfileStr · applyProfileStr 等
+// [POS] 订阅配置（profile.yaml）与订阅条目管理：配置读写与空 / 损坏恢复、订阅创建（远程下载含证书指纹校验）、增删改、当前订阅切换与订阅文件读写。
+
 import { getControledMihomoConfig } from './controledMihomo'
 import { mihomoProfileWorkDir, profileConfigPath, profilePath } from '../utils/dirs'
 import { existsSync } from 'fs'

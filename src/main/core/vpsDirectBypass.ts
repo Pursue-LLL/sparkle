@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] VPS_SSH_HOST_ALIASES · isPublicIpv4 · collectVpsServerIps · ensureVpsDirectBypass
+// [POS] VPS 服务器直连旁路：服务器域名经 DNS 解析（3 秒超时，完成后不留定时器），只收公网 IPv4，补直连规则与 TUN / sniffer 排除；已有直连规则按「规则类型 + 目标」判断，同 IP 任意掩码都算已覆盖。
+
 import dns from 'node:dns'
 
 const IPV4_PATTERN = /^(\d{1,3}\.){3}\d{1,3}$/

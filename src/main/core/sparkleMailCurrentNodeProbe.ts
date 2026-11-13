@@ -2,7 +2,13 @@
 //         sparkleMailPortProbe::probeSingleNodeMailPorts (POS: 单节点 993/465 TLS Banner 校验) ·
 //         sparkleMailActivityCore::connectionChainsIncludeGroup/isMailGroupRecentlyActive (POS: 邮件活动判定) ·
 //         mailTrafficRuleInjection::MAIL_TRAFFIC_RULE_BASES (POS: 邮件域名分流规则) ·
-//         mihomoApi::mihomoGetConnections/mihomoGroupDetail/subscribeMihomoLogs (POS: mihomo 控制器访问层)
+//         mihomoApi::mihomoGetConnections/mihomoGroupDetail/subscribeMihomoLogs (POS: mihomo 控制器访问层) ·
+//         config::getAppConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         cursorProxyGroup::MAIL_DEDICATED_GROUP_NAME/MAIL_PROBE_HIDDEN_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         mihomoProxyDelayCore::isMihomoApiResourceNotFoundError (POS: 节点延迟探测判定) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] startSparkleMailCurrentNodeProbeLoop
 // [POS] 邮件组当前节点的按需保护：只在邮件最近被使用时复测 993/465（拨号失败后 30s 提前触发、5 分钟兜底）；失败让 provider 剔除节点并触发自动切换，未使用时不探测。
 

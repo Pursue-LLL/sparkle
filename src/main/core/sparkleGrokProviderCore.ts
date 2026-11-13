@@ -1,4 +1,5 @@
-// [INPUT] 当前订阅节点 · grok.com HTTP 200 探测缓存
+// [INPUT] 当前订阅节点 · grok.com HTTP 200 探测缓存 ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹)
 // [OUTPUT] GROK_NODE_PROVIDER_ID / GROK_NODE_PROVIDER_FILENAME · grokProxyName · buildSparkleGrokProviderDocument · buildGrokProbeSnapshot · orderGrokRepairCandidates · grokProviderMembershipChanged
 // [POS] `grok 专用` 的 provider 文档与代理页快照：provider 只保留 routed 验证通过（真实 HEAD 200 且无 cf-mitigated）的节点，
 //       非香港优先、按 RTT 升序、最多 12 个；缓存为空或全部节点失败时回退全量，保证 provider 不为空（空 provider 会让整组静默退化为 COMPATIBLE 直连）。
