@@ -308,9 +308,9 @@
 | **根因** | `~/Library/LaunchAgents/com.sparkle.profile-scheduler.plist` `StartInterval=300` → `~/.sparkle/sparkle-profile-scheduler.sh` → **硬编码执行 `/Applications/Sparkle.app/Contents/MacOS/Sparkle`**，完全绕开仓库。旧二进制跑 `generateProfile()` 按旧逻辑写回。**必然复发，非偶然。** 放大因素：buildStamp 只含构建时间戳不含 commit，app 旧于仓库时外部零信号。 |
 | **翻车入口全集** | `generateProfile()` 7 个调用点：`config/profile.ts:394`（★每 5 分钟定时订阅刷新）· `core/manager.ts:544`（core 重启）· `core/profileCheckRetry.ts:43`（校验失败重试）· `core/profileCacheRefreshCore.ts:24`（手动刷新）· `config/controledMihomo.ts:62`（controlled 变更）· `utils/ipc.ts:197`（设置保存）· `core/factory.ts:113`（定义）。任一触发即执行当前二进制内的逻辑。 |
 | **修复** | 构建漂移检测（R-52）：`write-build-stamp` 写入 `SPARKLE_GIT_COMMIT` / `SPARKLE_GIT_DIRTY`；`factory` 启动写 `[BuildDrift]` 日志；`pnpm run check:drift` 主动查询（退出码 1 = 漂移）。判定 SSOT 在 `buildDriftPureCore`，`scripts` 与 `src` 共用。后续：`check:drift` 读 app 侧标记的方式修正过两次——`aa9b1f8a`（10-02，改读 asar 的 buildStamp chunk）、BUG-2026-11-13-001（按内容读，不再依赖 chunk 文件名），见 `scripts/scripts_20261107_20261113_BUGFIX_LOG.md`。 |
-| **判定语义** | `match` 一致 / `commit_mismatch` app 旧于仓库 / `app_dirty` 构建不可复现 / `app_unknown` 旧构建无 commit 事实 → 后三者均需 `pnpm run upgrade:mac`。**仓库侧 dirty 不算漂移**，commit 仍是权威。 |
-| **验证** | `buildDriftPureCore.test.ts` 10 例覆盖四类判定 + 规范化边界；`tsc node/web` 均 0；全量 **710 tests / 694 pass / 16 fail**，与 BUG-002 前基线 diff 为空（零新增失败）。`check:drift` 当前如实报 `drift=unknown`（旧构建无 commit 事实）+ 退出码 1。 |
-| **代码位置** | `buildDriftPureCore.ts` · `buildDriftCore.ts` · `scripts/check-build-drift.ts` · `scripts/write-build-stamp.ts` · `factory.ts` · `com.sparkle.profile-scheduler.plist` |
+| **判定语义** | `match` 一致 / `non_binary_ahead` commit 不同但构建提交之后只改了文档·测试·`buildStamp.ts`（不算漂移，BUG-2026-11-13-002） / `commit_mismatch` app 旧于仓库 / `app_dirty` 构建不可复现 / `app_unknown` 旧构建无 commit 事实 → 后三者均需 `pnpm run upgrade:mac`。**仓库侧 dirty 不读也不算漂移**，commit 仍是权威。 |
+| **验证** | 修复当时：`buildDriftPureCore.test.ts` 10 例覆盖四类判定 + 规范化边界（现已扩展为五类，见上一行与 BUG-2026-11-13-002）；`tsc node/web` 均 0；全量 **710 tests / 694 pass / 16 fail**，与 BUG-002 前基线 diff 为空（零新增失败）。当时 `check:drift` 如实报 `drift=unknown`（旧构建无 commit 事实）+ 退出码 1。 |
+| **代码位置** | `buildDriftPureCore.ts` · `buildDriftGit.ts` · `buildDriftCore.ts` · `scripts/check-build-drift.ts` · `scripts/write-build-stamp.ts` · `factory.ts` · `com.sparkle.profile-scheduler.plist` |
 
 ---
 

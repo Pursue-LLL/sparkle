@@ -1,72 +1,46 @@
-// [INPUT] buildStamp 内烘焙的 app git 事实 + 仓库当前 git 事实
+// [INPUT] buildStamp 内烘焙的 app git 事实 · buildDriftGit::evaluateBuildDrift (POS: 仓库 git 读取与漂移评估)
 // [OUTPUT] logBuildDriftAtStartup: 把 app 与仓库是否漂移写进 app 日志
-// [POS] 漂移判定运行时入口；判定逻辑 SSOT 在 buildDriftPureCore.ts。
-import { execFileSync } from 'child_process'
+// [POS] 漂移判定运行时入口：定位仓库、读事实、写日志；判定逻辑 SSOT 在 buildDriftPureCore.ts。
 import os from 'os'
 import path from 'path'
 import { SPARKLE_GIT_COMMIT, SPARKLE_GIT_DIRTY } from '../../shared/buildStamp'
-import { detectBuildDrift, isTrackedDirtyOutsideBuildStamp, normalizeCommit } from './buildDriftPureCore'
+import { createGitRunner, evaluateBuildDrift, type GitRunner } from './buildDriftGit'
 import { appendAppLog } from '../utils/log'
 
 /** 部署态仓库根：构建机路径兜底，用于 GUI cwd 不在仓库内时定位。 */
 const REPO_ROOT_FALLBACK = '/Users/yululiu/projects/OpenSource/sparkle'
 
+/** 开发态向上最多找几级祖先目录。 */
+const MAX_ANCESTOR_DEPTH = 6
+
 let driftLogged = false
 
-/** 工作区是否脏：忽略构建期必然改写的 buildStamp，其余任何已跟踪改动都算脏。 */
-function isDirtyOutsideBuildStamp(run: (args: string[]) => string): boolean {
-  return !isTrackedDirtyOutsideBuildStamp(
-    run(['status', '--porcelain', '--untracked-files=no']).split('\n').filter(Boolean),
-    'src/shared/buildStamp.ts'
-  )
-}
-
 /**
- * 读取仓库 git 事实；非 git 仓库或命令失败时返回 unknown，判定结果即「需重建」。
+ * 定位仓库并返回绑定到它的 git 执行器；找不到时返回 undefined，判定结果即「需重建」。
  *
- * cwd 取 app 安装位置而非 process.cwd()：GUI 由 LaunchAgent 拉起时 cwd 是 `/`，
- * 相对路径的 git 命令会失败。向上逐级查找含 `.git` 的祖先目录。
+ * 先从 cwd 向上逐级找含 `.git` 的祖先目录（开发态），再试源码固定位置（部署态）：
+ * GUI 由 LaunchAgent 拉起时 cwd 是 `/`，只靠 cwd 会找不到仓库。
  */
-function readRepoGitFacts(): { commit: string; dirty: boolean } {
-  const run = (args: string[], cwd: string): string => {
-    try {
-      return execFileSync('git', args, {
-        cwd,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim()
-    } catch {
-      return ''
-    }
-  }
-
-  // 开发态：仓库就在 cwd 或其祖先目录
+function locateRepoGit(): GitRunner | undefined {
+  const candidates: string[] = []
   let dir = process.cwd()
-  for (let depth = 0; depth < 6; depth += 1) {
-    if (run(['rev-parse', '--git-dir'], dir).length > 0) {
-      return {
-        commit: normalizeCommit(run(['rev-parse', 'HEAD'], dir)),
-        dirty: isDirtyOutsideBuildStamp((args) => run(args, dir)),
-      }
-    }
+  for (let depth = 0; depth < MAX_ANCESTOR_DEPTH; depth += 1) {
+    candidates.push(dir)
     const parent = path.dirname(dir)
     if (parent === dir) {
       break
     }
     dir = parent
   }
+  candidates.push(REPO_ROOT_FALLBACK, path.join(os.homedir(), 'projects', 'OpenSource', 'sparkle'))
 
-  // 部署态：仓库在源码固定位置，不依赖 cwd
-  for (const root of [REPO_ROOT_FALLBACK, path.join(os.homedir(), 'projects', 'OpenSource', 'sparkle')]) {
-    if (run(['rev-parse', '--git-dir'], root).length > 0) {
-      return {
-        commit: normalizeCommit(run(['rev-parse', 'HEAD'], root)),
-        dirty: isDirtyOutsideBuildStamp((args) => run(args, root)),
-      }
+  for (const candidate of candidates) {
+    const git = createGitRunner(candidate)
+    if (git(['rev-parse', '--git-dir'])) {
+      return git
     }
   }
-
-  return { commit: 'unknown', dirty: false }
+  return undefined
 }
 
 /**
@@ -81,9 +55,9 @@ export async function logBuildDriftAtStartup(): Promise<void> {
   }
   driftLogged = true
   try {
-    const result = detectBuildDrift(
+    const result = evaluateBuildDrift(
       { commit: SPARKLE_GIT_COMMIT, dirty: SPARKLE_GIT_DIRTY },
-      readRepoGitFacts()
+      locateRepoGit()
     )
     await appendAppLog(
       `[BuildDrift]: app_commit=${result.appCommit} app_dirty=${SPARKLE_GIT_DIRTY ? 1 : 0} ${result.summary}\n`

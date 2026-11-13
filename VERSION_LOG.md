@@ -6,6 +6,19 @@
 
 ---
 
+## 2026-11-13 漂移判定只看「会进二进制的改动」（代码已完成 · `check:drift` 立即生效，启动日志 `[BuildDrift]` 的新判定随下次装包生效）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 标准流程「构建 → 安装 → 提交 `chore: 同步构建时间戳`」之后，HEAD 总比 app 烧进去的 commit 多一个提交，`check:drift` 与启动日志都会报 `commit_mismatch`（BUG-2026-11-13-002） |
+| 实现 | `buildDriftPureCore.detectBuildDrift` 新增第五种结果 `non_binary_ahead`：commit 不同时，用 `git diff --name-only <app 提交> HEAD` 列出差异文件，全部是 `*.md` / `*.test.*` / `src/shared/buildStamp.ts` 才判为不算漂移（`extra/`、`resources/` 整目录按会进二进制处理）；git 读取新增 `buildDriftGit.ts`（运行时与脚本共用，含 `evaluateBuildDrift`）；app 提交在本仓库解析不出来或 git 失败时不猜，仍报 `commit_mismatch`（`ahead_check=unavailable`） |
+| 顺带删除 | 仓库侧 dirty 的读取：运行时与脚本里的实现都写反了（`!isTrackedDirtyOutsideBuildStamp`），而且判定从不使用该值；现在只读 commit |
+| 验证 | 全量 1717 用例 / 353 套件 0 失败（此前 1688 / 347）；typecheck（node + web）0；7 个改动文件 ESLint、prettier 0 问题；对 `evaluateBuildDrift` 与启动接线做 5 个变异（不传差异提供者、日志里 dirty 恒为 0、传入 dirty 恒为 false、不定位仓库、去掉只记一次标记）全部被测试抓到；临时仓库端到端：构建提交之后只加文档与 `buildStamp.ts` → 退出码 0，加源码改动 → 退出码 1 |
+| 本机实测 | `pnpm run check:drift`：`drift=commit_mismatch app_commit=76ac0dd repo_commit=ad0f1a8 binary_files_changed=89`，退出码 1。逐个核对这 89 个路径：80 个 `.ts` 去掉注释与格式后编译结果与装包时完全相同，4 个只改了尾逗号 / 换行，2 个是无引用的模块（`openaiDnsIntegrity`、`providerHealthCheckCore`）被删除，1 个无引用的 JSON 被删除，另 2 个是不随 app 打包的脚本（新增 `sparkleBakedBuildStampCore.ts`、改动 `check-build-drift.ts`）——即装包之后没有行为改动，但路径分类看不出来 |
+| 已知边界 | ① 纯注释 / 格式化改动（如本周的 L4 文件头）仍判为会进二进制，要装包一次才回到「一致」；② `76ac0dd` 已不在 master 历史里（同一提交现为 `53cca758`），本机能解析它只因为本地保留了备份分支 `backup/pre-dist-zip-filter-20261113`，该分支删除并 gc 之后会变成 `ahead_check=unavailable`；③ 判定偏保守：宁可多报一次重建，不把会进二进制的改动当成无关 |
+
+---
+
 ## 2026-11-13 `check:drift` 按内容读取 app 内构建标记（代码已完成 · 脚本不随 app 打包，无需装包）
 
 | 项 | 内容 |
@@ -13,8 +26,8 @@
 | 现象 | 对 10:05 装包的构建运行 `pnpm run check:drift`，报 `drift=unknown app_commit=unknown ... action=rebuild_required`，退出码 1；而应用启动日志同一构建是 `app_commit=76ac0dd ... drift=none` |
 | 根因 | 脚本按文件名 `buildStamp-*.js` 在 `app.asar` 里找标记，该构建的标记被打包器内联进了 `/out/main/index.js`，找不到就当「无法确认」（BUG-2026-11-13-001） |
 | 实现 | 新增 `scripts/sparkleBakedBuildStampCore.ts`：在主进程全部 `out/main/*.js` 文本里按内容找 `SPARKLE_GIT_COMMIT` / `SPARKLE_GIT_DIRTY` 声明；`check-build-drift.ts` 改用它 |
-| 验证 | 新增 11 个用例（含真实 asar 的内联 / 独立 chunk / 无标记 / 无主进程 chunk 四种）；5 个变异全部被抓到；对已安装的真实 app 读出 `app_commit=76ac0dd`；全量 1688 / 347 / 0 失败；typecheck（node + web）0；改动文件 ESLint、prettier 0 |
-| 已知边界 | 修复后命令对本机仍报 `commit_mismatch`（构建提交 `76ac0dd`，HEAD 之后只有文档 / 时间戳提交，代码无行为变化）：命令只比 commit，不区分落后的提交里有没有源码改动；历史重写后 `76ac0dd` 在仓库里已不存在（同一提交现为 `53cca758`） |
+| 验证 | 新增 11 个用例（含真实 asar 的内联 / 独立 chunk / 无标记 / 无主进程 chunk 四种）；5 个变异全部被抓到；对已安装的真实 app 读出 `app_commit=76ac0dd`；全量 1688 / 347 / 0 失败（其后新增漂移判定用例，最新 1717 / 353）；typecheck（node + web）0；改动文件 ESLint、prettier 0 |
+| 已知边界 | 修复后命令对本机仍报 `commit_mismatch`（构建提交 `76ac0dd`）：当时命令只比 commit，不区分落后的提交里有没有源码改动，该问题随后由上一条「漂移判定只看会进二进制的改动」处理；`76ac0dd` 已不在 master 历史里（同一提交现为 `53cca758`），本机仍能解析它是因为保留了备份分支 `backup/pre-dist-zip-filter-20261113` |
 
 ---
 
@@ -25,7 +38,7 @@
 | 现象 | 无新增用户报障；为让自动切换不再反复出问题，对 2026-11-11 的实现补全行为测试、随机化不变量测试与变异测试 |
 | 根因 | 自动切换链路及它依赖的日志 / YAML / 订阅更新里潜伏着 28 个缺陷（明细见 `src/main/core/core_20261107_20261113_BUGFIX_LOG.md` 的 BUG-2026-11-12-001）。较重的几个：日志写失败升级为主进程未捕获异常；`appendAppLog` 失败连带 133 处调用方的业务流程；Reality 纯数字 short-id 被 YAML 解析成数字（块风格与订阅转换器常用的 flow 风格都中招，`12e3456` 会变成 Infinity）；悬空的 `MATCH` 规则让内核拒绝整份配置；规则改写丢掉 `no-resolve` 修饰符、把 `src` 参数当成策略改写；故障转移释放失败后永远跳过自己设的固定 |
 | 实现 | 规则文本解析与策略改写收敛到 `ruleSyntax`；YAML 解析改在文档树上还原 Reality short-id 的原文；Agy / Grok 探针按职责拆分；日志拆出 `logLineParseCore` 与 `logFileSizeCore.trimLogContent`，`appendAppLog` 永不 reject；删除无人调用的代码与不可达守卫；`test:node-quality` 改用 glob，所有测试文件都在门禁内 |
-| 验证 | 全量 1682 用例 / 347 套件 0 失败（满载下连跑 6 次稳定；随后删除两个无引用模块及其测试后为 1677 / 345，再新增 `check:drift` 读取层的 11 个用例后最新一次为 1688 / 347，均 0 失败，2026-11-13）；typecheck（node + web）0；ESLint 与 prettier 覆盖自基线改动的 206 个 `.ts` 文件，全部通过；行覆盖率（每个测试文件单独一个进程再按行取并集）已加载模块 `src/main/core` 98.6%、`src/main` 98.6%、全部 97.5%，相对基线的改动行 99.6%；变异测试存活者均已归类；真实运行态配置回放（3783 条规则、26 个组）的规则解析、改写与流水线均无意外差异；规则解析器与真实内核逐形态差分（20 种形态）0 处不一致；`parseYaml` 新旧实现在 29 个真实 YAML 文件与 6000 个随机文档上结果一致；46.4 万行真实核心日志全部解析成功；5 个地区的内核 provider `filter` 与 JS 地区判定在真实订阅上台湾 / 日本 / 韩国 / 美国完全一致（新加坡 6/130 个节点口径不同）；`pnpm run verify:failover` 在隔离 mihomo v1.19.32 上 PASS；`electron-vite build` 与 `verify:bundle` Stage-A OK |
+| 验证 | 全量 1682 用例 / 347 套件 0 失败（满载下连跑 6 次稳定；随后删除两个无引用模块及其测试后为 1677 / 345，再新增 `check:drift` 读取层的 11 个用例后为 1688 / 347，再新增源码感知的漂移判定用例后最新一次为 1717 / 353，均 0 失败，2026-11-13）；typecheck（node + web）0；ESLint 与 prettier 覆盖自基线改动的 206 个 `.ts` 文件，全部通过；行覆盖率（每个测试文件单独一个进程再按行取并集）已加载模块 `src/main/core` 98.6%、`src/main` 98.6%、全部 97.5%，相对基线的改动行 99.6%；变异测试存活者均已归类；真实运行态配置回放（3783 条规则、26 个组）的规则解析、改写与流水线均无意外差异；规则解析器与真实内核逐形态差分（20 种形态）0 处不一致；`parseYaml` 新旧实现在 29 个真实 YAML 文件与 6000 个随机文档上结果一致；46.4 万行真实核心日志全部解析成功；5 个地区的内核 provider `filter` 与 JS 地区判定在真实订阅上台湾 / 日本 / 韩国 / 美国完全一致（新加坡 6/130 个节点口径不同）；`pnpm run verify:failover` 在隔离 mihomo v1.19.32 上 PASS；`electron-vite build` 与 `verify:bundle` Stage-A OK |
 | 已知边界 | 已于 2026-11-13 10:05 装包；台湾节点超时自动切换的线上触发尚未发生，仅在隔离内核验证过；`src/main` 有 63 个 I/O 接线文件（约 6991 行）没有被任何测试加载，计入后 `src/main` 覆盖率 63.8%，`scripts` 已加载模块 65.0%；除 Reality short-id 外，其他字段的纯数字写法解析后会丢前导零（本机数据无此情形）；日志落盘失败是静默的 |
 
 ---
