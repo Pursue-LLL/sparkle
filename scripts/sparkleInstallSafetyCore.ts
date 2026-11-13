@@ -2,7 +2,9 @@
 // [OUTPUT] CORE_BINARY_NAMES · isCoreSetuidMode · resolveInstallShortCircuit ·
 //          shouldAttemptServiceKill · resolvePostInstallRecoveryRounds · formatLockOwner
 // [POS] Agent 本地升级的幂等与安全判定纯函数：决定「是否需要真的安装/启停」、是否需要提权，
-// 以及失败后是否允许自动重启。shell 只做 I/O 与提权执行，所有判断集中在这里，便于单测。
+// 以及失败后是否允许自动重启。这里是判定语义的 SSOT 与文档；shell 侧为了不依赖
+// `tsx -e` 传参（参数会被 node 当成选项解析）而用等价的内联 bash 实现，两者由同一组
+// 用例与 scripts/sparkleInstallSafetyCore.test.ts 的契约测试约束。
 
 /** 需要 setuid 位的内核二进制；与 `permission.ts` 授权的目标一一对应。 */
 export const CORE_BINARY_NAMES = ['mihomo', 'mihomo-alpha'] as const
