@@ -277,7 +277,7 @@
 14. **自动切换分工**（2026-11-11 起）：`autoSwitchPolicy.ts` 是「谁来切节点」的单一策略表（新增分组类型 = 补一行，源码扫描测试拦漏填）；`groupFailoverCore / Engine` 把内核「连续拨号失败」的 warning 折算成「节点持续不可用」，只管 url-test 型地区组：改选并固定、隔离失败节点、到期释放；`autoSwitchPinRelease` 在内核启动 / 整配置重载后释放缓存恢复的固定、订阅刷新后只释放孤儿固定；`自动选择`、邮件 / grok / agy 专用组、`🎯 Cursor 专用` 各自保持上文规则，不被转移引擎接管。
 15. **日志与 YAML 底座**（2026-11-12）：`appendAppLog` 永不 reject（落盘失败静默，调用方不必再 `.catch`）；`parseYaml` 在文档树上还原 Reality `short-id` 的原文（块风格与 flow 风格都覆盖，纯数字 / 科学计数法写法不会被解析成数字）；**不得**把这两处改回「日志失败向上抛」或「先解析再修补」（BUG-2026-11-12-002 / -003，见 `utils_20261107_20261113_BUGFIX_LOG.md`）。
 
-**2026-10-09 移除 Cursor 长流子系统（待装包验证）**
+**2026-10-09 移除 Cursor 长流子系统（已装包：2026-11-13 的 `app.asar` 内 `restartCoreEmergency` / `marathon` / `quiesce` / `commercialNodeBenchmark` / `cursorSysProxyLock` 均 0 处命中，`sparkle-fast-delays` 1 处）**
 - **保留**：`🎯 Cursor 专用` 组（成员、仅手动选择、默认节点）+ Cursor 路由 / DNS 规则（`cursorBidiOptimize`、`cursorProxyAppPathPrefixes`）。
 - **移除**：Marathon 保护（quiesce / 数据面变更守卫 / core 重启守卫 / 协议契约）、api2 探针平面与 ledger、QUIC/HY2 恢复编排、节点质量基准与 24h 报告、断网定责探测、Cursor 网络异常通知、`cursorNetworkOptimize`（TUN/keepalive 强写、`cursorSysProxyLock` 系统代理锁）、`autoCloseConnection` 强制关闭迁移、相关 UI 与配置项（`networkAlert*` / `commercialNodeBenchmark*` / `cursorConnectionHygieneEnabled` / `cursorSysProxyLock`）。
 - **脚本**：删除 marathon / G9 / p10 / triage / byte-death 脚本与门禁；`upgrade-sparkle-local.sh` / `install-sparkle-local.sh` / `agent-sparkle-upgrade.sh` 去掉 Marathon PRE-gate 与 Safe Window；就绪探测目标改为 `https://www.gstatic.com/generate_204`。
