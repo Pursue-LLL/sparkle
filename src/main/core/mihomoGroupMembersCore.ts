@@ -1,3 +1,7 @@
+// [INPUT] proxyProbeHistoryCore::poolProxyInstances (POS: 节点探测取数口径)
+// [OUTPUT] buildProviderProxyLookup · resolveGroupMemberProxies
+// [POS] 分组成员解析：内核 `/proxies` 不含 provider 叶子时，按名从 provider 汇总（同名节点的探测样本合并），都找不到则补一个占位节点。
+
 /** Resolve proxy-group members when mihomo omits provider leaf nodes from /proxies. */
 
 import { poolProxyInstances } from './proxyProbeHistoryCore'

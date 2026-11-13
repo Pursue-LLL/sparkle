@@ -1,4 +1,15 @@
-// [INPUT] provider::extractProxies · regionPriority · sparkle-fast/mail/agy/grok provider 文档构建与探测缓存
+// [INPUT] provider::extractProxies · regionPriority · sparkle-fast/mail/agy/grok provider 文档构建与探测缓存 ·
+//         sparkleAgyProbeCache::loadSparkleAgyProbeCache (POS: agy 探测缓存读写) ·
+//         sparkleAgyProviderCore::buildSparkleAgyProviderDocument/AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
+//         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
+//         sparkleFastProviderCore::buildSparkleFastProviderDocument/FAST_NODE_PROVIDER_FILENAME (POS: sparkle-fast provider 文件生成) ·
+//         sparkleGeminiProbe::loadGeminiBlockedNodeNames (POS: Gemini 地区探测与缓存) ·
+//         sparkleGrokProbeCache::loadSparkleGrokProbeCache (POS: grok 探测缓存) ·
+//         sparkleGrokProviderCore::buildSparkleGrokProviderDocument/GROK_NODE_PROVIDER_FILENAME (POS: grok provider 与快照) ·
+//         sparkleMailProbe::loadSparkleMailProbeCache (POS: 邮件 provider 全量探测) ·
+//         sparkleMailProviderCore::buildSparkleMailProviderDocument/MAIL_NODE_PROVIDER_FILENAME (POS: 邮件 provider 与分组配置) ·
+//         utils/dirs::profilesDir (POS: 应用目录与路径常量) ·
+//         utils/yaml::stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] writeSparkleProviderFiles: 落盘 Sparkle 专用 proxy-provider 文件
 // [POS] runtime 配置生成流水线的 provider 文件层。best-effort：写失败沿用上一份文件；空 provider 不落盘（mihomo 重载空 provider 不报错，但整组会静默退化为 COMPATIBLE 直连）。
 

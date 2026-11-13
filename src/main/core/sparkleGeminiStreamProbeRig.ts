@@ -1,4 +1,5 @@
-// [INPUT] node:test mock.module · node:net / node:tls 的假连接
+// [INPUT] node:test mock.module · node:net / node:tls 的假连接 ·
+//         sparkleGeminiStreamProbe::streamProbeGeminiRegionViaLocalListener (POS: Gemini 流式地区探测)
 // [OUTPUT] loadProbe · connections · FakeConnection · spyOnGunzip · startProbe/openTunnel/runWith/assertCleanedUp · 响应构造器
 // [POS] streamProbeGeminiRegionViaLocalListener 测试夹具：用可手动触发事件的假套接字替换 net / tls，不触网。
 

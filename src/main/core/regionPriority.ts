@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] DEFAULT_REGION_PRIORITY · normalizeRegionPriority · resolveEffectiveRegionPriority · nodeMatchesRegion · buildRegionProviderFilter · buildAutoSelectCountryFilter · isBlockedRegionNodeName
+// [POS] 地区优先级与节点地区匹配的唯一出处：默认地区序、节点名按标题与旗帜归属地区、`自动选择` 的国家白名单与香港屏蔽、地区 provider 的内核过滤正则。
+
 export const DEFAULT_REGION_PRIORITY = ['台湾', '日本', '韩国', '新加坡', '美国'] as const
 
 /** `自动选择` 的额外国家白名单（五个优先地区之外）；香港不含任何关键词 → 天然排除。 */

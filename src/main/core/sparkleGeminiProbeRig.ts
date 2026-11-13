@@ -1,4 +1,10 @@
-// [INPUT] node:test 假时钟与模块替身 · sparkleGeminiProbe（被测模块，每个用例重新加载）· 临时目录里的真实缓存与 provider 文件
+// [INPUT] node:test 假时钟与模块替身 · sparkleGeminiProbe（被测模块，每个用例重新加载）· 临时目录里的真实缓存与 provider 文件 ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         sparkleFastProviderCore::FAST_NODE_PROVIDER_FILENAME/FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
+//         syncFsPromisesRig::mockFsPromisesSync (POS: fs/promises 同步化夹具) ·
+//         utils/yaml::parseYaml (POS: YAML 解析与序列化)
 // [OUTPUT] useGeminiRig · world · NODES · samplesFor · cacheRecord/cacheKey · 文件读写辅助 · 断言辅助
 // [POS] sparkleGeminiProbe 行为测试夹具：配置、mihomo 控制器、流式探测与日志用替身，
 // 地区缓存与 sparkle-fast 文件走临时目录里的真实文件。仅供测试使用。

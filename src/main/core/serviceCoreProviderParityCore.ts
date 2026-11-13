@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] collectProxyProviderIds · resolveExpectedProxyProviderIds · collectRunningProxyProviderIds · shouldRestartServiceCoreForProviderParity · formatProviderParityMismatchLog
+// [POS] service 模式内核 provider 一致性的纯判定：磁盘 / 运行时配置的 `proxy-providers` 与内核实际运行的集合不一致时，判断是否需要重启内核。不含 IO。
+
 /** Detect when disk/runtime proxy-providers diverge from the live mihomo service core. */
 
 const COMPATIBLE_VEHICLE_TYPE = 'Compatible' as const

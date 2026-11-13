@@ -1,4 +1,9 @@
-// [INPUT] 通过 mixed-port（不可用时走 TUN 直连）真实请求 grok.com 的结果（sparkleGrokRoutedCheck）· grok 组操作（sparkleGrokGroupControl）· provider 文件（sparkleGrokProviderSync）· 探测缓存（sparkleGrokProbeCache）
+// [INPUT] 通过 mixed-port（不可用时走 TUN 直连）真实请求 grok.com 的结果（sparkleGrokRoutedCheck）· grok 组操作（sparkleGrokGroupControl）· provider 文件（sparkleGrokProviderSync）· 探测缓存（sparkleGrokProbeCache） ·
+//         config::getProfile/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         sparkleGrokProbeSnapshot::syncGrokProbeSnapshot (POS: grok 展示快照) ·
+//         sparkleGrokProviderCore::orderGrokCandidates/orderGrokProxies/orderGrokRepairCandidates/grokProxyName… (POS: grok provider 与快照) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] bootstrapSparkleGrokProvider · startSparkleGrokProbeLoop
 // [POS] `grok 专用` 的选路探针：节点是否可用只由「真实请求 grok.com 得到 200 且无 cf-mitigated challenge」判定；
 //       候选池只收录 routed 验证通过的节点。稳态每 60 秒只复核当前节点，失败才按池内顺序找下一个（找到即停）；

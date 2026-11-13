@@ -1,3 +1,7 @@
+// [INPUT] ruleSyntax::parseRule/RULE_BUILTIN_TARGETS (POS: 规则文本解析与策略改写)
+// [OUTPUT] TIER0_FAKE_IP_FILTER · TIER0_DIRECT_CN_SUFFIXES · buildTieredFakeIpFilter · ensureFakeIpRoutingIntegrity · applySnifferIntegrityPatch · sanitizeFakeIpDirectCidrRules
+// [POS] fake-ip 路由一致性：fake-ip-filter 分层生成（Tier0：Cursor 域名、直连目标规则的域名与国内高频后缀；Tier1：走代理规则的域名），让这些域名拿到真实 IP；清除订阅里指向 fake-ip 段的直连 CIDR 规则，补全 sniffer；规则文本经 `ruleSyntax` 读取。
+
 import { parseRule, RULE_BUILTIN_TARGETS } from './ruleSyntax'
 
 /** Tier 0 — fake-ip breaks TLS/native DNS for these hosts (Cursor handoff doc). */

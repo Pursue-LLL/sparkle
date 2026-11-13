@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] QUIC_REJECT_RULE · STUN_CLOUDFLARE_REJECT_RULE · QUIC_PROTECTION_RULES · injectQuicTrafficRules
+// [POS] QUIC（UDP 443）与 Cloudflare STUN 阻断规则前置：避免 TCP 走代理而 UDP 回落直连造成双栈出口 IP 不一致；已有同文规则不重复。
+
 /**
  * QUIC (HTTP/3) and WebRTC STUN leak protection rules.
  *
@@ -7,10 +11,7 @@
 export const QUIC_REJECT_RULE = 'AND,((DST-PORT,443),(NETWORK,UDP)),REJECT' as const
 export const STUN_CLOUDFLARE_REJECT_RULE = 'DOMAIN-SUFFIX,stun.cloudflare.com,REJECT' as const
 
-export const QUIC_PROTECTION_RULES = [
-  QUIC_REJECT_RULE,
-  STUN_CLOUDFLARE_REJECT_RULE
-] as const
+export const QUIC_PROTECTION_RULES = [QUIC_REJECT_RULE, STUN_CLOUDFLARE_REJECT_RULE] as const
 
 /**
  * Prepend QUIC and STUN rejection rules to the top of rules array.

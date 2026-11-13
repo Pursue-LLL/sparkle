@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] ensureDnsBootstrapResilience · ensureDnsFallbackIntegrity · ensureTunStrictRoute
+// [POS] DNS 完整性：纯 DoH 的引导 / 上游 DNS 前置 UDP / TLS 解析器避免 TUN 下引导失败，补全抗污染 fallback 与 fallback-filter，TUN 开启时强制 strict-route。
+
 const OVERSEAS_FALLBACK = [
   'tls://223.5.5.5',
   'tls://1.1.1.1',
@@ -36,10 +40,7 @@ function asStringList(value: unknown): string[] | undefined {
   return typeof value === 'string' && value.trim() ? [value] : undefined
 }
 
-function mergeStringList(
-  existing: string[] | undefined,
-  defaults: readonly string[]
-): string[] {
+function mergeStringList(existing: string[] | undefined, defaults: readonly string[]): string[] {
   const seen = new Set<string>()
   const merged: string[] = []
   for (const item of [...(existing ?? []), ...defaults]) {
@@ -53,10 +54,7 @@ function mergeStringList(
   return merged
 }
 
-function prependStringList(
-  preferred: readonly string[],
-  existing: string[] | undefined
-): string[] {
+function prependStringList(preferred: readonly string[], existing: string[] | undefined): string[] {
   const seen = new Set<string>()
   const merged: string[] = []
   for (const item of [...preferred, ...(existing ?? [])]) {
@@ -103,9 +101,7 @@ function isDoHOnly(nameservers: string[] | undefined): boolean {
   if (!nameservers?.length) {
     return true
   }
-  return nameservers.every(
-    (entry) => entry.startsWith('https://') || entry.startsWith('http://')
-  )
+  return nameservers.every((entry) => entry.startsWith('https://') || entry.startsWith('http://'))
 }
 
 /** DoH bootstrap can fail under TUN; prepend UDP/TLS resolvers for reliable anti-pollution. */
@@ -117,7 +113,10 @@ export function ensureDnsBootstrapResilience(profile: MihomoConfig): void {
   const dns = profile.dns as MihomoDNSConfig
 
   if (isDoHOnly(dns['default-nameserver'])) {
-    dns['default-nameserver'] = prependStringList(UDP_BOOTSTRAP_NAMESERVERS, dns['default-nameserver'])
+    dns['default-nameserver'] = prependStringList(
+      UDP_BOOTSTRAP_NAMESERVERS,
+      dns['default-nameserver']
+    )
   }
 
   if (isDoHOnly(dns.nameserver)) {

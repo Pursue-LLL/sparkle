@@ -1,4 +1,6 @@
-// [INPUT] 待巡检节点 · 已有缓存 · 依赖注入（单点探测 / 时钟）
+// [INPUT] 待巡检节点 · 已有缓存 · 依赖注入（单点探测 / 时钟） ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         sparkleAgyProviderCore::agyProxyName/AgyNodeProbeRecord/AgyProbeVerdict/AgyProxyRecord (POS: agy provider 与分组配置)
 // [OUTPUT] runAgyAudit · shouldRepairAgyPin · resolveAgyAuditBackoffMs · AgyAuditResult
 // [POS] agy 巡检状态机（纯编排，无 I/O）：决定哪些节点被测、何时中止、缓存如何演进。
 // I/O（切组 + 调 magpie）由调用方注入，便于用假探针验证「不可用不下结论 / 致命错误中止 / 预算超时」等分支。

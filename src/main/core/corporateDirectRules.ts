@@ -1,3 +1,8 @@
+// [INPUT] corporateDefaultInterface::readDefaultInterface (POS: 默认网卡读取) ·
+//         corporateDnsCore::buildCorporateNameservers (POS: 公司 DNS 解析器纯逻辑)
+// [OUTPUT] ensureCorporateDirectRules · ensureCorporateDnsPolicy
+// [POS] 公司内网域名的直连规则与 DNS 策略：内网域名规则前置为 DIRECT；DNS 启用时，这些域名改用默认网卡的 DHCP 解析器加办公室静态解析器。
+
 import { readDefaultInterface } from './corporateDefaultInterface'
 import { buildCorporateNameservers } from './corporateDnsCore'
 

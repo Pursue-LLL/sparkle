@@ -1,3 +1,8 @@
+// [INPUT] groupFailoverCore::FailoverGroupSnapshot/FailoverMemberSnapshot (POS: 故障转移纯决策层) ·
+//         groupFailoverEngine::createGroupFailoverEngine/GroupFailoverDeps (POS: 故障转移编排引擎)
+// [OUTPUT] START · TAIWAN · flush · leaf · alertFor · createHarness · taiwanGroup: 故障转移引擎行为测试夹具
+// [POS] 故障转移引擎的测试夹具：假时钟、假控制器与假告警流，让引擎的每一步编排可脱离内核重放。仅供测试使用。
+
 import type { FailoverGroupSnapshot, FailoverMemberSnapshot } from './groupFailoverCore'
 import { createGroupFailoverEngine, type GroupFailoverDeps } from './groupFailoverEngine'
 

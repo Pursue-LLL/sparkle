@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] AUTO_SELECT_GROUP_NAME · *_DEDICATED_GROUP_NAME（含旧组名）· GENERAL_PROXY_GROUP_NAME(S) · *_DELAY_TEST_URL · is*GroupName 谓词 · resolveDelayTestUrl · resolveCursorStableSelectorGroup · resolveGeneralProxySelectGroup · filterCursorEligibleVpsLeaves
+// [POS] Sparkle 分组命名、类型判定与延迟测试地址的唯一出处：分组名常量与按名认组的谓词、各组探测地址，以及 Cursor 专用 selector 组与通用选择组的解析。
+
 /** Shared helpers: Cursor traffic must use fixed Selector nodes, never UrlTest auto-hop. */
 
 /** Sparkle 重写订阅 ♻️ / 节点选择 后的 fallback 自动选择组（粘性固定组）。 */

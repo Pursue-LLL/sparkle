@@ -1,4 +1,6 @@
-// [INPUT] 测试给出的 proxy-groups / rules
+// [INPUT] 测试给出的 proxy-groups / rules ·
+//         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/GROK_DEDICATED_GROUP_NAME/MAIL_DEDICATED_GROUP_NAME… (POS: Sparkle 分组名常量与判定谓词) ·
+//         customProxyGroups::HONG_KONG_FILTER_GROUP_NAME (POS: Sparkle 自有分组注入)
 // [OUTPUT] SPARKLE_GROUP_NAMES · profileOf · groupNames · groupProxies · subscriptionGroupNames
 // [POS] customProxyGroups*.test.ts 共用夹具：把配置里的组读成名字 / 成员列表，并区分 Sparkle 生成的组与订阅带来的组。
 

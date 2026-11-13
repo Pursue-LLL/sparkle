@@ -1,3 +1,7 @@
+// [INPUT] managedStream::createManagedStream/ManagedStreamOptions (POS: 数据流连接生命周期)
+// [OUTPUT] FakeSocket · createRig · elapse · flush: 数据流生命周期测试夹具
+// [POS] `managedStream` 的测试夹具：假 WebSocket 与假时钟，逐步驱动建连、断线重连与停止。仅供测试使用。
+
 import { EventEmitter } from 'node:events'
 import { mock } from 'node:test'
 import WebSocket from 'ws'

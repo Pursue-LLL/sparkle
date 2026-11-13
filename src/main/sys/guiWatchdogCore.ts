@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] GUI_WATCHDOG_* 常量 · 崩溃台账与标记文件路径 · buildCrashLedgerLine · shouldDisableGuiAutoRelaunchOnMacOs26 · shouldOpenFastCrashStreakFuse · countRecentCrashRestarts
+// [POS] GUI 看门狗的路径常量与纯判定，与 `scripts/sparkle-gui-watchdog.sh` 的约定由漂移测试锁住；shell 脚本是运行时的唯一实现。
+
 import path from 'path'
 
 export const GUI_WATCHDOG_LAUNCH_AGENT_LABEL = 'com.sparkle.gui-watchdog'

@@ -1,4 +1,6 @@
-// [INPUT] app/profile 配置 · 工作目录路径 · execWithElevation（权限修复） · profileFilesCore (POS: 路径与权限恢复决策)
+// [INPUT] app/profile 配置 · 工作目录路径 · execWithElevation（权限修复） · profileFilesCore (POS: 路径与权限恢复决策) ·
+//         utils/dirs::mihomoProfileWorkDir/mihomoWorkDir (POS: 应用目录与路径常量) ·
+//         utils/elevation::execWithElevation (POS: 管理员判定与提权执行)
 // [OUTPUT] getFileStr · getFilePreviewStr · setFileStr · saveFileStrWithElevation: 订阅/工作目录内可编辑文件的读写
 // [POS] 可编辑文件访问层：路径解析限定在工作目录，写入遇权限错误时按需提权修复，规则集(mrs)预览转文本。
 

@@ -1,4 +1,8 @@
-// [INPUT] 数据目录里的 sparkle-grok-nodes.json · 每次真实 grok.com 请求的结论
+// [INPUT] 数据目录里的 sparkle-grok-nodes.json · 每次真实 grok.com 请求的结论 ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         sparkleGrokProviderCore::GrokNodeProbeCache/GrokNodeProbeRecord/GrokProxyRecord (POS: grok provider 与快照) ·
+//         sparkleGrokRoutedCheck::RoutedCheckResult (POS: grok 真实请求判定口径) ·
+//         utils/dirs::dataDir (POS: 应用目录与路径常量)
 // [OUTPUT] loadSparkleGrokProbeCache · saveSparkleGrokProbeCache · recordRouted · recordRoutedFailure
 // [POS] grok 探测缓存的磁盘读写与结论写入：读取时整条丢弃字段不合法的记录；
 // 代理页的展示快照由缓存整体重建，所以每次探测只需要把结论写进缓存。

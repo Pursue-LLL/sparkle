@@ -1,3 +1,7 @@
+// [INPUT] cursorProxyGroup::MAIL_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词)
+// [OUTPUT] MAIL_TRAFFIC_RULE_BASES · injectMailTrafficRules
+// [POS] 海外邮件收发服务器（IMAP / POP3 / SMTP）前置规则 → `📧 邮件专用`：该组存在才注入，已有同文规则不重复；国内邮箱与网页版不在此列。
+
 import { MAIL_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 
 /**

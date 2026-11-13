@@ -1,4 +1,8 @@
-// [INPUT] 当前订阅节点 · 地区优先级 · 真实邮件端口（IMAPS 993 + SMTPS 465）探测缓存
+// [INPUT] 当前订阅节点 · 地区优先级 · 真实邮件端口（IMAPS 993 + SMTPS 465）探测缓存 ·
+//         autoSelectAnyTlsExclusionCore::isAnyTlsProxyType (POS: url-test 自动组剔除 AnyTLS) ·
+//         cursorProxyGroup::CURSOR_DEDICATED_DIRECT_PROXY/MAIL_DEDICATED_GROUP_NAME/MAIL_DELAY_TEST_URL/MAIL_PROBE_HIDDEN_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
 // [OUTPUT] MAIL_NODE_PROVIDER_ID · orderMailProxies · buildSparkleMailProviderDocument · buildMailGroupConfig（`fallback`）·
 //          buildMailProbeHiddenGroupConfig · ensureMailProbeListener · mailProviderMembershipChanged
 // [POS] `📧 邮件专用` 的专属 provider 与组配置生成逻辑：

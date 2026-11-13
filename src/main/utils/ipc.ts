@@ -1,3 +1,39 @@
+// [INPUT] config::getAppConfig/patchAppConfig/getControledMihomoConfig/patchControledMihomoConfig… (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         cursorPathPrefixProfileReloadCore::shouldReloadProfileForAppConfigPatch (POS: Cursor 路径前缀变更的重载判定) ·
+//         factory::getRuntimeConfig/getRuntimeConfigStr/getRawProfileStr/getCurrentProfileStr… (POS: runtime 配置生成) ·
+//         manager::quitWithoutCore/restartCore/startNetworkDetection/stopCore… (POS: 内核进程生命周期) ·
+//         mihomoApi::mihomoChangeProxy/mihomoCloseConnections/mihomoCloseConnection/mihomoGroupDelay… (POS: mihomo 控制器访问层) ·
+//         permission::checkCorePermission/manualGrantCorePermition/revokeCorePermission (POS: 内核授权（setuid）的检查、授予与撤销) ·
+//         probeWarmupState::isProbeWarmupActive (POS: 测速预热窗口状态) ·
+//         resolve/autoUpdater::checkUpdate/downloadAndInstallUpdate/cancelUpdate (POS: 应用更新检查与安装) ·
+//         resolve/backup::listWebdavBackups/webdavBackup/webdavDelete/webdavRestore (POS: WebDAV 备份) ·
+//         resolve/floatingWindow::closeFloatingWindow/showContextMenu/showFloatingWindow (POS: 悬浮窗) ·
+//         resolve/gistApi::getGistUrl (POS: Gist 运行时配置上传) ·
+//         resolve/server::startSubStoreFrontendServer/startSubStoreBackendServer/stopSubStoreFrontendServer/stopSubStoreBackendServer… (POS: 本地服务端口) ·
+//         resolve/shortcut::registerShortcut (POS: 全局快捷键) ·
+//         resolve/theme::applyTheme/fetchThemes/importThemes/readTheme… (POS: 主题管理) ·
+//         resolve/trafficMonitor::startMonitor (POS: 流量监视子进程) ·
+//         resolve/tray::closeTrayIcon/copyEnv/setDockVisible/showTrayIcon… (POS: 托盘) ·
+//         runtimeConfigSync::syncRuntimeConfigToCore (POS: 运行时配置对齐接线) ·
+//         service/api::patchCoreProfile (POS: service 模式签名 API) ·
+//         service/manager::serviceStatus/installService/uninstallService/startService… (POS: service 密钥管理与初始化) ·
+//         sparkleAgyProbeSnapshot::getSparkleAgyProbeSnapshot (POS: agy 展示快照) ·
+//         sparkleGrokProbeSnapshot::getSparkleGrokProbeSnapshot (POS: grok 展示快照) ·
+//         src/shared/buildStamp::SPARKLE_BUILD_STAMP/SPARKLE_SEMVER (POS: 构建标识) ·
+//         subStoreApi::subStoreCollections/subStoreSubs (POS: Sub-Store 订阅接口) ·
+//         sys/autoRun::checkAutoRun/disableAutoRun/enableAutoRun (POS: 开机自启) ·
+//         sys/interface::getInterfaces (POS: 网卡信息) ·
+//         sys/misc::checkElevateTask/deleteElevateTask/getFilePath/openFile… (POS: 系统杂项（文件读取、防火墙、提权任务）) ·
+//         sys/sysproxy::triggerSysProxy (POS: 系统代理) ·
+//         utils/dirs::coreLogPath/ensureLogDir/findSystemMihomo/logDir (POS: 应用目录与路径常量) ·
+//         utils/formatUnknownErrorForLog::formatUnknownErrorForUi (POS: 未知异常序列化) ·
+//         utils/icon::getIconDataURL/getImageDataURL (POS: 图标读取) ·
+//         utils/log::appendAppLog/clearCachedMihomoLogs/getCachedMihomoLogs (POS: 应用日志与内核日志) ·
+//         utils/notification::showNotification (POS: 应用通知) ·
+//         utils/userAgent::getUserAgent (POS: 请求 User-Agent)
+// [OUTPUT] registerIpcMainHandlers: 注册全部 ipcMain 通道
+// [POS] 主进程 IPC 通道的统一注册入口：把渲染进程的调用路由到 config / core / sys / resolve 各模块。
+
 import { app, ipcMain } from 'electron'
 import { getUserAgent } from './userAgent'
 import { SPARKLE_BUILD_STAMP, SPARKLE_SEMVER } from '../../shared/buildStamp'

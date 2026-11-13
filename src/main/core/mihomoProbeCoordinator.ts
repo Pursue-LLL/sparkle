@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] MIHOMO_DELAY_PROBE_MAX_CONCURRENT · getActiveMihomoDelayProbes · withMihomoDelayProbeSlot
+// [POS] 全局 mihomo delay 探测并发槽：同时最多 2 个探测，等槽超过 30 秒抛错，避免 TUN / 内核被并发探测压垮。
+
 /** Global cap on concurrent mihomo proxy delay API calls — avoids TUN/mihomo storms. */
 
 export const MIHOMO_DELAY_PROBE_MAX_CONCURRENT = 2

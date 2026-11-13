@@ -1,3 +1,9 @@
+// [INPUT] cursorAppBundlePathsCore::CURSOR_2_APP_PATH_PREFIX/CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES/CURSOR_DIRECT_FALLBACK_APP_PATH_PREFIXES/CURSOR_NODE_SELECT_APP_PATH_PREFIXES (POS: Cursor 应用路径前缀常量) ·
+//         cursorProxyGroup::CURSOR_DEDICATED_GROUP_NAME/LEGACY_CURSOR_DEDICATED_GROUP_NAMES/resolveCursorStableSelectorGroup/resolveGeneralProxySelectGroup (POS: Sparkle 分组名常量与判定谓词) ·
+//         ruleSyntax::parseRule (POS: 规则文本解析与策略改写)
+// [OUTPUT] DEFAULT_CURSOR_*_APP_PATH_PREFIXES · CURSOR_PROXY_DOMAINS · stripUnscopedCursorDedicatedRules · injectCursorDomainRules
+// [POS] Cursor 路由规则注入：Cursor 域名规则与可选的应用路径限定 AND 规则 → `🎯 Cursor 专用`；清理未限定路径的旧 Cursor 规则。规则文本一律经 `ruleSyntax` 读取。
+
 import {
   CURSOR_2_APP_PATH_PREFIX,
   CURSOR_DEDICATED_PROXY_APP_PATH_PREFIXES,

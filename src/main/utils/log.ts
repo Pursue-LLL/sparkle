@@ -1,3 +1,10 @@
+// [INPUT] config/app::getAppConfig (POS: 应用配置读写) ·
+//         utils/dirs::appLogPath/coreLogPath/substoreLogPath/ensureLogDir (POS: 应用目录与路径常量) ·
+//         utils/logFileSizeCore::nextLogFileSizeAfterAppend/resolveCachedLogFileSize/shouldTrimLogFile/trimLogContent… (POS: 日志文件大小记账与裁剪) ·
+//         utils/logLineParseCore::createControllerLogFromOutLine (POS: 内核输出行解析)
+// [OUTPUT] appendAppLog · publishMihomoLog · getCachedMihomoLogs · clearCachedMihomoLogs · setMihomoLogSource · createLogWritable
+// [POS] 应用日志与内核日志：`appendAppLog` 是尽力而为的旁路（写失败只丢这一段、永不 reject）；写入流出错时摘掉坏流、下次写入重开；内核日志缓存并推送给渲染进程；文件大小按记账控制、超限裁剪。
+
 import { BrowserWindow } from 'electron'
 import { createWriteStream, readFileSync, statSync, type WriteStream, writeFileSync } from 'fs'
 import { Writable } from 'stream'

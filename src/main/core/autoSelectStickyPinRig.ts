@@ -1,4 +1,7 @@
-// [INPUT] node:test 假时钟与模块替身 · autoSelectStickyPin（被测模块，每个用例重新加载）
+// [INPUT] node:test 假时钟与模块替身 · autoSelectStickyPin（被测模块，每个用例重新加载） ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
+//         sparkleFastProviderCore::FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成)
 // [OUTPUT] useStickyPinRig · world · poll/jump/settle · 断言辅助（callsStarting/changes/unfixes）· GEMINI_ALIVE/GEMINI_DEAD · ELIGIBLE/restricted
 // [POS] autoSelectStickyPin 行为测试夹具：用可脚本化的 mihomo 控制器与地区校验替身，
 // 在假时钟上驱动 3 秒轮询。仅供测试使用。

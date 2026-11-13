@@ -1,4 +1,6 @@
-// [INPUT] 探测缓存 · 当前订阅节点 · 每次真实 agy 请求的结论
+// [INPUT] 探测缓存 · 当前订阅节点 · 每次真实 agy 请求的结论 ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         sparkleAgyProviderCore::agyProxyName/buildAgyProbeSnapshot/AgyNodeProbeRecord/AgyProxyRecord (POS: agy provider 与分组配置)
 // [OUTPUT] recordAgyAttempt · syncAgyProbeSnapshot · getSparkleAgyProbeSnapshot
 // [POS] 代理页展示用的内存快照：缓存里的可用 / 已拒绝结论，加上最近一次失败的探测，
 // 经 IPC 读取时不回读磁盘、不重新解析订阅。

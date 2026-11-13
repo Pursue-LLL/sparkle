@@ -1,4 +1,6 @@
-// [INPUT] mihomo 的 mixed-port 配置 · grok.com 的真实响应（状态码与 cf-mitigated 头）
+// [INPUT] mihomo 的 mixed-port 配置 · grok.com 的真实响应（状态码与 cf-mitigated 头） ·
+//         config::getControledMihomoConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         sparkleGrokProviderCore::isGrokRoutedResponseUsable (POS: grok provider 与快照)
 // [OUTPUT] ROUTED_CHECK_TIMEOUT_MS · RoutedCheckResult · resolveMixedPort · requestGrokViaRoute
 // [POS] `grok 专用` 选路的唯一判定口径：经 App 的 mixed-port（不可用时依赖 TUN 直连）真实请求 grok.com，
 //       只有 200 且无 cf-mitigated challenge 才算可用。

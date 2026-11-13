@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] world · loadLog · logFile · readLog · writeAndWait · pipeThrough · settlesWithin: 日志模块测试脚手架
+// [POS] `log.ts` 的测试脚手架：假 electron 窗口、假应用配置与假目录，文件写入走真实临时目录。仅供测试使用。
+
 // 日志模块的测试脚手架：假 electron 窗口、假应用配置、假目录，文件写入走真实临时目录。
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, type WriteStream } from 'node:fs'
 import { tmpdir } from 'node:os'

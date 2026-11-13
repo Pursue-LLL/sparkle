@@ -1,3 +1,27 @@
+// [INPUT] config::getAppConfig/getControledMihomoConfig/getProfileConfig/patchAppConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         coreLifecycle::runPostCoreReadyLifecycle/setPendingCoreReadyReason (POS: 内核就绪后的卫生操作（fake-ip 缓存清理）) ·
+//         factory::generateProfile/getRuntimeConfig/loadRuntimeConfigFromDisk (POS: runtime 配置生成) ·
+//         mihomoApi::startMihomoTraffic/startMihomoConnections/startMihomoLogs/startMihomoMemory… (POS: mihomo 控制器访问层) ·
+//         network::recoverDNS/setPublicDNS/startNetworkDetection/stopNetworkDetection (POS: 默认网卡、公共 DNS 与网络状态检测) ·
+//         postCoreBootstrap::waitForMihomoControllerReady (POS: 内核就绪后的启动编排) ·
+//         process-control::stopChildProcess (POS: 内核子进程终止) ·
+//         profileCheckRetry::checkProfileWithRetry (POS: 内核启动前的配置校验重试) ·
+//         resolve/floatingWindow::floatingWindow (POS: 悬浮窗) ·
+//         resolve/gistApi::uploadRuntimeConfig (POS: Gist 运行时配置上传) ·
+//         resolve/trafficMonitor::startMonitor (POS: 流量监视子进程) ·
+//         service/api::getCoreStatus/startCore/restartCore/stopCore… (POS: service 模式签名 API) ·
+//         service/fallback::clearAppUpdateServiceFallbackPause/getServiceFallbackPolicy/shouldSkipServiceUnavailableFallback (POS: service 不可用时的回退策略) ·
+//         service/manager::serviceStatus (POS: service 密钥管理与初始化) ·
+//         serviceCoreProviderParityCore::resolveExpectedProxyProviderIds/collectRunningProxyProviderIds/formatProviderParityMismatchLog/shouldRestartServiceCoreForProviderParity (POS: service 内核 provider 一致性判定) ·
+//         startup-chain::createCoreEnvironment/createCoreSpawnArgs/createProviderInitializationTracker/isControllerListenError… (POS: 内核启动参数、环境与启动日志判定) ·
+//         startupHook::createCoreHookWaiter/createCoreStartupHook (POS: 内核启动钩子文件) ·
+//         tunStartupGuard::ensureTunCorePermissionBeforeStart/resetTunStartupGuardState/verifyTunAfterCoreReady/watchTunStartupLogLine (POS: TUN 启动守卫) ·
+//         utils/dirs::dataDir/coreLogPath/ensureLogDir/mihomoCorePath… (POS: 应用目录与路径常量) ·
+//         utils/log::appendAppLog/createLogWritable/setMihomoLogSource (POS: 应用日志与内核日志) ·
+//         utils/notification::dismissNotification/showNotification/AppNotificationPayload/AppNotificationVariant (POS: 应用通知)
+// [OUTPUT] startCore · stopCore · restartCore · keepCoreAlive · quitWithoutCore · startNetworkDetection
+// [POS] mihomo 内核进程生命周期：启动（先生成配置并校验通过才停旧核）、停止、重启、守护与退出；service 模式经签名 API 控制特权内核。
+
 import { ChildProcess, spawn } from 'child_process'
 import { dataDir, coreLogPath, ensureLogDir, mihomoCorePath } from '../utils/dirs'
 import { generateProfile, getRuntimeConfig } from './factory'
@@ -378,7 +402,9 @@ async function probeMihomoCoreLive(maxWaitMs = 800): Promise<boolean> {
   return waitForMihomoControllerReady(maxWaitMs)
 }
 
-async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Promise<ServiceCoreLaunchAction> {
+async function resolveServiceCoreLaunchAction(
+  serviceCoreRunning: boolean
+): Promise<ServiceCoreLaunchAction> {
   if (!serviceCoreRunning || !(await probeMihomoCoreLive())) {
     return 'start'
   }
@@ -394,7 +420,7 @@ async function resolveServiceCoreLaunchAction(serviceCoreRunning: boolean): Prom
     const { loadRuntimeConfigFromDisk } = await import('./factory')
     const expectedIds = await resolveExpectedProxyProviderIds({
       runtimeConfig: runtime,
-      loadDiskRuntimeConfig: loadRuntimeConfigFromDisk,
+      loadDiskRuntimeConfig: loadRuntimeConfigFromDisk
     })
     const providerResponse = await mihomoProxyProviders()
     const runningIds = collectRunningProxyProviderIds(providerResponse.providers)

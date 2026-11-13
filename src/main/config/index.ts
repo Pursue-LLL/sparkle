@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] getAppConfig · getControledMihomoConfig · 订阅配置 / 订阅文件 / 覆写的读写接口
+// [POS] config 模块的统一出口：把应用配置、内核控制配置、订阅配置、可编辑文件与覆写的读写接口集中重新导出。
+
 export { getAppConfig, patchAppConfig } from './app'
 export { getControledMihomoConfig, patchControledMihomoConfig } from './controledMihomo'
 export {

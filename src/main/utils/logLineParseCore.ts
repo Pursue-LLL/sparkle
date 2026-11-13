@@ -1,3 +1,7 @@
+// [INPUT] 无本地依赖
+// [OUTPUT] createControllerLogFromOutLine: 把内核标准输出的 logfmt 行解析为控制器日志
+// [POS] 内核输出行的解析：取出 time / level / msg 字段，转义序列单趟解码。纯函数，无 IO。
+
 const logfmtFieldPattern = /([A-Za-z0-9_.-]+)=("(?:\\.|[^"\\])*"|[^\s]+)/g
 
 const logfmtEscapes: Record<string, string> = {

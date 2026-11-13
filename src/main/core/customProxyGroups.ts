@@ -1,3 +1,13 @@
+// [INPUT] cursorDedicatedRuleRewrite::migrateLegacyCursorDedicatedGroupReferences/rewriteBroadCursorDedicatedRules (POS: Cursor 专用组规则整理) ·
+//         cursorProxyGroup::CURSOR_DEDICATED_GROUP_NAME/CURSOR_DEDICATED_DIRECT_PROXY/CURSOR_VPS_PROVIDER_FILTER/filterCursorEligibleVpsLeaves… (POS: Sparkle 分组名常量与判定谓词) ·
+//         ruleSyntax::rewriteRulePolicies (POS: 规则文本解析与策略改写) ·
+//         sparkleAgyProviderCore::buildAgyGroupConfig (POS: agy provider 与分组配置) ·
+//         sparkleGrokProviderCore::GROK_NODE_PROVIDER_ID (POS: grok provider 与快照) ·
+//         sparkleMailProviderCore::buildMailGroupConfig/buildMailProbeHiddenGroupConfig/ensureMailProbeListener (POS: 邮件 provider 与分组配置) ·
+//         vpsProviderSplitCore::resolveVpsProviderId (POS: VPS 节点拆分与 provider id)
+// [OUTPUT] HONG_KONG_FILTER_GROUP_NAME · ensureCustomProxyGroups: 注入 / 刷新 Sparkle 自有分组
+// [POS] Sparkle 自有分组注入：`🎯 Cursor 专用`、`Sparkle-香港`、`grok 专用`、`📧 邮件专用`、隐藏探测组与 `🎯 agy 专用` 放在订阅分组之前；订阅自带分组原样保留，并迁移指向旧 Cursor 组名的引用与规则。
+
 import {
   CURSOR_DEDICATED_GROUP_NAME,
   CURSOR_DEDICATED_DIRECT_PROXY,

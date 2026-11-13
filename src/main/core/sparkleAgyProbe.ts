@@ -1,4 +1,14 @@
-// [INPUT] 当前订阅节点 · agy 组操作（sparkleAgyGroupControl）· 探测缓存（sparkleAgyProbeCache）· 展示快照（sparkleAgyProbeSnapshot）
+// [INPUT] 当前订阅节点 · agy 组操作（sparkleAgyGroupControl）· 探测缓存（sparkleAgyProbeCache）· 展示快照（sparkleAgyProbeSnapshot） ·
+//         config::getAppConfig/getProfile/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         mihomoApi::mihomoGroupDetail (POS: mihomo 控制器访问层) ·
+//         provider::extractProxies (POS: 订阅节点 → provider 文件) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
+//         sparkleAgyCli::AGY_PROBE_MODEL (POS: 官方 agy CLI 请求) ·
+//         sparkleAgyProbeCore::resolveAgyAuditBackoffMs/runAgyAudit/shouldRepairAgyPin/AgyAuditOutcome (POS: agy 巡检状态机) ·
+//         sparkleAgyProviderCore::agyProxyName/orderAgyRepairProxies/AgyNodeProbeRecord/AgyProbeVerdict… (POS: agy provider 与分组配置) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] bootstrapSparkleAgyProvider · startSparkleAgyProbeLoop
 // [POS] 用官方 agy CLI 的真实请求给节点定性：200 = 可用，400 `User location is not supported` = 不可用。
 // 本模块只做巡检编排：pin 就地复测 → 必要时修复扫描 → 收敛 provider；

@@ -1,7 +1,11 @@
 // [INPUT] autoSelectStickyPinCore::decideStickyPin/shouldRecheckFixedNodeRegion (POS: 粘性固定与地区复核节流决策) ·
 //         sparkleGeminiProbe::verifyNodeGeminiRegion (POS: Gemini 地区码校验) ·
 //         mihomoApi::mihomoGroupDetail/mihomoChangeProxy/mihomoUnfixedProxy (POS: mihomo 控制器访问层) ·
-//         sparkle-fast provider 探测结果与单点拨测
+//         sparkle-fast provider 探测结果与单点拨测 ·
+//         cursorProxyGroup::AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_GEMINI_PROBE_TIMEOUT_MS/AUTO_SELECT_GEMINI_PROBE_URL (POS: 自动选择与地区组默认配置) ·
+//         sparkleFastProviderCore::FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] startAutoSelectStickyPin · notifyAutoSelectUnfixed
 // [POS] 轮询 `自动选择`：fallback 选出的存活节点稳定后固定下来，让它只在该节点真挂掉时才换；
 // 固定被 mihomo 清除时先做单点独立复测（过滤并发体检偶发超时误报）；清理孤儿固定。

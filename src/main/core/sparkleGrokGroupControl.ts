@@ -1,4 +1,11 @@
-// [INPUT] `grok 专用` 组（mihomo）· provider 成员 · 探测缓存
+// [INPUT] `grok 专用` 组（mihomo）· provider 成员 · 探测缓存 ·
+//         cursorProxyGroup::GROK_DEDICATED_GROUP_NAME/GROK_DELAY_TEST_URL (POS: Sparkle 分组名常量与判定谓词) ·
+//         mihomoApi::mihomoChangeProxy/mihomoCloseConnections/mihomoGroupDelay/mihomoGroupDetail (POS: mihomo 控制器访问层) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         sparkleGrokProviderCore::grokProxyName/GrokNodeProbeRecord/GrokProxyRecord (POS: grok provider 与快照) ·
+//         sparkleGrokProviderSync::readGrokProviderMembers (POS: grok provider 落盘与热重载) ·
+//         sparkleGrokRoutedCheck::ROUTED_CHECK_TIMEOUT_MS (POS: grok 真实请求判定口径) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] currentGrokNode · switchGrokNode · refreshGrokPoolIfDue
 // [POS] 对 grok 组的操作：读当前节点、切换并断开旧连接、每 5 分钟用非侵入式 group-delay(expected=200) 刷新池内延迟。
 

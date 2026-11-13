@@ -1,5 +1,6 @@
 // [INPUT] mihomoApi::subscribeMihomoAlerts/mihomoGroups/mihomoChangeProxy/mihomoUnfixedProxy (POS: mihomo 控制器访问层) ·
-//         groupFailoverEngine (POS: 故障转移编排) · utils/log::appendAppLog (POS: 应用程序运行日志追加写入)
+//         groupFailoverEngine (POS: 故障转移编排) · utils/log::appendAppLog (POS: 应用程序运行日志追加写入) ·
+//         groupFailoverCore::toFailoverSnapshot (POS: 故障转移纯决策层)
 // [OUTPUT] startGroupFailover: 订阅内核告警并启动故障转移
 // [POS] 故障转移引擎的运行时接线：把真实的控制器、日志与定时器接到 groupFailoverEngine。
 //       作用范围由 autoSwitchPolicy 决定；内核启停重连后告警流自动恢复，因此每次应用启动只需调用一次。

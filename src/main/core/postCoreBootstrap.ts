@@ -4,9 +4,20 @@
 //         sparkleFastLatencyOrder::bootstrapSparkleFastLatencyOrder (POS: sparkle-fast 延迟序) ·
 //         groupFailover::startGroupFailover (POS: 故障转移引擎接线) ·
 //         sparkleMailProbe/sparkleMailCurrentNodeProbe (POS: 邮件 provider 全量探测/当前节点按需复测) ·
-//         regionalUrlTestWarmup (POS: 地区组按需预热) · utils/bestEffortLog · utils/errorMessage::describeError
+//         regionalUrlTestWarmup (POS: 地区组按需预热) · utils/bestEffortLog · utils/errorMessage::describeError ·
+//         autoSelectStickyPin::startAutoSelectStickyPin (POS: `自动选择` 粘性固定) ·
+//         cursorDedicatedDefault::applyCursorDedicatedVpsSelection (POS: Cursor 专用组默认节点) ·
+//         mihomoControllerReadyCore::probeMihomoControllerVersion (POS: 控制器就绪探针) ·
+//         networkStartupGraceCore::NETWORK_MONITOR_STARTUP_GRACE_MS (POS: 内核就绪后的启动宽限常量) ·
+//         probeWarmupState::beginProbeWarmup/endProbeWarmup (POS: 测速预热窗口状态) ·
+//         profileUpdater::initProfileUpdater (POS: 订阅自动更新) ·
+//         providerLeafProbe::verifyUnconfirmedFailures (POS: provider 叶子低并发拨测) ·
+//         sparkleAgyProbe::bootstrapSparkleAgyProvider/startSparkleAgyProbeLoop (POS: agy 巡检编排) ·
+//         sparkleGeminiProbe::bootstrapSparkleGeminiRegionAudit/startSparkleGeminiRegionAuditLoop (POS: Gemini 地区探测与缓存) ·
+//         sparkleGrokProbe::bootstrapSparkleGrokProvider/startSparkleGrokProbeLoop (POS: grok 选路探针) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] runPostCoreBootstrap: 内核就绪后的单一启动编排入口 · waitForMihomoControllerReady
-// [POS] 内核就绪后的单一启动编排入口。运行时配置对齐与自动组固定释放、延迟序、粘性固定、故障转移、邮件探测、agy 巡检、订阅更新、Cursor 默认节点、地区组按需预热。
+// [POS] 内核就绪后的单一启动编排入口。运行时配置对齐与自动组固定释放、延迟序、Gemini 地区审计 / 邮件 / grok / agy 探测（后台并行）、粘性固定、故障转移、订阅更新、Cursor 默认节点、地区组按需预热。
 //       每个服务各自隔离：任一服务启动失败只记日志，不影响其余服务（尤其是故障转移）；日志写入失败同样不改变启动流程。
 
 import { bestEffortLog } from '../utils/bestEffortLog'
