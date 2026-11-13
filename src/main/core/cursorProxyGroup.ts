@@ -31,6 +31,9 @@ export const MAIL_PROBE_HIDDEN_GROUP_NAME = '__sparkle_mail_probe__' as const
 /** Grok 专用出口组：select + 应用层探针选一个固定节点，避免 url-test 全量排名。 */
 export const GROK_DEDICATED_GROUP_NAME = 'grok 专用' as const
 
+/** Gemini 专用出口组：fallback，只收录经 vXmutd 地区校验确认解锁的节点。 */
+export const GEMINI_DEDICATED_GROUP_NAME = 'gemini专用' as const
+
 /** Antigravity / Code Assist（cloudcode-pa）专用出口组：只收真实 agy 请求验证通过的节点。 */
 export const AGY_DEDICATED_GROUP_NAME = '🎯 agy 专用' as const
 
@@ -99,6 +102,10 @@ export function isHongKongFilterGroupName(groupName: string): boolean {
 
 export function isGrokDedicatedGroupName(groupName: string): boolean {
   return groupName === GROK_DEDICATED_GROUP_NAME
+}
+
+export function isGeminiDedicatedGroupName(groupName: string): boolean {
+  return groupName === GEMINI_DEDICATED_GROUP_NAME
 }
 
 export function isMailDedicatedGroupName(groupName: string): boolean {

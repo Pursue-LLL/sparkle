@@ -8,8 +8,10 @@ import {
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import { MAIL_NODE_PROVIDER_ID } from './sparkleMailProviderCore'
 import { AGY_NODE_PROVIDER_ID } from './sparkleAgyProviderCore'
+import { GEMINI_NODE_PROVIDER_ID } from './sparkleGeminiProviderCore'
 import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 import {
+  DEFAULT_GENERAL_DELAY_TEST_URL,
   GEMINI_REACHABILITY_PROBE_URL,
   MAIL_DELAY_TEST_URL
 } from './cursorProxyGroup'
@@ -87,6 +89,20 @@ export function buildBaseConfigWithProviders(
     'health-check': {
       enable: commercialHealthCheck.enable,
       url: MAIL_DELAY_TEST_URL,
+      interval: commercialHealthCheck.interval,
+      timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
+      lazy: true
+    }
+  }
+
+  // gemini专用 的成员资格由 vXmutd 地区探测把关（sparkleGeminiProbe），
+  // 这里的 health-check 只用轻量 204 量存活与延迟，供 fallback 顺延与面板展示。
+  baseConfig['proxy-providers'][GEMINI_NODE_PROVIDER_ID] = {
+    type: 'file',
+    path: resolveProviderPath(GEMINI_NODE_PROVIDER_ID),
+    'health-check': {
+      enable: commercialHealthCheck.enable,
+      url: DEFAULT_GENERAL_DELAY_TEST_URL,
       interval: commercialHealthCheck.interval,
       timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
       lazy: true

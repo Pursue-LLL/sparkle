@@ -39,6 +39,7 @@ describe('factory: runtime config pipeline', () => {
       )
       assert.equal(config.proxies, undefined, 'nodes live in providers, not in the config')
       assert.deepEqual(Object.keys(config['proxy-providers'] as Json).sort(), [
+        'gemini专用',
         'p1',
         'sparkle-agy',
         'sparkle-fast',
@@ -71,6 +72,7 @@ describe('factory: runtime config pipeline', () => {
         '自动选择',
         '🎯 Cursor 专用',
         'grok 专用',
+        'gemini专用',
         '📧 邮件专用',
         '__sparkle_mail_probe__',
         '🎯 agy 专用',
@@ -104,7 +106,7 @@ describe('factory: runtime config pipeline', () => {
         'stringify_runtime'
       ]
       assert.deepEqual(rig.steps().slice(0, -1), expected)
-      assert.match(rig.steps().at(-1) ?? '', /^done groups=10$/)
+      assert.match(rig.steps().at(-1) ?? '', /^done groups=11$/)
     })
 
     it('adds every built-in rule set around the subscription’s rules', async () => {
@@ -119,6 +121,8 @@ describe('factory: runtime config pipeline', () => {
         'DOMAIN-SUFFIX,opencode.ai,DIRECT',
         'DOMAIN-SUFFIX,koolearn.com,DIRECT',
         'DOMAIN-SUFFIX,grok.com,grok 专用',
+        'DOMAIN-SUFFIX,gemini.google.com,gemini专用',
+        'DOMAIN-SUFFIX,aistudio.google.com,gemini专用',
         'DOMAIN,imap.gmail.com,📧 邮件专用',
         'PROCESS-PATH-REGEX,^/Applications/Cursor\\.app/,🎯 Cursor 专用',
         `DOMAIN-SUFFIX,example.com,${GROUP}`

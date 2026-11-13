@@ -40,6 +40,7 @@ import { buildBaseConfigWithProviders } from './providerConfigCore'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import { MAIL_NODE_PROVIDER_ID } from './sparkleMailProviderCore'
 import { AGY_NODE_PROVIDER_ID } from './sparkleAgyProviderCore'
+import { GEMINI_NODE_PROVIDER_ID } from './sparkleGeminiProviderCore'
 import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 import { appendAppLog } from '../utils/log'
 
@@ -135,6 +136,11 @@ export async function reloadMihomoProfileProviders(
     await mihomoUpdateProxyProviders(GROK_NODE_PROVIDER_ID)
   } catch {
     // sparkle-grok 未启用时不阻断主订阅 provider 热重载
+  }
+  try {
+    await mihomoUpdateProxyProviders(GEMINI_NODE_PROVIDER_ID)
+  } catch {
+    // gemini专用 未启用时不阻断主订阅 provider 热重载
   }
   const { releaseAutoSwitchPins } = await import('./autoSwitchPinRelease')
   await releaseAutoSwitchPins('orphans')

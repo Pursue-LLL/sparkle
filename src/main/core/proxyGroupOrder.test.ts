@@ -4,6 +4,7 @@ import {
   AGY_DEDICATED_GROUP_NAME,
   AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
+  GEMINI_DEDICATED_GROUP_NAME,
   GROK_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
@@ -30,7 +31,8 @@ describe('proxyGroupOrder', () => {
         group(CURSOR_DEDICATED_GROUP_NAME),
         group(GROK_DEDICATED_GROUP_NAME),
         group('Sparkle-香港'),
-        group(MAIL_DEDICATED_GROUP_NAME)
+        group(MAIL_DEDICATED_GROUP_NAME),
+        group(GEMINI_DEDICATED_GROUP_NAME)
       ]
     } as unknown as MihomoConfig
 
@@ -40,6 +42,7 @@ describe('proxyGroupOrder', () => {
       AUTO_SELECT_GROUP_NAME,
       CURSOR_DEDICATED_GROUP_NAME,
       GROK_DEDICATED_GROUP_NAME,
+      GEMINI_DEDICATED_GROUP_NAME,
       MAIL_DEDICATED_GROUP_NAME,
       AGY_DEDICATED_GROUP_NAME,
       'Sparkle-台湾',
