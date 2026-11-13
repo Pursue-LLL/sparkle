@@ -8,14 +8,16 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 
 | 文件 | 职责 |
 | --- | --- |
-| `agent-sparkle-upgrade.sh` | **Agent SSOT**：安装前先跑 `sparkle-pre-install-hygiene.mts` 与 `test-gui-watchdog-fuse.sh`；dist 与源码指纹一致则仅 install，否则 full upgrade；装后数据面就绪门禁 + profile scheduler 安装 + profile due-check |
-| `upgrade-sparkle-local.sh` | 本地 dev 一条龙：清理 `out/` → vite → Stage-A bundle 门禁 → electron-builder dir → Stage-B asar 门禁 → 写 dist build meta → install → 装后检查（进程在运行；close 烟测未就绪只告警）→ PostCoreBootstrap `mihomo API ready` 门控（macOS 26 且未设 `macos26ForceGui` 走 headless 分支，否则走 GUI 就绪门禁）；门控失败时按轮次调用 post-install recovery |
-| `install-sparkle-local.sh` | 仅安装 `dist/mac-arm64/Sparkle.app` → `/Applications`；装前清僵尸 mihomo socket（失败不阻断），装后安装 GUI 看门狗（失败只告警）并启动 App |
+| `agent-sparkle-upgrade.sh` | **Agent SSOT**：安装前先跑 `sparkle-pre-install-hygiene.mts` 与 `test-gui-watchdog-fuse.sh`；dist 与源码指纹一致则仅 install，否则 full upgrade；装后数据面就绪门禁 + profile scheduler 安装 + profile due-check。入口持原子锁（`${TMPDIR}/sparkle-agent-upgrade-entry.lock`），已有升级在跑直接拒绝启动 |
+| `upgrade-sparkle-local.sh` | 本地 dev 一条龙：**原子互斥锁**（`${TMPDIR}/sparkle-agent-upgrade.lock`，持有者 pid 已死或超时才接管，`INT/TERM` 释放后退出）→ 清理 `out/` → vite → Stage-A bundle 门禁 → electron-builder dir → Stage-B asar 门禁 → 写 dist build meta → install → 装后检查（进程在运行；close 烟测未就绪只告警）→ PostCoreBootstrap `mihomo API ready` 门控（macOS 26 且未设 `macos26ForceGui` 走 headless 分支，否则走 GUI 就绪门禁）；恢复轮次默认 **0**（`resolvePostInstallRecoveryRounds`），失败即停留现场，显式设 `SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS` 才放开（上限 3） |
+| `install-sparkle-local.sh` | 仅安装 `dist/mac-arm64/Sparkle.app` → `/Applications`；**装前幂等短路**（CDHash 与已装版本一致 + App 在跑 + 代理在线 + 启用内核 setuid 完整 ⇒ 直接 `exit 0`，不 quit/不 ditto/不启动，`SPARKLE_FORCE_REINSTALL=1` 可强制）；装前清僵尸 mihomo socket（失败不阻断）；**ditto 后用一次提权补齐启用内核的 setuid**（`chown root:admin` + `chmod +sx`，与 `permission.ts` 一致，装完断言仍在，否则拒绝交付）；`sparkle-service` 先直接发信号、必要时才提权一次（非交互模式绝不弹框）；装后幂等安装 GUI 看门狗并启动 App |
 | `lib/login-home.sh` | `sparkle_pin_login_home`：把 `HOME` 固定为登录用户真实主目录（Agent 沙箱会改写 `HOME`，门禁/护栏需读真实日志与状态目录）；`upgrade-sparkle-local.sh` 构建后、`install-sparkle-local.sh` 开头调用 |
 | `sparkle-pre-install-hygiene.mts` / `sparklePreInstallHygieneCore.ts` | 装前卫生：lifecycle journal 超过 16 MiB 时只保留末尾 8 MiB；数据卷占用 ≥95% 阻断升级 |
 | `sparkle-stale-mihomo-socket-hygiene.mts` / `sparkleStaleMihomoSocketHygieneCore.ts` | 探测失败时移除僵尸 `/tmp/sparkle-mihomo-api.sock`（它会阻止内核直连绑定） |
 | `evaluate-sparkle-dist-freshness.mts` / `sparkleDistFreshnessCore.ts` / `write-sparkle-dist-build-meta.mts` | dist 新鲜度：build 时把 git commit 与工作区摘要写入 dist 的 `.sparkle-build-meta.json`，install-only 前比对当前源码；退出码 0 = 一致，1 = 过期（强制 full rebuild） |
-| `upgrade-sparkle-post-install-recovery.mts` | 装后内核引导失败时的恢复：socket 卫生 + GUI 重启 |
+| `upgrade-sparkle-post-install-recovery.mts` | 装后内核引导失败时的恢复：socket 卫生 + GUI 重启（**默认不自动调用**，仅在显式放开恢复轮次时使用） |
+| `sparkleInstallSafetyCore.ts` | 升级安全的纯判定层：`isCoreSetuidMode`（权限位 → setuid）、`resolveInstallShortCircuit`（五条同时成立才跳过安装）、`shouldAttemptServiceKill`（是否需要提权、非交互禁止弹框）、`resolvePostInstallRecoveryRounds`（默认 0）、`parseLockOwner`/`isLockOwnerActive`/`formatLockOwner`（并发锁归属判定） |
+| `install-sparkle-gui-watchdog.sh` | 幂等安装 GUI 看门狗 LaunchAgent：脚本内容与 plist 一致且已加载时直接跳过，不做 `bootout/bootstrap/kickstart`（避免每次安装重置看门狗的崩溃台账与退避状态） |
 | `open-sparkle-gui-macos26.sh` | macOS 26 SSOT：带 GUI 启动（`--sparkle-force-gui`） |
 | `sparkle-profile-scheduler.sh` / `install-sparkle-profile-scheduler.sh` | LaunchAgent worker（远程订阅到期刷新）与其安装脚本 |
 
@@ -77,6 +79,10 @@ bash scripts/agent-sparkle-upgrade.sh
 **一次到位（铁律）**：改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交）再触发升级；一次升级命令只跑一次、只对应一次 App 启停，禁止并发或重复触发；命令被中断后先用 `evaluate-sparkle-dist-freshness.mts`、`/Applications/Sparkle.app` 落盘时间与 App 日志核查已完成到哪一步，再决定续跑或收尾，禁止不查状态直接重跑；装后验收只用只读门禁（`mihomo API ready` 日志、`sparkle-data-plane-readiness.mts`），失败先离线定位根因，不拿反复重装试错（事故记录：`scripts_20261107_20261113_BUGFIX_LOG.md` BUG-2026-11-13-003）。
 
 **重跑前必须确认没有构建进程**（BUG-2026-11-13-004 的唯一成因）：工具层报「命令中断」只表示调用方放弃等待，**构建进程可能仍在后台写 `dist/` 与 `out/`**。任何重跑前先执行 `ps aux | rg "electron-builder|agent-sparkle-upgrade|upgrade-sparkle-local"`，有残留必须先杀掉再重跑；两个构建并发写同一份 `dist` 会产出截断的 `app.asar`，表现为 App 启动零输出立即退出。App 装后打不开时的最短排查链：`node --check out/main/index.js` → 解析 asar header 长度 → 读包内 `package.json` 是否为合法 JSON → 检查 `SingletonLock` 是否指向已死 pid。
+
+**为什么装完总要输密码（已修）**：`ditto` 不保留 root 属主与 setuid 位，所以每次安装都会把内核的 setuid 弄丢，App 启动时 `tunStartupGuard` 判定「内核缺权限」，经 `permission.ts` 的 `osascript ... with administrator privileges` 弹框要密码。叠加 `max_recovery_rounds=2` 的自动重启（每轮 quit + 重新开），一次升级可以变成 3 次启停、3 次密码框。修复后：安装时一次性给**当前启用的内核**（`config.yaml` 的 `core`，与 App 检查目标一致）补齐 setuid 并断言，启动时不再弹框；恢复轮次默认 0；`sparkle-service` 只在直接信号失败时才提权一次。
+
+**幂等短路（避免无谓打断）**：`install-sparkle-local.sh` 在 quit 之前判定「CDHash 与已装版本一致 + App 在跑 + `:7890` 通 + 内核 setuid 完整」，四者全中直接 `exit 0`，不 quit、不 ditto、不启动。实测依据：同一构建的 dist 与 `/Applications` CDHash 完全相同（`b42edc22…`），此前重复执行的安装全部是空操作，却每次都打断了用户。
 
 ## 依赖
 

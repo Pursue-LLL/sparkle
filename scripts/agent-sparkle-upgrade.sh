@@ -9,6 +9,42 @@ cd "$ROOT"
 log() { echo "[agent-sparkle-upgrade] $*" >&2; }
 fail() { log "FAIL: $*"; exit 1; }
 
+# 入口互斥：两个 agent 升级同时跑会并发写 dist 与 /Applications（BUG-2026-11-13-004）。
+# 内部 upgrade-sparkle-local.sh 自己也有锁，但入口层先拦住可以避免「先做一半准备工作再失败」。
+ENTRY_LOCK_DIR="${SPARKLE_UPGRADE_ENTRY_LOCK_DIR:-${TMPDIR:-/tmp}/sparkle-agent-upgrade-entry.lock}"
+ENTRY_LOCK_OWNER="$ENTRY_LOCK_DIR/owner"
+acquire_entry_lock() {
+  local owner_text owner active
+  owner_text="$(node -e 'process.stdout.write(`pid=${process.pid} started=${Date.now()}\n`)')"
+  if mkdir "$ENTRY_LOCK_DIR" 2>/dev/null; then
+    printf '%s' "$owner_text" > "$ENTRY_LOCK_OWNER"
+    return 0
+  fi
+  owner="$(cat "$ENTRY_LOCK_OWNER" 2>/dev/null || true)"
+  active="$(node -e '
+    const text = process.argv[1] || "";
+    const pid = Number(/pid=(\d+)/.exec(text)?.[1] ?? 0);
+    let alive = false;
+    if (pid > 0) {
+      try { process.kill(pid, 0); alive = true } catch { alive = false }
+    }
+    process.stdout.write(alive ? "1" : "0");
+  ' "$owner")"
+  if [[ "$active" == "1" ]]; then
+    fail "another agent upgrade is already running ($owner) — refusing to start a second one"
+  fi
+  log "Stale entry lock ($owner) — taking over"
+  rm -rf "$ENTRY_LOCK_DIR"
+  mkdir "$ENTRY_LOCK_DIR" 2>/dev/null || fail "could not take over entry lock"
+  printf '%s' "$owner_text" > "$ENTRY_LOCK_OWNER"
+  return 0
+}
+release_entry_lock() { rm -rf "$ENTRY_LOCK_DIR" 2>/dev/null || true; }
+handle_entry_signal() { release_entry_lock; exit 130; }
+acquire_entry_lock
+trap 'release_entry_lock' EXIT
+trap 'handle_entry_signal' INT TERM
+
 EXPECTED_VER="$(node -p "require('./package.json').version")"
 DIST_APP="$ROOT/dist/mac-arm64/Sparkle.app"
 TSX="$ROOT/node_modules/.bin/tsx"

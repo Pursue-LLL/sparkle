@@ -21,6 +21,66 @@ CDHASH_FILE="${STATE_DIR}/last-sparkle-cdhash"
 fail() { echo "[install-sparkle] FAIL: $*" >&2; exit 1; }
 log() { echo "[install-sparkle] $*" >&2; }
 
+# 内核 setuid 恢复：ditto 不会把文件变成 root 属主、也不保留 setuid 位，
+# 所以每次安装后 App 启动都会判定「内核缺权限」再弹一次系统密码框。
+# 这里在安装时一次性补齐（与 src/main/core/permission.ts 的授权命令完全一致），
+# 把重复弹框收敛成一次；非交互模式绝不弹框。
+#
+# 只修「当前启用的内核」——App 的 tunStartupGuard 也只检查这一个（config.yaml 的 `core`），
+# 给未在用的内核提权等于凭空多要一次密码，属于副作用。
+CORE_SIDECAR_REL="Contents/Resources/sidecar"
+
+enabled_core_name() {
+  local cfg="$HOME/Library/Application Support/sparkle/config.yaml"
+  local name=""
+  if [[ -f "$cfg" ]]; then
+    name="$(sed -n 's/^core:[[:space:]]*\([A-Za-z0-9_-]*\).*$/\1/p' "$cfg" | head -1)"
+  fi
+  if [[ "$name" == "mihomo-alpha" ]]; then echo "mihomo-alpha"; else echo "mihomo"; fi
+}
+
+core_mode_of() {
+  stat -f '%Sp' "$1" 2>/dev/null || true
+}
+
+core_setuid_intact() {
+  local dir="$1" name file mode
+  name="$(enabled_core_name)"
+  file="$dir/$name"
+  [[ -f "$file" ]] || return 0
+  mode="$(core_mode_of "$file")"
+  "$ROOT/node_modules/.bin/tsx" -e "
+    import { isCoreSetuidMode } from './scripts/sparkleInstallSafetyCore.ts';
+    process.exit(isCoreSetuidMode(process.argv[1]) ? 0 : 1);
+  " "$mode"
+}
+
+restore_core_setuid() {
+  local app="$1"
+  local sidecar="$app/$CORE_SIDECAR_REL"
+  local core_name core_path
+  [[ -d "$sidecar" ]] || fail "missing sidecar dir: $sidecar"
+  core_name="$(enabled_core_name)"
+  core_path="$sidecar/$core_name"
+  if core_setuid_intact "$sidecar"; then
+    log "Core setuid already intact ($core_name) — no elevation needed"
+    return 0
+  fi
+  if [[ "${SPARKLE_NONINTERACTIVE:-0}" == "1" ]]; then
+    fail "core $core_name lacks setuid and non-interactive mode forbids elevation — run: sudo chown root:admin \"$core_path\" && sudo chmod +sx \"$core_path\""
+  fi
+
+  log "Restoring core setuid for $core_name (single password prompt per install)..."
+  if ! osascript -e "do shell script \"chown root:admin \\\"$core_path\\\" && chmod +sx \\\"$core_path\\\"\" with administrator privileges" >/dev/null 2>&1; then
+    fail "could not restore core setuid — approve the admin prompt or run: sudo chown root:admin \"$core_path\" && sudo chmod +sx \"$core_path\""
+  fi
+  xattr -cr "$sidecar" 2>/dev/null || true
+
+  core_setuid_intact "$sidecar" \
+    || fail "core setuid still missing after elevation — refusing to install a build the app cannot run without another prompt"
+  log "Core setuid restored (app will not prompt for kernel permission on launch)"
+}
+
 get_cdhash() {
   codesign -dv --verbose=4 "$1" 2>&1 | awk '/^CDHash=/ { print substr($0, 8); exit }'
 }
@@ -69,6 +129,38 @@ if [[ -d "$DEST" ]]; then
   OLD_CDHASH="$(get_cdhash "$DEST" 2>/dev/null || true)"
 fi
 
+# 幂等短路：dist 指纹一致 + CDHash 一致 + App 在跑 + 代理在线 + 内核 setuid 完整
+# ⇒ 同样的字节已在 /Applications 里运行，再 quit/ditto/启动只会打断用户。
+# 缺任一条都要走真实安装（setuid 缺失必须修，不能被「看起来已装好」掩盖）。
+if [[ "${SPARKLE_FORCE_REINSTALL:-0}" != "1" ]] && [[ -n "$OLD_CDHASH" && "$OLD_CDHASH" == "$SRC_CDHASH" ]]; then
+  app_running=0
+  data_plane=0
+  setuid_ok=0
+  # 注意：`set -e` 下 `cmd && var=1` 在 cmd 失败时会让整行返回非零并终止脚本，
+  # 而这些检查「失败」正是要走真实安装的合法路径，因此一律用 if 显式吞掉退出码。
+  if pgrep -x Sparkle >/dev/null 2>&1; then app_running=1; fi
+  if curl -sf --max-time 5 -x http://127.0.0.1:7890 https://www.gstatic.com/generate_204 >/dev/null 2>&1; then
+    data_plane=1
+  fi
+  if core_setuid_intact "$DEST/$CORE_SIDECAR_REL"; then setuid_ok=1; fi
+  short_circuit="$("$ROOT/node_modules/.bin/tsx" -e "
+    import { resolveInstallShortCircuit } from './scripts/sparkleInstallSafetyCore.ts';
+    const d = resolveInstallShortCircuit({
+      distFresh: true,
+      cdhashMatches: true,
+      appRunning: process.argv[1] === '1',
+      dataPlaneReachable: process.argv[2] === '1',
+      coreSetuidIntact: process.argv[3] === '1',
+    });
+    process.stdout.write(d.skip ? 'skip' : d.reason);
+  " "$app_running" "$data_plane" "$setuid_ok")"
+  if [[ "$short_circuit" == "skip" ]]; then
+    log "Same build already installed and healthy (CDHash $SRC_CDHASH) — nothing to do, app untouched"
+    exit 0
+  fi
+  log "Reinstall required: $short_circuit"
+fi
+
 if pgrep -x Sparkle >/dev/null 2>&1; then
   log "Quitting Sparkle GUI..."
   osascript -e 'tell application "Sparkle" to quit' 2>/dev/null || true
@@ -86,12 +178,18 @@ fi
 
 if pgrep -f "sparkle-service service run" >/dev/null 2>&1; then
   log "Stopping sparkle-service..."
+  # 先尝试直接发信号（同一用户/已授权时无需密码）；只有确实发不出去、且允许交互时才提权一次。
   killall sparkle-service 2>/dev/null || true
-  pkill -9 -f "sparkle-service service run" 2>/dev/null || true
-  if [[ "${SPARKLE_NONINTERACTIVE:-0}" != "1" ]]; then
-    osascript -e 'do shell script "killall -9 sparkle-service 2>/dev/null || true" with administrator privileges' 2>/dev/null || true
-  fi
   sleep 1
+  if pgrep -f "sparkle-service service run" >/dev/null 2>&1; then
+    if [[ "${SPARKLE_NONINTERACTIVE:-0}" == "1" ]]; then
+      log "WARN: sparkle-service still running and non-interactive mode forbids elevation — leaving it to the installer swap"
+    else
+      log "sparkle-service needs elevation to stop (one prompt)..."
+      osascript -e 'do shell script "killall -9 sparkle-service 2>/dev/null || true" with administrator privileges' 2>/dev/null || true
+    fi
+    sleep 1
+  fi
 fi
 
 log "Mihomo API socket hygiene (remove zombie direct socket if probe fails)..."
@@ -122,6 +220,10 @@ fi
 
 NEW_CDHASH="$(get_cdhash "$DEST")"
 [[ "$NEW_CDHASH" == "$SRC_CDHASH" ]] || fail "CDHash mismatch after install (expected $SRC_CDHASH, got $NEW_CDHASH)"
+
+# 安装后立即补齐内核 setuid（ditto 会丢），这样 App 启动时不再弹「需要内核权限」。
+# 放在 CDHash 校验之后：先把包换对，再动内核权限位。
+restore_core_setuid "$DEST"
 
 mkdir -p "$STATE_DIR"
 VER="$(defaults read "$DEST/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo unknown)"
