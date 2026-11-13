@@ -178,6 +178,7 @@ describe('provider files', () => {
         'update:sparkle-mail',
         'update:sparkle-agy',
         'update:sparkle-grok',
+        'update:gemini专用',
         'release:orphans'
       ])
     })
@@ -190,7 +191,7 @@ describe('provider files', () => {
     })
 
     it('carries on when a sparkle provider is not enabled', async () => {
-      failing = new Set(['sparkle-fast', 'sparkle-mail', 'sparkle-agy', 'sparkle-grok'])
+      failing = new Set(['sparkle-fast', 'sparkle-mail', 'sparkle-agy', 'sparkle-grok', 'gemini专用'])
 
       await provider.reloadMihomoProfileProviders('p1', false)
 
@@ -200,6 +201,7 @@ describe('provider files', () => {
         'update:sparkle-mail',
         'update:sparkle-agy',
         'update:sparkle-grok',
+        'update:gemini专用',
         'release:orphans'
       ])
     })

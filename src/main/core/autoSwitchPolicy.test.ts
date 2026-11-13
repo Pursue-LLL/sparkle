@@ -13,6 +13,7 @@ import {
   AUTO_SELECT_GROUP_NAME,
   CURSOR_AUTO_SELECT_GROUP_NAME,
   CURSOR_DEDICATED_GROUP_NAME,
+  GEMINI_DEDICATED_GROUP_NAME,
   GROK_DEDICATED_GROUP_NAME,
   LEGACY_CURSOR_DEDICATED_GROUP_NAMES,
   MAIL_DEDICATED_GROUP_NAME,
@@ -34,6 +35,7 @@ describe('resolveGroupRole', () => {
       ['Sparkle-香港', 'regional-auto'],
       ['🇭🇰 香港节点', 'regional-auto'],
       [GROK_DEDICATED_GROUP_NAME, 'probe-dedicated'],
+      [GEMINI_DEDICATED_GROUP_NAME, 'probe-dedicated'],
       [MAIL_DEDICATED_GROUP_NAME, 'probe-dedicated'],
       [AGY_DEDICATED_GROUP_NAME, 'probe-dedicated'],
       [MAIL_PROBE_HIDDEN_GROUP_NAME, 'probe-dedicated']
@@ -148,6 +150,7 @@ describe('group name coverage', () => {
       'CURSOR_AUTO_SELECT_GROUP_NAME',
       'HONG_KONG_FILTER_GROUP_NAME',
       'GROK_DEDICATED_GROUP_NAME',
+      'GEMINI_DEDICATED_GROUP_NAME',
       'MAIL_DEDICATED_GROUP_NAME',
       'AGY_DEDICATED_GROUP_NAME'
     ]) {

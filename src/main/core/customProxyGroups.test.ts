@@ -4,6 +4,7 @@ import {
   AGY_DEDICATED_GROUP_NAME,
   CURSOR_DEDICATED_DIRECT_PROXY,
   CURSOR_DEDICATED_GROUP_NAME,
+  GEMINI_DEDICATED_GROUP_NAME,
   GROK_DEDICATED_GROUP_NAME,
   LEGACY_CURSOR_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
@@ -12,6 +13,7 @@ import {
 } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME, ensureCustomProxyGroups } from './customProxyGroups'
 import { groupNames, groupProxies, profileOf } from './customProxyGroupsRig'
+import { GEMINI_NODE_PROVIDER_ID } from './sparkleGeminiProviderCore'
 import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 import { MAIL_PROBE_LISTENER_PORT } from './sparkleMailProviderCore'
 
@@ -148,6 +150,25 @@ describe('customProxyGroups', () => {
     assert.deepEqual(grokGroup?.proxies, ['HK-01', 'JP-01', 'US-01'])
   })
 
+  it('builds Gemini group as fallback over the region-verified provider', () => {
+    const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+
+    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
+
+    const geminiGroup = (
+      (profile['proxy-groups'] as {
+        name: string
+        type?: string
+        use?: string[]
+        filter?: string
+      }[]) ?? []
+    ).find((group) => group.name === GEMINI_DEDICATED_GROUP_NAME)
+
+    assert.equal(geminiGroup?.type, 'fallback')
+    assert.deepEqual(geminiGroup?.use, [GEMINI_NODE_PROVIDER_ID])
+    assert.equal(geminiGroup?.filter, undefined)
+  })
+
   it('keeps Grok group even when there is no Hong Kong node', () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
@@ -209,6 +230,7 @@ describe('customProxyGroups', () => {
       CURSOR_DEDICATED_GROUP_NAME,
       HONG_KONG_FILTER_GROUP_NAME,
       GROK_DEDICATED_GROUP_NAME,
+      GEMINI_DEDICATED_GROUP_NAME,
       MAIL_DEDICATED_GROUP_NAME,
       MAIL_PROBE_HIDDEN_GROUP_NAME,
       AGY_DEDICATED_GROUP_NAME,

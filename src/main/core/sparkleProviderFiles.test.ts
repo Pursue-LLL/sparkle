@@ -8,13 +8,14 @@ import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import type { writeSparkleProviderFiles } from './sparkleProviderFiles'
 
 type Proxy = Record<string, unknown>
-type Provider = 'fast' | 'mail' | 'agy' | 'grok'
+type Provider = 'fast' | 'mail' | 'agy' | 'grok' | 'gemini'
 
 const FILES: Record<Provider, string> = {
   fast: 'sparkle-fast-proxies.yaml',
   mail: 'sparkle-mail-proxies.yaml',
   agy: 'sparkle-agy-proxies.yaml',
-  grok: 'sparkle-grok-proxies.yaml'
+  grok: 'sparkle-grok-proxies.yaml',
+  gemini: 'gemini专用-proxies.yaml'
 }
 const PROVIDERS = Object.keys(FILES) as Provider[]
 const PREVIOUS = 'previous'
@@ -33,6 +34,7 @@ const state: {
   mailCache: Map<string, unknown>
   agyCache: Map<string, unknown>
   grokCache: Map<string, unknown>
+  geminiCache: Map<string, unknown>
   failing: Set<string>
 } = {
   proxies: [],
@@ -42,6 +44,7 @@ const state: {
   mailCache: new Map(),
   agyCache: new Map(),
   grokCache: new Map(),
+  geminiCache: new Map(),
   failing: new Set()
 }
 
@@ -90,7 +93,10 @@ describe('writeSparkleProviderFiles', () => {
       exports: { loadSparkleFastDelaySnapshot: loader('fast-delays', () => state.delays) }
     })
     mock.module('./sparkleGeminiProbe', {
-      exports: { loadGeminiBlockedNodeNames: loader('gemini', () => state.blocked) }
+      exports: {
+        loadGeminiBlockedNodeNames: loader('gemini', () => state.blocked),
+        loadSparkleGeminiRegionCache: loader('gemini-cache', () => state.geminiCache)
+      }
     })
     mock.module('./sparkleMailProbe', {
       exports: { loadSparkleMailProbeCache: loader('mail-cache', () => state.mailCache) }
@@ -115,6 +121,7 @@ describe('writeSparkleProviderFiles', () => {
     state.mailCache = new Map()
     state.agyCache = new Map()
     state.grokCache = new Map()
+    state.geminiCache = new Map()
     state.failing = new Set()
   })
 
@@ -137,6 +144,11 @@ describe('writeSparkleProviderFiles', () => {
       ['日本 01', '台湾 01', '香港 01'],
       'no samples keeps profile order'
     )
+    assert.deepEqual(
+      namesIn('gemini'),
+      ['台湾 01', '日本 01', '香港 01'],
+      'no region verdicts yet keeps every node as cold-start fallback'
+    )
   })
 
   it('applies the configured region priority to every region-aware provider', async () => {
@@ -145,6 +157,7 @@ describe('writeSparkleProviderFiles', () => {
     assert.deepEqual(namesIn('fast'), ['日本 01', '台湾 01'])
     assert.deepEqual(namesIn('mail'), ['日本 01', '台湾 01', '香港 01'])
     assert.deepEqual(namesIn('agy'), ['日本 01', '台湾 01'])
+    assert.deepEqual(namesIn('gemini'), ['日本 01', '台湾 01', '香港 01'])
   })
 
   it('keeps nodes Google blocks for Gemini out of the fast provider', async () => {
@@ -178,12 +191,18 @@ describe('writeSparkleProviderFiles', () => {
     state.grokCache = new Map([
       [computeProxyNodeFingerprint(hongKong), { alive: true, rttMs: 60, checkedAt: NOW }]
     ])
+    state.geminiCache = new Map([
+      [computeProxyNodeFingerprint(taiwan), { eligible: true, countryCode: 'TW', checkedAt: NOW }],
+      [computeProxyNodeFingerprint(japan), { eligible: true, countryCode: 'JP', checkedAt: NOW }],
+      [computeProxyNodeFingerprint(hongKong), { eligible: false, countryCode: 'HK', checkedAt: NOW }]
+    ])
 
     await write(profile, ['台湾', '日本'])
 
     assert.deepEqual(namesIn('mail'), ['日本 01'])
     assert.deepEqual(namesIn('agy'), ['台湾 01'])
     assert.deepEqual(namesIn('grok'), ['香港 01'])
+    assert.deepEqual(namesIn('gemini'), ['台湾 01', '日本 01'], 'only region-verified nodes')
   })
 
   it('never reads a provider’s input from another provider’s cache', async () => {
@@ -246,11 +265,11 @@ describe('writeSparkleProviderFiles', () => {
 
   describe('failures stay local', () => {
     const CASES: ReadonlyArray<readonly [string, Provider]> = [
-      ['fast-delays', 'fast'],
       ['gemini', 'fast'],
       ['mail-cache', 'mail'],
       ['agy-cache', 'agy'],
-      ['grok-cache', 'grok']
+      ['grok-cache', 'grok'],
+      ['gemini-cache', 'gemini']
     ]
 
     for (const [failing, affected] of CASES) {
