@@ -211,14 +211,16 @@ describe('writeSparkleProviderFiles', () => {
   })
 
   describe('a provider with no usable node', () => {
-    it('keeps the previous file of every provider that would come out empty', async () => {
+    it('writes every provider from a lone AnyTLS node like any other protocol', async () => {
       state.proxies = [{ ...taiwan, type: 'anytls' }]
       seedAll()
 
       await write(profile, ['台湾'])
 
-      assert.deepEqual(untouched(), ['fast', 'mail', 'agy'])
-      assert.deepEqual(namesIn('grok'), ['台湾 01'], 'grok takes any named node')
+      assert.deepEqual(untouched(), [])
+      for (const provider of PROVIDERS) {
+        assert.deepEqual(namesIn(provider), ['台湾 01'], provider)
+      }
     })
 
     it('keeps every previous file when the profile has no usable nodes at all', async () => {

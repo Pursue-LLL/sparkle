@@ -38,23 +38,23 @@ describe('sparkleMailProviderCore', () => {
       probeCache: cache,
     })
 
-    // 仅保留 alive=true，按地区序（台湾 -> 日本 -> 香港兜底），彻底剔除封端口的 台湾 V1 和 AnyTLS
+    // 仅保留 alive=true，按地区序（台湾 -> 日本 -> 香港兜底），剔除封端口的 台湾 V1 和未验证的 台湾 01
     assert.deepEqual(
       proxies.map((proxy) => proxy.name),
       ['🇹🇼 台湾 02', '🇯🇵 日本 02', '🇭🇰 香港 02'],
     )
   })
 
-  it('orders preferred Hysteria2/VLESS candidates ahead of Trojan on cold start before probe', () => {
+  it('orders preferred Hysteria2/VLESS candidates ahead of other protocols on cold start before probe', () => {
     const ordered = orderMailProxies([...SAMPLE_NODES], ['台湾', '日本'])
-    // 在同一地区（台湾）内，hysteria2 排在 trojan 前面，且剔除 anytls
+    // 在同一地区（台湾）内，hysteria2 排在前面，AnyTLS 与 Trojan 按订阅原序跟随
     assert.deepEqual(
       ordered.map((proxy) => proxy.name),
-      ['🇹🇼 台湾 02', '🇨🇳 台湾 V1', '🇯🇵 日本 02', '🇭🇰 香港 02'],
+      ['🇹🇼 台湾 02', '🇹🇼 台湾 01', '🇨🇳 台湾 V1', '🇯🇵 日本 02', '🇭🇰 香港 02'],
     )
   })
 
-  it('never returns an empty list if non-AnyTLS nodes exist even when all cached entries are dead', () => {
+  it('never returns an empty list even when all cached entries are dead, AnyTLS nodes included', () => {
     const cache = new Map<string, MailNodeProbeRecord>(
       SAMPLE_NODES.map((node) => [
         computeProxyNodeFingerprint(node),
@@ -69,7 +69,7 @@ describe('sparkleMailProviderCore', () => {
     assert.equal(proxies.length > 0, true)
     assert.equal(
       proxies.some((proxy) => proxy.type === 'anytls'),
-      false,
+      true,
     )
   })
 

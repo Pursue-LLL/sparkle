@@ -26,7 +26,7 @@ describe('regionalAutoSelectGroupsCore', () => {
     assert.equal(buildRegionalAutoSelectGroupName('日本'), 'Sparkle-日本')
   })
 
-  it('builds a url-test group over the subscription provider excluding anytls', () => {
+  it('builds a url-test group over the subscription provider with no protocol exclusion', () => {
     const group = buildRegionalUrlTestGroup('新加坡', { profileId: 'p1', catalog: CATALOG }, PROBE)
 
     assert.deepEqual(group, {
@@ -35,14 +35,15 @@ describe('regionalAutoSelectGroupsCore', () => {
       ...PROBE,
       lazy: true,
       use: ['p1'],
-      filter: '新加坡|(?i)\\bSG\\b|singapore',
-      'exclude-type': 'anytls'
+      filter: '新加坡|(?i)\\bSG\\b|singapore'
     })
   })
 
-  it('returns null for a region whose nodes are all anytls (case-insensitive)', () => {
-    assert.equal(buildRegionalUrlTestGroup('日本', { profileId: 'p1', catalog: CATALOG }, PROBE), null)
-    assert.equal(buildRegionalUrlTestGroup('日本', { catalog: CATALOG }, PROBE), null)
+  it('builds a group for a region whose only node is anytls', () => {
+    const withProfile = buildRegionalUrlTestGroup('日本', { profileId: 'p1', catalog: CATALOG }, PROBE)
+    assert.deepEqual(withProfile?.use, ['p1'])
+    const inline = buildRegionalUrlTestGroup('日本', { catalog: CATALOG }, PROBE)
+    assert.deepEqual(inline?.proxies, ['🇯🇵 日本 01'])
   })
 
   it('returns null for a region with no node at all', () => {
@@ -57,9 +58,9 @@ describe('regionalAutoSelectGroupsCore', () => {
     assert.deepEqual(group?.use, ['p1'])
   })
 
-  it('lists deduplicated nodes inline without a profile, keeping hysteria2', () => {
+  it('lists deduplicated nodes inline without a profile, keeping every protocol', () => {
     const fromCatalog = buildRegionalUrlTestGroup('新加坡', { catalog: CATALOG }, PROBE)
-    assert.deepEqual(fromCatalog?.proxies, ['🇸🇬 新加坡 02', '🇸🇬 新加坡 03'])
+    assert.deepEqual(fromCatalog?.proxies, ['🇸🇬 新加坡 01', '🇸🇬 新加坡 02', '🇸🇬 新加坡 03'])
     assert.equal(fromCatalog?.use, undefined)
 
     const fromNames = buildRegionalUrlTestGroup('日本', { leafNames: ['SG-01', 'JP-01'] }, PROBE)

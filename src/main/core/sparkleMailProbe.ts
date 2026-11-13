@@ -1,7 +1,6 @@
 // [INPUT] sparkleMailPortProbe::probeSingleNodeMailPorts (POS: 单节点 993/465 TLS Banner 校验) ·
 //         sparkleMailProviderCore::buildSparkleMailProviderDocument (POS: sparkle-mail provider 文档生成) ·
 //         当前订阅节点 · sparkle-mail-nodes.json ·
-//         autoSelectAnyTlsExclusionCore::isAnyTlsProxyType (POS: url-test 自动组剔除 AnyTLS) ·
 //         config::getAppConfig/getProfile/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
 //         cursorProxyGroup::MAIL_DEDICATED_GROUP_NAME/MAIL_DELAY_TEST_URL (POS: Sparkle 分组名常量与判定谓词) ·
 //         mihomoApi::mihomoGroupDelay/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
@@ -20,7 +19,6 @@ import { getAppConfig, getProfile, getProfileConfig } from '../config'
 import { dataDir, profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
-import { isAnyTlsProxyType } from './autoSelectAnyTlsExclusionCore'
 import { MAIL_DEDICATED_GROUP_NAME, MAIL_DELAY_TEST_URL } from './cursorProxyGroup'
 import { mihomoGroupDelay, mihomoUpdateProxyProviders } from './mihomoApi'
 import { extractProxies } from './provider'
@@ -215,10 +213,7 @@ async function runBootstrapSparkleMailProvider(): Promise<void> {
     const cache = await loadSparkleMailProbeCache()
 
     const eligible = proxies.filter(
-      (proxy) =>
-        typeof proxy.name === 'string' &&
-        proxy.name.trim().length > 0 &&
-        !isAnyTlsProxyType(String(proxy.type ?? ''))
+      (proxy) => typeof proxy.name === 'string' && proxy.name.trim().length > 0
     )
 
     const cachedAliveCount = eligible.filter(

@@ -98,7 +98,7 @@ describe('defaultAutoSwitchProxy · 组的生成与引用', () => {
     assert.equal(groupNamed(profile, '自动选择'), subscriptionGroup)
   })
 
-  it('does not rank nodes that are all AnyTLS', () => {
+  it('ranks nodes that are all AnyTLS like any other protocol', () => {
     const profile = profileOf([{ name: '主代理', type: 'select', proxies: ['DIRECT'] }])
 
     ensureSelectGroupsDefaultToAutoSwitch(profile, undefined, {
@@ -106,7 +106,9 @@ describe('defaultAutoSwitchProxy · 组的生成与引用', () => {
       leafProxyCatalog: [{ name: 'SG-01', type: 'anytls' }]
     })
 
-    assert.equal(groupNamed(profile, '自动选择')?.type, 'url-test')
+    assert.equal(groupNamed(profile, '自动选择')?.type, 'fallback')
+    assert.deepEqual(groupNamed(profile, '自动选择')?.proxies, ['SG-01'])
+    assert.deepEqual(groupNamed(profile, 'Sparkle-新加坡')?.proxies, ['SG-01'])
     assert.equal(groupNamed(profile, 'Sparkle-日本'), undefined)
   })
 
@@ -175,12 +177,7 @@ describe('defaultAutoSwitchProxy · 组的生成与引用', () => {
     )
 
     for (const result of results) {
-      assert.deepEqual(result, {
-        groupsMutated: 0,
-        proxiesRemoved: 0,
-        removedLeaves: [],
-        groupsRemoved: []
-      })
+      assert.equal(result, undefined)
     }
     assert.equal(noGroups['proxy-groups'], undefined)
     assert.deepEqual(emptyGroups['proxy-groups'], [])
@@ -201,7 +198,7 @@ describe('defaultAutoSwitchProxy · 组的生成与引用', () => {
     assert.deepEqual(groupNamed(profile, '自动选择')?.proxies, ['德国 01', '德国 02'])
   })
 
-  it('reports the AnyTLS nodes it took out of auto-switch groups', () => {
+  it('keeps AnyTLS nodes in the auto-switch groups it manages', () => {
     const profile = profileOf([
       { name: '主代理', type: 'select', proxies: ['DIRECT'] },
       { name: 'Sparkle-香港', type: 'url-test', proxies: ['HK-A', 'HK-B'] }
@@ -216,12 +213,7 @@ describe('defaultAutoSwitchProxy · 组的生成与引用', () => {
       ]
     })
 
-    assert.deepEqual(result, {
-      groupsMutated: 1,
-      proxiesRemoved: 1,
-      removedLeaves: ['HK-A'],
-      groupsRemoved: []
-    })
-    assert.deepEqual(groupNamed(profile, 'Sparkle-香港')?.proxies, ['HK-B'])
+    assert.equal(result, undefined)
+    assert.deepEqual(groupNamed(profile, 'Sparkle-香港')?.proxies, ['HK-A', 'HK-B'])
   })
 })

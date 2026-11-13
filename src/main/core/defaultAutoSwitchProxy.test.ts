@@ -42,7 +42,7 @@ describe('defaultAutoSwitchProxy', () => {
     ])
   })
 
-  it('probes 自动选择 and every regional group with Gemini, excluding AnyTLS', () => {
+  it('probes 自动选择 and every regional group with Gemini', () => {
     const profile = {
       'proxy-groups': [{ name: '🚀 节点选择', type: 'select', proxies: ['SG-01'] }]
     } as unknown as MihomoConfig
@@ -71,7 +71,7 @@ describe('defaultAutoSwitchProxy', () => {
       assert.equal(group.timeout, 5000)
       assert.equal(group.interval, 300)
       assert.equal(group.lazy, true)
-      assert.equal(group['exclude-type'], 'anytls')
+      assert.equal(group['exclude-type'], undefined)
     }
 
     const autoSelect = groups.find((group) => group.name === '自动选择')
@@ -131,7 +131,7 @@ describe('defaultAutoSwitchProxy', () => {
     assert.equal(sgGroup?.proxies, undefined)
   })
 
-  it('skips regions without eligible nodes so no empty (direct-type) group joins the chain', () => {
+  it('keeps regions whose nodes are all anytls and skips regions with no nodes at all', () => {
     const catalog = [
       { name: '🇸🇬 新加坡 01', type: 'anytls' },
       { name: '🇸🇬 新加坡 02', type: 'trojan' },
@@ -164,11 +164,16 @@ describe('defaultAutoSwitchProxy', () => {
     const sgAuto = groups.find((group) => group.name === 'Sparkle-新加坡')
     assert.deepEqual(sgAuto?.use, ['test-profile'])
     assert.equal(sgAuto?.filter, '新加坡|(?i)\\bSG\\b|singapore')
-    assert.equal(sgAuto?.['exclude-type'], 'anytls')
+    assert.equal(sgAuto?.['exclude-type'], undefined)
     assert.equal(sgAuto?.proxies, undefined)
-    // 日本 only has AnyTLS nodes, so it gets no group and stays out of the chain.
+    // 日本 only has AnyTLS nodes; they take part like any other protocol, so the group is built.
     assert.equal(
       groups.some((group) => group.name === 'Sparkle-日本'),
+      true
+    )
+    // 美国 has no node at all, so it gets no group and stays out of the chain.
+    assert.equal(
+      groups.some((group) => group.name === 'Sparkle-美国'),
       false
     )
     assert.deepEqual(groups.find((group) => group.name === '自动选择')?.use, ['sparkle-fast'])

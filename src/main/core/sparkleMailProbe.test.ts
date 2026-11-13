@@ -112,11 +112,17 @@ describe('sparkleMailProbe loadCurrentMailProxies', () => {
 describe('sparkleMailProbe writeSparkleMailProviderFromCache', () => {
   const mail = useMailRig()
 
-  it('writes the nodes in region order and leaves out AnyTLS', async () => {
+  it('writes the nodes in region order, AnyTLS nodes included', async () => {
     const result = await mail.probe().writeSparkleMailProviderFromCache(NODES, PRIORITY)
 
-    assert.deepEqual(readProviderMembers(), ['台湾-HY2', '台湾-SS', '日本-VLESS', '美国-SS'])
-    assert.deepEqual(result, { count: 4, membershipChanged: true })
+    assert.deepEqual(readProviderMembers(), [
+      '台湾-HY2',
+      '台湾-SS',
+      '台湾-AnyTLS',
+      '日本-VLESS',
+      '美国-SS'
+    ])
+    assert.deepEqual(result, { count: 5, membershipChanged: true })
   })
 
   it('keeps only the verified nodes, quickest first within a region', async () => {
@@ -137,20 +143,20 @@ describe('sparkleMailProbe writeSparkleMailProviderFromCache', () => {
 
     await mail.probe().writeSparkleMailProviderFromCache(NODES, PRIORITY, cache)
 
-    assert.deepEqual(readProviderMembers(), ['台湾-SS', '日本-VLESS', '美国-SS'])
+    assert.deepEqual(readProviderMembers(), ['台湾-SS', '台湾-AnyTLS', '日本-VLESS', '美国-SS'])
   })
 
-  it('writes an empty provider when there is nothing but AnyTLS', async () => {
+  it('writes a provider holding a lone AnyTLS node', async () => {
     const result = await mail.probe().writeSparkleMailProviderFromCache([ANYTLS_TW], PRIORITY)
 
-    assert.deepEqual(readProviderMembers(), [])
-    assert.deepEqual(result, { count: 0, membershipChanged: false })
+    assert.deepEqual(readProviderMembers(), ['台湾-AnyTLS'])
+    assert.deepEqual(result, { count: 1, membershipChanged: true })
   })
 
   it('reports a membership change only when nodes were added or removed', async () => {
-    writeProviderMembers(['美国-SS', '日本-VLESS', '台湾-SS', '台湾-HY2'])
+    writeProviderMembers(['美国-SS', '日本-VLESS', '台湾-SS', '台湾-HY2', '台湾-AnyTLS'])
     const reordered = await mail.probe().writeSparkleMailProviderFromCache(NODES, PRIORITY)
-    assert.deepEqual(reordered, { count: 4, membershipChanged: false })
+    assert.deepEqual(reordered, { count: 5, membershipChanged: false })
 
     writeProviderMembers(['台湾-SS'])
     const removedFromFile = await mail.probe().writeSparkleMailProviderFromCache(NODES, PRIORITY)
@@ -177,7 +183,7 @@ describe('sparkleMailProbe writeSparkleMailProviderFromCache', () => {
   })
 
   it('asks mihomo to reload only after the membership changed', async () => {
-    writeProviderMembers(['台湾-HY2', '台湾-SS', '日本-VLESS', '美国-SS'])
+    writeProviderMembers(['台湾-HY2', '台湾-SS', '台湾-AnyTLS', '日本-VLESS', '美国-SS'])
     await mail.probe().writeSparkleMailProviderFromCache(NODES, PRIORITY)
     await mail.probe().ensureMailProviderReloaded()
     assert.deepEqual(callsStarting('update:'), [])

@@ -69,17 +69,17 @@ describe('classifyAgyProbeResponse', () => {
 })
 
 describe('isEligibleAgyNode', () => {
-  it('accepts a named regular node and rejects nameless, AnyTLS and Hong Kong nodes', () => {
+  it('accepts named nodes of any protocol and rejects nameless and Hong Kong nodes', () => {
     assert.equal(isEligibleAgyNode(NODES[0]!), true)
     assert.equal(isEligibleAgyNode({ type: 'vmess', server: 'a.example', port: 1 }), false)
     assert.equal(isEligibleAgyNode({ name: '  ', type: 'vmess' }), false)
-    assert.equal(isEligibleAgyNode(NODES[5]!), false)
+    assert.equal(isEligibleAgyNode(NODES[5]!), true)
     assert.equal(isEligibleAgyNode(NODES[4]!), false)
   })
 })
 
 describe('collectEligibleAgyProxies', () => {
-  it('drops AnyTLS, Hong Kong nodes and duplicate names', () => {
+  it('drops Hong Kong nodes and duplicate names, keeping every protocol', () => {
     const result = collectEligibleAgyProxies([
       ...NODES,
       { name: '美国LA-优化2-GPT', type: 'vmess', server: 'duplicate.example', port: 1 },
@@ -89,7 +89,8 @@ describe('collectEligibleAgyProxies', () => {
       '新加坡-优化2-GPT',
       '美国LA-优化2-GPT',
       '美国LA-优化3-GPT',
-      '🇯🇵 日本 02'
+      '🇯🇵 日本 02',
+      '🇹🇼 台湾 01'
     ])
   })
 })
@@ -109,8 +110,9 @@ describe('orderAgyProxies', () => {
     ])
   })
 
-  it('cold start keeps every non-HK, non-AnyTLS candidate (provider must never be empty)', () => {
+  it('cold start keeps every non-HK candidate (provider must never be empty)', () => {
     assert.deepEqual(names(orderAgyProxies(NODES, REGION_PRIORITY)), [
+      '🇹🇼 台湾 01',
       '🇯🇵 日本 02',
       '新加坡-优化2-GPT',
       '美国LA-优化2-GPT',
@@ -145,7 +147,7 @@ describe('orderAgyProxies', () => {
   })
 
   it('returns nothing when no node is eligible', () => {
-    assert.deepEqual(orderAgyProxies([NODES[4]!, NODES[5]!], REGION_PRIORITY), [])
+    assert.deepEqual(orderAgyProxies([NODES[4]!], REGION_PRIORITY), [])
   })
 
   it('appends nodes of unlisted regions after every listed region, verified or not', () => {
@@ -199,9 +201,9 @@ describe('orderAgyProxies', () => {
     )
 
     const result = names(orderAgyProxies(NODES, REGION_PRIORITY, cache))
-    assert.equal(result.length, 4)
+    assert.equal(result.length, 5)
     assert.ok(!result.includes('🇭🇰 香港 01'))
-    assert.ok(!result.includes('🇹🇼 台湾 01'))
+    assert.ok(result.includes('🇹🇼 台湾 01'))
   })
 })
 
@@ -339,6 +341,7 @@ describe('orderAgyRepairProxies', () => {
 
   it('keeps the existing region order for the shared fixture', () => {
     assert.deepEqual(names(orderAgyRepairProxies(NODES, REGION_PRIORITY, undefined, 10)), [
+      '🇹🇼 台湾 01',
       '🇯🇵 日本 02',
       '新加坡-优化2-GPT',
       '美国LA-优化2-GPT',
@@ -352,6 +355,7 @@ describe('orderAgyRepairProxies', () => {
     ])
 
     assert.deepEqual(names(orderAgyRepairProxies(NODES, REGION_PRIORITY, cache, 10)), [
+      '🇹🇼 台湾 01',
       '🇯🇵 日本 02',
       '美国LA-优化2-GPT',
       '美国LA-优化3-GPT',
@@ -372,6 +376,7 @@ describe('orderAgyRepairProxies', () => {
     ])
 
     assert.deepEqual(names(orderAgyRepairProxies(NODES, REGION_PRIORITY, cache, 10, now)), [
+      '🇹🇼 台湾 01',
       '🇯🇵 日本 02',
       '新加坡-优化2-GPT',
       '美国LA-优化3-GPT',
@@ -387,6 +392,7 @@ describe('orderAgyRepairProxies', () => {
     ])
 
     assert.deepEqual(names(orderAgyRepairProxies(NODES, REGION_PRIORITY, cache, 10, now)), [
+      '🇹🇼 台湾 01',
       '🇯🇵 日本 02',
       '新加坡-优化2-GPT',
       '美国LA-优化2-GPT',
@@ -394,16 +400,16 @@ describe('orderAgyRepairProxies', () => {
     ])
   })
 
-  it('honours the probe limit, drops Hong Kong / AnyTLS nodes and never duplicates', () => {
+  it('honours the probe limit, drops Hong Kong nodes and never duplicates', () => {
     const result = orderAgyRepairProxies(
       [...NODES, { name: '🇭🇰 香港 01', type: 'vmess', server: 'hk.example', port: 443 }],
       REGION_PRIORITY,
       undefined,
       2
     )
-    assert.deepEqual(names(result), ['🇯🇵 日本 02', '新加坡-优化2-GPT'])
+    assert.deepEqual(names(result), ['🇹🇼 台湾 01', '🇯🇵 日本 02'])
     assert.ok(!names(result).includes('🇭🇰 香港 01'))
-    assert.ok(!names(result).includes('🇹🇼 台湾 01'))
+    assert.ok(names(result).includes('🇹🇼 台湾 01'))
   })
 
   it('returns an empty list for a non-positive limit', () => {
@@ -437,7 +443,7 @@ describe('buildSparkleAgyProviderDocument', () => {
       proxies: NODES,
       regionPriority: REGION_PRIORITY
     })
-    assert.equal(document.proxies.length, 4)
+    assert.equal(document.proxies.length, 5)
   })
 })
 

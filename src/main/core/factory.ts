@@ -1,6 +1,5 @@
 // [INPUT] aiApiDirectRules::ensureAiApiDirectRules (POS: AI API 默认直连规则) ·
 //         antigravityRuleInjection::injectAntigravityTrafficRules (POS: agy 专用组前置规则) ·
-//         autoSelectAnyTlsExclusionCore::formatAutoSelectAnyTlsExclusionLogLine/ProxyCatalogEntry (POS: url-test 自动组剔除 AnyTLS) ·
 //         buildDriftCore::logBuildDriftAtStartup (POS: 构建漂移日志) ·
 //         cnDirectBaseline::ensureCnDirectBaseline (POS: 国内直连兜底规则) ·
 //         config::getControledMihomoConfig/getProfileConfig/getProfile/getProfileStr… (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
@@ -19,6 +18,7 @@
 //         proxyGroupOrder::orderProxyGroups (POS: 分组展示顺序) ·
 //         quicTrafficRuleInjection::injectQuicTrafficRules (POS: QUIC / STUN 阻断规则) ·
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
+//         regionalAutoSelectGroupsCore::ProxyCatalogEntry (POS: 地区 url-test 组构建) ·
 //         runtimeConfigSanitize::cleanProfile/dedupeProxyGroupProviderUse (POS: 配置清洗层) ·
 //         sparkleProviderFiles::writeSparkleProviderFiles (POS: sparkle provider 文件层) ·
 //         utils/dirs::mihomoProfileWorkDir/mihomoWorkConfigPath/mihomoWorkDir (POS: 应用目录与路径常量) ·
@@ -58,10 +58,7 @@ import { ensureCnDirectBaseline } from './cnDirectBaseline'
 import { cleanProfile, dedupeProxyGroupProviderUse } from './runtimeConfigSanitize'
 import { overrideProfile } from './overrideProfile'
 import { writeSparkleProviderFiles } from './sparkleProviderFiles'
-import {
-  formatAutoSelectAnyTlsExclusionLogLine,
-  type ProxyCatalogEntry
-} from './autoSelectAnyTlsExclusionCore'
+import type { ProxyCatalogEntry } from './regionalAutoSelectGroupsCore'
 import { injectDedicatedTrafficRules } from './dedicatedTrafficRuleInjection'
 import { injectMailTrafficRules } from './mailTrafficRuleInjection'
 import { injectAntigravityTrafficRules } from './antigravityRuleInjection'
@@ -260,14 +257,11 @@ async function generateProfileImpl(): Promise<void> {
   rewriteMissingRuleProxyGroupTargets(profile)
   removeNonSubscriptionProxyGroups(profile, subscriptionGroupNames)
   const { proxySwitchPriority = [] } = await getAppConfig()
-  const anyTlsExclusion = ensureSelectGroupsDefaultToAutoSwitch(profile, providerProfileId, {
+  ensureSelectGroupsDefaultToAutoSwitch(profile, providerProfileId, {
     leafProxyNames,
     leafProxyCatalog,
     regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority)
   })
-  if (anyTlsExclusion.groupsMutated > 0) {
-    await appendAppLog(formatAutoSelectAnyTlsExclusionLogLine(anyTlsExclusion))
-  }
   await logGenerateProfileStep('auto_switch_groups', stepStartedAtMs)
   orderProxyGroups(profile)
   const droppedGroupMembers = dropUnknownGroupMembers(profile, leafProxyNames)
