@@ -50,6 +50,7 @@ mihomo (TUN) → 节点 leaf → 目标站点
 16. **YAML 读写保 Reality `short-id` 原文** — 纯数字写法（`01234567`、`1e5`）经 `parseYaml` 仍是原字符串，不丢前导零、不变成 Infinity；服务端要求逐字相同。
 17. **测试门禁收集全部测试** — `pnpm run test:node-quality` 以 glob 收集 `src/**` 与 `scripts/**` 的全部 `*.test.ts`，新增测试文件无需登记；随机化不变量测试用固定 seed，失败可原样重放。
 18. **升级一次到位，禁止反复重启试错** — 任何改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交），再只执行一次 `pnpm run agent:upgrade:mac` 完成构建/安装/重启，一次命令对应一次启停；升级被中断后先查 dist 新鲜度、`/Applications` 落盘与 App 日志再决定续跑，验收失败先离线分析根因，不得以重复安装代替排查（事故记录：`scripts/scripts_20261107_20261113_BUGFIX_LOG.md` BUG-2026-11-13-003）。
+    - **安装必须幂等且不重复要密码**：`ditto` 不保留 root 属主与 setuid 位，安装时须给**当前启用的内核**（`config.yaml` 的 `core`）一次性补齐 `chown root:admin` + `chmod +sx` 并断言，否则 App 每次启动都会经 `permission.ts` 弹系统密码框；`install-sparkle-local.sh` 在 CDHash 与已装版本一致、App 在跑、代理在线、setuid 完整时直接短路退出（`SPARKLE_FORCE_REINSTALL=1` 可强制重装）；装后自动恢复轮次默认 0，失败即停留现场；入口与内部各持一个原子 `mkdir` 锁，禁止并发升级（并发写 `dist`/`/Applications` 是 BUG-2026-11-13-004 asar 损坏的成因）。
 19. **Gemini 专用组的成员资格只认地区探测** — `gemini专用` 为 `fallback`，成员来自 `gemini专用` provider：稳态只收 vXmutd 明确判定地区解锁的节点（按地区优先级分段、段内延迟升序、最多 12 个），与 `自动选择` 共用 `sparkleGeminiProbe` 的同一份地区缓存与 30 分钟审计（同轮结论同时维护两个 provider，成员集合变化才热重载）；冷启动无合格样本时排除已确认锁区节点兜底、禁止空 provider；健康检查只用轻量 204 量存活。流量边界：`gemini.google.com` / `aistudio.google.com` 走本组，`generativelanguage.googleapis.com`（Gemini API）保留给经真实 Google AI 请求验证的 `🎯 agy 专用`，同一域名不得两处抢占留下被遮蔽的死规则。
 
 ## 外部依赖

@@ -15,6 +15,58 @@ cd "$ROOT"
 fail() { echo "[upgrade-sparkle] FAIL: $*" >&2; exit 1; }
 log() { echo "[upgrade-sparkle] $*" >&2; }
 
+# 原子互斥：并发构建会同时 rm -rf dist 与 /Applications，把 asar 写坏（BUG-2026-11-13-004），
+# App 启动即退且无日志。用 mkdir 的原子性做锁；持有者已死或超时才接管，避免残留锁永久卡死。
+LOCK_DIR="${SPARKLE_UPGRADE_LOCK_DIR:-${TMPDIR:-/tmp}/sparkle-agent-upgrade.lock}"
+LOCK_OWNER="$LOCK_DIR/owner"
+acquire_upgrade_lock() {
+  local owner_text owner active
+  owner_text="$("$ROOT/node_modules/.bin/tsx" -e "
+    import { formatLockOwner } from './scripts/sparkleInstallSafetyCore.ts';
+    process.stdout.write(formatLockOwner(process.pid, Date.now()));
+  ")"
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    printf '%s' "$owner_text" > "$LOCK_OWNER"
+    log "Upgrade lock acquired (${LOCK_DIR})"
+    return 0
+  fi
+  owner="$(cat "$LOCK_OWNER" 2>/dev/null || true)"
+  active="$("$ROOT/node_modules/.bin/tsx" -e "
+    import { isLockOwnerActive, parseLockOwner } from './scripts/sparkleInstallSafetyCore.ts';
+    import { execFileSync } from 'node:child_process';
+    const owner = parseLockOwner(process.argv[1]);
+    let alive = false;
+    if (owner) {
+      try { execFileSync('kill', ['-0', String(owner.pid)], { stdio: 'ignore' }); alive = true } catch { alive = false }
+    }
+    process.stdout.write(isLockOwnerActive(owner, alive, Date.now()) ? '1' : '0');
+  " "$owner")"
+  if [[ "$active" == "1" ]]; then
+    fail "another upgrade is already running ($owner) — refusing to run concurrently; wait for it to finish or remove $LOCK_DIR if you are sure it is dead"
+  fi
+  log "Stale upgrade lock detected ($owner) — taking over"
+  rm -rf "$LOCK_DIR"
+  mkdir "$LOCK_DIR" 2>/dev/null || fail "could not take over upgrade lock at $LOCK_DIR"
+  printf '%s' "$owner_text" > "$LOCK_OWNER"
+  return 0
+}
+UPGRADE_LOCK_HELD=0
+release_upgrade_lock() {
+  if [[ "$UPGRADE_LOCK_HELD" == "1" ]]; then
+    rm -rf "$LOCK_DIR" 2>/dev/null || true
+    UPGRADE_LOCK_HELD=0
+  fi
+}
+acquire_upgrade_lock
+UPGRADE_LOCK_HELD=1
+# INT/TERM 必须「释放后退出」，否则进程会带着已释放的锁继续跑，形成并发写窗口。
+handle_upgrade_signal() {
+  release_upgrade_lock
+  exit 130
+}
+trap 'release_upgrade_lock' EXIT
+trap 'handle_upgrade_signal' INT TERM
+
 # electron-builder 26 node module collector runs `pnpm list --depth Infinity`.
 # A stale system pnpm (e.g. /usr/local/bin/pnpm v7) exits 1 → collector fails with no fallback.
 # package.json pins pnpm@11.1.1 — prepend a corepack wrapper so `which pnpm` resolves correctly.
@@ -204,7 +256,13 @@ fi
 if [[ -n "$APP_LOG" ]]; then
   post_install_bootstrap_ok=false
   recovery_round=0
-  max_recovery_rounds="${SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS:-2}"
+  # 默认 0 轮：失败就停下留现场，由操作者读日志定位根因。
+  # 每轮恢复都会 quit + 重启 App，而每次重启在内核 setuid 缺失时还会再要一次密码，
+  # 自动重试只会把「装一次」变成「反复启停 + 反复输密码」。
+  max_recovery_rounds="$("$ROOT/node_modules/.bin/tsx" -e "
+    import { resolvePostInstallRecoveryRounds } from './scripts/sparkleInstallSafetyCore.ts';
+    process.stdout.write(String(resolvePostInstallRecoveryRounds(process.env.SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS)));
+  ")"
   while [[ "$post_install_bootstrap_ok" != true ]]; do
     log "Waiting for PostCoreBootstrap mihomo API ready (up to 90s)..."
     bootstrap_state=wait

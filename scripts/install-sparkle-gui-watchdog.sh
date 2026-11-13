@@ -17,10 +17,10 @@ log() { echo "[install-gui-watchdog] $*" >&2; }
 
 mkdir -p "$STATE_DIR" "${HOME}/Library/LaunchAgents"
 chmod +x "$WATCHDOG_SRC"
-cp "$WATCHDOG_SRC" "$WATCHDOG_DST"
-chmod +x "$WATCHDOG_DST"
 
-cat > "$PLIST_PATH" <<PLIST
+# 幂等：脚本内容与 plist 都已就位且一致时不做任何 bootout/bootstrap/kickstart。
+# 每次安装都重启看门狗会重置它的崩溃台账与退避状态，让「反复重启」更像反复重启。
+plist_content="$(cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -43,6 +43,26 @@ cat > "$PLIST_PATH" <<PLIST
 </dict>
 </plist>
 PLIST
+)"
+
+watchdog_unchanged() {
+  [[ -f "$WATCHDOG_DST" ]] || return 1
+  [[ -f "$PLIST_PATH" ]] || return 1
+  cmp -s "$WATCHDOG_SRC" "$WATCHDOG_DST" || return 1
+  [[ "$(cat "$PLIST_PATH")" == "$plist_content" ]] || return 1
+  launchctl print "gui/$(id -u)/${PLIST_LABEL}" >/dev/null 2>&1 || return 1
+  return 0
+}
+
+if watchdog_unchanged; then
+  log "GUI watchdog unchanged and loaded — skipping reinstall"
+  exit 0
+fi
+
+cp "$WATCHDOG_SRC" "$WATCHDOG_DST"
+chmod +x "$WATCHDOG_DST"
+
+printf '%s\n' "$plist_content" > "$PLIST_PATH"
 
 launchctl bootout "gui/$(id -u)/${PLIST_LABEL}" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
