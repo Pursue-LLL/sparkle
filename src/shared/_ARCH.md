@@ -16,10 +16,10 @@ scripts/writeBuildStampCore.ts → scripts/write-build-stamp.ts
   → src/shared/buildStamp.ts
   → src/main/utils/ipc.ts (getBuildStamp)
   → src/renderer/src/utils/init.ts → proxies.tsx Chip
-  → src/main/core/buildDriftCore.ts / scripts/check-build-drift.ts / scripts/sparkleDistFreshnessCore.ts（漂移与 dist 新鲜度判定）
+  → src/main/core/buildDriftCore.ts / scripts/check-build-drift.ts + scripts/sparkleBakedBuildStampCore.ts / scripts/sparkleDistFreshnessCore.ts（漂移与 dist 新鲜度判定）
 ```
 
 ## 依赖
 
 - 生成脚本：`scripts/writeBuildStampCore.ts`（POS: 构建标识格式 SSOT）
-- 消费方：`src/main/utils/ipc.ts` · `src/main/core/buildDriftCore.ts` · `scripts/check-build-drift.ts` · `scripts/sparkleDistFreshnessCore.ts` · `src/renderer/src/pages/proxies.tsx`
+- 消费方：`src/main/utils/ipc.ts` · `src/main/core/buildDriftCore.ts` · `scripts/check-build-drift.ts` · `scripts/sparkleBakedBuildStampCore.ts` · `scripts/sparkleDistFreshnessCore.ts` · `src/renderer/src/pages/proxies.tsx`

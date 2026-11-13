@@ -30,7 +30,7 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 | `upgradeSparklePostInstallGateCore.ts` | 装包后门禁纯函数：按安装行偏移计 PostCoreBootstrap 失败 / API 就绪 / headless 引导完成 |
 | `sparkle-data-plane-readiness.mts` | 数据面就绪探针：经本机代理端口（默认 `127.0.0.1:7890`）重试探测，Agent 装后门禁的 SSOT |
 | `sparkle-mihomo-close-smoke.mts` | 关闭连接烟测：`DELETE /connections/{id}` 必须到达控制器（直连或 service 模式） |
-| `check-build-drift.ts` | `pnpm run check:drift`：对比 `/Applications` 运行的 app 与仓库 HEAD，退出码 1 = 漂移 |
+| `check-build-drift.ts` / `sparkleBakedBuildStampCore.ts` | `pnpm run check:drift`：从 `/Applications` 里 `app.asar` 的主进程 bundle 按内容读出烧进去的 commit 与 dirty（不依赖打包器的 chunk 文件名，独立 chunk 与内联进 `index.js` 两种产物都能读），对比仓库 HEAD，退出码 1 = 漂移 |
 | `verify-group-failover.mts` | `pnpm run verify:failover [内核路径]`：故障转移引擎对真实 mihomo 内核的端到端校验（隔离实例，约 2 分钟）；升级或切换内核（含 alpha）后运行，内核告警文案或拨号失败语义变化时在第一步失败 |
 | `mihomoIsolatedHarness.ts` | 隔离 mihomo 端到端校验的公共夹具：随机回环端口、模拟 HTTP 目标与 SOCKS5 节点、内核子进程与控制器客户端；只接触自己创建的进程、端口与目录 |
 | `verify-antigravity-geo-routing.mts` | `pnpm run verify:agygeo`：agy / cloudcode-pa 流量必须落入 `🎯 agy 专用` |
@@ -78,4 +78,4 @@ bash scripts/agent-sparkle-upgrade.sh
 
 - `package.json` version = 目标 semver
 - `BUGFIX_LOG.md` §「Sparkle 本地安装」· §「AI Agent 操作约束」
-- 本目录按「模块 + 7 日」归档的缺陷日志 `scripts_<起>_<止>_BUGFIX_LOG.md`，最新一份 [scripts_20261107_20261113_BUGFIX_LOG.md](scripts_20261107_20261113_BUGFIX_LOG.md)（构建 chunk、测试门禁、Dock 残留注册）
+- 本目录按「模块 + 7 日」归档的缺陷日志 `scripts_<起>_<止>_BUGFIX_LOG.md`，最新一份 [scripts_20261107_20261113_BUGFIX_LOG.md](scripts_20261107_20261113_BUGFIX_LOG.md)（构建 chunk、测试门禁、Dock 残留注册、`check:drift` 误报）

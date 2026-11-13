@@ -13,12 +13,6 @@ import path from 'path'
 type Normalize = (value: string) => string
 type IsDirty = (cwd: string) => boolean
 
-/** @electron/asar 为 CJS，动态 import 的类型推断不覆盖具名导出，此处显式约束。 */
-interface AsarApi {
-  listPackage(asarPath: string): string[]
-  extractFile(asarPath: string, filename: string): Buffer
-}
-
 /** 定位 app.asar：优先系统级安装（升级脚本的规范目标），回退到用户级。 */
 function resolveAppAsar(): string {
   if (process.env.SPARKLE_APP_ASAR) {
@@ -26,7 +20,7 @@ function resolveAppAsar(): string {
   }
   const candidates = [
     path.join(os.homedir(), 'Applications', 'Sparkle.app', 'Contents', 'Resources', 'app.asar'),
-    path.join('/Applications', 'Sparkle.app', 'Contents', 'Resources', 'app.asar'),
+    path.join('/Applications', 'Sparkle.app', 'Contents', 'Resources', 'app.asar')
   ]
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
 }
@@ -38,53 +32,44 @@ function run(args: string[], cwd?: string): string {
     return execFileSync(args[0], args.slice(1), {
       cwd,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'ignore']
     }).trim()
   } catch {
     return ''
   }
 }
 
-function readRepoFacts(normalizeCommit: Normalize, isDirtyOutside: IsDirty): { commit: string; dirty: boolean } {
+function readRepoFacts(
+  normalizeCommit: Normalize,
+  isDirtyOutside: IsDirty
+): { commit: string; dirty: boolean } {
   return {
     commit: normalizeCommit(run(['git', 'rev-parse', 'HEAD'], process.cwd())),
-    dirty: isDirtyOutside(process.cwd()),
+    dirty: isDirtyOutside(process.cwd())
   }
 }
 
 /**
  * 读取已安装 app 内烘焙的 git 事实。
  *
- * 直接从 app.asar 的 buildStamp chunk 读取二进制内容——这是权威来源，
- * 不依赖 app 是否已启动、是否写过 [BuildDrift] 日志。chunk 文件名带内容哈希，
- * 需先 list 再按前缀定位。
+ * 直接从 app.asar 的主进程 bundle 读取烧进二进制的标记——这是权威来源，
+ * 不依赖 app 是否已启动、是否写过 [BuildDrift] 日志。标记按内容定位，不依赖 chunk 文件名
+ * （打包器可把 buildStamp 拆成带哈希的独立 chunk，也可内联进 index.js）。
  */
 async function readAppFacts(
   normalizeCommit: Normalize
 ): Promise<{ commit: string; dirty: boolean } | undefined> {
-  const asar = (await import('@electron/asar')) as unknown as AsarApi
   if (!fs.existsSync(APP_ASAR)) {
     return undefined
   }
-  const chunk = asar
-    .listPackage(APP_ASAR)
-    .find((entry) => /\/buildStamp-[^/]+\.js$/.test(entry))
-  if (!chunk) {
-    return undefined
-  }
-  const source = asar.extractFile(APP_ASAR, chunk.replace(/^\//, '')).toString('utf8')
-  const commit = source.match(/SPARKLE_GIT_COMMIT\s*=\s*"([^"]*)"/)?.[1] ?? ''
-  const dirty = /SPARKLE_GIT_DIRTY\s*=\s*true/.test(source)
-  if (commit.length === 0) {
-    return undefined
-  }
-  return { commit: normalizeCommit(commit), dirty }
+  const { readBakedBuildStampFromAsar } = await import('./sparkleBakedBuildStampCore')
+  const stamp = readBakedBuildStampFromAsar(APP_ASAR)
+  return stamp && { commit: normalizeCommit(stamp.commit), dirty: stamp.dirty }
 }
 
 async function main(): Promise<void> {
-  const { detectBuildDrift, normalizeCommit, isTrackedDirtyOutsideBuildStamp } = await import(
-    '../src/main/core/buildDriftPureCore'
-  )
+  const { detectBuildDrift, normalizeCommit, isTrackedDirtyOutsideBuildStamp } =
+    await import('../src/main/core/buildDriftPureCore')
   const isDirtyOutside = (cwd: string): boolean =>
     !isTrackedDirtyOutsideBuildStamp(
       run(['git', 'status', '--porcelain', '--untracked-files=no'], cwd)
