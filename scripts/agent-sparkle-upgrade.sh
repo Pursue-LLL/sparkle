@@ -11,32 +11,38 @@ fail() { log "FAIL: $*"; exit 1; }
 
 # 入口互斥：两个 agent 升级同时跑会并发写 dist 与 /Applications（BUG-2026-11-13-004）。
 # 内部 upgrade-sparkle-local.sh 自己也有锁，但入口层先拦住可以避免「先做一半准备工作再失败」。
+# 纯 bash 实现：安装路径上不依赖 `tsx -e` / `node -e` 传参（参数会被当成 node 选项）。
 ENTRY_LOCK_DIR="${SPARKLE_UPGRADE_ENTRY_LOCK_DIR:-${TMPDIR:-/tmp}/sparkle-agent-upgrade-entry.lock}"
 ENTRY_LOCK_OWNER="$ENTRY_LOCK_DIR/owner"
+ENTRY_LOCK_MAX_AGE_SEC=3600
+
+entry_lock_owner_is_active() {
+  local text="$1" pid started now
+  [[ "$text" =~ pid=([0-9]+) ]] || return 1
+  pid="${BASH_REMATCH[1]}"
+  [[ "$pid" -gt 0 ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  [[ "$text" =~ started=([0-9]+) ]] || return 1
+  started=$(( ${BASH_REMATCH[1]} / 1000 ))
+  now="$(date +%s)"
+  [[ $(( now - started )) -lt "$ENTRY_LOCK_MAX_AGE_SEC" ]]
+}
+
 acquire_entry_lock() {
-  local owner_text owner active
-  owner_text="$(node -e 'process.stdout.write(`pid=${process.pid} started=${Date.now()}\n`)')"
+  local owner_text existing
+  owner_text="pid=$$ started=$(($(date +%s) * 1000))"
   if mkdir "$ENTRY_LOCK_DIR" 2>/dev/null; then
-    printf '%s' "$owner_text" > "$ENTRY_LOCK_OWNER"
+    printf '%s\n' "$owner_text" > "$ENTRY_LOCK_OWNER"
     return 0
   fi
-  owner="$(cat "$ENTRY_LOCK_OWNER" 2>/dev/null || true)"
-  active="$(node -e '
-    const text = process.argv[1] || "";
-    const pid = Number(/pid=(\d+)/.exec(text)?.[1] ?? 0);
-    let alive = false;
-    if (pid > 0) {
-      try { process.kill(pid, 0); alive = true } catch { alive = false }
-    }
-    process.stdout.write(alive ? "1" : "0");
-  ' "$owner")"
-  if [[ "$active" == "1" ]]; then
-    fail "another agent upgrade is already running ($owner) — refusing to start a second one"
+  existing="$(cat "$ENTRY_LOCK_OWNER" 2>/dev/null || true)"
+  if entry_lock_owner_is_active "$existing"; then
+    fail "another agent upgrade is already running ($existing) — refusing to start a second one"
   fi
-  log "Stale entry lock ($owner) — taking over"
+  log "Stale entry lock ($existing) — taking over"
   rm -rf "$ENTRY_LOCK_DIR"
   mkdir "$ENTRY_LOCK_DIR" 2>/dev/null || fail "could not take over entry lock"
-  printf '%s' "$owner_text" > "$ENTRY_LOCK_OWNER"
+  printf '%s\n' "$owner_text" > "$ENTRY_LOCK_OWNER"
   return 0
 }
 release_entry_lock() { rm -rf "$ENTRY_LOCK_DIR" 2>/dev/null || true; }
@@ -127,7 +133,21 @@ fi
 
 if [[ "$DIST_FRESH" == "1" ]]; then
   log "dist already $EXPECTED_VER with valid signature + fresh source fingerprint — install only"
-  bash "$ROOT/scripts/install-sparkle-local.sh"
+  SHORT_CIRCUIT_MARKER="${TMPDIR:-/tmp}/sparkle-install-short-circuit.$$"
+  rm -f "$SHORT_CIRCUIT_MARKER"
+  # `set -e` 下必须显式捕获退出码，否则安装失败会先于下面的分支直接终止脚本。
+  install_rc=0
+  SPARKLE_INSTALL_SHORT_CIRCUIT_MARKER="$SHORT_CIRCUIT_MARKER" \
+    bash "$ROOT/scripts/install-sparkle-local.sh" || install_rc=$?
+  # install-sparkle-local.sh 在「已装同款且健康」时短路退出并写该标记：
+  # 此时既不该重装 profile scheduler，也不该再起一次 --sparkle-profile-update-due 第二实例。
+  if [[ -f "$SHORT_CIRCUIT_MARKER" ]]; then
+    rm -f "$SHORT_CIRCUIT_MARKER"
+    log "Install short-circuited: same build already running — skipping post-install gates"
+    log "AGENT_UPGRADE_RESULT: version=$EXPECTED_VER data_plane=SKIPPED_ALREADY_HEALTHY"
+    exit 0
+  fi
+  [[ "$install_rc" -eq 0 ]] || fail "install-sparkle-local.sh failed rc=$install_rc"
   install_profile_scheduler
   run_post_install_gates
   log "Done. Sparkle $EXPECTED_VER installed; all post gates PASS"

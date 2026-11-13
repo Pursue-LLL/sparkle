@@ -17,37 +17,55 @@ log() { echo "[upgrade-sparkle] $*" >&2; }
 
 # 原子互斥：并发构建会同时 rm -rf dist 与 /Applications，把 asar 写坏（BUG-2026-11-13-004），
 # App 启动即退且无日志。用 mkdir 的原子性做锁；持有者已死或超时才接管，避免残留锁永久卡死。
+# 全部用纯 bash 判定：安装/构建路径上出现 `tsx -e` 传参会把参数当 node 选项而崩溃。
 LOCK_DIR="${SPARKLE_UPGRADE_LOCK_DIR:-${TMPDIR:-/tmp}/sparkle-agent-upgrade.lock}"
 LOCK_OWNER="$LOCK_DIR/owner"
+LOCK_MAX_AGE_SEC=3600
+
+lock_pid_of() {
+  local text="$1"
+  [[ "$text" =~ pid=([0-9]+) ]] && echo "${BASH_REMATCH[1]}" || echo ""
+}
+
+lock_started_sec_of() {
+  local text="$1"
+  if [[ "$text" =~ started=([0-9]+) ]]; then
+    echo "$(( ${BASH_REMATCH[1]} / 1000 ))"
+  else
+    echo ""
+  fi
+}
+
+lock_owner_is_active() {
+  local text="$1" pid started now
+  pid="$(lock_pid_of "$text")"
+  started="$(lock_started_sec_of "$text")"
+  [[ -n "$pid" && "$pid" -gt 0 ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  [[ -n "$started" ]] || return 1
+  now="$(date +%s)"
+  [[ $(( now - started )) -lt "$LOCK_MAX_AGE_SEC" ]]
+}
+
 acquire_upgrade_lock() {
-  local owner_text owner active
-  owner_text="$("$ROOT/node_modules/.bin/tsx" -e "
-    import { formatLockOwner } from './scripts/sparkleInstallSafetyCore.ts';
-    process.stdout.write(formatLockOwner(process.pid, Date.now()));
-  ")"
+  local owner_text owner_text_existing
+  owner_text="pid=$$ started=$(($(date +%s) * 1000))"
+  # 父目录可能因 TMPDIR 变化或清理而消失；先确保存在，否则 mkdir 永久失败。
+  mkdir -p "$(dirname "$LOCK_DIR")" 2>/dev/null || true
   if mkdir "$LOCK_DIR" 2>/dev/null; then
-    printf '%s' "$owner_text" > "$LOCK_OWNER"
+    printf '%s\n' "$owner_text" > "$LOCK_OWNER" 2>/dev/null || true
     log "Upgrade lock acquired (${LOCK_DIR})"
     return 0
   fi
-  owner="$(cat "$LOCK_OWNER" 2>/dev/null || true)"
-  active="$("$ROOT/node_modules/.bin/tsx" -e "
-    import { isLockOwnerActive, parseLockOwner } from './scripts/sparkleInstallSafetyCore.ts';
-    import { execFileSync } from 'node:child_process';
-    const owner = parseLockOwner(process.argv[1]);
-    let alive = false;
-    if (owner) {
-      try { execFileSync('kill', ['-0', String(owner.pid)], { stdio: 'ignore' }); alive = true } catch { alive = false }
-    }
-    process.stdout.write(isLockOwnerActive(owner, alive, Date.now()) ? '1' : '0');
-  " "$owner")"
-  if [[ "$active" == "1" ]]; then
-    fail "another upgrade is already running ($owner) — refusing to run concurrently; wait for it to finish or remove $LOCK_DIR if you are sure it is dead"
+  owner_text_existing="$(cat "$LOCK_OWNER" 2>/dev/null || true)"
+  if lock_owner_is_active "$owner_text_existing"; then
+    fail "another upgrade is already running (${owner_text_existing}) — refusing to run concurrently; wait for it or remove $LOCK_DIR if you are sure it is dead"
   fi
-  log "Stale upgrade lock detected ($owner) — taking over"
-  rm -rf "$LOCK_DIR"
+  log "Stale upgrade lock detected (${owner_text_existing:-unreadable}) — taking over"
+  rm -rf "$LOCK_DIR" 2>/dev/null || true
+  mkdir -p "$(dirname "$LOCK_DIR")" 2>/dev/null || true
   mkdir "$LOCK_DIR" 2>/dev/null || fail "could not take over upgrade lock at $LOCK_DIR"
-  printf '%s' "$owner_text" > "$LOCK_OWNER"
+  printf '%s\n' "$owner_text" > "$LOCK_OWNER" 2>/dev/null || true
   return 0
 }
 UPGRADE_LOCK_HELD=0
@@ -259,10 +277,9 @@ if [[ -n "$APP_LOG" ]]; then
   # 默认 0 轮：失败就停下留现场，由操作者读日志定位根因。
   # 每轮恢复都会 quit + 重启 App，而每次重启在内核 setuid 缺失时还会再要一次密码，
   # 自动重试只会把「装一次」变成「反复启停 + 反复输密码」。
-  max_recovery_rounds="$("$ROOT/node_modules/.bin/tsx" -e "
-    import { resolvePostInstallRecoveryRounds } from './scripts/sparkleInstallSafetyCore.ts';
-    process.stdout.write(String(resolvePostInstallRecoveryRounds(process.env.SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS)));
-  ")"
+  max_recovery_rounds="${SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS:-0}"
+  [[ "$max_recovery_rounds" =~ ^[0-9]+$ ]] || max_recovery_rounds=0
+  (( max_recovery_rounds > 3 )) && max_recovery_rounds=3
   while [[ "$post_install_bootstrap_ok" != true ]]; do
     log "Waiting for PostCoreBootstrap mihomo API ready (up to 90s)..."
     bootstrap_state=wait

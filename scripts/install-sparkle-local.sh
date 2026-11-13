@@ -43,16 +43,21 @@ core_mode_of() {
   stat -f '%Sp' "$1" 2>/dev/null || true
 }
 
+# 纯 bash 判定 setuid：权限位第 4 个字符（owner execute）为 s/S 即带 setuid。
+# 刻意不调 `tsx -e`——tsx 会把额外参数当 node 选项解析（bad option），
+# 让一个「检查」变成「脚本中途崩溃」，这是不能出现在安装路径上的失败模式。
+is_setuid_mode() {
+  local mode="$1"
+  [[ "${#mode}" -ge 4 && ( "${mode:3:1}" == "s" || "${mode:3:1}" == "S" ) ]]
+}
+
 core_setuid_intact() {
   local dir="$1" name file mode
   name="$(enabled_core_name)"
   file="$dir/$name"
   [[ -f "$file" ]] || return 0
   mode="$(core_mode_of "$file")"
-  "$ROOT/node_modules/.bin/tsx" -e "
-    import { isCoreSetuidMode } from './scripts/sparkleInstallSafetyCore.ts';
-    process.exit(isCoreSetuidMode(process.argv[1]) ? 0 : 1);
-  " "$mode"
+  is_setuid_mode "$mode"
 }
 
 restore_core_setuid() {
@@ -143,19 +148,24 @@ if [[ "${SPARKLE_FORCE_REINSTALL:-0}" != "1" ]] && [[ -n "$OLD_CDHASH" && "$OLD_
     data_plane=1
   fi
   if core_setuid_intact "$DEST/$CORE_SIDECAR_REL"; then setuid_ok=1; fi
-  short_circuit="$("$ROOT/node_modules/.bin/tsx" -e "
-    import { resolveInstallShortCircuit } from './scripts/sparkleInstallSafetyCore.ts';
-    const d = resolveInstallShortCircuit({
-      distFresh: true,
-      cdhashMatches: true,
-      appRunning: process.argv[1] === '1',
-      dataPlaneReachable: process.argv[2] === '1',
-      coreSetuidIntact: process.argv[3] === '1',
-    });
-    process.stdout.write(d.skip ? 'skip' : d.reason);
-  " "$app_running" "$data_plane" "$setuid_ok")"
+  # 判定用纯 bash：安装路径不依赖任何 `tsx -e` 传参（tsx 会把参数当 node 选项）。
+  short_circuit=""
+  if [[ "$app_running" != "1" ]]; then
+    short_circuit="app_not_running"
+  elif [[ "$data_plane" != "1" ]]; then
+    short_circuit="data_plane_down"
+  elif [[ "$setuid_ok" != "1" ]]; then
+    short_circuit="core_setuid_missing"
+  else
+    short_circuit="skip"
+  fi
   if [[ "$short_circuit" == "skip" ]]; then
     log "Same build already installed and healthy (CDHash $SRC_CDHASH) — nothing to do, app untouched"
+    # 通知父级流程「这次是空操作」：标记文件让 agent-sparkle-upgrade.sh 跳过装后门禁，
+    # 避免为一份没变的安装再起一次 --sparkle-profile-update-due 第二实例。
+    if [[ -n "${SPARKLE_INSTALL_SHORT_CIRCUIT_MARKER:-}" ]]; then
+      : > "$SPARKLE_INSTALL_SHORT_CIRCUIT_MARKER"
+    fi
     exit 0
   fi
   log "Reinstall required: $short_circuit"
