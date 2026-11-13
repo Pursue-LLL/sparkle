@@ -210,7 +210,7 @@ pnpm run upgrade:mac         # 本地装 /Applications + PostCoreBootstrap 门�
 | `src/main/core/buildDriftPureCore.ts` | 判定 SSOT：`detectBuildDrift` / `normalizeCommit`                   |
 | `src/main/core/buildDriftCore.ts`     | 运行时入口：读仓库 git 事实，写 `[BuildDrift]` 日志（进程内仅一次） |
 | `src/main/core/factory.ts`            | `generateProfileImpl` 首步调用 `logBuildDriftAtStartup`             |
-| `scripts/check-build-drift.ts`        | `pnpm run check:drift` 主动查询，退出码 1 = 漂移                    |
+| `scripts/check-build-drift.ts`        | `pnpm run check:drift` 主动查询（按内容读 app.asar 内的构建标记），退出码 1 = 漂移 |
 
 四种判定结果：`match`（一致）/ `commit_mismatch`（app 旧于仓库）/ `app_dirty`（构建时
 工作区不干净，构建不可复现）/ `app_unknown`（无 commit 事实的旧构建）。仓库侧 dirty
