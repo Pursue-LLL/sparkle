@@ -136,13 +136,18 @@ export const mihomoFlushFakeIpCache = async (): Promise<void> => {
   await instance.post('/cache/fakeip/flush')
 }
 
-export const mihomoCloseConnections = async (name?: string): Promise<void> => {
+/**
+ * 不带参数关闭全部连接；带 name 关闭链路经过该组或节点的连接。
+ * 再带 via 时还要求链路同时经过该组：按节点清理时不波及其他组对同一节点的显式选择。
+ */
+export const mihomoCloseConnections = async (name?: string, via?: string): Promise<void> => {
   const instance = await getAxios()
   if (name) {
     const connectionsInfo = await mihomoGetConnections()
     const targetConnections =
-      connectionsInfo?.connections?.filter((conn) => conn.chains && conn.chains.includes(name)) ||
-      []
+      connectionsInfo?.connections?.filter(
+        (conn) => conn.chains && conn.chains.includes(name) && (!via || conn.chains.includes(via))
+      ) || []
     for (const conn of targetConnections) {
       try {
         await mihomoCloseConnection(conn.id)

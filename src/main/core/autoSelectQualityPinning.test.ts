@@ -33,7 +33,12 @@ describe('quality admission when the poller pins', () => {
     assert.deepEqual(changes(), ['B'])
     assert.deepEqual(
       world.calls.filter((call) => /^(sink|change|close|rebuild)/.test(call)),
-      ['sink:A', `change:${AUTO_SELECT_GROUP_NAME}:B`, 'close:A', 'rebuild']
+      [
+        'sink:A',
+        `change:${AUTO_SELECT_GROUP_NAME}:B`,
+        `close:${AUTO_SELECT_GROUP_NAME}:A`,
+        'rebuild'
+      ]
     )
     assert.deepEqual(world.logs, [
       `${QUALITY}skipped A (google 40 KB/s)\n`,

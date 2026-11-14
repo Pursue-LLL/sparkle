@@ -186,8 +186,8 @@ function installMocks(guard: 'stub' | 'real'): void {
         world.calls.push(`unfix:${group}`)
         world.group.fixed = undefined
       },
-      mihomoCloseConnections: async (name: string): Promise<void> => {
-        world.calls.push(`close:${name}`)
+      mihomoCloseConnections: async (name: string, via?: string): Promise<void> => {
+        world.calls.push(`close:${via}:${name}`)
         if (world.closeError) {
           throw world.closeError
         }

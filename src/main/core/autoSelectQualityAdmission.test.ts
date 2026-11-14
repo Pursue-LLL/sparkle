@@ -22,6 +22,7 @@ import {
   UNVERIFIED_PIN_REVIEW_MS
 } from './sparkleNodeQualityCore'
 import type { PinAdmission } from './autoSelectQualityGuard'
+import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
 
 const QUALITY = '[AutoSelectQuality]: '
 const groupOf = (all: string[]) => ({ type: 'Fallback', now: all[0], all })
@@ -259,7 +260,7 @@ describe('quality admission', () => {
 
       await rig.guard.settlePinAdmission(admission, true)
 
-      assert.deepEqual(world.calls, ['close:A', 'rebuild'])
+      assert.deepEqual(world.calls, [`close:${AUTO_SELECT_GROUP_NAME}:A`, 'rebuild'])
     })
 
     it('still rewrites the provider when the pin did not happen, but touches no connection', async () => {

@@ -295,6 +295,29 @@ describe('mihomoApi', () => {
       )
     })
 
+    it('spares other groups that picked the same node when asked to close it via one group', async () => {
+      rig.reply = ({ method }) => {
+        if (method === 'get') {
+          return {
+            connections: [
+              { id: 'a', chains: ['节点', '自动选择', '🚀 节点选择'] },
+              { id: 'b', chains: ['节点', '🎯 agy 专用'] },
+              { id: 'c', chains: ['别的节点', '自动选择'] },
+              { id: 'd' }
+            ]
+          }
+        }
+        return {}
+      }
+
+      await api.mihomoCloseConnections('节点', '自动选择')
+
+      assert.deepEqual(
+        rig.calls.map(({ method, url }) => `${method} ${url}`),
+        ['get /connections', 'delete /connections/a']
+      )
+    })
+
     it('closes nothing when the core reports no connections', async () => {
       rig.reply = () => ({})
 

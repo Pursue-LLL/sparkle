@@ -77,7 +77,7 @@ describe('quality review', () => {
         'measure:control:B',
         'sink:A',
         `change:${AUTO_SELECT_GROUP_NAME}:B`,
-        'close:A',
+        `close:${AUTO_SELECT_GROUP_NAME}:A`,
         'rebuild'
       ])
       assert.deepEqual(world.logs, [

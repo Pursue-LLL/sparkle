@@ -110,10 +110,13 @@ async function logSkipped(rejected: readonly { node: string; detail: string }[])
   }
 }
 
-/** 关闭失败不应连累已经完成的切换；旧连接最多是留到自然结束。 */
+/**
+ * 只关经过 `自动选择` 的连接：其他组（如 `agy 专用`）显式选了同一节点，那是用户的选择，不归闸门管。
+ * 关闭失败不应连累已经完成的切换；旧连接最多是留到自然结束。
+ */
 async function closeConnectionsQuietly(node: string): Promise<void> {
   try {
-    await mihomoCloseConnections(node)
+    await mihomoCloseConnections(node, AUTO_SELECT_GROUP_NAME)
   } catch (error) {
     await log(`could not close connections of ${node}: ${errorMessage(error)}`)
   }
