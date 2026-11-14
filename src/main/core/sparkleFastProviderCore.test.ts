@@ -109,6 +109,19 @@ describe('sparkleFastProviderCore', () => {
     )
   })
 
+  it('keeps source order between nodes whose delays are equal', () => {
+    const delays = new Map([
+      ['🇹🇼 台湾 01', 50],
+      ['🇹🇼 台湾 02', 50],
+      ['🇹🇼 台湾 03', 20]
+    ])
+    const ordered = orderProxiesByRegionPriority([...NODES], ['台湾'], { delayMs: delays })
+    assert.deepEqual(
+      ordered.slice(0, 3).map((proxy) => proxy.name),
+      ['🇹🇼 台湾 03', '🇹🇼 台湾 01', '🇹🇼 台湾 02']
+    )
+  })
+
   it('keeps source order inside a segment when no node has delay data', () => {
     const ordered = orderProxiesByRegionPriority([...NODES], ['日本'], { delayMs: new Map() })
     assert.deepEqual(

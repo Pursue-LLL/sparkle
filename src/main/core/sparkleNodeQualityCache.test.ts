@@ -79,6 +79,28 @@ describe('sparkleNodeQualityCache', () => {
     assert.deepEqual([...(await cache.loadSunkNodeNames(NOW))], ['fresh'])
   })
 
+  it('forgets a record stamped a whole TTL ahead: the clock was wrong when it was written', async () => {
+    writeFileSync(
+      recordFile(),
+      JSON.stringify({
+        stampedFarAhead: NOW + SINK_TTL_MS,
+        stampedJustInsideTtl: NOW + SINK_TTL_MS - 1,
+        fresh: NOW - 1000
+      })
+    )
+
+    assert.deepEqual([...(await cache.loadSunkNodeNames(NOW))].sort(), [
+      'fresh',
+      'stampedJustInsideTtl'
+    ])
+  })
+
+  it('keeps a node marked a few milliseconds after a concurrent reader took its clock reading', async () => {
+    await cache.markNodesSunk(['台湾-1'], NOW + 5)
+
+    assert.deepEqual([...(await cache.loadSunkNodeNames(NOW))], ['台湾-1'])
+  })
+
   it('treats an unreadable record file as empty', async () => {
     writeFileSync(recordFile(), '{not json')
 

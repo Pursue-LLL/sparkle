@@ -93,6 +93,10 @@ describe('sparkleFastLatencyOrderCore', () => {
       false
     )
   })
+
+  it('has no target-url samples when there are no nodes at all', () => {
+    assert.equal(hasPreferredUrlSamples([], URL), false)
+  })
 })
 
 describe('shouldAdoptLatencyOrder', () => {
@@ -106,6 +110,7 @@ describe('shouldAdoptLatencyOrder', () => {
     assert.equal(shouldAdoptLatencyOrder('a', 'b', delays), true)
     assert.equal(shouldAdoptLatencyOrder('a', 'c', delays), false)
     assert.equal(shouldAdoptLatencyOrder('b', 'b', delays), false)
+    assert.equal(shouldAdoptLatencyOrder('a', undefined, delays), false, 'nothing to adopt')
   })
 
   it('adopts when the current first node has no sample', () => {
@@ -115,6 +120,42 @@ describe('shouldAdoptLatencyOrder', () => {
 
   it('never adopts an unsampled next node over a sampled current one', () => {
     assert.equal(shouldAdoptLatencyOrder('a', 'unknown', delays), false)
+  })
+
+  it('has nothing to adopt when the first node stays the same, sample or not', () => {
+    assert.equal(shouldAdoptLatencyOrder('dead', 'dead', delays), false)
+    assert.equal(shouldAdoptLatencyOrder('dead', undefined, delays), false)
+    assert.equal(shouldAdoptLatencyOrder(undefined, undefined, delays), false)
+  })
+
+  describe('the hysteresis: at least 50 ms and at least 30% faster, both at once', () => {
+    const adopt = (currentMs: number, nextMs: number): boolean =>
+      shouldAdoptLatencyOrder(
+        'current',
+        'next',
+        new Map([
+          ['current', currentMs],
+          ['next', nextMs]
+        ])
+      )
+
+    it('counts exactly 50 ms as fast enough, 49 ms as not', () => {
+      assert.equal(adopt(100, 50), true)
+      assert.equal(adopt(100, 51), false)
+    })
+
+    it('counts exactly 30% as fast enough, a hair less as not', () => {
+      assert.equal(adopt(200, 140), true)
+      assert.equal(adopt(200, 141), false)
+    })
+
+    it('is not impressed by a large gain that is a small share of the delay', () => {
+      assert.equal(adopt(1000, 900), false)
+    })
+
+    it('is not impressed by a large share that is a small gain', () => {
+      assert.equal(adopt(100, 60), false)
+    })
   })
 
   describe('when the current first node was sunk for slow downloads', () => {

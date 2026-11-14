@@ -277,6 +277,23 @@ describe('quality review', () => {
       assert.deepEqual(changes(), [])
       assert.deepEqual(world.logs, [])
     })
+
+    it('stops searching when a release invalidated the search meanwhile', async () => {
+      await rig.pinA([aliveLeaf('A'), aliveLeaf('B'), aliveLeaf('C')])
+      world.group.all = ['A', 'B', 'C']
+      await firstDegradedReading({ A: { primary: measured(40) }, B: { primary: measured(50) } })
+      world.logs = []
+      world.onMeasure = (node) => {
+        if (node === 'B') rig.notifyUnfixed(AUTO_SELECT_GROUP_NAME)
+      }
+
+      await poll(CONFIRM_POLLS)
+
+      assert.deepEqual(measures(), ['measure:primary:A', 'measure:primary:B'], 'C is never tried')
+      assert.deepEqual(callsStarting('sink:'), [])
+      assert.deepEqual(changes(), [])
+      assert.deepEqual(world.logs, [`${QUALITY}A confirmed degraded (google 40 KB/s)\n`])
+    })
   })
 
   describe('a probe channel that cannot answer', () => {

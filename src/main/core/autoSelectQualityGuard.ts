@@ -75,19 +75,10 @@ const log = (message: string): Promise<void> => appendAppLog(`[AutoSelectQuality
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
+/** 过期只在读取时判断：表以节点名为键，条目只随准入过的不同节点增长，重置时整体清空，无需另行清理。 */
 function isAdmittedRecently(node: string): boolean {
   const admittedAt = admittedAtMs.get(node)
   return admittedAt !== undefined && Date.now() - admittedAt < ADMISSION_MEMORY_MS
-}
-
-function rememberAdmitted(node: string): void {
-  const now = Date.now()
-  for (const [name, admittedAt] of admittedAtMs) {
-    if (now - admittedAt >= ADMISSION_MEMORY_MS) {
-      admittedAtMs.delete(name)
-    }
-  }
-  admittedAtMs.set(node, now)
 }
 
 function createWalkContext(startGeneration: number): WalkContext {
@@ -170,7 +161,7 @@ export async function admitPinCandidate(
     const rejectedNodes = outcome.rejected.map((item) => item.node)
     // 先落盘再继续：地区复核被拒、竞态重试都会让同一批候选再来一轮，不能重复测量
     await markNodesSunk(rejectedNodes)
-    rememberAdmitted(outcome.node)
+    admittedAtMs.set(outcome.node, Date.now())
     await log(
       outcome.node === candidate
         ? `admitted ${outcome.node} (${outcome.detail})`

@@ -42,9 +42,14 @@ function loadRecords(): Promise<Map<string, number>> {
   return sunkAtByName
 }
 
+/**
+ * 记录只在一个 TTL 内有效。时间戳超前当前时刻一个 TTL 以上说明写入时系统时钟是错的
+ * （例如手动调快日期后又改回），否则这条记录要等到真实时间追上它才会过期。
+ * 超前几毫秒是正常的：并发读取方的时钟读数可能比刚写入的记录早一点，不能当作作废。
+ */
 function dropExpired(records: Map<string, number>, nowMs: number): void {
   for (const [name, sunkAtMs] of records) {
-    if (nowMs - sunkAtMs >= SINK_TTL_MS) {
+    if (Math.abs(nowMs - sunkAtMs) >= SINK_TTL_MS) {
       records.delete(name)
     }
   }

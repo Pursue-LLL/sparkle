@@ -65,12 +65,10 @@ export function orderProxiesByRegionPriority(
   const buildOrdered = (excludeNames?: ReadonlySet<string>): ProxyRecord[] => {
     const included = new Set<string>()
     const ordered: ProxyRecord[] = []
+    // 没有任何延迟样本时所有节点都落进 trailingUnsampled，顺序即订阅里的地区分段顺序
     const trailingUnsampled: ProxyRecord[] = []
-    const hasSamples = Boolean(delayMs && delayMs.size > 0)
-    const delayOf = (proxy: ProxyRecord): number =>
-      delayMs?.get(proxyName(proxy)) ?? Number.POSITIVE_INFINITY
     const take = (matches: (name: string) => boolean): void => {
-      const segment: ProxyRecord[] = []
+      const sampled: Array<{ proxy: ProxyRecord; delay: number }> = []
       for (const proxy of proxies) {
         const name = proxyName(proxy)
         if (
@@ -83,21 +81,16 @@ export function orderProxiesByRegionPriority(
           continue
         }
         included.add(name)
-        segment.push(proxy)
+        const delay = delayMs?.get(name)
+        if (delay === undefined) {
+          trailingUnsampled.push(proxy)
+        } else {
+          sampled.push({ proxy, delay })
+        }
       }
-      if (!hasSamples) {
-        ordered.push(...segment)
-        return
-      }
-      const sampled = segment.filter((proxy) => delayMs?.has(proxyName(proxy)))
-      const unsampled = segment.filter((proxy) => !delayMs?.has(proxyName(proxy)))
-      sampled.sort((a, b) => {
-        const da = delayOf(a)
-        const db = delayOf(b)
-        return da === db ? 0 : da < db ? -1 : 1
-      })
-      ordered.push(...sampled)
-      trailingUnsampled.push(...unsampled)
+      // sort 是稳定的：延迟相同的节点保持订阅里的先后
+      sampled.sort((a, b) => a.delay - b.delay)
+      ordered.push(...sampled.map((item) => item.proxy))
     }
     for (const region of regionPriority) {
       take((name) => nodeMatchesRegion(name, region))
@@ -106,8 +99,7 @@ export function orderProxiesByRegionPriority(
     return [...ordered, ...trailingUnsampled]
   }
 
-  const withoutBlocked =
-    blockedNodeNames && blockedNodeNames.size > 0 ? buildOrdered(blockedNodeNames) : []
+  const withoutBlocked = buildOrdered(blockedNodeNames)
   return sinkToTail(withoutBlocked.length > 0 ? withoutBlocked : buildOrdered(), sunkNodeNames)
 }
 

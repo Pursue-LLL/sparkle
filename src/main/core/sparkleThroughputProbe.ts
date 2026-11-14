@@ -47,22 +47,28 @@ const FAILED: ThroughputReading = { kind: 'failed' }
 
 const HTTP_OK_STATUS = /^HTTP\/1\.[01] (200|206)\b/
 
+/** 首个数据块到达时才存在：计时起点与已收到的响应体字节数。没收到任何数据与只收到响应头是两种状态。 */
+interface Sample {
+  startedAtMs: number
+  bodyBytes: number
+}
+
 function downloadSample(target: ThroughputTarget): Promise<ThroughputReading> {
   return new Promise((resolve) => {
     let settled = false
     let head = Buffer.alloc(0)
     let headParsed = false
-    let bodyBytes = 0
-    let firstChunkAtMs: number | undefined
+    let received: Sample | undefined
 
-    const observedMs = (): number =>
-      firstChunkAtMs === undefined ? 0 : performance.now() - firstChunkAtMs
-    const reading = (): ThroughputReading => ({
+    const observedMs = (sample: Sample): number => performance.now() - sample.startedAtMs
+    const toReading = (sample: Sample): ThroughputReading => ({
       kind: 'measured',
-      kbps: Math.min(bodyBytes / 1024 / (Math.max(observedMs(), 1) / 1000), RATE_CAP_KBPS)
+      kbps: Math.min(sample.bodyBytes / 1024 / (observedMs(sample) / 1000), RATE_CAP_KBPS)
     })
     const partialReading = (): ThroughputReading =>
-      bodyBytes > 0 && observedMs() >= MIN_SAMPLE_WINDOW_MS ? reading() : FAILED
+      received && received.bodyBytes > 0 && observedMs(received) >= MIN_SAMPLE_WINDOW_MS
+        ? toReading(received)
+        : FAILED
 
     const finish = (result: ThroughputReading): void => {
       if (settled) return
@@ -87,9 +93,10 @@ function downloadSample(target: ThroughputTarget): Promise<ThroughputReading> {
             `Connection: close\r\n\r\n`
         )
         socket.on('data', (chunk: Buffer) => {
-          firstChunkAtMs ??= performance.now()
+          const sample = (received ??= { startedAtMs: performance.now(), bodyBytes: 0 })
+          // 响应头之后只累加字节：慢链路上数据块很碎，每块都重新拼接缓冲区的代价随块数平方增长
           if (headParsed) {
-            bodyBytes += chunk.length
+            sample.bodyBytes += chunk.length
           } else {
             head = Buffer.concat([head, chunk])
             const headEnd = head.indexOf('\r\n\r\n')
@@ -104,10 +111,10 @@ function downloadSample(target: ThroughputTarget): Promise<ThroughputReading> {
               return
             }
             headParsed = true
-            bodyBytes = head.length - (headEnd + 4)
+            sample.bodyBytes = head.length - (headEnd + 4)
           }
-          if (bodyBytes >= SAMPLE_BYTES) {
-            finish(reading())
+          if (sample.bodyBytes >= SAMPLE_BYTES) {
+            finish(toReading(sample))
           }
         })
         socket.once('end', () => finish(partialReading()))

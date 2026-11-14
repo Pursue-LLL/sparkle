@@ -80,7 +80,10 @@ export const world = {
   regionOf: (_node: string): RegionVerdict => ELIGIBLE,
   readingOf: (_node: string, _role: ProbeRole): ThroughputReading => HEALTHY,
   onMeasure: undefined as undefined | ((node: string, role: ProbeRole) => void | Promise<void>),
-  providersError: undefined as Error | undefined,
+  /** 控制器读 provider 时抛出的任意值（真实世界里 reject 的不一定是 Error）。 */
+  providersError: undefined as unknown,
+  /** 为 false 时控制器的 provider 列表里没有 sparkle-fast（例如配置刚重载完）。 */
+  fastProviderListed: true,
   closeError: undefined as Error | undefined,
   sunk: new Set<string>(),
   detailError: undefined as Error | undefined,
@@ -103,6 +106,7 @@ function resetWorld(): void {
   world.readingOf = () => HEALTHY
   world.onMeasure = undefined
   world.providersError = undefined
+  world.fastProviderListed = true
   world.closeError = undefined
   world.sunk = new Set()
   world.detailError = undefined
@@ -189,10 +193,14 @@ function installMocks(guard: 'stub' | 'real'): void {
         }
       },
       mihomoProxyProviders: async (): Promise<unknown> => {
-        if (world.providersError) {
+        if (world.providersError !== undefined) {
           throw world.providersError
         }
-        return { providers: { [FAST_NODE_PROVIDER_ID]: { proxies: world.leaves } } }
+        return {
+          providers: world.fastProviderListed
+            ? { [FAST_NODE_PROVIDER_ID]: { proxies: world.leaves } }
+            : {}
+        }
       },
       mihomoProviderLeafDelay: async (
         provider: string,

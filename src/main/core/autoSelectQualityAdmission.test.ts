@@ -120,6 +120,26 @@ describe('quality admission', () => {
       ])
     })
 
+    it('reports a failure that is not an Error by its text', async () => {
+      world.providersError = 'plain failure'
+
+      const admission = await rig.guard.admitPinCandidate('A', groupOf(['A', 'B']))
+
+      assert.deepEqual(admission, { ...verifiedPin('A'), verified: false })
+      assert.deepEqual(world.logs, [
+        `${QUALITY}admission failed for A, pinning it unchecked: plain failure\n`
+      ])
+    })
+
+    it('still admits the candidate itself when the controller does not list the provider yet', async () => {
+      world.fastProviderListed = false
+
+      const admission = await rig.guard.admitPinCandidate('A', groupOf(['A', 'B']))
+
+      assert.deepEqual(admission, verifiedPin('A'))
+      assert.deepEqual(measures(), ['measure:primary:A', 'measure:control:A'])
+    })
+
     it('never measures a node that is already sunk', async () => {
       world.leaves = [aliveLeaf('A'), aliveLeaf('B'), aliveLeaf('C')]
       world.sunk = new Set(['B'])
