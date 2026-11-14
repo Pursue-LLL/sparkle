@@ -339,6 +339,21 @@ describe('streamProbeGeminiRegionViaLocalListener', () => {
     assert.equal(secure.destroyCalls, 1)
   })
 
+  it('starts no decoding for a response that arrives after it already gave up', async () => {
+    const { result, raw } = startProbe(1000)
+    const secure = openTunnel(raw)
+    mock.timers.tick(1000)
+    assert.deepEqual(await result, INCONCLUSIVE)
+
+    const compressed = zlib.gzipSync(Buffer.from(PAGE_TW))
+    secure.emit(
+      'data',
+      Buffer.concat([Buffer.from(responseHead('Content-Encoding: gzip')), compressed])
+    )
+
+    assert.equal(connections.gunzip.length, 0)
+  })
+
   it('still resolves when closing a socket throws', async () => {
     connections.destroyError = new Error('already gone')
     const { result, raw } = startProbe()
