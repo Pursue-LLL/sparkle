@@ -27,7 +27,7 @@ mihomo (TUN) → 节点 leaf → 目标站点
 ## 架构约束
 
 1. **Cursor 专用组仅手动选择** — `🎯 Cursor 专用` 只接受 `manual` / `bootstrap` 来源的切换，任何自动逻辑不得改写。
-2. **`自动选择` 粘性固定与真实地区解锁** — 它是 `fallback` 组，按 `sparkle-fast` 的文件顺序选出首个存活节点后由 `autoSelectStickyPin` 固定（pin），组测速统一用轻量 `https://www.gstatic.com/generate_204` 只量存活与延迟（不以 Gemini 首页重量污染排序），固定前除检查 mihomo 存活外还经 `sparkleGeminiProbe` 流式校验 `gemini.google.com` 的 `vXmutd` 地区码（剔除返回 `ZZ`/`CN`/`HK`/`MO`/`RU`/`BY`/`KP`/`IR`/`SY`/`CU` 或 `www.google.cn` 的“送中”节点），固定期间按 5 分钟节流复核、节点变化立即复核；只有当前节点真挂掉或被确认为地区受限时才换（丢固定时先做单点独立存活复测过滤并发体检偶发超时，10 分钟内再次丢固定则放行切换），高优先级节点恢复不回切；周期重排只改 provider 文件序，不解除固定，启动重排仅在原固定节点不在实测存活表内时解除；内核启动或整配置重载后先由 `autoSwitchPinRelease` 释放缓存恢复的固定，粘性固定只在验证通过后重新建立（见第 12 条）。
+2. **`自动选择` 粘性固定与真实地区解锁** — 它是 `fallback` 组，按 `sparkle-fast` 的文件顺序选出首个存活节点后由 `autoSelectStickyPin` 固定（pin），组测速统一用轻量 `https://www.gstatic.com/generate_204` 只量存活与延迟（不以 Gemini 首页重量污染排序），固定前除检查 mihomo 存活外还经 `sparkleGeminiProbe` 流式校验 `gemini.google.com` 的 `vXmutd` 地区码（剔除返回 `ZZ`/`CN`/`HK`/`MO`/`RU`/`BY`/`KP`/`IR`/`SY`/`CU` 或 `www.google.cn` 的“送中”节点），固定期间按 5 分钟节流复核、节点变化立即复核；只有当前节点真挂掉或被确认为地区受限时才换（丢固定时先做单点独立存活复测过滤并发体检偶发超时，10 分钟内再次丢固定则放行切换），高优先级节点恢复不回切；周期重排只改 provider 文件序，不解除固定，启动重排仅在原固定节点不在实测存活表内时解除；内核启动或整配置重载后先由 `autoSwitchPinRelease` 释放缓存恢复的固定，粘性固定只在验证通过后重新建立（见第 12 条）；钉住前还要过节点质量准入、钉住后每 2 小时原位复查（见第 20 条）。
 3. **安装 SSOT** — macOS 仅 `/Applications/Sparkle.app`（`pnpm run agent:upgrade:mac` / `upgrade:mac`）；禁止 ditto 覆盖、禁止 Agent 裸 `pnpm build:mac`。
 4. **Ship 定义** — git HEAD = 已安装 semver，且装后 PostCoreBootstrap 日志出现 `mihomo API ready`。
 5. **邮件端口与 mihomo 探测分离** — 海外邮件客户端域名走 `📧 邮件专用`；成员须通过 Sparkle 主进程 `imap.gmail.com:993` + `smtp.gmail.com:465` TLS 校验入库，**不得**用 mihomo 健康检查（`url-test` / `fallback`）直接探测 IMAPS URL（HTTP 客户端误判）或仅用 `mail.google.com:443` 代替（筛不掉封 993/465 的节点）。`📧 邮件专用` 为 `fallback`：按 provider 的地区优先级（台湾 → 日本 → 韩国 → 新加坡 → 美国 → 其余）取首个存活节点，与 `自动选择` 一致；当前节点只在邮件组最近被使用时复测 993/465，失败后 provider 成员集合变化时热重载并触发切换，完全未使用邮件时不做端口探测。
@@ -52,6 +52,12 @@ mihomo (TUN) → 节点 leaf → 目标站点
 18. **升级一次到位，禁止反复重启试错** — 任何改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交），再只执行一次 `pnpm run agent:upgrade:mac` 完成构建/安装/重启，一次命令对应一次启停；升级被中断后先查 dist 新鲜度、`/Applications` 落盘与 App 日志再决定续跑，验收失败先离线分析根因，不得以重复安装代替排查（事故记录：`scripts/scripts_20261107_20261113_BUGFIX_LOG.md` BUG-2026-11-13-003）。
     - **安装必须幂等且不重复要密码**：`ditto` 不保留 root 属主与 setuid 位，安装时须给**当前启用的内核**（`config.yaml` 的 `core`）一次性补齐 `chown root:admin` + `chmod +sx` 并断言，否则 App 每次启动都会经 `permission.ts` 弹系统密码框；`install-sparkle-local.sh` 在 CDHash 与已装版本一致、App 在跑、代理在线、setuid 完整时直接短路退出（`SPARKLE_FORCE_REINSTALL=1` 可强制重装）；装后自动恢复轮次默认 0，失败即停留现场；入口与内部各持一个原子 `mkdir` 锁，禁止并发升级（并发写 `dist`/`/Applications` 是 BUG-2026-11-13-004 asar 损坏的成因）。
 19. **Gemini 专用组的成员资格只认地区探测** — `gemini专用` 为 `fallback`，成员来自 `gemini专用` provider：稳态只收 vXmutd 明确判定地区解锁的节点（按地区优先级分段、段内延迟升序、最多 12 个），与 `自动选择` 共用 `sparkleGeminiProbe` 的同一份地区缓存与 30 分钟审计（同轮结论同时维护两个 provider，成员集合变化才热重载）；冷启动无合格样本时排除已确认锁区节点兜底、禁止空 provider；健康检查只用轻量 204 量存活。流量边界：`gemini.google.com` / `aistudio.google.com` 走本组，`generativelanguage.googleapis.com`（Gemini API）保留给经真实 Google AI 请求验证的 `🎯 agy 专用`，同一域名不得两处抢占留下被遮蔽的死规则。
+20. **`自动选择` 的节点质量闸门：存活不等于可用，失败开放** — mihomo 的存活判定只看握手 / 204 延迟，看不到「能连通但下载只有几十 KB/s」的节点，粘性固定又会在节点「存活」时一直不放手。`autoSelectQualityGuard` 在粘性固定前对候选实测 128 KiB 下载吞吐（主目标 Google + 对照目标，经 `localProbeChannel` 串行），读数明显偏低的节点不钉，顺 fallback 序换下一个达标的存活节点；钉住后每 2 小时只复测主目标，两次读数（间隔 ≥45 秒）确认劣化才原位替换，并关掉被放弃节点的旧连接（切换只影响新连接）。约束：
+    - **只让结果变好**：任何探测 / 控制器异常、没有达标替代、前几个候选都读不到数据，一律放行，行为与没有这道闸时一致；闸门不排名，只拦「极慢」。
+    - **沉底不拉黑**：判劣节点记入 `sparkle-node-quality.json`（12 小时失效）并排到 `sparkle-fast` 文件最末，仍留在池内；且只在本轮找到达标节点时才沉底（比较证据，没有替代时沉底只会让池子更差）。
+    - **只管自己钉的**：复查状态就是「这个固定是闸门钉的」标记，用户手动固定的节点永远不会被复查或替换；主动解除固定（`notifyAutoSelectUnfixed`）会作废进行中的遍历并清空复查状态。
+    - **三处读同一份依据**：写 `sparkle-fast` 文件的配置生成、Gemini 审计重建、延迟重排都经 `loadFastProviderExclusions` 取剔除 / 沉底集合，漏读一处沉底节点就会在下一次重写时排回最前。
+    - **探测通道只此一条**：邮件端口、Gemini 地区、吞吐三类探测共用本地隐藏监听器，必须经 `localProbeChannel` 串行化。
 
 ## 外部依赖
 
