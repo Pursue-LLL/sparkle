@@ -216,7 +216,7 @@ function installMocks(): void {
   mock.module('./provider', {
     exports: { extractProxies: (profile: { proxies: Proxy[] }): Proxy[] => profile.proxies }
   })
-  mock.module('./sparkleMailPortProbe', {
+  mock.module('./localProbeChannel', {
     exports: {
       withLocalProbeChannelLock: async <T>(node: string, run: () => Promise<T>): Promise<T> => {
         world.calls.push(`lock:${node}`)

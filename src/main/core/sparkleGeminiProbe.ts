@@ -1,4 +1,4 @@
-// [INPUT] sparkleMailPortProbe::withLocalProbeChannelLock (POS: 邮件/Gemini 共享探测通道) ·
+// [INPUT] localProbeChannel::withLocalProbeChannelLock (POS: 本地隐藏探测监听器串行化入口) ·
 //         sparkleGeminiStreamProbe::streamProbeGeminiRegionViaLocalListener (POS: 流式地区探测) · 当前订阅节点 · sparkle-gemini-nodes.json ·
 //         config::getAppConfig/getProfile/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
 //         cursorProxyGroup::AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
@@ -55,7 +55,7 @@ import {
 import { streamProbeGeminiRegionViaLocalListener } from './sparkleGeminiStreamProbe'
 import type { MailProxyRecord } from './sparkleMailProviderCore'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import { withLocalProbeChannelLock } from './sparkleMailPortProbe'
+import { withLocalProbeChannelLock } from './localProbeChannel'
 
 const CACHE_FILENAME = 'sparkle-gemini-nodes.json'
 const ELIGIBLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000

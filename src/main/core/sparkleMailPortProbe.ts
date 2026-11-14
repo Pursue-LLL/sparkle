@@ -1,13 +1,11 @@
-// [INPUT] mihomoApi::mihomoChangeProxy (POS: mihomo 控制器访问层) · 本地隐藏探测监听器 127.0.0.1:17899 (__sparkle_mail_probe__) · 目标邮件端口
-// [OUTPUT] withLocalProbeChannelLock · probeSingleNodeMailPorts
-// [POS] 邮件 993/465 与 Gemini 地区探测共用的本地探测通道：串行切换隐藏组节点并做 TLS Banner 校验；端口失败返回 false，通道异常抛出。
+// [INPUT] localProbeTunnel::openLocalProbeTunnel (POS: 本地隐藏探测监听器传输层) ·
+//         localProbeChannel::withLocalProbeChannelLock (POS: 本地隐藏探测监听器串行化入口) · 目标邮件端口
+// [OUTPUT] probeSingleNodeMailPorts
+// [POS] 邮件 993/465 的 TLS Banner 校验：经共享本地探测通道实测单节点收发件两个端口；端口失败返回 false，通道异常抛出。
 
-import net from 'node:net'
-import tls from 'node:tls'
 import { performance } from 'node:perf_hooks'
-import { MAIL_PROBE_HIDDEN_GROUP_NAME } from './cursorProxyGroup'
-import { mihomoChangeProxy } from './mihomoApi'
-import { MAIL_PROBE_LISTENER_PORT } from './sparkleMailProviderCore'
+import { withLocalProbeChannelLock } from './localProbeChannel'
+import { openLocalProbeTunnel } from './localProbeTunnel'
 
 const PORT_PROBE_TIMEOUT_MS = 3500
 
@@ -19,7 +17,7 @@ const SMTP_HOST = 'smtp.gmail.com'
 const SMTP_PORT = 465
 const SMTP_BANNER_PREFIX = '220'
 
-/** 通过本地隐藏探测监听器 `127.0.0.1:17899` 对目标邮件端口执行 HTTP CONNECT + TLS 握手 + 首行协议 Banner 校验。 */
+/** 经本地探测通道对目标邮件端口完成 CONNECT + TLS 握手，并校验服务端首行协议 Banner。 */
 function probeTlsBannerViaLocalListener(
   host: string,
   port: number,
@@ -29,85 +27,28 @@ function probeTlsBannerViaLocalListener(
   return new Promise((resolve) => {
     const startMs = performance.now()
     let settled = false
-    let rawSocket: net.Socket | null = null
-    let tlsSocket: tls.TLSSocket | null = null
 
     const finish = (ok: boolean): void => {
       if (settled) return
       settled = true
       clearTimeout(timer)
-      try {
-        tlsSocket?.destroy()
-      } catch {
-        // ignore socket cleanup errors
-      }
-      try {
-        rawSocket?.destroy()
-      } catch {
-        // ignore socket cleanup errors
-      }
+      tunnel.destroy()
       resolve({ ok, rttMs: Math.max(1, Math.round(performance.now() - startMs)) })
     }
 
     const timer = setTimeout(() => finish(false), timeoutMs)
 
-    rawSocket = net.connect(MAIL_PROBE_LISTENER_PORT, '127.0.0.1')
-    rawSocket.once('error', () => finish(false))
-    rawSocket.once('connect', () => {
-      rawSocket?.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n`)
-      let connectBuf = ''
-      const onConnectData = (chunk: Buffer): void => {
-        connectBuf += chunk.toString('utf8')
-        const headerEnd = connectBuf.indexOf('\r\n\r\n')
-        if (headerEnd === -1) {
-          if (connectBuf.length > 2048) finish(false)
-          return
-        }
-        rawSocket?.removeListener('data', onConnectData)
-        const statusLine = connectBuf.slice(0, connectBuf.indexOf('\r\n'))
-        if (!statusLine.includes(' 200 ')) {
-          finish(false)
-          return
-        }
-
-        tlsSocket = tls.connect({
-          socket: rawSocket!,
-          servername: host,
-          rejectUnauthorized: true
-        })
-        tlsSocket.once('error', () => finish(false))
-        tlsSocket.once('data', (bannerChunk: Buffer) => {
-          const banner = bannerChunk.toString('utf8').trim()
-          finish(banner.startsWith(expectedBannerPrefix))
+    const tunnel = openLocalProbeTunnel({
+      host,
+      port,
+      onFailure: () => finish(false),
+      onSecure: (socket) => {
+        socket.once('data', (bannerChunk: Buffer) => {
+          finish(bannerChunk.toString('utf8').trim().startsWith(expectedBannerPrefix))
         })
       }
-      rawSocket?.on('data', onConnectData)
     })
   })
-}
-
-let probeChannelTail: Promise<void> = Promise.resolve()
-
-/**
- * 进程级互斥锁：本地隐藏探测监听器 `127.0.0.1:17899`（`__sparkle_mail_probe__`）为单通道，
- * 邮件端口探测与 Gemini 地区内容探测共享该通道时必须串行切换节点，防止并发串台。
- */
-export async function withLocalProbeChannelLock<T>(
-  nodeName: string,
-  task: () => Promise<T>
-): Promise<T> {
-  const prev = probeChannelTail
-  let release!: () => void
-  probeChannelTail = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  await prev
-  try {
-    await mihomoChangeProxy(MAIL_PROBE_HIDDEN_GROUP_NAME, nodeName)
-    return await task()
-  } finally {
-    release()
-  }
 }
 
 /**
