@@ -31,6 +31,7 @@ const state: {
   extractFails: boolean
   delays: Map<string, number>
   blocked: Set<string>
+  sunk: Set<string>
   mailCache: Map<string, unknown>
   agyCache: Map<string, unknown>
   grokCache: Map<string, unknown>
@@ -41,6 +42,7 @@ const state: {
   extractFails: false,
   delays: new Map(),
   blocked: new Set(),
+  sunk: new Set(),
   mailCache: new Map(),
   agyCache: new Map(),
   grokCache: new Map(),
@@ -98,6 +100,9 @@ describe('writeSparkleProviderFiles', () => {
         loadSparkleGeminiRegionCache: loader('gemini-cache', () => state.geminiCache)
       }
     })
+    mock.module('./sparkleNodeQualityCache', {
+      exports: { loadSunkNodeNames: loader('sunk', () => state.sunk) }
+    })
     mock.module('./sparkleMailProbe', {
       exports: { loadSparkleMailProbeCache: loader('mail-cache', () => state.mailCache) }
     })
@@ -118,6 +123,7 @@ describe('writeSparkleProviderFiles', () => {
     state.extractFails = false
     state.delays = new Map()
     state.blocked = new Set()
+    state.sunk = new Set()
     state.mailCache = new Map()
     state.agyCache = new Map()
     state.grokCache = new Map()
@@ -168,6 +174,14 @@ describe('writeSparkleProviderFiles', () => {
     assert.deepEqual(namesIn('fast'), ['日本 01'])
   })
 
+  it('moves nodes sunk for slow downloads to the end of the fast provider without dropping them', async () => {
+    state.sunk = new Set(['台湾 01'])
+
+    await write(profile, ['台湾', '日本'])
+
+    assert.deepEqual(namesIn('fast'), ['日本 01', '台湾 01'])
+  })
+
   it('orders the fast provider by measured delay when samples exist', async () => {
     state.proxies = ['台湾 01', '台湾 02', '台湾 03'].map((name) => ({ ...taiwan, name }))
     state.delays = new Map([
@@ -194,7 +208,10 @@ describe('writeSparkleProviderFiles', () => {
     state.geminiCache = new Map([
       [computeProxyNodeFingerprint(taiwan), { eligible: true, countryCode: 'TW', checkedAt: NOW }],
       [computeProxyNodeFingerprint(japan), { eligible: true, countryCode: 'JP', checkedAt: NOW }],
-      [computeProxyNodeFingerprint(hongKong), { eligible: false, countryCode: 'HK', checkedAt: NOW }]
+      [
+        computeProxyNodeFingerprint(hongKong),
+        { eligible: false, countryCode: 'HK', checkedAt: NOW }
+      ]
     ])
 
     await write(profile, ['台湾', '日本'])
@@ -266,6 +283,7 @@ describe('writeSparkleProviderFiles', () => {
   describe('failures stay local', () => {
     const CASES: ReadonlyArray<readonly [string, Provider]> = [
       ['gemini', 'fast'],
+      ['sunk', 'fast'],
       ['mail-cache', 'mail'],
       ['agy-cache', 'agy'],
       ['grok-cache', 'grok'],

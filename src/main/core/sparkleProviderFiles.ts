@@ -3,7 +3,8 @@
 //         sparkleAgyProviderCore::buildSparkleAgyProviderDocument/AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
 //         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
 //         sparkleFastProviderCore::buildSparkleFastProviderDocument/FAST_NODE_PROVIDER_FILENAME (POS: sparkle-fast provider 文件生成) ·
-//         sparkleGeminiProbe::loadGeminiBlockedNodeNames/loadSparkleGeminiRegionCache (POS: Gemini 地区探测与缓存) ·
+//         sparkleFastProviderExclusions::loadFastProviderExclusions (POS: sparkle-fast 剔除/沉底依据) ·
+//         sparkleGeminiProbe::loadSparkleGeminiRegionCache (POS: Gemini 地区探测与缓存) ·
 //         sparkleGeminiProviderCore::buildSparkleGeminiProviderDocument/GEMINI_NODE_PROVIDER_FILENAME (POS: gemini provider 与分组配置) ·
 //         sparkleGrokProbeCache::loadSparkleGrokProbeCache (POS: grok 探测缓存) ·
 //         sparkleGrokProviderCore::buildSparkleGrokProviderDocument/GROK_NODE_PROVIDER_FILENAME (POS: grok provider 与快照) ·
@@ -42,10 +43,10 @@ const PROVIDER_FILE_BUILDERS: ReadonlyArray<(input: ProviderInput) => Promise<Pr
     const { buildSparkleFastProviderDocument, FAST_NODE_PROVIDER_FILENAME } =
       await import('./sparkleFastProviderCore')
     const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
-    const { loadGeminiBlockedNodeNames } = await import('./sparkleGeminiProbe')
-    const [delaySnapshot, blockedNodeNames] = await Promise.all([
+    const { loadFastProviderExclusions } = await import('./sparkleFastProviderExclusions')
+    const [delaySnapshot, exclusions] = await Promise.all([
       loadSparkleFastDelaySnapshot(proxies),
-      loadGeminiBlockedNodeNames(proxies)
+      loadFastProviderExclusions(proxies)
     ])
     return {
       filename: FAST_NODE_PROVIDER_FILENAME,
@@ -53,7 +54,7 @@ const PROVIDER_FILE_BUILDERS: ReadonlyArray<(input: ProviderInput) => Promise<Pr
         proxies,
         regionPriority,
         delayMs: delaySnapshot,
-        blockedNodeNames
+        ...exclusions
       })
     }
   },

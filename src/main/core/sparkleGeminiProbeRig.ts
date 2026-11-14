@@ -76,6 +76,7 @@ export const world = {
   pinned: undefined as string | undefined,
   updateFailure: undefined as undefined | { reason: unknown },
   delaySnapshot: new Map<string, number>(),
+  sunk: new Set<string>(),
   calls: [] as string[],
   logs: [] as string[]
 }
@@ -95,6 +96,7 @@ function resetWorld(): void {
   world.pinned = undefined
   world.updateFailure = undefined
   world.delaySnapshot = new Map()
+  world.sunk = new Set()
   world.calls = []
   world.logs = []
 }
@@ -181,6 +183,8 @@ export function assertLog(fragment: string): void {
   )
 }
 
+let currentProbe: typeof GeminiProbe
+
 let mocksInstalled = false
 
 /** node:test 对同一个模块只允许替换一次，所以多处调用 useGeminiRig 时只装一次。 */
@@ -239,6 +243,15 @@ function installMocks(): void {
   mock.module('./sparkleFastLatencyOrder', {
     exports: { loadSparkleFastDelaySnapshot: async () => world.delaySnapshot }
   })
+  // 真实的加载器会动态引入被测模块，拿到的是 ESM 缓存里的第一份实例，而不是本用例刚重新加载的那份。
+  mock.module('./sparkleFastProviderExclusions', {
+    exports: {
+      loadFastProviderExclusions: async (proxies: readonly Proxy[]) => ({
+        blockedNodeNames: await currentProbe.loadGeminiBlockedNodeNames(proxies),
+        sunkNodeNames: world.sunk
+      })
+    }
+  })
   mock.module('./mihomoApi', {
     exports: {
       mihomoProxyProviders: async (): Promise<unknown> => {
@@ -277,6 +290,7 @@ export function useGeminiRig(): () => typeof GeminiProbe {
     mock.timers.enable({ apis: ['setInterval', 'Date'], now: NOW })
     delete require.cache[require.resolve('./sparkleGeminiProbe')]
     probe = require('./sparkleGeminiProbe') as typeof GeminiProbe
+    currentProbe = probe
   })
   afterEach(() => {
     mock.timers.reset()

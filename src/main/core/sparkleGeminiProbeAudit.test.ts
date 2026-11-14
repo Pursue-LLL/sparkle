@@ -62,6 +62,14 @@ describe('sparkleGeminiProbe rebuildAndReloadSparkleFastProvider', () => {
     assert.deepEqual(readProviderOrder(), ['台湾-2', '日本-1'])
   })
 
+  it('moves the nodes sunk for slow downloads to the end without dropping them', async () => {
+    world.sunk = new Set(['台湾-1'])
+
+    await gemini().rebuildAndReloadSparkleFastProvider()
+
+    assert.deepEqual(readProviderOrder(), ['台湾-2', '日本-1', '台湾-1'])
+  })
+
   it('orders by the saved latency snapshot when there is one', async () => {
     world.delaySnapshot = new Map([
       ['台湾-1', 300],
@@ -94,6 +102,15 @@ describe('sparkleGeminiProbe rebuildAndReloadSparkleFastProvider', () => {
   it('keeps the pin on a node that is still allowed', async () => {
     writeCache({ [cacheKey(TW1)]: cacheRecord(false) })
     world.pinned = '台湾-2'
+
+    await gemini().rebuildAndReloadSparkleFastProvider()
+
+    assert.deepEqual(callsStarting('unfix:'), [])
+  })
+
+  it('keeps the pin on a node that is only sunk: that is for the quality guard to decide', async () => {
+    world.sunk = new Set(['台湾-1'])
+    world.pinned = '台湾-1'
 
     await gemini().rebuildAndReloadSparkleFastProvider()
 

@@ -116,4 +116,27 @@ describe('shouldAdoptLatencyOrder', () => {
   it('never adopts an unsampled next node over a sampled current one', () => {
     assert.equal(shouldAdoptLatencyOrder('a', 'unknown', delays), false)
   })
+
+  describe('when the current first node was sunk for slow downloads', () => {
+    it('gives way even to a node that is not clearly faster', () => {
+      assert.equal(shouldAdoptLatencyOrder('b', 'c', delays), false)
+      assert.equal(shouldAdoptLatencyOrder('b', 'c', delays, new Set(['b'])), true)
+      assert.equal(shouldAdoptLatencyOrder('b', 'a', delays, new Set(['b'])), true)
+    })
+
+    it('still never hands over to an unsampled node', () => {
+      assert.equal(shouldAdoptLatencyOrder('b', 'unknown', delays, new Set(['b'])), false)
+    })
+
+    it('applies the usual hysteresis when the next node is sunk as well', () => {
+      assert.equal(shouldAdoptLatencyOrder('a', 'c', delays, new Set(['a', 'c'])), false)
+      assert.equal(shouldAdoptLatencyOrder('a', 'b', delays, new Set(['a', 'b'])), true)
+    })
+
+    it('leaves the hysteresis alone when some other node is the sunk one', () => {
+      assert.equal(shouldAdoptLatencyOrder('b', 'c', delays, new Set(['a'])), false)
+      assert.equal(shouldAdoptLatencyOrder('a', 'b', delays, new Set(['c'])), true)
+      assert.equal(shouldAdoptLatencyOrder('a', 'c', delays, new Set(['b'])), false)
+    })
+  })
 })

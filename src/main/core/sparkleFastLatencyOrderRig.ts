@@ -52,6 +52,7 @@ export const world = {
   pinned: undefined as string | undefined,
   groupError: false,
   blocked: new Set<string>(),
+  sunk: new Set<string>(),
   onProbe: undefined as undefined | (() => void),
   probeFailure: undefined as undefined | { reason: unknown },
   providersError: undefined as Error | undefined,
@@ -65,6 +66,7 @@ function resetWorld(): void {
   world.pinned = undefined
   world.groupError = false
   world.blocked = new Set()
+  world.sunk = new Set()
   world.onProbe = undefined
   world.probeFailure = undefined
   world.providersError = undefined
@@ -181,6 +183,9 @@ function installMocks(): void {
   })
   mock.module('./sparkleGeminiProbe', {
     exports: { loadGeminiBlockedNodeNames: async (): Promise<Set<string>> => world.blocked }
+  })
+  mock.module('./sparkleNodeQualityCache', {
+    exports: { loadSunkNodeNames: async (): Promise<Set<string>> => world.sunk }
   })
 }
 

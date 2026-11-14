@@ -23,7 +23,9 @@ describe('probeSingleNodeMailPorts', () => {
   const selections: Array<[string, string]> = []
 
   /** 等本次探测拿到通道锁并向本地监听器发起第 index 条连接，再让它连上并完成隧道与 TLS 握手。 */
-  const establish = async (index: number): Promise<{ raw: FakeConnection; secure: FakeConnection }> => {
+  const establish = async (
+    index: number
+  ): Promise<{ raw: FakeConnection; secure: FakeConnection }> => {
     await flush()
     const raw = connections.raw[index]
     raw.emit('connect')

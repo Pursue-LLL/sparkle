@@ -65,6 +65,33 @@ describe('sparkleFastLatencyOrder periodic recheck', () => {
     assert.deepEqual(readOrder(), ['台湾-2', '日本-1', '美国-1', '台湾-1'])
   })
 
+  it('moves a first node that was sunk for slow downloads behind the others, though none is clearly faster', async () => {
+    world.providerProxies = samplesFor({ '台湾-1': 80, '台湾-2': 90, '日本-1': 80, '美国-1': 50 })
+    world.sunk = new Set(['台湾-1'])
+    fast.startLoop()
+
+    await tickRefresh()
+
+    assert.deepEqual(readOrder(), ['台湾-2', '日本-1', '美国-1', '台湾-1'])
+    assert.deepEqual(world.calls, [`update:${PROVIDER}`, `probe:${PROVIDER}`])
+  })
+
+  it('does not hand a sunk first node over to a node nobody has measured', async () => {
+    world.providerProxies = samplesFor({
+      '台湾-1': 80,
+      '台湾-2': undefined,
+      '日本-1': undefined,
+      '美国-1': undefined
+    })
+    world.sunk = new Set(['台湾-1'])
+    fast.startLoop()
+
+    await tickRefresh()
+
+    assert.deepEqual(readOrder(), FILE_ORDER)
+    assert.deepEqual(world.calls, [])
+  })
+
   it('never releases the pin, even when the pinned node is gone', async () => {
     world.providerProxies = samplesFor({ '台湾-1': 400, '台湾-2': 100, '日本-1': 80, '美国-1': 50 })
     world.pinned = '台湾-9'

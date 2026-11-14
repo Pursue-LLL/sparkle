@@ -16,7 +16,9 @@ describe('openLocalProbeTunnel', () => {
   const secured: FakeConnection[] = []
   const failures: LocalProbeFailure[] = []
 
-  const start = (alpnProtocols?: readonly string[]): { tunnel: LocalProbeTunnel; raw: FakeConnection } => {
+  const start = (
+    alpnProtocols?: readonly string[]
+  ): { tunnel: LocalProbeTunnel; raw: FakeConnection } => {
     const tunnel = open({
       host: 'dl.example.com',
       port: 443,
@@ -77,7 +79,12 @@ describe('openLocalProbeTunnel', () => {
       accept(raw)
 
       assert.deepEqual(connections.tlsOptions, [
-        { socket: raw, servername: 'dl.example.com', rejectUnauthorized: true, ALPNProtocols: ['http/1.1'] }
+        {
+          socket: raw,
+          servername: 'dl.example.com',
+          rejectUnauthorized: true,
+          ALPNProtocols: ['http/1.1']
+        }
       ])
     })
 

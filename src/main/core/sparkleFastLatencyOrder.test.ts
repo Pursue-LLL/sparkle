@@ -115,6 +115,16 @@ describe('sparkleFastLatencyOrder bootstrap', () => {
       assertLog('reordered by latency nodes=3 sampled=4 first=台湾-1')
     })
 
+    it('puts nodes sunk for slow downloads last, though they stay listed', async () => {
+      world.providerProxies = samplesFor(FASTER_SECOND)
+      world.sunk = new Set(['台湾-2'])
+
+      await fast.bootstrap()
+
+      assert.deepEqual(readOrder(), ['台湾-1', '日本-1', '美国-1', '台湾-2'])
+      assertLog('reordered by latency nodes=4 sampled=4 first=台湾-1')
+    })
+
     it('follows the region priority from the app config', async () => {
       world.providerProxies = samplesFor(FASTER_SECOND)
       world.appConfig = { proxySwitchPriority: ['美国', '日本'] }

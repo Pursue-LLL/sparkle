@@ -33,7 +33,11 @@ describe('measureNodeThroughput', () => {
 
   const start = async (
     target: ThroughputTarget = google
-  ): Promise<{ result: Promise<ThroughputReading>; raw: FakeConnection; secure: FakeConnection }> => {
+  ): Promise<{
+    result: Promise<ThroughputReading>
+    raw: FakeConnection
+    secure: FakeConnection
+  }> => {
     const result = measure('台湾-1', target)
     await flush()
     const raw = connections.raw[0]
@@ -97,7 +101,12 @@ describe('measureNodeThroughput', () => {
         'CONNECT dl.google.com:443 HTTP/1.1\r\nHost: dl.google.com:443\r\n\r\n'
       ])
       assert.deepEqual(connections.tlsOptions, [
-        { socket: raw, servername: 'dl.google.com', rejectUnauthorized: true, ALPNProtocols: ['http/1.1'] }
+        {
+          socket: raw,
+          servername: 'dl.google.com',
+          rejectUnauthorized: true,
+          ALPNProtocols: ['http/1.1']
+        }
       ])
       assert.deepEqual(secure.written, [
         'GET /linux/direct/google-chrome-stable_current_amd64.deb HTTP/1.1\r\n' +
@@ -117,7 +126,10 @@ describe('measureNodeThroughput', () => {
       assert.deepEqual(raw.written, [
         'CONNECT cdn.jsdelivr.net:443 HTTP/1.1\r\nHost: cdn.jsdelivr.net:443\r\n\r\n'
       ])
-      assert.match(secure.written[0], /^GET \/npm\/typescript@5\.4\.5\/lib\/typescript\.js HTTP\/1\.1\r\nHost: cdn\.jsdelivr\.net\r\n/)
+      assert.match(
+        secure.written[0],
+        /^GET \/npm\/typescript@5\.4\.5\/lib\/typescript\.js HTTP\/1\.1\r\nHost: cdn\.jsdelivr\.net\r\n/
+      )
     })
   })
 
@@ -150,7 +162,10 @@ describe('measureNodeThroughput', () => {
       clock.now = 1000
       secure.emit('data', Buffer.from('HTTP/1.1 206 Partial Content\r\nContent-'))
       clock.now = 1100
-      secure.emit('data', Buffer.concat([Buffer.from('Length: 131072\r\n\r\n'), Buffer.alloc(SAMPLE)]))
+      secure.emit(
+        'data',
+        Buffer.concat([Buffer.from('Length: 131072\r\n\r\n'), Buffer.alloc(SAMPLE)])
+      )
 
       assert.deepEqual(await result, { kind: 'measured', kbps: 1280 })
     })
@@ -312,7 +327,10 @@ describe('measureNodeThroughput', () => {
     it('fails on a response head that never ends', async () => {
       const { result, secure } = await start()
 
-      secure.emit('data', Buffer.from(`HTTP/1.1 206 Partial Content\r\nX-Pad: ${'x'.repeat(32 * 1024)}`))
+      secure.emit(
+        'data',
+        Buffer.from(`HTTP/1.1 206 Partial Content\r\nX-Pad: ${'x'.repeat(32 * 1024)}`)
+      )
 
       assert.deepEqual(await result, FAILED)
       assert.equal(secure.destroyed, true)

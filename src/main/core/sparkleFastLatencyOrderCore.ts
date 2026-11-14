@@ -97,24 +97,29 @@ const ADOPT_MIN_GAIN_MS = 50
 const ADOPT_MIN_GAIN_RATIO = 0.3
 
 /**
- * 当前首选节点已无样本（挂了/未测）时必须换；否则仅当新首选相对当前首选
+ * 当前首选节点已无样本（挂了/未测）时必须换；当前首选已被吞吐实测判劣沉底、新首选有样本且未沉底时也必须换
+ * （沉底节点让位不是延迟之争，不受迟滞约束）；否则仅当新首选相对当前首选
  * 至少快 {@link ADOPT_MIN_GAIN_MS} 毫秒且快 {@link ADOPT_MIN_GAIN_RATIO} 以上才换。
  */
 export function shouldAdoptLatencyOrder(
   currentFirst: string | undefined,
   nextFirst: string | undefined,
-  delays: NodeDelayMap
+  delays: NodeDelayMap,
+  sunkNodeNames?: ReadonlySet<string>
 ): boolean {
   if (!nextFirst || currentFirst === nextFirst) {
     return false
   }
   const currentDelay = currentFirst === undefined ? undefined : delays.get(currentFirst)
   const nextDelay = delays.get(nextFirst)
-  if (currentDelay === undefined) {
+  if (currentFirst === undefined || currentDelay === undefined) {
     return true
   }
   if (nextDelay === undefined) {
     return false
+  }
+  if (sunkNodeNames?.has(currentFirst) && !sunkNodeNames.has(nextFirst)) {
+    return true
   }
   const gain = currentDelay - nextDelay
   return gain >= ADOPT_MIN_GAIN_MS && gain >= currentDelay * ADOPT_MIN_GAIN_RATIO

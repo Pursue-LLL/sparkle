@@ -5,11 +5,11 @@
 //         mihomoApi::mihomoGroupDetail/mihomoProxyProviders/mihomoUnfixedProxy/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
 //         providerLeafProbe::probeProviderLeavesGently (POS: provider 叶子低并发拨测) ·
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
-//         sparkleGeminiProbe::loadGeminiBlockedNodeNames (POS: Gemini 地区探测与缓存) ·
+//         sparkleFastProviderExclusions::loadFastProviderExclusions (POS: sparkle-fast 剔除/沉底依据) ·
 //         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] bootstrapSparkleFastLatencyOrder · loadSparkleFastDelaySnapshot · startSparkleFastLatencyOrderLoop
-// [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变，无样本节点全局垫底），并让 mihomo 重读 provider。
+// [POS] 内核就绪后按实测延迟重排 `自动选择` 的节点（地区分段不变，无样本节点全局垫底，吞吐判劣沉底的节点排在最后），并让 mihomo 重读 provider。
 // 启动时先看内存成功样本覆盖率；不足再看磁盘 v2 快照（provider 指纹一致且覆盖 ≥80% 才沿用）；仍不足则逐点补测后重排。
 // 每轮实测延迟按 v2 落盘；生成配置重写 sparkle-fast 时读取快照，避免订阅刷新后退回「未测延迟」的订阅顺序。
 // 文件序只决定「下一次选节点」选谁：`自动选择` 固定（autoSelectStickyPin）后，存活的当前节点不受重排影响。
@@ -50,6 +50,7 @@ import {
   FAST_NODE_PROVIDER_ID,
   type NodeDelayMap
 } from './sparkleFastProviderCore'
+import { loadFastProviderExclusions } from './sparkleFastProviderExclusions'
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 
@@ -132,19 +133,24 @@ async function applyLatencyOrder(force: boolean): Promise<boolean> {
     return false
   }
   const { proxySwitchPriority = [] } = await getAppConfig()
-  const { loadGeminiBlockedNodeNames } = await import('./sparkleGeminiProbe')
-  const blockedNodeNames = await loadGeminiBlockedNodeNames(current)
+  const exclusions = await loadFastProviderExclusions(current)
   const { proxies: ordered } = buildSparkleFastProviderDocument({
     proxies: current,
     regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
     delayMs: delays,
-    blockedNodeNames
+    ...exclusions
   })
   const nextFirst = String(ordered[0]?.name ?? '')
   const sameOrder = hasSameNodeOrder(current, ordered)
   if (
     !force &&
-    (sameOrder || !shouldAdoptLatencyOrder(String(current[0]?.name), nextFirst, delays))
+    (sameOrder ||
+      !shouldAdoptLatencyOrder(
+        String(current[0]?.name),
+        nextFirst,
+        delays,
+        exclusions.sunkNodeNames
+      ))
   ) {
     return false
   }

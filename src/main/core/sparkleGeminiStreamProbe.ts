@@ -104,7 +104,11 @@ export function streamProbeGeminiRegionViaLocalListener(
             if (settled) break
             const lineEnd = chunkRemainder.indexOf('\r\n')
             if (lineEnd === -1) break
-            const sizeHex = chunkRemainder.subarray(0, lineEnd).toString('ascii').split(';')[0].trim()
+            const sizeHex = chunkRemainder
+              .subarray(0, lineEnd)
+              .toString('ascii')
+              .split(';')[0]
+              .trim()
             const size = Number.parseInt(sizeHex, 16)
             if (Number.isNaN(size) || size === 0) break
             if (chunkRemainder.length < lineEnd + 2 + size + 2) break

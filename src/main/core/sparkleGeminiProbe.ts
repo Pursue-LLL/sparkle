@@ -9,6 +9,7 @@
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
 //         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
 //         sparkleFastProviderCore::buildSparkleFastProviderDocument/FAST_NODE_PROVIDER_FILENAME/FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
+//         sparkleFastProviderExclusions::loadFastProviderExclusions (POS: sparkle-fast 剔除/沉底依据) ·
 //         sparkleGeminiProbeCore::resolveGeminiBlockedNodeNames/GeminiRegionProbeRecord (POS: Gemini 地区判定纯函数) ·
 //         sparkleGeminiProviderCore::buildSparkleGeminiProviderDocument/GEMINI_NODE_PROVIDER_FILENAME/GEMINI_NODE_PROVIDER_ID/geminiProviderMembershipChanged (POS: gemini provider 与分组配置) ·
 //         sparkleMailProviderCore::MailProxyRecord (POS: 邮件 provider 与分组配置) ·
@@ -42,6 +43,7 @@ import {
   FAST_NODE_PROVIDER_FILENAME,
   FAST_NODE_PROVIDER_ID
 } from './sparkleFastProviderCore'
+import { loadFastProviderExclusions } from './sparkleFastProviderExclusions'
 import {
   resolveGeminiBlockedNodeNames,
   type GeminiRegionProbeRecord
@@ -168,15 +170,15 @@ export async function rebuildAndReloadSparkleFastProvider(): Promise<void> {
     }
     const { proxySwitchPriority = [] } = await getAppConfig()
     const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
-    const [delaySnapshot, blockedNodeNames] = await Promise.all([
+    const [delaySnapshot, exclusions] = await Promise.all([
       loadSparkleFastDelaySnapshot(proxies),
-      loadGeminiBlockedNodeNames(proxies)
+      loadFastProviderExclusions(proxies)
     ])
     const doc = buildSparkleFastProviderDocument({
       proxies,
       regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
       delayMs: delaySnapshot,
-      blockedNodeNames
+      ...exclusions
     })
     await writeFile(
       path.join(profilesDir(), FAST_NODE_PROVIDER_FILENAME),
@@ -185,7 +187,7 @@ export async function rebuildAndReloadSparkleFastProvider(): Promise<void> {
     )
     await mihomoUpdateProxyProviders(FAST_NODE_PROVIDER_ID)
     const group = await mihomoGroupDetail(AUTO_SELECT_GROUP_NAME)
-    if (group.fixed && blockedNodeNames.has(group.fixed)) {
+    if (group.fixed && exclusions.blockedNodeNames.has(group.fixed)) {
       await mihomoUnfixedProxy(AUTO_SELECT_GROUP_NAME)
     }
   } catch (error) {
