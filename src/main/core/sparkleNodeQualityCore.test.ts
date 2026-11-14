@@ -48,9 +48,13 @@ describe('judgePrimaryForAdmission', () => {
 })
 
 describe('controlVetoes', () => {
-  it('vetoes only a control reading that was measured below the admission line', () => {
-    assert.equal(controlVetoes(measured(149)), true)
-    assert.equal(controlVetoes(measured(150)), false)
+  it('vetoes only a control reading that was measured below the degraded line', () => {
+    assert.equal(controlVetoes(measured(DEGRADED_KBPS - 1)), true)
+    assert.equal(controlVetoes(measured(DEGRADED_KBPS)), false)
+  })
+
+  it('leaves the hysteresis band between the degraded and admission lines unvetoed', () => {
+    assert.equal(controlVetoes(measured(ADMISSION_KBPS - 1)), false)
   })
 
   it('does not let an unreachable control site reject an otherwise good node', () => {

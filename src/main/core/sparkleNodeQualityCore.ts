@@ -68,11 +68,12 @@ export function judgePrimaryForAdmission(reading: ThroughputReading): PrimaryVer
 }
 
 /**
- * 第二道（对照站点）只有「测得且不达标」才否决：它用来排除偶然通过第一道的差节点，
- * 单个对照站点自己打不开不能让好节点被拒。
+ * 第二道（对照站点）只有「测得且低于判劣线」才否决：它用来排除偶然通过第一道的差节点，只需识别明显劣化。
+ * 读数落在 100–150 的滞回带、或对照站点自己打不开，都不能让好节点被拒：
+ * 实测好节点的对照读数会低到 135–150，而差节点的对照读数几乎都在 100 以下。
  */
 export function controlVetoes(reading: ThroughputReading): boolean {
-  return reading.kind === 'measured' && reading.kbps < ADMISSION_KBPS
+  return reading.kind === 'measured' && reading.kbps < DEGRADED_KBPS
 }
 
 export type IncumbentHealth = 'healthy' | 'degraded' | 'unknown'
