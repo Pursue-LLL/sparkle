@@ -36,8 +36,6 @@ function probeTlsBannerViaLocalListener(
       resolve({ ok, rttMs: Math.max(1, Math.round(performance.now() - startMs)) })
     }
 
-    const timer = setTimeout(() => finish(false), timeoutMs)
-
     const tunnel = openLocalProbeTunnel({
       host,
       port,
@@ -48,6 +46,9 @@ function probeTlsBannerViaLocalListener(
         })
       }
     })
+
+    // 先建隧道再起定时器：隧道创建同步抛错时，不会留下一个去访问未初始化 tunnel 的悬空定时器。
+    const timer = setTimeout(() => finish(false), timeoutMs)
   })
 }
 

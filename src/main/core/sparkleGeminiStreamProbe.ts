@@ -46,8 +46,6 @@ export function streamProbeGeminiRegionViaLocalListener(
     }
     const inconclusive = (): void => finish({ definitive: false, eligible: true })
 
-    const timer = setTimeout(inconclusive, timeoutMs)
-
     const tunnel = openLocalProbeTunnel({
       host: GEMINI_HOST,
       port: GEMINI_PORT,
@@ -156,5 +154,8 @@ export function streamProbeGeminiRegionViaLocalListener(
         socket.once('end', inconclusive)
       }
     })
+
+    // 先建隧道再起定时器：隧道创建同步抛错时，不会留下一个去访问未初始化 tunnel 的悬空定时器。
+    const timer = setTimeout(inconclusive, timeoutMs)
   })
 }
