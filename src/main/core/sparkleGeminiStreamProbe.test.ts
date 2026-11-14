@@ -7,6 +7,7 @@ import {
   chunked,
   connections,
   flush,
+  frame,
   INCONCLUSIVE,
   loadProbe,
   MARKER_TW,
@@ -151,6 +152,39 @@ describe('streamProbeGeminiRegionViaLocalListener', () => {
     secure.emit('data', Buffer.from(`${MARKER_TW}};</script>`))
 
     assert.deepEqual(await result, VERDICT_TW)
+  })
+
+  it('judges a chunk as soon as it is complete, without waiting for what follows', async () => {
+    const response = Buffer.concat([
+      Buffer.from(responseHead('Transfer-Encoding: chunked')),
+      frame(Buffer.from(PAGE_TW))
+    ])
+
+    assert.deepEqual(await runWith(response), VERDICT_TW)
+  })
+
+  it('gives up once the response head outgrows 32 KiB, but not a byte sooner', async () => {
+    const { result, raw } = startProbe()
+    const secure = openTunnel(raw)
+
+    secure.emit('data', Buffer.alloc(32_768, 0x61))
+    assert.equal(raw.destroyed, false, 'a head of exactly 32 KiB may still end')
+    secure.emit('data', Buffer.from('a'))
+
+    assert.deepEqual(await result, INCONCLUSIVE)
+    assertCleanedUp()
+  })
+
+  it('gives up once the inspected page outgrows 300,000 characters, but not one sooner', async () => {
+    const { result, raw } = startProbe()
+    const secure = openTunnel(raw)
+
+    secure.emit('data', Buffer.from(responseHead() + 'a'.repeat(300_000)))
+    assert.equal(raw.destroyed, false, 'exactly 300,000 characters may still hold the marker')
+    secure.emit('data', Buffer.from('a'))
+
+    assert.deepEqual(await result, INCONCLUSIVE)
+    assertCleanedUp()
   })
 
   it('is inconclusive when the page is not served with 200', async () => {

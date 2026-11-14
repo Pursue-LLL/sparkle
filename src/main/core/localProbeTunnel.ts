@@ -48,6 +48,13 @@ export function openLocalProbeTunnel(options: LocalProbeTunnelOptions): LocalPro
   const fail = (): void => onFailure(accepted ? 'node' : 'listener')
 
   rawSocket.on('error', fail)
+  // 监听器不报错地直接挂断（正在重启、端口被别的服务占着）同样是隧道没建起来；
+  // 建好之后的收尾归调用方，数据读完与 TLS 层出错各有各的信号。
+  rawSocket.once('close', () => {
+    if (!accepted) {
+      fail()
+    }
+  })
   rawSocket.once('connect', () => {
     rawSocket.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n`)
     let reply = ''

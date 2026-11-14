@@ -139,6 +139,25 @@ describe('openLocalProbeTunnel', () => {
       assert.equal(connections.tls.length, 0)
     })
 
+    it('blames the listener when it hangs up without a word before replying', () => {
+      const { raw } = start()
+      raw.emit('connect')
+
+      raw.emit('close')
+
+      assert.deepEqual(failures, ['listener'])
+      assert.equal(connections.tls.length, 0)
+    })
+
+    it('leaves the end of an accepted tunnel to the caller', () => {
+      const { raw } = start()
+      accept(raw)
+
+      raw.emit('close')
+
+      assert.deepEqual(failures, [])
+    })
+
     it('blames the listener when the reply never ends', () => {
       const { raw } = start()
       raw.emit('connect')

@@ -351,25 +351,24 @@ describe('measureNodeThroughput', () => {
   })
 
   describe('failures to open the tunnel', () => {
-    it('is unavailable when the local listener cannot be reached', async () => {
-      const result = measure('台湾-1', google)
-      await flush()
+    const refusal = Buffer.from('HTTP/1.1 503 Service Unavailable\r\n\r\n')
+    const listenerFailures: Array<[string, Array<[string, ...unknown[]]>]> = [
+      ['cannot be reached', [['error', new Error('ECONNREFUSED')]]],
+      ['refuses the tunnel', [['connect'], ['data', refusal]]],
+      ['hangs up without a reply', [['connect'], ['close']]]
+    ]
+    for (const [cause, events] of listenerFailures) {
+      it(`is unavailable when the local listener ${cause}`, async () => {
+        const result = measure('台湾-1', google)
+        await flush()
 
-      connections.raw[0].emit('error', new Error('ECONNREFUSED'))
+        for (const [event, ...args] of events) {
+          connections.raw[0].emit(event, ...args)
+        }
 
-      assert.deepEqual(await result, UNAVAILABLE)
-    })
-
-    it('is unavailable when the local listener refuses the tunnel', async () => {
-      const result = measure('台湾-1', google)
-      await flush()
-      const raw = connections.raw[0]
-      raw.emit('connect')
-
-      raw.emit('data', Buffer.from('HTTP/1.1 503 Service Unavailable\r\n\r\n'))
-
-      assert.deepEqual(await result, UNAVAILABLE)
-    })
+        assert.deepEqual(await result, UNAVAILABLE)
+      })
+    }
 
     it('blames the node when the tunnel breaks after it was accepted', async () => {
       const { result, raw } = await start()
