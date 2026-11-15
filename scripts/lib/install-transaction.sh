@@ -206,7 +206,7 @@ txn_rollback() {
     swapping | swapped)
       interrupted=1
       install_log "rolling back: stopping the new app and its core"
-      app_quit_gui || install_log "WARN: could not quit the new GUI"
+      app_quit_gui || install_log "WARN: could not stop the new GUI"
       service_core_stop || true
       ;;
   esac

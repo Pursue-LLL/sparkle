@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
   countPostCoreBootstrapNotReachableSinceLine,
-  hasMihomoApiReadySinceLine,
+  hasMihomoApiReadySinceLine
 } from './upgradeSparklePostInstallGateCore'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -37,7 +37,7 @@ function readPostInstallState(sinceLine: number): {
   const text = readFileSync(appLog, 'utf8')
   return {
     mihomoApiReady: hasMihomoApiReadySinceLine(text, sinceLine),
-    notReachableCount: countPostCoreBootstrapNotReachableSinceLine(text, sinceLine),
+    notReachableCount: countPostCoreBootstrapNotReachableSinceLine(text, sinceLine)
   }
 }
 
@@ -50,19 +50,23 @@ async function main(): Promise<void> {
   const round = Number(process.argv[3] ?? '1')
   console.error(`[upgrade-post-install-recovery] round=${round} since_line=${sinceLine}`)
 
-  runShell('pgrep -x Sparkle >/dev/null 2>&1 && osascript -e \'tell application "Sparkle" to quit\' || true')
-  await delay(3000)
+  // 不用 AppleEvent「quit」：App 的 before-quit 会弹确认框等人点（appLifecycle.ts），这里没有人会点；
+  // Electron 主进程没有 SIGTERM 处理，收到即退出。
   runShell('pgrep -x Sparkle >/dev/null 2>&1 && pkill -x Sparkle || true')
   await delay(2000)
 
-  execFileSync(`${ROOT}/node_modules/.bin/tsx`, [`${ROOT}/scripts/sparkle-stale-mihomo-socket-hygiene.mts`], {
-    stdio: 'inherit',
-  })
+  execFileSync(
+    `${ROOT}/node_modules/.bin/tsx`,
+    [`${ROOT}/scripts/sparkle-stale-mihomo-socket-hygiene.mts`],
+    {
+      stdio: 'inherit'
+    }
+  )
 
   execFileSync(
     'osascript',
     ['-e', 'tell application "Finder" to open POSIX file "/Applications/Sparkle.app"'],
-    { stdio: 'inherit' },
+    { stdio: 'inherit' }
   )
   await delay(8000)
 
@@ -79,7 +83,7 @@ async function main(): Promise<void> {
 
   const finalState = readPostInstallState(sinceLine)
   console.error(
-    `[upgrade-post-install-recovery] ok=0 mihomo_api_ready=${finalState.mihomoApiReady ? 1 : 0}`,
+    `[upgrade-post-install-recovery] ok=0 mihomo_api_ready=${finalState.mihomoApiReady ? 1 : 0}`
   )
   process.exit(1)
 }

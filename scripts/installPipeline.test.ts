@@ -19,6 +19,7 @@ import {
   elevationCalls,
   EXIT,
   assertExit,
+  forceKillCalls,
   quitCalls
 } from './testing/installAssertions'
 import { InstallSandbox } from './testing/installSandbox'
@@ -76,16 +77,32 @@ describe('install-sparkle-local.sh transaction (sandboxed)', () => {
       assert.match(result.output, /RESULT: Sparkle 1\.1\.0-new installed/)
     })
 
-    it('verifies and prepares the new bundle before the app is quit', async () => {
+    it('stops the GUI with a plain SIGTERM, never an AppleEvent quit that would wait on its confirm dialog', async () => {
+      const sb = create(serviceWorld())
+      const result = await sb.run()
+      assertExit(result, EXIT.ok)
+      assert.equal(quitCalls(sb).length, 1)
+      assert.deepEqual(
+        forceKillCalls(sb),
+        [],
+        'SIGKILL is only the fallback for a GUI that ignores SIGTERM'
+      )
+      assert.equal(
+        sb.callsOf('osascript').some((line) => line.includes('to quit')),
+        false
+      )
+    })
+
+    it('verifies and prepares the new bundle before the app is stopped', async () => {
       const sb = create(serviceWorld())
       await sb.run()
       const calls = sb.calls()
-      assertOrder(calls, /^ditto /, /to quit/, 'copy before quit')
+      assertOrder(calls, /^ditto /, /^pkill -TERM /, 'copy before stopping the app')
       assertOrder(
         calls,
         /^codesign --verify .*\.Sparkle\.staging/,
-        /to quit/,
-        'staged signature check before quit'
+        /^pkill -TERM /,
+        'staged signature check before stopping the app'
       )
     })
 
@@ -247,7 +264,7 @@ describe('install-sparkle-local.sh transaction (sandboxed)', () => {
       const result = await sb.run({ SIM_ELEVATION: 'grant' })
       assertExit(result, EXIT.ok)
       assert.equal(elevationCalls(sb).length, 1)
-      assertOrder(sb.calls(), /administrator privileges/, /to quit/, 'elevation before quit')
+      assertOrder(sb.calls(), /administrator privileges/, /^pkill -TERM /, 'elevation before stop')
       // 先验证原样拷贝，再改属主与权限位：被验证的必须是未被改动过的那份字节。
       assertOrder(
         sb.calls(),

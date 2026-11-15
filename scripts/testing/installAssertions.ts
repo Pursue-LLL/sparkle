@@ -37,8 +37,14 @@ export function elevationCalls(sandbox: InstallSandbox): string[] {
   return sandbox.callsOf('osascript').filter((line) => line.includes('administrator privileges'))
 }
 
+/** 安装器让 GUI 退出的请求（SIGTERM）。 */
 export function quitCalls(sandbox: InstallSandbox): string[] {
-  return sandbox.callsOf('osascript').filter((line) => line.includes('to quit'))
+  return sandbox.callsOf('pkill').filter((line) => !line.includes('-9'))
+}
+
+/** SIGTERM 之后仍不退出才会走的强杀（SIGKILL）。 */
+export function forceKillCalls(sandbox: InstallSandbox): string[] {
+  return sandbox.callsOf('pkill').filter((line) => line.includes('-9'))
 }
 
 /**

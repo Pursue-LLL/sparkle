@@ -141,7 +141,7 @@ quiesce() {
   # shellcheck disable=SC2034  # 由 lib/install-gate.sh 的 gate_core_fresh 读取
   GATE_BASELINE_EPOCH="$(date +%s)"
   txn_set_phase quiesced
-  app_quit_gui || fail "Sparkle is still running after a force quit — quit it manually and retry"
+  app_quit_gui || fail "Sparkle is still running after SIGKILL — stop it manually and retry"
   service_core_stop || true
   run_captured socket-hygiene "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/sparkle-stale-mihomo-socket-hygiene.mts" || true
 }

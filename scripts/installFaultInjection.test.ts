@@ -10,6 +10,7 @@ import {
   assertRunning,
   assertTransactionClosed,
   EXIT,
+  forceKillCalls,
   prevPath,
   stagePath
 } from './testing/installAssertions'
@@ -144,19 +145,20 @@ describe('install-sparkle-local.sh fault injection (sandboxed)', () => {
   })
 
   describe('failures while quiescing', () => {
-    it('restores a running app when the GUI refuses to quit even after a force kill', async () => {
+    it('restores a running app when the GUI survives SIGTERM and SIGKILL alike', async () => {
       const sb = create(serviceWorld())
       const result = await sb.run({ SIM_QUIT_REFUSES: '1', SIM_PKILL_FAILS: '1' })
       assertExit(result, EXIT.failed)
-      assert.match(result.output, /still running after a force quit/)
+      assert.match(result.output, /still running after SIGKILL/)
       assertRestored(sb, OLD_BUNDLE.version)
     })
 
-    it('force-kills a GUI that ignores the polite quit and carries on', async () => {
+    it('sends SIGKILL to a GUI that ignores SIGTERM and carries on', async () => {
       const sb = create(serviceWorld())
       const result = await sb.run({ SIM_QUIT_REFUSES: '1' })
       assertExit(result, EXIT.ok)
-      assert.match(result.output, /Force quitting Sparkle/)
+      assert.match(result.output, /Sparkle ignored SIGTERM for \d+s — sending SIGKILL/)
+      assert.equal(forceKillCalls(sb).length, 1)
       assertRunning(sb, NEW_BUNDLE.version)
     })
   })
@@ -263,7 +265,7 @@ describe('install-sparkle-local.sh fault injection (sandboxed)', () => {
       [
         'the old core survives and the new GUI merely attaches to it',
         {},
-        { SIM_QUIT_LEAVES_CORE: '1', SIM_CORE_STOP_FAILS: '1' },
+        { SIM_CORE_STOP_FAILS: '1' },
         /predates the upgrade/
       ]
     ]
@@ -308,6 +310,17 @@ describe('install-sparkle-local.sh fault injection (sandboxed)', () => {
       assert.doesNotMatch(result.output, /restarting the previous app/)
       assert.equal(sb.destVersion(), NEW_BUNDLE.version)
       assertTransactionClosed(sb)
+    })
+
+    it('keeps rolling back when the rejected new GUI refuses to die', async () => {
+      const { sb, result, original } = await runRejected({
+        next: brokenNew({ proxy: 'down', unkillable: '1' })
+      })
+      assertExit(result, EXIT.gateRejected)
+      assert.match(result.output, /WARN: could not stop the new GUI/)
+      assert.match(result.output, /previous app restored and healthy/)
+      assertOriginalBack(sb, original as Original)
+      assertLiveAppNeverDeleted(sb)
     })
 
     it('restores the files and says so when the previous app cannot be brought back up', async () => {

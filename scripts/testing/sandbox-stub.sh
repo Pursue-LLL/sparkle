@@ -41,6 +41,8 @@ hold_if() {
 }
 
 gui_running() { [[ -f "$SIM/gui.pid" ]]; }
+# 信号送达后 GUI 进程消失，除非它被标成杀不掉（unkillable=1 的包）。
+kill_gui() { [[ -f "$SIM/gui.unkillable" ]] || rm -f "$SIM/gui.pid"; }
 core_running() { [[ -f "$SIM/core.pid" ]]; }
 stop_core() {
   rm -f "$SIM/core.pid" "$SIM/core.path" "$SIM/core.start" "$SIM/core.traffic"
@@ -81,6 +83,8 @@ launch_app() {
   # headless：macOS 26 默认模式，引导完内核 GUI 就退出，没有 GUI 进程是正常的。
   if [[ "$(behavior "$app" headless 0)" != "1" ]]; then
     echo 4242 > "$SIM/gui.pid"
+    # unkillable=1：这个包的 GUI 对 SIGTERM 与 SIGKILL 都无动于衷（模拟卡在内核态的进程）。
+    if [[ "$(behavior "$app" unkillable 0)" == "1" ]]; then : > "$SIM/gui.unkillable"; else rm -f "$SIM/gui.unkillable"; fi
   fi
   if [[ "$(behavior "$app" core starts)" != "never" ]]; then
     start_core "$app"
@@ -172,13 +176,6 @@ case "$NAME" in
     record "$@"
     script="${2:-}"
     case "$script" in
-      *'to quit'*)
-        if [[ "${SIM_QUIT_REFUSES:-0}" != "1" ]]; then
-          rm -f "$SIM/gui.pid"
-          if [[ "${SIM_QUIT_LEAVES_CORE:-0}" != "1" ]]; then stop_core; fi
-        fi
-        crash_if quit; hold_if quit
-        exit 0 ;;
       *'open POSIX file'*)
         launch_app "$(printf '%s' "$script" | sed -n 's/.*open POSIX file "\(.*\)".*/\1/p')"
         crash_if launch; hold_if launch
@@ -202,7 +199,16 @@ case "$NAME" in
 
   pkill)
     record "$@"
-    if [[ "${SIM_PKILL_FAILS:-0}" != "1" ]]; then rm -f "$SIM/gui.pid"; fi
+    case "$*" in
+      *-9*)
+        # SIGKILL；SIM_PKILL_FAILS 模拟杀不掉。
+        if [[ "${SIM_PKILL_FAILS:-0}" != "1" ]]; then kill_gui; fi ;;
+      *)
+        # SIGTERM：Electron 主进程没有处理，收到即退出且不做任何清理，所以服务托管的内核不会被一并停掉，
+        # 要等安装器的 service_core_stop。SIM_QUIT_REFUSES 模拟 GUI 不理会 SIGTERM。
+        if [[ "${SIM_QUIT_REFUSES:-0}" != "1" ]]; then kill_gui; fi
+        crash_if quit; hold_if quit ;;
+    esac
     exit 0 ;;
 
   ps)
