@@ -329,7 +329,7 @@ describe('lib/core-setuid.sh', () => {
     it('keeps the elevation error visible when the user cancels', () => {
       const core = setupElevatedWithTun()
       const out = restore({ SIM_ELEVATION: 'deny' })
-      // 回归护栏：曾经 osascript 的 stderr 被丢弃，用户取消、被策略拒绝等原因都看不到。
+      // 护栏：osascript 的 stderr 必须进日志，用户取消、被策略拒绝等原因才查得到。
       assert.match(out.output, /User canceled/)
       assert.match(out.output, /chown root:admin/)
       assert.match(out.output.trim(), /rc=1$/)

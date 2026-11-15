@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# 内核权限判定的可 source 库（无副作用，source 后只定义函数）。
+# [INPUT] lib/sparkle-paths.sh::SPARKLE_APP_DATA_DIR (POS: 安装/升级脚本共用路径的单一来源) ·
+#         config.yaml 的 core / corePermissionMode · mihomo.yaml 的 tun.enable · 包内 sidecar 内核与
+#         sparkle-service 二进制 · osascript（需要时一次提权）· SPARKLE_NONINTERACTIVE
+# [OUTPUT] config_scalar · enabled_core_name · configured_core_permission_mode · effective_core_permission_mode ·
+#          tun_enabled · is_setuid_mode · core_setuid_intact · core_setuid_required · core_setuid_satisfied ·
+#          restore_core_setuid: 需要时一次提权补齐 setuid 并断言
+# [POS] 内核权限判定与 setuid 补齐库（source 后只定义函数，无副作用）。
 #
 # 为什么需要它：内核拿到 TUN 权限有两条路——
 #   elevated：内核二进制自带 setuid（root 属主），GUI 以普通用户直接拉起它；
 #   service ：内核是 root 服务（sparkle-service）的子进程，天然有权限，**根本不看 setuid**。
-# `ditto` 复制会丢掉 setuid 位（实测 `-rwsr-xr-x` → `-rwxr-xr-x`）。所以只有「TUN 开启 且
+# `ditto` 复制会丢掉 setuid 位（`-rwsr-xr-x` → `-rwxr-xr-x`）。所以只有「TUN 开启 且
 # 走 elevated」时安装才必须补 setuid；service 模式下补它既无意义，还会把一个需要密码的特权步骤
-# 塞进升级流程，成为升级中途失败的单点（这正是曾经「装到一半停住、旧 App 已被删」的根因之一）。
+# 塞进升级流程，成为升级中途失败的单点。
 # 判定与 App 侧 tunStartupGuardCore.requiresCoreSetuid 同口径，由契约测试逐格对齐。
 #
 # 为什么判定用纯 bash 而不是 `tsx -e`：权限位字符串以 `-` 开头（`-rwsr-xr-x`），

@@ -1,3 +1,6 @@
+// [INPUT] scripts/writeBuildStampCore.ts (POS: 构建标识格式与 git 事实 SSOT) · 当前目录的 package.json 与 git 仓库
+// [OUTPUT] 写出 src/shared/buildStamp.ts：build stamp、semver、烧进二进制的 git commit 与 dirty
+// [POS] dev / build:* / upgrade 前的命令行入口：把构建标识烧进源码，漂移检测据此判断 app 是否落后于仓库。
 import fs from 'fs'
 import path from 'path'
 import {

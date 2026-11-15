@@ -61,7 +61,7 @@ describe('resolveInstallShortCircuit', () => {
   })
 
   it('treats an unmet core permission requirement as a defect to fix, not a reason to skip', () => {
-    // 回归护栏：曾经每次 ditto 都丢掉 setuid，导致 App 每次启动都重新要密码。
+    // 护栏：ditto 会丢掉 setuid，权限要求未满足时必须继续安装去补齐，否则 App 每次启动都会重新要密码。
     const decision = resolveInstallShortCircuit({ ...healthy, corePermissionSatisfied: false })
     assert.equal(decision.skip, false)
     assert.equal(decision.reason, 'core_setuid_missing')

@@ -1,5 +1,9 @@
 #!/bin/bash
-# 安装流水线沙箱的命令桩：单文件分发器，按被调用的名字（符号链接名）模拟系统命令。
+# [INPUT] SIM_DIR（模拟状态目录）· 新包的 Contents/Resources/sim-behavior · SIM_FAIL_* / SIM_KILL_AT / SIM_HOLD_AT 等
+#         故障与崩溃注入开关 · 由 scripts/testing/installSandbox.ts 建立的符号链接名（决定模拟哪条命令）
+# [OUTPUT] 对 codesign / ditto / mv / rm / df / osascript / pgrep / pkill / ps / nc / curl / launchctl / defaults /
+#          sw_vers / uname / dscl / spctl / sleep / tsx 的模拟，调用记录写入 $SIM_DIR/calls.log
+# [POS] 安装流水线沙箱的命令桩：单文件分发器，按被调用的名字（符号链接名）模拟系统命令。
 #
 # 真实的 mv / rm / ditto / find / stat / sed 等文件系统命令照常执行（事务靠 rename 的真实语义），
 # 只有会碰到真实系统的命令（osascript、launchctl、codesign、pgrep、curl、dscl……）被替换成

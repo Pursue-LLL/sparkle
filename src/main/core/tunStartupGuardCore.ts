@@ -1,3 +1,12 @@
+// [INPUT] 内核日志行 · TUN 开关与内核权限模式（`elevated` / `service`）· 守卫状态
+// [OUTPUT] isTunAdapterListeningLog / isTunPermissionError / isTunCachePermissionError: 日志识别 ·
+//          applyTunStartupLogLine / createTunStartupGuardState: 守卫状态的推进 ·
+//          requiresCoreSetuid: TUN 是否必须依赖内核自带 setuid · isCoreSetuidSatisfied ·
+//          shouldRecoverTunPermission: 是否触发一次恢复 ·
+//          TunStartupGuardState · CorePermissionMode · CoreSetuidRequirementInput
+// [POS] TUN 启动守卫的纯判定层（无 I/O）；setuid 需求的口径与 scripts/lib/core-setuid.sh 一致，
+//       由 coreSetuidScriptParity.test.ts 逐格对齐。
+
 export function isTunAdapterListeningLog(logLine: string): boolean {
   return logLine.includes('[TUN] Tun adapter listening at:')
 }

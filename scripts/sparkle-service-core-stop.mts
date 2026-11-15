@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
-/**
- * 升级前停掉 sparkle-service 托管的内核，让新 App 启动时拉起新包里的内核。
- * 退出码：0 = 已停止或本就没有服务托管的内核；2 = 服务在运行但停止失败（调用方降级为告警）。
- */
+// [INPUT] scripts/lib/serviceCoreStop.ts::stopServiceCore (POS: 经签名 API 让 sparkle-service 停掉它托管的内核，幂等) ·
+//         SPARKLE_CORE_STOP_TIMEOUT_MS
+// [OUTPUT] 退出码 0 = 已停止或本就没有服务托管的内核 · 2 = 服务在运行但停止失败（调用方降级为告警）
+// [POS] 升级安装前的命令行入口：停掉 sparkle-service 托管的内核，让新 App 启动时拉起新包里的内核。
 import { stopServiceCore } from './lib/serviceCoreStop'
 
 async function main(): Promise<void> {

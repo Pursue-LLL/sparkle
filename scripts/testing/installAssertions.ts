@@ -1,3 +1,9 @@
+// [INPUT] scripts/testing/installSandbox.ts::InstallSandbox / RunResult (POS: 安装流水线沙箱，提供对 App、内核、
+//         调用记录、阶段文件的观察)
+// [OUTPUT] EXIT: 退出码约定 · assertTransactionClosed / assertRunning / assertExit / assertLiveAppNeverDeleted /
+//          assertNothingChanged / assertRestored / assertOrder: 事务结束后系统必须处于的状态 ·
+//          elevationCalls / quitCalls / forceKillCalls: 特权与强杀的调用记录 · stagePath / prevPath / failedPath
+// [POS] 安装事务测试共用的不变量断言：把「一次事务结束后系统必须是什么样」写成可复用的断言。
 import assert from 'node:assert/strict'
 import { basename, join } from 'node:path'
 import type { InstallSandbox, RunResult } from './installSandbox'

@@ -1,3 +1,10 @@
+// [INPUT] scripts/testing/installWorld.ts (POS: 安装沙箱里「世界」的描述与夹具) ·
+//         scripts/testing/sandbox-stub.sh (POS: 安装流水线沙箱的命令桩，单文件分发器) ·
+//         scripts 目录下被测的真实安装脚本与 lib（复制进临时目录运行）
+// [OUTPUT] InstallSandbox: 搭好一台虚拟机器（旧包、运行中的 GUI 与内核、配置、网络），提供 run / start 运行
+//          安装脚本、故障与崩溃注入的环境变量，以及对 App、内核、调用记录、阶段文件、日志的观察方法 ·
+//          RunResult · RunningInstall
+// [POS] 安装流水线沙箱：任何没被桩住的特权命令都表现为 command not found，不会碰到真实系统。
 import { type ChildProcess, spawn } from 'node:child_process'
 import {
   cpSync,

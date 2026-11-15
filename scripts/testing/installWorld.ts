@@ -1,11 +1,12 @@
+// [INPUT] 无外部依赖，只写调用方给的目录；`BundleSpec.behavior` 的键由 scripts/testing/sandbox-stub.sh 的 behavior() 解释
+// [OUTPUT] BundleSpec · WorldSpec: 描述一个 App 包与一台机器的配置 · writeBundle: 把包写到磁盘 ·
+//          bundleFingerprint: 目录的完整指纹（路径、权限位、内容哈希）· OLD_BUNDLE / NEW_BUNDLE ·
+//          serviceWorld: service 模式 + TUN 开启的默认世界
+// [POS] 安装沙箱里「世界」的描述与夹具：一个 App 包长什么样、机器处在什么配置下。
+//       与沙箱本身（命令桩、进程启停、观察）分开，是为了让两边各自保持单一职责。
 import { createHash } from 'node:crypto'
 import { chmodSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
-
-/**
- * 安装沙箱里「世界」的描述与夹具：一个 App 包长什么样、机器处在什么配置下。
- * 与沙箱本身（命令桩、进程启停、观察）分开，是为了让两边各自保持单一职责。
- */
 
 export interface BundleSpec {
   version: string

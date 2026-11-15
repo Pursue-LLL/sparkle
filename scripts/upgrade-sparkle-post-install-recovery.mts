@@ -1,5 +1,11 @@
 #!/usr/bin/env -S node --import tsx
-/** Post-install recovery — socket hygiene + GUI relaunch when mihomo bootstrap fails. */
+// [INPUT] scripts/upgradeSparklePostInstallGateCore.ts (POS: 只评估安装行偏移之后的 app 日志行，判定内核引导
+//         是否就绪或失败) · scripts/sparkle-stale-mihomo-socket-hygiene.mts (POS: 探测失败时清掉僵尸
+//         /tmp/sparkle-mihomo-api.sock) · app 日志 app-*.log · 参数 <sinceLine> [round] ·
+//         SPARKLE_POST_INSTALL_RECOVERY_WAIT_SEC
+// [OUTPUT] 一轮恢复：SIGTERM 停 GUI → socket 卫生 → 经 Finder 重新启动 → 等 mihomo API 就绪；
+//          退出码 0 = 已就绪，1 = 超时或异常
+// [POS] 装后内核引导失败时的恢复；默认不自动调用，仅当 upgrade-sparkle-local.sh 显式放开恢复轮次时使用。
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
@@ -50,8 +56,9 @@ async function main(): Promise<void> {
   const round = Number(process.argv[3] ?? '1')
   console.error(`[upgrade-post-install-recovery] round=${round} since_line=${sinceLine}`)
 
-  // 不用 AppleEvent「quit」：App 的 before-quit 会弹确认框等人点（appLifecycle.ts），这里没有人会点；
-  // Electron 主进程没有 SIGTERM 处理，收到即退出。
+  // AppleEvent「quit」与 SIGTERM 都会走 App 的 before-quit（appLifecycle.ts）：没有升级静默标记时它
+  // 会弹出等人点的确认框，这里没有人会点，所以停 GUI 只是尽力而为，不保证退出、也不强杀；
+  // 重启是否真的生效，以随后 mihomo API 就绪为准（超时则退出码 1）。
   runShell('pgrep -x Sparkle >/dev/null 2>&1 && pkill -x Sparkle || true')
   await delay(2000)
 

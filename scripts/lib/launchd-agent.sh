@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# LaunchAgent 幂等安装库（source 后只定义函数，无副作用）。
+# [INPUT] launchctl（print / bootout / bootstrap / enable / kickstart）· 调用方传入的 worker 源与目的地、
+#         plist 路径与内容
+# [OUTPUT] SPARKLE_PROFILE_SCHEDULER_LABEL · SPARKLE_GUI_WATCHDOG_LABEL: 两个后台 job 的 label ·
+#          launchd_agent_install: 幂等安装（worker、plist、加载来源三项都一致才跳过）· launchd_agent_unchanged ·
+#          launchd_agent_loaded_from · launchd_agent_foreign_source: 已加载但来自别处的 plist 路径 ·
+#          launchd_agent_unload_hint: 手动卸载命令
+# [POS] LaunchAgent 幂等安装库（source 后只定义函数，无副作用）。
 #
 # 「已加载」不等于「加载的是我们要的那份」：沙箱 shell 的 HOME 被改写时，plist 与 worker 会装进
-# 沙箱家目录，launchd 却照样加载它——此后重装时 `launchctl print` 成功，脚本就误以为一切正常，
-# 真正生效的仍是旧副本（曾经导致订阅定时任务一直跑着不认静默标记的旧 worker）。
+# 沙箱家目录，launchd 却照样加载它——此时 `launchctl print` 成功，脚本若据此认为一切正常，
+# 真正生效的仍是另一份旧 worker。
 # 所以幂等判定必须同时核对：worker 内容、plist 内容、已加载 job 的来源路径。
 
 # 两个后台 job 的 label：安装脚本与装包前置检查共用，避免同一个字符串在三处各写一份。

@@ -1,5 +1,7 @@
-// [INPUT] scripts/lib/serviceSignedRequest 的规范串与 keyId 推导
-// [OUTPUT] TestKeyPair · createTestKeyPair · FakeService · ServiceReply · startFakeService
+// [INPUT] scripts/lib/serviceSignedRequest.ts::buildCanonicalRequest / computeKeyId (POS: 脚本侧 SPARKLE-AUTH-V2
+//         签名的唯一实现，规范串与 keyId 推导以它为准)
+// [OUTPUT] TestKeyPair · createTestKeyPair · FakeService · startFakeService · RecordedRequest · ServiceReply ·
+//          ServiceResponder · listenOnSocket · closeServer
 // [POS] 测试专用：unix socket 上的假 sparkle-service，逐请求校验 SPARKLE-AUTH-V2（版本、keyId、
 // 体哈希、时间窗、nonce 不可重放、ed25519 签名），并记录请求供断言。
 

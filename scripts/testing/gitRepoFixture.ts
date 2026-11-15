@@ -1,5 +1,6 @@
-// [INPUT] (none)
-// [OUTPUT] createCommittedRepo: 已提交源码、package.json 与构建标记的临时 git 仓库 · writeRepoFile · removeTempDirs
+// [INPUT] scripts/writeBuildStampCore.ts::BUILD_STAMP_REL_PATH (POS: 构建标识格式与 git 事实 SSOT) · 本机 git
+// [OUTPUT] createCommittedRepo: 已提交源码、package.json 与构建标记的临时 git 仓库 · makeTempDir · writeRepoFile ·
+//          removeTempDirs
 // [POS] 构建标识相关测试共用的真实 git 夹具；提交不受本机全局 git 配置（签名、钩子）影响。
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'

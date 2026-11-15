@@ -1,3 +1,11 @@
+// [INPUT] tunStartupGuardCore (POS: TUN 启动守卫的纯判定层：日志识别、setuid 需求、是否触发恢复) ·
+//         coreReadinessGateCore (POS: Core Readiness Contract 的纯 SSOT：阶段标签、授权超时与日志间隔) ·
+//         permission (POS: 内核 setuid 检查与手动授权) · 配置里的 TUN 开关、内核名与权限模式 · sysproxy
+// [OUTPUT] ensureTunCorePermissionBeforeStart: 启动内核前补齐 TUN 所需权限 · watchTunStartupLogLine: 由内核日志
+//          驱动恢复 · verifyTunAfterCoreReady: 内核就绪后复核 TUN · resetTunStartupGuardState / getTunStartupGuardState
+// [POS] TUN 启动守卫：只有内核确实需要 setuid（TUN 开启且不走 service）而缺失时才弹授权框；TUN 监听失败时
+//       有限次数地重启内核恢复，仍失败就切到系统代理兜底。
+
 import { getAppConfig, getControledMihomoConfig, patchAppConfig } from '../config'
 import { appendAppLog } from '../utils/log'
 import { showNotification } from '../utils/notification'

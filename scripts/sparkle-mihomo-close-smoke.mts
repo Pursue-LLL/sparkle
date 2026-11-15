@@ -1,5 +1,10 @@
 #!/usr/bin/env tsx
-/** Mihomo close API smoke — DELETE /connections/{id} must reach controller (direct or service mode). */
+// [INPUT] scripts/lib/serviceSignedRequest.ts::callService / requestOverSocket (POS: 脚本侧调用 sparkle-service 的
+//         唯一 SPARKLE-AUTH-V2 签名实现，以及无签名的 unix socket HTTP 请求) · 内核直连 socket
+//         SPARKLE_MIHOMO_SOCKET · config.yaml 的 corePermissionMode · SPARKLE_MIHOMO_SMOKE_MODE
+// [OUTPUT] 对一个不存在的连接 id 发 DELETE，证明关闭连接的请求能到达内核控制器（service 或直连）·
+//          状态码 ≥ 500 或两条路径都不通时非零退出
+// [POS] mihomo 关闭连接 API 的冒烟检查，装后检查里未就绪只告警。
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import {

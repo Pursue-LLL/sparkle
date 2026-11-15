@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Sparkle 安装/升级脚本共用路径的单一来源（source 后只设变量，无副作用）。
+# [INPUT] HOME（须已由 lib/login-home.sh::sparkle_pin_login_home 钉到登录用户的真实家目录）·
+#         同名环境变量覆盖
+# [OUTPUT] SPARKLE_STATE_DIR · SPARKLE_APP_DATA_DIR · SPARKLE_LAUNCH_AGENTS_DIR · SPARKLE_INSTALL_DEST:
+#          已 export 的共用路径
+# [POS] Sparkle 安装/升级脚本共用路径的单一来源（source 后只设变量，无副作用）。
 #
 # 必须在 sparkle_pin_login_home（lib/login-home.sh）之后 source：先把 HOME 钉到登录用户的
 # 真实家目录，再派生路径。沙箱 shell（IDE agent）会改写 $HOME，而 Sparkle 自己的配置、日志、

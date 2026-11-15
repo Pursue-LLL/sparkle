@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# GUI 与服务托管内核的启停（source 库，无副作用）。
-# 依赖：install-log.sh、core-setuid.sh（config_scalar）；调用方须设置 ROOT（仓库根）与 DEST（安装位置）。
+# [INPUT] lib/install-log.sh::install_log / run_captured (POS: 安装流水线的统一日志) ·
+#         lib/core-setuid.sh::config_scalar (POS: 内核权限判定库，含读 config.yaml 顶层标量) ·
+#         scripts/sparkle-service-core-stop.mts (POS: 升级安装前的命令行入口，停掉 sparkle-service 托管的内核) ·
+#         调用方设置的 ROOT（仓库根）与 DEST（安装位置）· SPARKLE_QUIT_TIMEOUT_SEC · SPARKLE_LAUNCH_WAIT_SEC
+# [OUTPUT] app_quit_gui: 先 SIGTERM、超时才 SIGKILL 地退出 GUI · app_launch_and_settle: 经 Finder 拉起 GUI 并等它出现 ·
+#          app_gui_running · app_gui_expected_to_stay · service_core_stop: 让服务停掉它托管的内核
+# [POS] GUI 与服务托管内核的启停库（source 后只定义函数，无副作用）。
 
 # shellcheck source=install-log.sh
 source "$(dirname "${BASH_SOURCE[0]}")/install-log.sh"
@@ -17,8 +22,8 @@ app_gui_running() {
 # 停掉 GUI：先 SIGTERM，超时才 SIGKILL。返回 0 表示已没有 GUI 进程。
 # Electron 把 SIGTERM 当成 app.quit()，和 AppleEvent「quit」一样走 App 的 before-quit（appLifecycle.ts），
 # 平时它会弹出要人点「退出」的确认框。调用时静默标记已写入：认得标记的 App（upgradeQuiesce.ts）
-# 跳过确认框、走正常退出清理；还没有这项逻辑的旧 App 会让确认框一直挂着、不理会 SIGTERM，
-# 只能等超时强杀（实测一次安装白等 10 秒），这只会发生在升级到带这项逻辑的版本那一次。
+# 跳过确认框、走正常退出清理；不认标记的 App（早于这项逻辑的构建）确认框会一直挂着、不理会 SIGTERM，
+# 只能等满 APP_QUIT_TIMEOUT_SEC 再强杀。
 # GUI 退出后托管内核由 service_core_stop 负责停。
 app_quit_gui() {
   local waited=0

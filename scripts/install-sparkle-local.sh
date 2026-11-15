@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# Install the locally built Sparkle.app to /Applications as a reversible transaction.
-# Removes ~/Applications/Sparkle.app duplicates that cause service/GUI split-brain.
+# [INPUT] dist/mac-arm64/Sparkle.app（SPARKLE_INSTALL_SRC 可覆盖；须已由 afterSign 深度签名）·
+#         lib/install-transaction.sh (POS: 升级事务库：暂存校验 → 静默 → rename 换装 → 门禁通过才提交，否则回滚) ·
+#         lib/launchd-agent.sh (POS: LaunchAgent 幂等安装库) · lib/login-home.sh (POS: 把 HOME 钉到登录用户的
+#         真实家目录) · SPARKLE_FORCE_REINSTALL · SPARKLE_INSTALL_SHORT_CIRCUIT_MARKER · SPARKLE_NONINTERACTIVE
+# [OUTPUT] 把新包装到 SPARKLE_INSTALL_DEST（默认 /Applications/Sparkle.app）· 退出码 0 成功（含幂等短路）/
+#          1 失败（系统未变或已恢复）/ 3 新包被门禁拒绝并已回滚 / 4 自动回滚失败需人工 ·
+#          每一步写入 ${SPARKLE_STATE_DIR}/install-last.log · 提交后记录 last-sparkle-cdhash
+# [POS] 本地安装的唯一入口：整个安装是一个可回滚的事务，任何一步失败（含 Ctrl-C、被 kill）都把旧包原样放回；
+#       同时清走会造成 service/GUI 脑裂的 ~/Applications/Sparkle.app 重复安装。
 #
 # AI Agent: see BUGFIX_LOG.md §「AI Agent 操作约束」. Launch via Finder POSIX open (not open -a).
 #

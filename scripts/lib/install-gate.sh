@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# 装后门禁（source 库）：新包必须证明自己能把代理跑起来，否则调用方回滚到旧包。
+# [INPUT] lib/core-setuid.sh::enabled_core_name / effective_core_permission_mode / tun_enabled
+#         (POS: 内核权限判定库) · 调用方设置的 DEST（安装位置）与 GATE_BASELINE_* / GATE_STRICT ·
+#         SPARKLE_PROXY_PORT · 内核日志 ${SPARKLE_APP_DATA_DIR}/logs/core-*.log
+# [OUTPUT] gate_probe_baseline: 升级前数据面基线 · gate_snapshot_core_log: 内核日志快照 ·
+#          gate_wait: 轮询门禁，通过返回 0、超时返回 1 · gate_check_once · GATE_FAILURE / GATE_PASSED_CHECKS:
+#          失败原因与实际验证过的项 · install_short_circuit_reason: 幂等短路判定
+#          （与 sparkleInstallSafetyCore.resolveInstallShortCircuit 同口径）
+# [POS] 装后门禁库（source 后只定义函数与状态变量，无副作用）：新包必须证明自己能把代理跑起来，
+#       否则调用方回滚到旧包。
 #
 # 判据只看用户真正依赖的东西，而不是「进程在不在」「有没有窗口」：
 #   1. 代理端口在监听；升级前代理本来就通时，还要能经它访问外网（数据面）。
@@ -7,8 +15,6 @@
 #   2. service 模式下内核必须是升级后新拉起的：否则「看起来正常」只是旧内核还活着，
 #      新包里的内核二进制从未被验证过。
 #   3. service 模式且 TUN 开启时，新内核日志里必须出现 TUN 网卡监听行。
-#
-# 依赖：core-setuid.sh；调用方须设置 DEST（安装位置）。
 
 # GATE_* 是库与调用方共享的状态：赋值在库里，读取在 source 它的脚本里。
 # shellcheck disable=SC2034

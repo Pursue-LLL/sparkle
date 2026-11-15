@@ -211,7 +211,7 @@ pnpm run agent:upgrade:mac
 # 等价：bash scripts/agent-sparkle-upgrade.sh
 ```
 
-逻辑：若 `dist/mac-arm64/Sparkle.app` 版本已匹配且签名有效 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后跑数据面就绪门禁（`sparkle-data-plane-readiness.mts`）与 profile due-check。
+逻辑：先跑装前卫生与 GUI 看门狗熔断门禁；若 `dist/mac-arm64/Sparkle.app` 版本已匹配、签名有效且源码指纹未过期 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后跑数据面就绪门禁（`sparkle-data-plane-readiness.mts`）与 profile due-check。入口持原子锁，已有升级在跑时直接拒绝启动。
 
 **人工 dev 一条龙**：
 
@@ -222,7 +222,7 @@ pnpm run upgrade:mac
 
 等价 `bash scripts/upgrade-sparkle-local.sh`：vite 编译 → **`rm -rf dist/mac-arm64`** → electron-builder dir（`mac.identity: "-"` + deepSign · 失败自动重试）→ **`verify-sparkle-main-asar.mts`**（SSOT asar 门禁）→ 安装到 `/Applications` → **PostCoreBootstrap 就绪门控**（日志出现 `mihomo API ready` · 90s）→ Finder 启动。网络不可达时：`SKIP_PREPARE=1 bash scripts/upgrade-sparkle-local.sh`。
 
-**仅安装已构建 dist**：`bash scripts/install-sparkle-local.sh`
+**仅安装已构建 dist**：`bash scripts/install-sparkle-local.sh`——整个安装是一个可回滚的事务：新包先在 `/Applications` 同目录暂存并校验，再用两次 `rename` 换装，过门禁（代理端口 + 数据面；service 模式再要求新内核与 TUN 监听）才提交，否则自动换回旧版并重新拉起。退出码：`0` 成功（含「同一份字节已装好且健康」的空操作）· `1` 失败（系统未变或已恢复）· `3` 新包被门禁拒绝并已回滚 · `4` 自动回滚失败（需人工，现场保留）。每一步写入 `~/.sparkle/install-last.log`；`SPARKLE_FORCE_REINSTALL=1` 强制重装。
 
 **禁止**：
 

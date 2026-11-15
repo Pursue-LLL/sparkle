@@ -1,5 +1,9 @@
-// [INPUT] App 持久化的服务鉴权密钥（~/Library/Application Support/sparkle/service-auth.json）· sparkle-service 的 unix socket
-// [OUTPUT] ServiceAuth · ServiceResponse · buildCanonicalRequest · signServiceRequest · loadServiceAuth · requestOverSocket · callService
+// [INPUT] App 持久化的服务鉴权密钥（~/Library/Application Support/sparkle/service-auth.json，SPARKLE_SERVICE_AUTH 可覆盖）·
+//         sparkle-service 的 unix socket（/tmp/sparkle-service.sock，SPARKLE_SERVICE_SOCKET 可覆盖）
+// [OUTPUT] serviceSocketPath · serviceAuthPath: 服务 socket 与鉴权文件的位置 · canonicalizeQuery · computeKeyId ·
+//          buildCanonicalRequest · signServiceRequest: SPARKLE-AUTH-V2 规范串与签名 · loadServiceAuth ·
+//          requestOverSocket: 经 unix socket 发 HTTP 请求（不签名）· callService: 带签名调用服务 ·
+//          ServiceAuth · ServiceResponse · SigningClock · CanonicalRequestInput · SocketRequest · ServiceCall
 // [POS] 脚本侧调用 sparkle-service 的唯一 SPARKLE-AUTH-V2 签名实现。规范串与 src/main/service/api.ts
 // 逐字段一致（由 serviceSignedRequest.test.ts 用 App 自己的签名反向验证）；脚本不得各自再复制一份。
 

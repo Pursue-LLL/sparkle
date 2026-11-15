@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# 安装流水线的统一日志（source 后只定义函数与变量，无副作用）。
+# [INPUT] lib/sparkle-paths.sh::SPARKLE_STATE_DIR (POS: 安装/升级脚本共用路径的单一来源) ·
+#         调用方可覆盖的 INSTALL_LOG_TAG
+# [OUTPUT] install_log_init: 轮转日志（上一轮留作 install-prev.log）· install_log: 带时间戳写 stderr 与
+#          install-last.log · run_captured: 运行命令并把 stdout+stderr 逐行记入日志，返回命令自身的退出码
+# [POS] 安装流水线的统一日志（source 后只定义函数与变量，无副作用）。
 #
 # 每行带时间戳并同步写入 ${SPARKLE_STATE_DIR}/install-last.log：失败后不必重跑就能还原
 # 每一步发生了什么，包括被捕获的特权命令输出（用户取消授权、被策略拒绝等原因只出现在那里，
-# 之前被 `2>/dev/null` 吞掉，导致「卡在哪一步、为什么」只能靠猜）。
+# 所以特权命令的 stderr 不得丢弃）。
 
 # shellcheck source=sparkle-paths.sh
 source "$(dirname "${BASH_SOURCE[0]}")/sparkle-paths.sh"

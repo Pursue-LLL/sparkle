@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# 升级事务库（source 库，无副作用）。
+# [INPUT] lib/install-log.sh (POS: 安装流水线的统一日志) · lib/install-app-control.sh (POS: GUI 与服务托管
+#         内核的启停库) · lib/install-gate.sh (POS: 装后门禁库) · 调用方设置的 DEST（安装位置）与 ROOT（仓库根）·
+#         codesign · ditto · 阶段文件 ${SPARKLE_STATE_DIR}/upgrade-state · 静默标记 ${SPARKLE_STATE_DIR}/upgrade-in-progress
+# [OUTPUT] txn_init_paths · txn_stage_bundle · txn_verify_bundle · bundle_cdhash · txn_assert_free_space ·
+#          txn_swap_in · txn_commit · txn_rollback（回滚与中断恢复共用决策表 txn_plan_recovery）·
+#          txn_set_phase / txn_read_phase / txn_touch_marker: 阶段文件与静默标记 ·
+#          txn_refuse_if_other_installer · TXN_* 共享状态
+# [POS] 升级事务库（source 后只定义函数与状态变量，无副作用）：暂存校验 → 静默 → rename 换装 →
+#       门禁通过才提交，否则回滚。
 #
 # 事务模型：新包先在同一目录暂存并完整校验（不碰现有安装）→ 进入静默期 → 用 rename 换装并把旧包
 # 留作备份 → 门禁通过才提交（删备份），否则 rename 回滚。换装只有两次 rename，没有任何「先删旧包
 # 再慢慢拷新包」的窗口；回滚和「上次被打断」的恢复走同一份决策表，因此任何失败点、
 # 包括 Ctrl-C 与进程被杀，系统最终都停在「旧包原样可用」或「新包已验证」两种状态之一。
-#
-# 依赖：install-log.sh、install-app-control.sh、install-gate.sh；调用方须设置 DEST、ROOT。
 
 # TXN_* 是库与调用方共享的状态：赋值在库里，读取在 source 它的脚本里。
 # shellcheck disable=SC2034
@@ -32,7 +38,7 @@ TXN_HAD_PREVIOUS=0
 
 # 暂存、备份、失败品都放在与 DEST 同一目录（同一文件系统）：rename 才是原子的，也不占额外空间。
 # 名字不带 .app 后缀，Launch Services 不会把它们当成可启动的 App；
-# 实测暂存目录改名前后 `codesign --verify --deep --strict` 都通过，CDHash 不变。
+# 暂存目录改名不影响 `codesign --verify --deep --strict`，CDHash 也不变，所以可以先校验再换装。
 txn_init_paths() {
   local parent
   parent="$(dirname "$DEST")"

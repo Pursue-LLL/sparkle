@@ -7,7 +7,11 @@ import type * as Factory from './factory'
 
 /**
  * [INPUT] factory.ts 的 I/O 依赖（配置库、目录、日志、通知、DNS/网卡探测、mihomo REST）
- * [OUTPUT] 把依赖换成内存桩 + 临时目录，真实流水线（规则注入/分组生成/清洗）照常运行
+ * [OUTPUT] loadFactoryRig: 把依赖换成内存桩 + 临时目录，真实流水线（规则注入/分组生成/清洗）照常运行，
+ *          返回 FactoryRig（RigState 是其可改的桩状态；waitForLog 等后台任务写出某行日志，上限 10 秒真实时间）·
+ *          proxy / subscription: 虚构数据构造器 · groupNames / rulesOf / groupOf: 结果读取 ·
+ *          flush: 让出一轮事件循环 · GROUP: 虚构订阅里的分组名 · WALL_CLOCK_MS: generateProfile 的 60 秒看门狗时长 ·
+ *          Json: 共用类型别名
  * [POS] factory.test.ts / factoryPipeline.test.ts / factoryRepair.test.ts 的共用夹具；全部为虚构数据
  */
 

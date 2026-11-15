@@ -2,7 +2,9 @@
 //         升级锁 owner · 恢复轮次环境变量
 // [OUTPUT] CORE_BINARY_NAMES · isCoreSetuidMode · resolveInstallShortCircuit ·
 //          planInterruptedUpgradeRecovery · UPGRADE_MARKER_TTL_MINUTES ·
-//          resolvePostInstallRecoveryRounds · parseLockOwner · isLockOwnerActive · formatLockOwner
+//          resolvePostInstallRecoveryRounds · parseLockOwner · isLockOwnerActive · formatLockOwner ·
+//          CoreBinaryName · InstallShortCircuitInput / InstallShortCircuitDecision · UpgradePhase ·
+//          InterruptedUpgradeState · RecoveryStep · LockOwner
 // [POS] Agent 本地升级的幂等与安全判定纯函数：决定「是否需要真的安装/启停」、被打断的事务
 // 如何恢复、失败后是否允许自动重启。这里是判定语义的 SSOT 与文档；shell 侧为了不依赖
 // `tsx -e` 传参（参数会被 node 当成选项解析）而用等价的纯 bash 实现

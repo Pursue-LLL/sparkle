@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# Agent SSOT — Sparkle local upgrade: build (if needed) + install + post gates.
+# [INPUT] scripts/sparkle-pre-install-hygiene.mts (POS: 装前清理：截断过大的生命周期日志、磁盘压力过高就拦下) ·
+#         scripts/test-gui-watchdog-fuse.sh (POS: 装前门禁：GUI 看门狗熔断台账不依赖 node 也能计数) ·
+#         scripts/evaluate-sparkle-dist-freshness.mts (POS: dist 与当前源码指纹一致退出 0，过期退出 1) ·
+#         scripts/install-sparkle-local.sh (POS: 本地安装的唯一入口，可回滚事务) ·
+#         scripts/upgrade-sparkle-local.sh (POS: 构建 + 安装的完整本地升级链路) ·
+#         scripts/sparkle-data-plane-readiness.mts (POS: 装后数据面就绪探测 SSOT) ·
+#         SPARKLE_AGENT_FORCE_FULL_BUILD · SPARKLE_UPGRADE_ENTRY_LOCK_DIR
+# [OUTPUT] 一次完整的本地升级（必要时构建，再安装，再过装后门禁与订阅 due-check）· 日志行
+#          AGENT_UPGRADE_RESULT: version=… data_plane=PASS | SKIPPED_ALREADY_HEALTHY · 非零退出 = 升级失败或被拒绝
+# [POS] Agent 本地升级的唯一入口（SSOT）：入口持原子锁，已有升级在跑就拒绝启动。
 # Usage: bash scripts/agent-sparkle-upgrade.sh
 set -euo pipefail
 
@@ -129,7 +138,7 @@ if [[ "$DIST_FRESH" == "1" ]]; then
     bash "$ROOT/scripts/install-sparkle-local.sh" || install_rc=$?
   # install-sparkle-local.sh 在「已装同款且健康」时短路退出并写该标记：
   # 此时不该再起一次 --sparkle-profile-update-due 第二实例。
-  # 后台 worker（订阅定时任务、GUI 看门狗）由安装器自己在预检阶段保证就位，这里不再重复安装。
+  # 后台 worker（订阅定时任务、GUI 看门狗）由安装器自己在预检阶段保证就位，这里不重复安装。
   if [[ -f "$SHORT_CIRCUIT_MARKER" ]]; then
     rm -f "$SHORT_CIRCUIT_MARKER"
     log "Install short-circuited: same build already running — skipping post-install gates"

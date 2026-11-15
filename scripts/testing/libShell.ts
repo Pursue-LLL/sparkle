@@ -1,3 +1,6 @@
+// [INPUT] scripts/lib/install-transaction.sh (POS: 升级事务库，连带 source 门禁与 App 控制库)
+// [OUTPUT] LibShell · libShell: 在只读的真实 PATH 下 source 事务库并执行一段脚本，返回 stdout
+// [POS] 事务库的函数级测试夹具：库 source 时没有副作用，可以对单个函数做确定性的输入输出测试。
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 

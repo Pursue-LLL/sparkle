@@ -1,5 +1,8 @@
 /**
- * 只读测量：真实拉取 mihomo connections 负载，量出体积与 JSON.parse 成本。
+ * [INPUT] scripts/lib/serviceSignedRequest.ts::callService (POS: 脚本侧调用 sparkle-service 的唯一 SPARKLE-AUTH-V2 签名实现)
+ * [OUTPUT] 一份 JSON：连接数、负载字节数、每条连接平均字节、`JSON.parse` 的中位数与 P95（200 次采样）、
+ *          按 500ms 间隔折算的常驻 CPU 占比 · 失败时非零退出
+ * [POS] 只读测量：真实拉取 mihomo connections 负载，量出体积与 JSON.parse 成本。
  *
  * 为什么需要真实测量：`mihomoStreams.ts` 在内核启动时就常驻 `/connections?interval=500`，
  * 每秒两次对全量 JSON 做 `JSON.parse` 再 IPC 转发。它到底花多少主线程时间，

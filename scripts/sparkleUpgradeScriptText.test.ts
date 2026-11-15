@@ -6,7 +6,7 @@ import { describe, it } from 'node:test'
 
 /**
  * 升级链路的结构性护栏：行为由沙箱测试（installPipeline / installFaultInjection / installCrashRecovery）
- * 实际执行来证明；这里守住那些「执行测试覆盖不到、但一改就会重新引入事故」的结构约束——
+ * 实际执行来证明；这里守住那些「执行测试覆盖不到、但一改就会失效」的结构约束——
  * 不可逆动作的先后顺序、能删东西的代码范围、被吞掉的错误输出、bash 3.2 兼容性等。
  */
 
@@ -49,7 +49,7 @@ function functionBody(text: string, name: string): string {
 
 describe('install path safety', () => {
   it('never feeds a dash-leading value to `tsx -e` (node parses it as an option)', () => {
-    // 实测：`tsx -e "..." "普通值"` 可正常工作，但参数以 `-` 开头时 node 会当成命令行选项
+    // `tsx -e "..." "普通值"` 可正常工作，但参数以 `-` 开头时 node 会当成命令行选项
     // 并直接退出（`bad option: -rwxr-xr-x`）。权限位正是这种值，所以判定 setuid 一律用纯 bash。
     for (const name of UPGRADE_PATH_SCRIPTS) {
       assert.equal(
