@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { describe, it } from 'node:test'
 import {
   buildCrashLedgerLine,
@@ -152,6 +152,15 @@ describe('guiWatchdogCore', () => {
     assert.equal(GUI_WATCHDOG_MAX_RESTARTS, shellNumber('MAX_RESTARTS'))
     assert.equal(GUI_WATCHDOG_FUSE_WINDOW_MS, shellNumber('WINDOW_SEC') * 1000)
     assert.equal(GUI_WATCHDOG_FAST_CRASH_STREAK_LIMIT, shellNumber('FAST_CRASH_STREAK_LIMIT'))
+  })
+
+  it('names the graceful-quit stamp the same in the GUI, the watchdog and the installer that clears it', () => {
+    const scripts = join(__dirname, '../../../scripts')
+    const read = (file: string): string => readFileSync(join(scripts, file), 'utf8')
+    const stamp = basename(gracefulQuitMarkerPath('/Users/test'))
+
+    assert.ok(read('sparkle-gui-watchdog.sh').includes(`QUIT_MARKER="\${STATE_DIR}/${stamp}"`))
+    assert.ok(read('lib/install-app-control.sh').includes(`"$SPARKLE_STATE_DIR/${stamp}"`))
   })
 
   it('uses the launchd label that the install scripts load and the upgrade pre-check inspects', () => {

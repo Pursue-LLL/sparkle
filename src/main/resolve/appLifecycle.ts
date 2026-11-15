@@ -2,6 +2,7 @@ import { app, ipcMain, powerMonitor, type BrowserWindow, type IpcMainEvent } fro
 import { stopCore } from '../core/manager'
 import { disableSysProxySync, triggerSysProxy } from '../sys/sysproxy'
 import { markGracefulGuiQuit } from '../sys/guiGracefulQuitMarker'
+import { isUpgradeQuiesceActive } from '../sys/upgradeQuiesce'
 import { appendAppLog } from '../utils/log'
 
 interface AppQuitLifecycleContext {
@@ -25,6 +26,10 @@ export function initAppQuitLifecycle(context: AppQuitLifecycleContext): void {
   })
 
   app.on('before-quit', async (event) => {
+    // 升级安装器退出本进程时没有人去点确认框，见 upgradeQuiesce.ts。
+    if (isUpgradeQuiesceActive()) {
+      setNotQuitDialog()
+    }
     if (!isQuitting && !notQuitDialog) {
       event.preventDefault()
 

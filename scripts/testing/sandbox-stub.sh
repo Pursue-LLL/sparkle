@@ -42,7 +42,14 @@ hold_if() {
 
 gui_running() { [[ -f "$SIM/gui.pid" ]]; }
 # 信号送达后 GUI 进程消失，除非它被标成杀不掉（unkillable=1 的包）。
-kill_gui() { [[ -f "$SIM/gui.unkillable" ]] || rm -f "$SIM/gui.pid"; }
+# graceful：App 走的是正常退出，会先写下「正常退出」戳（appLifecycle 的 cleanupBeforeExit）；SIGKILL 来不及写。
+kill_gui() {
+  if [[ -f "$SIM/gui.unkillable" ]]; then return 0; fi
+  if [[ "${1:-}" == "graceful" ]] && gui_running; then
+    mkdir -p "$SPARKLE_STATE_DIR" && date +%s > "$SPARKLE_STATE_DIR/gui-graceful-quit.stamp"
+  fi
+  rm -f "$SIM/gui.pid"
+}
 core_running() { [[ -f "$SIM/core.pid" ]]; }
 stop_core() {
   rm -f "$SIM/core.pid" "$SIM/core.path" "$SIM/core.start" "$SIM/core.traffic"
@@ -204,9 +211,12 @@ case "$NAME" in
         # SIGKILL；SIM_PKILL_FAILS 模拟杀不掉。
         if [[ "${SIM_PKILL_FAILS:-0}" != "1" ]]; then kill_gui; fi ;;
       *)
-        # SIGTERM：Electron 主进程没有处理，收到即退出且不做任何清理，所以服务托管的内核不会被一并停掉，
-        # 要等安装器的 service_core_stop。SIM_QUIT_REFUSES 模拟 GUI 不理会 SIGTERM。
-        if [[ "${SIM_QUIT_REFUSES:-0}" != "1" ]]; then kill_gui; fi
+        # SIGTERM 在 App 里等价于 app.quit()：平时 before-quit 会弹确认框、GUI 不退出；
+        # 只有见到升级标记才走正常退出（写「正常退出」戳后退出），所以安装器必须先写标记再发 SIGTERM。
+        # 服务托管的内核仍由安装器的 service_core_stop 去停。SIM_QUIT_REFUSES 模拟还没有这项逻辑的旧 App：有标记也不退。
+        if [[ "${SIM_QUIT_REFUSES:-0}" != "1" && -e "$SPARKLE_STATE_DIR/upgrade-in-progress" ]]; then
+          kill_gui graceful
+        fi
         crash_if quit; hold_if quit ;;
     esac
     exit 0 ;;

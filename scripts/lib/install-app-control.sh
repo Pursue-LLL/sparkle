@@ -15,9 +15,11 @@ app_gui_running() {
 }
 
 # 停掉 GUI：先 SIGTERM，超时才 SIGKILL。返回 0 表示已没有 GUI 进程。
-# 不能用 AppleEvent「quit」：App 的 before-quit 会弹出要人点「退出」的确认框（appLifecycle.ts），
-# 安装器等不到答案，只能干等到超时再强杀（实测一次安装白等 20 秒）。Electron 主进程没有 SIGTERM
-# 处理，收到即退出（隔离的 Electron 43 上实测 0.13 秒）；GUI 退出后托管内核由 service_core_stop 负责停。
+# Electron 把 SIGTERM 当成 app.quit()，和 AppleEvent「quit」一样走 App 的 before-quit（appLifecycle.ts），
+# 平时它会弹出要人点「退出」的确认框。调用时静默标记已写入：认得标记的 App（upgradeQuiesce.ts）
+# 跳过确认框、走正常退出清理；还没有这项逻辑的旧 App 会让确认框一直挂着、不理会 SIGTERM，
+# 只能等超时强杀（实测一次安装白等 10 秒），这只会发生在升级到带这项逻辑的版本那一次。
+# GUI 退出后托管内核由 service_core_stop 负责停。
 app_quit_gui() {
   local waited=0
   if ! app_gui_running; then
@@ -57,8 +59,11 @@ app_gui_expected_to_stay() {
 }
 
 # 发起启动并短暂等 GUI 出现，必要时补一次。是否健康不在这里判断，交给门禁。
+# 先清掉上一个 GUI 正常退出时留下的「正常退出」戳：它属于已经不存在的进程，留着会让看门狗把这个新进程
+# 的一次崩溃当成有意退出而不重启。事务期间看门狗因静默标记在暂停，不会抢在前面消费它。
 app_launch_and_settle() {
   local waited=0
+  rm -f "$SPARKLE_STATE_DIR/gui-graceful-quit.stamp"
   app_launch_gui
   while ! app_gui_running && [[ "$waited" -lt "$APP_LAUNCH_WAIT_SEC" ]]; do
     sleep 1

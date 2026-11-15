@@ -20,6 +20,11 @@ export function assertTransactionClosed(sandbox: InstallSandbox): void {
 export function assertRunning(sandbox: InstallSandbox, version: string): void {
   assert.equal(sandbox.destVersion(), version, 'installed version')
   assert.equal(sandbox.guiRunning(), true, 'GUI must be running')
+  assert.equal(
+    sandbox.hasState('gui-graceful-quit.stamp'),
+    false,
+    'a running GUI must not inherit the graceful-quit stamp of the process it replaced'
+  )
   assert.equal(sandbox.coreRunning(), true, 'core must be running')
   assert.ok(
     sandbox.corePath()?.startsWith(sandbox.dest),

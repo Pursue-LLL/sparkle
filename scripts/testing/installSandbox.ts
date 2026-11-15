@@ -295,7 +295,7 @@ export class InstallSandbox {
     return readdirSync(this.apps).filter((name) => name !== basename(this.dest))
   }
 
-  hasState(name: 'upgrade-state' | 'upgrade-in-progress'): boolean {
+  hasState(name: 'upgrade-state' | 'upgrade-in-progress' | 'gui-graceful-quit.stamp'): boolean {
     return existsSync(join(this.stateDir, name))
   }
 
