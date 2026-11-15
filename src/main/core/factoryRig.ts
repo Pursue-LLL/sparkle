@@ -16,6 +16,13 @@ export type Json = Record<string, unknown>
 export const GROUP = '🚀 节点选择'
 export const WALL_CLOCK_MS = 60_000
 
+/**
+ * 等日志的上限按真实时间算，不按事件循环圈数：这些日志写在真实文件读取（线程池）之后，
+ * 机器忙时读取比事件循环转几百圈慢得多；用 hrtime 是因为测试会替换 setTimeout 与 performance.now。
+ */
+const LOG_WAIT_TIMEOUT_MS = 10_000
+const LOG_WAIT_TIMEOUT_NS = BigInt(LOG_WAIT_TIMEOUT_MS) * 1_000_000n
+
 export const proxy = (name: string, extra: Json = {}): Json => ({
   name,
   type: 'vless',
@@ -198,11 +205,14 @@ export async function loadFactoryRig(): Promise<FactoryRig> {
     steps: () =>
       state.logs.flatMap((line) => /generateProfile step=(.+) elapsed_ms=/.exec(line)?.[1] ?? []),
     waitForLog: async (needle) => {
-      for (let attempts = 0; attempts < 500; attempts += 1) {
-        if (state.logs.some((line) => line.includes(needle))) return
+      const deadline = process.hrtime.bigint() + LOG_WAIT_TIMEOUT_NS
+      while (!state.logs.some((line) => line.includes(needle))) {
+        assert.ok(
+          process.hrtime.bigint() < deadline,
+          `log never written within ${LOG_WAIT_TIMEOUT_MS}ms: ${needle}`
+        )
         await flush()
       }
-      assert.fail(`log never written: ${needle}`)
     },
     reset: async () => {
       for (const dir of [workDir, profilesDir, profileWorkRoot]) {

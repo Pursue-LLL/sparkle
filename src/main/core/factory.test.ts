@@ -278,4 +278,13 @@ describe('factory: generation lifecycle', () => {
       assert.ok(groupNames(await rig.runtime()).includes(GROUP))
     })
   })
+
+  describe('the rig', () => {
+    it('waits for a log line by time, not by a fixed number of event loop turns', async () => {
+      // 日志写在真实文件读取之后，读取走线程池，机器忙时比事件循环转几百圈慢得多。
+      setTimeout(() => state.logs.push('late line'), 200)
+
+      await rig.waitForLog('late line')
+    })
+  })
 })
