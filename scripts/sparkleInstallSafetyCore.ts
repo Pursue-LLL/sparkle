@@ -1,10 +1,12 @@
-// [INPUT] 已安装 App 的 build meta / CDHash / setuid 状态 · 升级锁 owner · 恢复轮次环境变量
+// [INPUT] 已安装 App 的 build meta / CDHash / 内核权限状态 · 升级事务阶段与目录存在性 ·
+//         升级锁 owner · 恢复轮次环境变量
 // [OUTPUT] CORE_BINARY_NAMES · isCoreSetuidMode · resolveInstallShortCircuit ·
-//          shouldAttemptServiceKill · resolvePostInstallRecoveryRounds · formatLockOwner
-// [POS] Agent 本地升级的幂等与安全判定纯函数：决定「是否需要真的安装/启停」、是否需要提权，
-// 以及失败后是否允许自动重启。这里是判定语义的 SSOT 与文档；shell 侧为了不依赖
-// `tsx -e` 传参（参数会被 node 当成选项解析）而用等价的内联 bash 实现，两者由同一组
-// 用例与 scripts/sparkleInstallSafetyCore.test.ts 的契约测试约束。
+//          planInterruptedUpgradeRecovery · UPGRADE_MARKER_TTL_MINUTES ·
+//          resolvePostInstallRecoveryRounds · parseLockOwner · isLockOwnerActive · formatLockOwner
+// [POS] Agent 本地升级的幂等与安全判定纯函数：决定「是否需要真的安装/启停」、被打断的事务
+// 如何恢复、失败后是否允许自动重启。这里是判定语义的 SSOT 与文档；shell 侧为了不依赖
+// `tsx -e` 传参（参数会被 node 当成选项解析）而用等价的纯 bash 实现
+// （lib/install-gate.sh、lib/install-transaction.sh），两者由 scripts 下的契约测试逐格对齐。
 
 /** 需要 setuid 位的内核二进制；与 `permission.ts` 授权的目标一一对应。 */
 export const CORE_BINARY_NAMES = ['mihomo', 'mihomo-alpha'] as const
@@ -27,8 +29,11 @@ export interface InstallShortCircuitInput {
   appRunning: boolean
   /** 本地代理端口可用（数据面在线）。 */
   dataPlaneReachable: boolean
-  /** 已安装版本的内核 setuid 完整（缺了就必须修，不能短路）。 */
-  coreSetuidIntact: boolean
+  /**
+   * 已安装版本的内核权限要求已满足：不需要 setuid（TUN 关闭，或内核由 root 服务拉起），
+   * 或需要且已具备。要求未满足是必须修的缺陷，不能短路。
+   */
+  corePermissionSatisfied: boolean
 }
 
 export interface InstallShortCircuitDecision {
@@ -37,9 +42,9 @@ export interface InstallShortCircuitDecision {
 }
 
 /**
- * 短路判定：四件事同时成立时安装完全是空操作——同样的字节已经在 `/Applications` 里运行，
- * 再 quit + ditto + 启动只会打断用户却不会改变任何东西。缺任一条都必须走真实安装，
- * 尤其 `coreSetuidIntact`：setuid 丢失是必须修的缺陷，不能被「看起来已安装」掩盖。
+ * 短路判定：几件事同时成立时安装完全是空操作——同样的字节已经在 `/Applications` 里运行，
+ * 再 quit + 换装 + 启动只会打断用户却不会改变任何东西。缺任一条都必须走真实安装，
+ * 尤其 `corePermissionSatisfied`：权限缺失是必须修的缺陷，不能被「看起来已安装」掩盖。
  */
 export function resolveInstallShortCircuit(
   input: InstallShortCircuitInput
@@ -56,39 +61,63 @@ export function resolveInstallShortCircuit(
   if (!input.dataPlaneReachable) {
     return { skip: false, reason: 'data_plane_down' }
   }
-  if (!input.coreSetuidIntact) {
+  if (!input.corePermissionSatisfied) {
     return { skip: false, reason: 'core_setuid_missing' }
   }
   return { skip: true, reason: 'already_installed_and_healthy' }
 }
 
-export interface ServiceKillInput {
-  /** 当前用户能否直接向 service 进程发信号（同一用户或具备权限）。 */
-  canSignalDirectly: boolean
-  /** 非交互模式（CI / agent）：禁止弹出任何系统授权框。 */
-  nonInteractive: boolean
+/** 后台定时任务见到新鲜的静默标记就不碰 App；超过该分钟数视为安装进程已崩溃。 */
+export const UPGRADE_MARKER_TTL_MINUTES = 15
+
+export type UpgradePhase = 'none' | 'staging' | 'quiesced' | 'swapping' | 'swapped' | 'committed'
+
+export interface InterruptedUpgradeState {
+  phase: UpgradePhase
+  /** 安装目标（/Applications/Sparkle.app）存在。 */
+  destExists: boolean
+  /** 旧包备份（.Sparkle.prev）存在。 */
+  prevExists: boolean
+  /** 新包暂存区（.Sparkle.staging）存在。 */
+  stageExists: boolean
+  /** 失败品目录（.Sparkle.failed）存在：回滚中途被打断时留下的、未经验证的新包。 */
+  failedExists: boolean
 }
 
-export interface ServiceKillDecision {
-  shouldKill: boolean
-  /** 需要提权（会弹系统密码框）；一次升级最多只允许一次。 */
-  needsElevation: boolean
-  reason: string
-}
+export type RecoveryStep =
+  | 'remove_stage'
+  | 'remove_failed'
+  | 'remove_prev'
+  | 'restore_prev'
+  | 'discard_dest_restore_prev'
 
 /**
- * `sparkle-service` 以 root 运行时普通用户发不出信号。默认先直接尝试；
- * 只有直接尝试失败、且不是非交互模式时，才允许一次提权 killall。
- * 非交互模式绝不弹框：宁可跳过停服务（内核会由后续安装流程替换），也不打扰用户。
+ * 被打断（崩溃、强杀、回滚）的升级事务如何收尾。决策只看「阶段 + 四个目录是否存在」：
+ *  - 暂存区与失败品目录永远是草稿，直接删；
+ *  - 换装已开始（swapping/swapped）且备份在：目标在说明新包已就位但没被验证，丢弃并放回旧包；
+ *    目标不在说明正卡在两次 rename 之间，直接放回旧包；
+ *  - 其它阶段备份还在：目标在说明是上次提交后的清理被打断，删备份；目标不在则放回备份；
+ *  - 备份不在就没有可回退的旧包，保留目标现状。
+ * 任何输入下，处理完目标要么是旧包、要么是已验证的新包，不会既删旧又没新。
  */
-export function shouldAttemptServiceKill(input: ServiceKillInput): ServiceKillDecision {
-  if (input.canSignalDirectly) {
-    return { shouldKill: true, needsElevation: false, reason: 'direct_signal' }
+export function planInterruptedUpgradeRecovery(state: InterruptedUpgradeState): RecoveryStep[] {
+  const steps: RecoveryStep[] = []
+  if (state.stageExists) {
+    steps.push('remove_stage')
   }
-  if (input.nonInteractive) {
-    return { shouldKill: false, needsElevation: false, reason: 'skip_non_interactive' }
+  if (state.failedExists) {
+    steps.push('remove_failed')
   }
-  return { shouldKill: true, needsElevation: true, reason: 'elevated_signal' }
+  if (!state.prevExists) {
+    return steps
+  }
+  const swapStarted = state.phase === 'swapping' || state.phase === 'swapped'
+  if (swapStarted) {
+    steps.push(state.destExists ? 'discard_dest_restore_prev' : 'restore_prev')
+  } else {
+    steps.push(state.destExists ? 'remove_prev' : 'restore_prev')
+  }
+  return steps
 }
 
 /**

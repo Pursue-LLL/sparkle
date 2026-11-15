@@ -44,9 +44,38 @@ export function applyTunStartupLogLine(
   return next
 }
 
+/** 内核获得特权的方式：`elevated` 靠自带 setuid 自提权；`service` 由 root 服务拉起。 */
+export type CorePermissionMode = 'elevated' | 'service'
+
+export interface CoreSetuidRequirementInput {
+  tunEnabled: boolean
+  /** 未配置时 App 的默认值是 `elevated`。 */
+  corePermissionMode: CorePermissionMode | undefined
+}
+
+/**
+ * TUN 是否必须依赖内核自带 setuid。
+ * service 模式下内核是 root 服务的子进程，创建 TUN 网卡不需要 setuid；此时仍要求它，
+ * 只会让每次升级（安装会丢失内核的属主与权限位）后启动都弹一次没有意义的系统密码框。
+ */
+export function requiresCoreSetuid(input: CoreSetuidRequirementInput): boolean {
+  return input.tunEnabled && input.corePermissionMode !== 'service'
+}
+
+/**
+ * setuid 需求已满足：要么不需要，要么确实具备。
+ * `hasCoreSetuid` 惰性求值，不需要 setuid 时不做多余的文件系统访问。
+ */
+export function isCoreSetuidSatisfied(
+  input: CoreSetuidRequirementInput,
+  hasCoreSetuid: () => boolean
+): boolean {
+  return !requiresCoreSetuid(input) || hasCoreSetuid()
+}
+
 export function shouldRecoverTunPermission(
   tunEnabled: boolean,
-  hasCoreSetuid: boolean,
+  setuidSatisfied: boolean,
   state: TunStartupGuardState,
   maxAttempts: number
 ): boolean {
@@ -62,5 +91,5 @@ export function shouldRecoverTunPermission(
   if (state.adapterListening) {
     return false
   }
-  return state.permissionErrorSeen || !hasCoreSetuid
+  return state.permissionErrorSeen || !setuidSatisfied
 }

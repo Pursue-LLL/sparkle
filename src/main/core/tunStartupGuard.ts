@@ -6,6 +6,7 @@ import { triggerSysProxy } from '../sys/sysproxy'
 import {
   applyTunStartupLogLine,
   createTunStartupGuardState,
+  isCoreSetuidSatisfied,
   shouldRecoverTunPermission,
   type TunStartupGuardState
 } from './tunStartupGuardCore'
@@ -20,6 +21,16 @@ const RECOVERY_DEBOUNCE_MS = 3_000
 
 let guardState = createTunStartupGuardState()
 let recoveryTimer: NodeJS.Timeout | null = null
+/**
+ * 连续失败的恢复次数，直到 TUN 网卡真正监听成功才清零。
+ * 恢复靠重启内核完成，而每次启动都会重置守卫状态；次数若只存在守卫状态里，
+ * 每重启一次就归零，「最多恢复 2 次」就变成了错误持续时的无限重启。
+ */
+let consecutiveRecoveryAttempts = 0
+
+function recoveryGateState(): TunStartupGuardState {
+  return { ...guardState, recoveryAttempts: consecutiveRecoveryAttempts }
+}
 
 export function resetTunStartupGuardState(): void {
   guardState = createTunStartupGuardState()
@@ -33,19 +44,37 @@ export function getTunStartupGuardState(): TunStartupGuardState {
   return guardState
 }
 
+interface TunCoreContext {
+  tunEnabled: boolean
+  coreName: 'mihomo' | 'mihomo-alpha'
+  /** 内核由 root 服务拉起（此时特权来自服务而不是 setuid）。 */
+  serviceMode: boolean
+  /** 当前模式下 TUN 所需的内核权限已就绪（service 模式不依赖 setuid，恒为 true）。 */
+  setuidSatisfied: boolean
+}
+
+async function readTunCoreContext(): Promise<TunCoreContext> {
+  const { tun } = await getControledMihomoConfig()
+  const { core = 'mihomo', corePermissionMode } = await getAppConfig()
+  const coreName = core === 'mihomo-alpha' ? 'mihomo-alpha' : 'mihomo'
+  const tunEnabled = Boolean(tun?.enable)
+  return {
+    tunEnabled,
+    coreName,
+    serviceMode: corePermissionMode === 'service',
+    setuidSatisfied: isCoreSetuidSatisfied({ tunEnabled, corePermissionMode }, () =>
+      checkCorePermissionSync(coreName)
+    )
+  }
+}
+
 export async function ensureTunCorePermissionBeforeStart(): Promise<void> {
   if (process.platform === 'win32') {
     return
   }
 
-  const { tun } = await getControledMihomoConfig()
-  if (!tun?.enable) {
-    return
-  }
-
-  const { core = 'mihomo' } = await getAppConfig()
-  const coreName = core === 'mihomo-alpha' ? 'mihomo-alpha' : 'mihomo'
-  if (checkCorePermissionSync(coreName)) {
+  const { tunEnabled, coreName, setuidSatisfied } = await readTunCoreContext()
+  if (!tunEnabled || setuidSatisfied) {
     return
   }
 
@@ -77,11 +106,13 @@ export async function ensureTunCorePermissionBeforeStart(): Promise<void> {
     )
   }, TUN_PERMISSION_LOG_INTERVAL_MS)
 
+  // 授权先完成时必须撤掉超时定时器，否则它会在 60 秒后对已结算的 Promise 白白触发一次。
+  let permissionTimeout: NodeJS.Timeout | undefined
   try {
     await Promise.race([
       manualGrantCorePermition([coreName]),
       new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        permissionTimeout = setTimeout(() => {
           reject(new Error('TUN_PERMISSION_TIMEOUT'))
         }, TUN_PERMISSION_TIMEOUT_MS)
       })
@@ -102,11 +133,16 @@ export async function ensureTunCorePermissionBeforeStart(): Promise<void> {
     }
     await appendAppLog(`[TunStartupGuard]: pre-start permission grant skipped, ${message}\n`)
     await enableSysProxyFallback()
+  } finally {
+    clearTimeout(permissionTimeout)
   }
 }
 
 export function watchTunStartupLogLine(logLine: string): void {
   guardState = applyTunStartupLogLine(guardState, logLine)
+  if (guardState.adapterListening) {
+    consecutiveRecoveryAttempts = 0
+  }
   if (!guardState.permissionErrorSeen) {
     return
   }
@@ -120,26 +156,24 @@ export function watchTunStartupLogLine(logLine: string): void {
 }
 
 async function scheduleTunPermissionRecovery(source: 'log' | 'preflight'): Promise<void> {
-  const { tun } = await getControledMihomoConfig()
-  const { core = 'mihomo' } = await getAppConfig()
-  const coreName = core === 'mihomo-alpha' ? 'mihomo-alpha' : 'mihomo'
-  const hasSetuid = checkCorePermissionSync(coreName)
+  const { tunEnabled, coreName, setuidSatisfied, serviceMode } = await readTunCoreContext()
 
   if (
     !shouldRecoverTunPermission(
-      tun?.enable === true,
-      hasSetuid,
-      guardState,
+      tunEnabled,
+      setuidSatisfied,
+      recoveryGateState(),
       MAX_TUN_RECOVERY_ATTEMPTS
     )
   ) {
     return
   }
 
+  consecutiveRecoveryAttempts += 1
   guardState = {
     ...guardState,
     recoveryInFlight: true,
-    recoveryAttempts: guardState.recoveryAttempts + 1
+    recoveryAttempts: consecutiveRecoveryAttempts
   }
 
   await appendAppLog(
@@ -147,7 +181,7 @@ async function scheduleTunPermissionRecovery(source: 'log' | 'preflight'): Promi
   )
 
   try {
-    if (!hasSetuid) {
+    if (!setuidSatisfied) {
       await manualGrantCorePermition([coreName])
       await appendAppLog('[TunStartupGuard]: permission granted — restarting core\n')
       guardState = createTunStartupGuardState()
@@ -156,7 +190,9 @@ async function scheduleTunPermissionRecovery(source: 'log' | 'preflight'): Promi
       return
     }
 
-    await appendAppLog('[TunStartupGuard]: setuid present but TUN failed — restarting core\n')
+    await appendAppLog(
+      '[TunStartupGuard]: core permission requirement satisfied but TUN failed — restarting core\n'
+    )
     guardState = createTunStartupGuardState()
     const { restartCore } = await import('./manager')
     await restartCore()
@@ -166,7 +202,10 @@ async function scheduleTunPermissionRecovery(source: 'log' | 'preflight'): Promi
     await enableSysProxyFallback()
     void showNotification({
       title: 'TUN 启动失败，已切换系统代理兜底',
-      body: '终端流量将走 127.0.0.1:7890。请在 Sparkle 内核设置页手动授予内核权限后重启 TUN。',
+      // service 模式下设置页没有「授予内核权限」入口，提示它只会把用户引向不存在的操作。
+      body: serviceMode
+        ? '终端流量将走 127.0.0.1:7890。请确认 Sparkle 服务正在运行后重启 TUN。'
+        : '终端流量将走 127.0.0.1:7890。请在 Sparkle 内核设置页手动授予内核权限后重启 TUN。',
       variant: 'warning'
     })
   } finally {
@@ -191,24 +230,16 @@ async function enableSysProxyFallback(): Promise<void> {
 }
 
 export async function verifyTunAfterCoreReady(): Promise<void> {
-  const { tun } = await getControledMihomoConfig()
-  if (!tun?.enable) {
-    return
-  }
-
-  const { core = 'mihomo' } = await getAppConfig()
-  const coreName = core === 'mihomo-alpha' ? 'mihomo-alpha' : 'mihomo'
-  const hasSetuid = checkCorePermissionSync(coreName)
-
-  if (guardState.adapterListening) {
+  const { tunEnabled, setuidSatisfied } = await readTunCoreContext()
+  if (!tunEnabled || guardState.adapterListening) {
     return
   }
 
   if (
     shouldRecoverTunPermission(
       true,
-      hasSetuid,
-      guardState,
+      setuidSatisfied,
+      recoveryGateState(),
       MAX_TUN_RECOVERY_ATTEMPTS
     )
   ) {

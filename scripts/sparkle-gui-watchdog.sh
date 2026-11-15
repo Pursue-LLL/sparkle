@@ -4,15 +4,20 @@
 # macOS 26: auto-relaunch disabled (Electron 42 V8 SIGTRAP); sparkle-service keeps proxy.
 set -euo pipefail
 
-STATE_DIR="${HOME}/.sparkle"
+STATE_DIR="${SPARKLE_STATE_DIR:-${HOME}/.sparkle}"
 QUIT_MARKER="${STATE_DIR}/gui-graceful-quit.stamp"
+# 升级事务期间 App 是被安装器有意停掉的，不是崩溃：不能写崩溃台账、不能触发熔断或重启。
+# 标记由 scripts/lib/install-transaction.sh 写入（同一 TTL）；超过 TTL 说明安装进程已崩溃，
+# 不能让陈旧标记永久关掉看门狗。
+UPGRADE_MARKER="${STATE_DIR}/upgrade-in-progress"
+UPGRADE_MARKER_TTL_MIN=15
 CRASH_LEDGER="${STATE_DIR}/gui-crash-ledger.jsonl"
 BACKOFF_STATE="${STATE_DIR}/gui-watchdog-backoff.state"
 LAST_RELAUNCH_TS="${STATE_DIR}/gui-watchdog-last-relaunch.ts"
 FAST_CRASH_STREAK="${STATE_DIR}/gui-watchdog-fast-crash-streak"
 GUI_DOWN_HANDLED="${STATE_DIR}/gui-watchdog-down-handled"
-SPARKLE_APP="/Applications/Sparkle.app"
-POLL_SEC=5
+SPARKLE_APP="${SPARKLE_INSTALL_DEST:-/Applications/Sparkle.app}"
+POLL_SEC="${SPARKLE_WATCHDOG_POLL_SEC:-5}"
 MAX_RESTARTS=3
 WINDOW_SEC=300
 FAST_CRASH_SEC=90
@@ -170,7 +175,11 @@ relaunch_sparkle() {
   fi
   maybe_apply_fast_crash_backoff
   date +%s > "$LAST_RELAUNCH_TS"
-  osascript -e 'tell application "Finder" to open POSIX file "/Applications/Sparkle.app"' >/dev/null 2>&1 || true
+  osascript -e "tell application \"Finder\" to open POSIX file \"${SPARKLE_APP}\"" >/dev/null 2>&1 || true
+}
+
+upgrade_in_progress() {
+  [[ -n "$(find "$UPGRADE_MARKER" -maxdepth 0 -mmin "-${UPGRADE_MARKER_TTL_MIN}" 2>/dev/null)" ]]
 }
 
 reset_backoff_if_stable() {
@@ -191,8 +200,23 @@ reset_backoff_if_stable() {
 log "watchdog started poll=${POLL_SEC}s max_restarts=${MAX_RESTARTS}/${WINDOW_SEC}s python=${PYTHON} macos=$(sw_vers -productVersion 2>/dev/null || echo unknown)"
 
 stable_since=0
+paused_for_upgrade=0
 
 while true; do
+  if upgrade_in_progress; then
+    if [[ "$paused_for_upgrade" -eq 0 ]]; then
+      log "upgrade in progress — watchdog paused"
+      paused_for_upgrade=1
+    fi
+    stable_since=0
+    sleep "$POLL_SEC"
+    continue
+  fi
+  if [[ "$paused_for_upgrade" -eq 1 ]]; then
+    log "upgrade finished — watchdog resumed"
+    paused_for_upgrade=0
+  fi
+
   if pgrep -x Sparkle >/dev/null 2>&1; then
     rm -f "$GUI_DOWN_HANDLED"
     if [[ "$stable_since" -eq 0 ]]; then

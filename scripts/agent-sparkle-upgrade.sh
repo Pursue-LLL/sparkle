@@ -23,7 +23,7 @@ entry_lock_owner_is_active() {
   [[ "$pid" -gt 0 ]] || return 1
   kill -0 "$pid" 2>/dev/null || return 1
   [[ "$text" =~ started=([0-9]+) ]] || return 1
-  started=$(( ${BASH_REMATCH[1]} / 1000 ))
+  started=$(( BASH_REMATCH[1] / 1000 ))
   now="$(date +%s)"
   [[ $(( now - started )) -lt "$ENTRY_LOCK_MAX_AGE_SEC" ]]
 }
@@ -105,18 +105,6 @@ run_post_install_gates() {
   log "AGENT_UPGRADE_RESULT: version=$installed_ver data_plane=PASS"
 }
 
-install_profile_scheduler() {
-  if [[ "$(uname -s)" != "Darwin" ]]; then
-    return 0
-  fi
-  log "Installing profile scheduler LaunchAgent (5m due-check)..."
-  if bash "$ROOT/scripts/install-sparkle-profile-scheduler.sh"; then
-    log "Profile scheduler LaunchAgent OK"
-  else
-    log "WARN: profile scheduler install failed (non-fatal)"
-  fi
-}
-
 DIST_FRESH=0
 if dist_version_matches && dist_signature_valid; then
   if "$TSX" "$ROOT/scripts/evaluate-sparkle-dist-freshness.mts" "$DIST_APP"; then
@@ -140,7 +128,8 @@ if [[ "$DIST_FRESH" == "1" ]]; then
   SPARKLE_INSTALL_SHORT_CIRCUIT_MARKER="$SHORT_CIRCUIT_MARKER" \
     bash "$ROOT/scripts/install-sparkle-local.sh" || install_rc=$?
   # install-sparkle-local.sh 在「已装同款且健康」时短路退出并写该标记：
-  # 此时既不该重装 profile scheduler，也不该再起一次 --sparkle-profile-update-due 第二实例。
+  # 此时不该再起一次 --sparkle-profile-update-due 第二实例。
+  # 后台 worker（订阅定时任务、GUI 看门狗）由安装器自己在预检阶段保证就位，这里不再重复安装。
   if [[ -f "$SHORT_CIRCUIT_MARKER" ]]; then
     rm -f "$SHORT_CIRCUIT_MARKER"
     log "Install short-circuited: same build already running — skipping post-install gates"
@@ -148,7 +137,6 @@ if [[ "$DIST_FRESH" == "1" ]]; then
     exit 0
   fi
   [[ "$install_rc" -eq 0 ]] || fail "install-sparkle-local.sh failed rc=$install_rc"
-  install_profile_scheduler
   run_post_install_gates
   log "Done. Sparkle $EXPECTED_VER installed; all post gates PASS"
   exit 0
@@ -156,5 +144,4 @@ fi
 
 log "dist missing, stale, unsigned, or source fingerprint drift — full upgrade (vite + dir + install + bootstrap gates)"
 bash "$ROOT/scripts/upgrade-sparkle-local.sh"
-install_profile_scheduler
 log "AGENT_UPGRADE_RESULT: version=$EXPECTED_VER"

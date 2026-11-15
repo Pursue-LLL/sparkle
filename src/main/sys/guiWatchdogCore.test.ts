@@ -11,6 +11,7 @@ import {
   guiWatchdogScriptPath,
   GUI_WATCHDOG_FAST_CRASH_STREAK_LIMIT,
   GUI_WATCHDOG_FUSE_WINDOW_MS,
+  GUI_WATCHDOG_LAUNCH_AGENT_LABEL,
   GUI_WATCHDOG_MAX_RESTARTS,
   launchAgentPlistPath,
   shouldDisableGuiAutoRelaunchOnMacOs26,
@@ -151,5 +152,13 @@ describe('guiWatchdogCore', () => {
     assert.equal(GUI_WATCHDOG_MAX_RESTARTS, shellNumber('MAX_RESTARTS'))
     assert.equal(GUI_WATCHDOG_FUSE_WINDOW_MS, shellNumber('WINDOW_SEC') * 1000)
     assert.equal(GUI_WATCHDOG_FAST_CRASH_STREAK_LIMIT, shellNumber('FAST_CRASH_STREAK_LIMIT'))
+  })
+
+  it('uses the launchd label that the install scripts load and the upgrade pre-check inspects', () => {
+    const lib = readFileSync(join(__dirname, '../../../scripts/lib/launchd-agent.sh'), 'utf8')
+    assert.equal(
+      lib.match(/^SPARKLE_GUI_WATCHDOG_LABEL="([^"]+)"$/m)?.[1],
+      GUI_WATCHDOG_LAUNCH_AGENT_LABEL
+    )
   })
 })

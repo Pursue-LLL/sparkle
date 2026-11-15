@@ -1,0 +1,3 @@
+# 沿 `source` 追到被引用的库：scripts/lib/*.sh 之间互相 source，路径相对于当前脚本所在目录。
+external-sources=true
+source-path=SCRIPTDIR
