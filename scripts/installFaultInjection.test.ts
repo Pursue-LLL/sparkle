@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import {
@@ -10,18 +10,18 @@ import {
   assertRunning,
   assertTransactionClosed,
   EXIT,
+  prevPath,
   stagePath
 } from './testing/installAssertions'
+import { InstallSandbox, type RunResult } from './testing/installSandbox'
 import {
   type BundleSpec,
   bundleFingerprint,
-  InstallSandbox,
   NEW_BUNDLE,
   OLD_BUNDLE,
-  type RunResult,
   serviceWorld,
   type WorldSpec
-} from './testing/installSandbox'
+} from './testing/installWorld'
 
 describe('install-sparkle-local.sh fault injection (sandboxed)', () => {
   let sandbox: InstallSandbox | undefined
@@ -172,8 +172,7 @@ describe('install-sparkle-local.sh fault injection (sandboxed)', () => {
     inode: statSync(sb.dest).ino
   })
 
-  const assertOriginalBack = (sb: InstallSandbox, original: Original): void => {
-    assertRestored(sb, OLD_BUNDLE.version)
+  const assertOriginalFiles = (sb: InstallSandbox, original: Original): void => {
     assert.equal(
       bundleFingerprint(sb.dest),
       original.fingerprint,
@@ -184,6 +183,11 @@ describe('install-sparkle-local.sh fault injection (sandboxed)', () => {
       original.inode,
       'the very same directory must come back, not a copy'
     )
+  }
+
+  const assertOriginalBack = (sb: InstallSandbox, original: Original): void => {
+    assertRestored(sb, OLD_BUNDLE.version)
+    assertOriginalFiles(sb, original)
   }
 
   describe('failures while swapping: the previous app is renamed straight back', () => {
@@ -201,6 +205,21 @@ describe('install-sparkle-local.sh fault injection (sandboxed)', () => {
       const original = snapshotOriginal(sb)
       const result = await sb.run({ SIM_FAIL_MV: 'mv_stage_to_dest' })
       assertExit(result, EXIT.failed)
+      assertOriginalBack(sb, original)
+    })
+
+    it('refuses to swap over a leftover backup and leaves the old app exactly where it was', async () => {
+      // 备份位被别的东西占了：此刻 DEST 仍是完好的旧包，恢复逻辑绝不能把它当成「未验证的新包」丢掉。
+      const sb = create(serviceWorld())
+      const original = snapshotOriginal(sb)
+      const run = sb.start({ SIM_HOLD_AT: 'quit' })
+      await sb.waitUntilHeld()
+      mkdirSync(prevPath(sb))
+      writeFileSync(join(prevPath(sb), 'leftover'), 'not part of this install')
+      sb.releaseHold()
+      const result = await run.done
+      assertExit(result, EXIT.failed)
+      assert.match(result.output, /refusing to swap: a stale backup exists/)
       assertOriginalBack(sb, original)
     })
   })
@@ -289,6 +308,19 @@ describe('install-sparkle-local.sh fault injection (sandboxed)', () => {
       assert.doesNotMatch(result.output, /restarting the previous app/)
       assert.equal(sb.destVersion(), NEW_BUNDLE.version)
       assertTransactionClosed(sb)
+    })
+
+    it('restores the files and says so when the previous app cannot be brought back up', async () => {
+      const { sb, result, original } = await runRejected({
+        old: { ...OLD_BUNDLE, behavior: { launch: 'fails' } },
+        next: brokenNew({ proxy: 'down' })
+      })
+      assertExit(result, EXIT.gateRejected)
+      assert.match(result.output, /previous app restored but not healthy yet/)
+      assert.equal(sb.guiRunning(), false, 'this old build cannot launch, so nothing runs')
+      assertOriginalFiles(sb, original as Original)
+      assertTransactionClosed(sb)
+      assertLiveAppNeverDeleted(sb)
     })
   })
 

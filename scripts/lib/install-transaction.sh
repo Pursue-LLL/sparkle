@@ -271,13 +271,15 @@ txn_stage_bundle() {
 
 # 换装。只有两次 rename：DEST→备份、暂存→DEST。每一步前先确认目标位置是空的，
 # 否则 mv 会把目录「移进」已有目录而不是替换它。
+# 备份位已被占用的检查必须赶在阶段变成 swapping 之前：swapping 阶段下决策表把「DEST 与备份同时
+# 存在」读成「新包已就位」而丢弃 DEST，可这里 DEST 还是完好的旧包，丢掉它就等于删了用户的 App。
 txn_swap_in() {
+  if [[ -e "$DEST" && -e "$TXN_PREV" ]]; then
+    install_log "refusing to swap: a stale backup exists at $TXN_PREV"
+    return 1
+  fi
   txn_set_phase swapping
   if [[ -e "$DEST" ]]; then
-    if [[ -e "$TXN_PREV" ]]; then
-      install_log "refusing to swap: a stale backup exists at $TXN_PREV"
-      return 1
-    fi
     mv "$DEST" "$TXN_PREV" || return 1
   fi
   [[ ! -e "$DEST" ]] || return 1

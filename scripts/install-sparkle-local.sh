@@ -98,9 +98,6 @@ short_circuit_if_healthy() {
 # 已部署的副本认标记，且 launchd 实际调度的就是这份副本（而不是别处加载的旧 job）。
 ensure_background_workers() {
   local script worker label foreign
-  if [[ "$(uname -s)" != "Darwin" ]]; then
-    return 0
-  fi
   for script in install-sparkle-profile-scheduler.sh install-sparkle-gui-watchdog.sh; do
     if ! run_captured "$script" bash "$ROOT/scripts/$script"; then
       log "WARN: $script failed — relying on the already deployed worker"
@@ -114,7 +111,7 @@ ensure_background_workers() {
   for label in "$SPARKLE_PROFILE_SCHEDULER_LABEL" "$SPARKLE_GUI_WATCHDOG_LABEL"; do
     foreign="$(launchd_agent_foreign_source "$label" "$SPARKLE_LAUNCH_AGENTS_DIR/${label}.plist")"
     if [[ -n "$foreign" ]]; then
-      fail "launchd still schedules $label from $foreign, an old copy that ignores the upgrade marker — unload it with: launchctl bootout gui/$(id -u)/$label (nothing was changed)"
+      fail "launchd still schedules $label from $foreign, an old copy that ignores the upgrade marker — unload it with: $(launchd_agent_unload_hint "$label") (nothing was changed)"
     fi
   done
 }
@@ -166,12 +163,19 @@ launch_and_gate() {
   log "health gate passed (${GATE_PASSED_CHECKS})"
 }
 
-# 提交之后旧包已删，下面都是收尾，失败只告警，不会也不应回滚已验证的新包。
+record_installed_cdhash() {
+  mkdir -p "$SPARKLE_STATE_DIR" && echo "$SRC_CDHASH" > "$CDHASH_FILE"
+}
+
+# 提交之后旧包已删，下面都是收尾，失败只告警，不会也不应回滚已验证的新包、更不能让一次已验证的
+# 安装以非零码退出。可能失败的步骤各自显式容错：把整个函数挂在 `|| log` 后面靠 errexit 被抑制来
+# 「容错」既看不出意图，失败时也不会有任何告警。
 post_commit() {
   local version
   version="$(defaults read "$DEST/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo unknown)"
-  mkdir -p "$SPARKLE_STATE_DIR"
-  echo "$SRC_CDHASH" > "$CDHASH_FILE"
+  if ! record_installed_cdhash; then
+    log "WARN: could not record the installed CDHash in $CDHASH_FILE (bookkeeping only, the install is unaffected)"
+  fi
   if [[ -n "$OLD_CDHASH" && "$OLD_CDHASH" != "$SRC_CDHASH" ]]; then
     log "CDHash changed ($OLD_CDHASH -> $SRC_CDHASH) — Gatekeeper may require one-time Control+Open"
   fi
@@ -216,8 +220,7 @@ main() {
   log "phase: launch + gate"
   launch_and_gate
   txn_commit
-  # 已提交：收尾失败只告警，不能让一次已验证的安装以非零码退出。
-  post_commit || log "WARN: post-install housekeeping reported an error (the install itself is committed and verified)"
+  post_commit
 }
 
 main "$@"

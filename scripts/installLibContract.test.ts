@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,6 +12,7 @@ import {
   type UpgradePhase,
   UPGRADE_MARKER_TTL_MINUTES
 } from './sparkleInstallSafetyCore'
+import { libShell } from './testing/libShell'
 
 /**
  * 契约测试：shell 库里的判定与 sparkleInstallSafetyCore.ts（判定语义的 SSOT）逐格对齐。
@@ -21,29 +21,8 @@ import {
  */
 
 const SCRIPTS = join(import.meta.dirname)
-const LIB = join(SCRIPTS, 'lib')
 const scratch = mkdtempSync(join(tmpdir(), 'sparkle-lib-contract-'))
-
-/** 在只读的真实 PATH 下 source 事务库并执行片段；库 source 时没有副作用。 */
-function bash(script: string, env: Record<string, string> = {}): string {
-  return execFileSync(
-    '/bin/bash',
-    [
-      '-c',
-      `set -uo pipefail\nDEST="${scratch}/Sparkle.app"\nROOT="${SCRIPTS}/.."\nsource "${LIB}/install-transaction.sh"\n${script}`
-    ],
-    {
-      env: {
-        PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
-        HOME: scratch,
-        SPARKLE_STATE_DIR: join(scratch, 'state'),
-        ...env
-      },
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-  )
-}
+const bash = libShell(scratch)
 
 const read = (path: string): string => readFileSync(join(SCRIPTS, path), 'utf8')
 
@@ -96,6 +75,10 @@ describe('shell libraries vs sparkleInstallSafetyCore.ts', () => {
           `txn_run_step is missing the "${step}" step`
         )
       }
+    })
+
+    it('refuses a step it does not know instead of silently skipping it', () => {
+      assert.match(bash('txn_run_step bogus; echo "rc=$?"'), /rc=1/)
     })
 
     it('only writes phases the TypeScript model knows about', () => {

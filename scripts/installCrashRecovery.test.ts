@@ -13,7 +13,8 @@ import {
   prevPath,
   stagePath
 } from './testing/installAssertions'
-import { InstallSandbox, NEW_BUNDLE, OLD_BUNDLE, serviceWorld } from './testing/installSandbox'
+import { InstallSandbox } from './testing/installSandbox'
+import { NEW_BUNDLE, OLD_BUNDLE, serviceWorld } from './testing/installWorld'
 
 interface DiskState {
   phase: string | null

@@ -141,6 +141,7 @@ case "$NAME" in
         .Sparkle.staging\>Sparkle.app) point=mv_stage_to_dest ;;
         .Sparkle.prev\>Sparkle.app) point=mv_prev_to_dest ;;
         Sparkle.app\>.Sparkle.failed) point=mv_dest_to_failed ;;
+        Sparkle.app\>Sparkle.app.bak.*) point=mv_user_copy ;;
       esac
     fi
     if [[ -n "$point" && "${SIM_FAIL_MV:-}" == "$point" ]]; then
@@ -255,7 +256,7 @@ case "$NAME" in
 
   uname)
     case "${1:-}" in
-      -s) echo Darwin ;;
+      -s) echo "${SIM_UNAME_S:-Darwin}" ;;
       -r) echo "${SIM_DARWIN:-25.5.0}" ;;
       *) exec /usr/bin/uname "$@" ;;
     esac ;;

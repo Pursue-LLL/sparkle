@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { assertExit, EXIT } from './testing/installAssertions'
-import { InstallSandbox, type RunningInstall, serviceWorld } from './testing/installSandbox'
+import { InstallSandbox, type RunningInstall } from './testing/installSandbox'
+import { serviceWorld } from './testing/installWorld'
 
 /** 写入静默标记并把它的 mtime 拨到 `ageMinutes` 分钟之前。 */
 function placeMarker(sandbox: InstallSandbox, ageMinutes: number): void {
@@ -323,6 +324,26 @@ describe('background workers around the install transaction (sandboxed)', () => 
           assert.notEqual(result.code, EXIT.ok)
           assert.match(result.output, /Bootstrap failed/)
           assert.doesNotMatch(result.output, /Installed/)
+        })
+
+        it('refuses to run outside macOS and leaves launchd and the disk alone', async () => {
+          const sb = create()
+          const result = await sb.run({ SIM_UNAME_S: 'Linux' }, script)
+          assertExit(result, EXIT.failed)
+          assert.match(result.output, new RegExp(`\\[${tag}\\] FAIL: macOS only`))
+          assert.deepEqual(sb.callsOf('launchctl'), [])
+          assert.equal(existsSync(plistOf(sb)), false)
+          assert.equal(existsSync(deployed(sb)), false)
+        })
+
+        it('fails before writing anything when the worker source is missing', async () => {
+          const sb = create()
+          rmSync(join(sb.repo, 'scripts', worker))
+          const result = await sb.run({}, script)
+          assertExit(result, EXIT.failed)
+          assert.match(result.output, new RegExp(`\\[${tag}\\] FAIL: missing .*${worker}`))
+          assert.deepEqual(sb.callsOf('launchctl'), [])
+          assert.equal(existsSync(plistOf(sb)), false)
         })
       })
     }

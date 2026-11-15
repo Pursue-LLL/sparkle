@@ -20,6 +20,11 @@ launchd_agent_loaded_from() {
   [[ "$loaded" == *"path = ${plist_path}"* ]]
 }
 
+# 手动卸载某个 job 的命令，写进失败提示里让人照着执行。
+launchd_agent_unload_hint() {
+  echo "launchctl bootout gui/$(id -u)/$1"
+}
+
 # job 已加载、但来自别的 plist 时输出那份路径；未加载或来源一致时无输出。
 # 来源不一致说明 launchd 仍在调度另一份旧 worker，刚部署的新 worker 永远不会被执行；
 # 未加载则谁也不会调度，对安装是安全的，所以只有「加载自别处」才需要拦住。

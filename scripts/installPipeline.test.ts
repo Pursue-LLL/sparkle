@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import {
@@ -13,14 +21,14 @@ import {
   assertExit,
   quitCalls
 } from './testing/installAssertions'
+import { InstallSandbox } from './testing/installSandbox'
 import {
   type BundleSpec,
-  InstallSandbox,
   NEW_BUNDLE,
   OLD_BUNDLE,
   serviceWorld,
   type WorldSpec
-} from './testing/installSandbox'
+} from './testing/installWorld'
 
 const HOMEBREW_BASH = '/opt/homebrew/bin/bash'
 
@@ -130,6 +138,46 @@ describe('install-sparkle-local.sh transaction (sandboxed)', () => {
       assert.match(sb.installLog(), /\d\d:\d\d:\d\d \[install-sparkle\] phase: committed/)
     })
 
+    it('does not fail a committed install because the CDHash note cannot be written', async () => {
+      // 收尾只是记账：此刻新包已验证、旧包已删，不能因为记不了账就让安装以失败退出。
+      const sb = create(serviceWorld())
+      mkdirSync(join(sb.stateDir, 'last-sparkle-cdhash'))
+      const result = await sb.run()
+      assertExit(result, EXIT.ok)
+      assert.match(result.output, /WARN: could not record the installed CDHash/)
+      assert.match(result.output, /RESULT: Sparkle 1\.1\.0-new installed/)
+      assertRunning(sb, NEW_BUNDLE.version)
+      assertTransactionClosed(sb)
+    })
+
+    it('parks a duplicate per-user install so the service and the GUI cannot split', async () => {
+      const sb = create(serviceWorld())
+      const applications = join(sb.home, 'Applications')
+      mkdirSync(join(applications, 'Sparkle.app', 'Contents'), { recursive: true })
+      writeFileSync(join(applications, 'Sparkle.app', 'Contents', 'note'), 'stale user copy')
+      const result = await sb.run()
+      assertExit(result, EXIT.ok)
+      assert.match(result.output, /Moved duplicate user install/)
+      assert.equal(existsSync(join(applications, 'Sparkle.app')), false)
+      const parked = readdirSync(applications).filter((name) => name.startsWith('Sparkle.app.bak.'))
+      assert.equal(parked.length, 1, 'the copy is kept, not deleted')
+      assert.equal(
+        readFileSync(join(applications, parked[0], 'Contents', 'note'), 'utf8'),
+        'stale user copy'
+      )
+    })
+
+    it('only warns when the duplicate per-user install cannot be parked', async () => {
+      const sb = create(serviceWorld())
+      const userCopy = join(sb.home, 'Applications', 'Sparkle.app')
+      mkdirSync(userCopy, { recursive: true })
+      const result = await sb.run({ SIM_FAIL_MV: 'mv_user_copy' })
+      assertExit(result, EXIT.ok)
+      assert.match(result.output, /WARN: could not move duplicate user install/)
+      assert.equal(existsSync(userCopy), true)
+      assertRunning(sb, NEW_BUNDLE.version)
+    })
+
     it('keeps the previous run log when it starts a new one', async () => {
       const sb = create(serviceWorld())
       await sb.run()
@@ -200,6 +248,13 @@ describe('install-sparkle-local.sh transaction (sandboxed)', () => {
       assertExit(result, EXIT.ok)
       assert.equal(elevationCalls(sb).length, 1)
       assertOrder(sb.calls(), /administrator privileges/, /to quit/, 'elevation before quit')
+      // 先验证原样拷贝，再改属主与权限位：被验证的必须是未被改动过的那份字节。
+      assertOrder(
+        sb.calls(),
+        /^codesign --verify .*\.Sparkle\.staging/,
+        /administrator privileges/,
+        'staged copy verified before its permissions are changed'
+      )
       assert.equal(sb.coreSetuidBit(), true)
       assertRunning(sb, NEW_BUNDLE.version)
     })
