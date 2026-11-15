@@ -280,6 +280,7 @@ case "$NAME" in
   dscl) echo "NFSHomeDirectory: ${SIM_LOGIN_HOME:?}" ;;
 
   spctl)
+    record "$@"
     echo "$(last_arg "$@"): rejected" >&2
     exit 3 ;;
 

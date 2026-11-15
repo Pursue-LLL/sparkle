@@ -167,6 +167,17 @@ record_installed_cdhash() {
   mkdir -p "$SPARKLE_STATE_DIR" && echo "$SRC_CDHASH" > "$CDHASH_FILE"
 }
 
+# ad-hoc 构建的放行记在 CDHash 上：只有装进来的 CDHash 与之前不同（含首次安装）才需要告诉用户
+# 手动放行的办法。评估本身在真机上要 7~20 秒，同一份字节重装时不必再付这个代价。
+advise_gatekeeper() {
+  if [[ "$OLD_CDHASH" == "$SRC_CDHASH" ]]; then
+    return 0
+  fi
+  if [[ "$(spctl -a -t execute -vv "$DEST" 2>&1 | awk 'NR==1 { print $NF }')" == "rejected" ]]; then
+    log "spctl: rejected (normal for unsigned adhoc dev builds). If macOS blocks a manual launch: Finder → /Applications → Control+click Sparkle.app → Open → Open again."
+  fi
+}
+
 # 提交之后旧包已删，下面都是收尾，失败只告警，不会也不应回滚已验证的新包、更不能让一次已验证的
 # 安装以非零码退出。可能失败的步骤各自显式容错：把整个函数挂在 `|| log` 后面靠 errexit 被抑制来
 # 「容错」既看不出意图，失败时也不会有任何告警。
@@ -191,9 +202,7 @@ post_commit() {
   if [[ "$SERVICE_BINARY_CHANGED" == "1" ]]; then
     log "NOTE: the bundled sparkle-service changed but the running root service is still the previous build; it picks up the new one when it restarts"
   fi
-  if [[ "$(spctl -a -t execute -vv "$DEST" 2>&1 | awk 'NR==1 { print $NF }')" == "rejected" ]]; then
-    log "spctl: rejected (normal for unsigned adhoc dev builds). If macOS blocks a manual launch: Finder → /Applications → Control+click Sparkle.app → Open → Open again."
-  fi
+  advise_gatekeeper
   log "RESULT: Sparkle ${version} installed at ${DEST} (CDHash ${SRC_CDHASH}), health gate PASS"
 }
 

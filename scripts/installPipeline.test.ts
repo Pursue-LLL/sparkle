@@ -229,6 +229,21 @@ describe('install-sparkle-local.sh transaction (sandboxed)', () => {
       assertTransactionClosed(sb)
     })
 
+    it('points at the manual Gatekeeper approval once when the installed build changed', async () => {
+      const sb = create(serviceWorld())
+      const result = await sb.run()
+      assertExit(result, EXIT.ok)
+      assert.equal(sb.callsOf('spctl').length, 1)
+      assert.match(result.output, /spctl: rejected .*Control\+click Sparkle\.app/)
+    })
+
+    it('points at the manual Gatekeeper approval on a first install too', async () => {
+      const sb = create(serviceWorld({ old: null }))
+      const result = await sb.run()
+      assertExit(result, EXIT.ok)
+      assert.equal(sb.callsOf('spctl').length, 1)
+    })
+
     it('accepts a headless macOS 26 build whose GUI exits after bootstrapping the core', async () => {
       const next = { ...NEW_BUNDLE, behavior: { headless: '1' } }
       const sb = create(serviceWorld({ forceGui: false, next }))

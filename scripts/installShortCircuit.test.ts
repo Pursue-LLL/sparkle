@@ -83,6 +83,15 @@ describe('install-sparkle-local.sh short-circuit (sandboxed)', () => {
       })
     }
 
+    it('skips the slow Gatekeeper assessment when a forced reinstall puts the same bytes back', async () => {
+      const sb = create(identical())
+      const result = await sb.run({ SPARKLE_FORCE_REINSTALL: '1' })
+      assertExit(result, EXIT.ok)
+      assert.equal(sb.callsOf('ditto').length, 1, 'a real install still happens')
+      assert.deepEqual(sb.callsOf('spctl'), [])
+      assert.doesNotMatch(result.output, /spctl: rejected/)
+    })
+
     it('treats a missing setuid on an elevated TUN install as a defect to fix, not as healthy', async () => {
       const sb = create(
         identical({
