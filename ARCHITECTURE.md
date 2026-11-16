@@ -1,6 +1,6 @@
 # Sparkle — 系统架构
 
-Electron 桌面代理 GUI，主进程驱动 mihomo 内核；`自动选择` 按地区优先级与延迟选节点（延迟快照仅在 provider 指纹一致且成功覆盖 ≥80% 时复用，否则启动补测）；`🎯 Cursor 专用` 与 Cursor 路由规则固定 Cursor 流量；`📧 邮件专用` 经 Sparkle 侧 993/465 真实探测筛节点（全量入库 + 当前节点按需复测）后承载 macOS Mail 等海外 IMAP/SMTP；`grok 专用` 以 mixed-port 真实 HEAD 请求（200 且无 Cloudflare challenge）筛选可用出口并每 60 秒复核；`gemini专用` 只收录经 vXmutd 地区探测确认解锁的节点（fallback + 地区合格 provider，与 `自动选择` 共用同一份地区审计）；`🎯 agy 专用` 只收录通过官方 agy CLI 真实请求的节点；运行时配置与内核对账重载，`Sparkle-<地区>` 组由故障转移引擎兜底；AI API 端点（`api.commandcode.ai` / `opencode.ai` / `open-design.ai`）在无人指定规则时**默认直连**。
+Electron 桌面代理 GUI，主进程驱动 mihomo 内核；`自动选择` 按地区优先级与延迟选节点（延迟快照仅在 provider 指纹一致且成功覆盖 ≥80% 时复用，否则启动补测）；`🎯 Cursor 专用` 与 Cursor 路由规则固定 Cursor 流量；`📧 邮件专用` 经 Sparkle 侧 993/465 真实探测筛节点（全量入库 + 当前节点按需复测）后承载 macOS Mail 等海外 IMAP/SMTP；`grok 专用` 以 mixed-port 真实 HEAD 请求（200 且无 Cloudflare challenge）筛选可用出口并每 60 秒复核；`gemini专用` 只收录经 vXmutd 地区探测确认解锁的节点（fallback + 地区合格 provider，与 `自动选择` 共用同一份地区审计）；`🎯 agy 专用` 只收录通过官方 agy CLI 真实请求的节点；运行时配置与内核对账重载，`Sparkle-<地区>` 组由故障转移引擎兜底；AI API 端点不内置直连预设，是否直连只由用户的全局覆写决定。
 
 ## 模块导航
 
@@ -32,7 +32,7 @@ mihomo (TUN) → 节点 leaf → 目标站点
 4. **Ship 定义** — git HEAD = 已安装 semver，且装后 PostCoreBootstrap 日志出现 `mihomo API ready`。
 5. **邮件端口与 mihomo 探测分离** — 海外邮件客户端域名走 `📧 邮件专用`；成员须通过 Sparkle 主进程 `imap.gmail.com:993` + `smtp.gmail.com:465` TLS 校验入库，**不得**用 mihomo 健康检查（`url-test` / `fallback`）直接探测 IMAPS URL（HTTP 客户端误判）或仅用 `mail.google.com:443` 代替（筛不掉封 993/465 的节点）。`📧 邮件专用` 为 `fallback`：按 provider 的地区优先级（台湾 → 日本 → 韩国 → 新加坡 → 美国 → 其余）取首个存活节点，与 `自动选择` 一致；当前节点只在邮件组最近被使用时复测 993/465，失败后 provider 成员集合变化时热重载并触发切换，完全未使用邮件时不做端口探测。
 6. **浏览器 UDP 不得绕过代理出口** — `factory.ts` 在规则链最前端注入 `quicTrafficRuleInjection`：UDP 443 与 `stun.cloudflare.com` 一律 `REJECT`。节点缺 `udp: true` 时 mihomo 会把 UDP 回落 `DIRECT`，与 TCP 的代理出口形成双 IP 分裂，被 Cloudflare 判定异常；阻断后浏览器按 RFC 9114 回退 HTTP/2 over TCP，出口单一。
-7. **内置规则只补缺省，覆写与订阅优先** — `aiApiDirectRules` 这类默认直连规则只在目标域名**没有任何规则命中**时前置（命中按 mihomo 语义判断 `DOMAIN` / `DOMAIN-SUFFIX` / `DOMAIN-KEYWORD`）；覆写（全局/单订阅）在 `generateProfile` 首步生效，用户或订阅一旦对这些域名表过态，内置默认必须让路。`work/config.yaml` 是生成物，禁止手改。
+7. **内置规则只补缺省，覆写与订阅优先；AI API 直连不内置** — 内置规则只在缺失时补（`cnDirectBaseline` 在订阅无国内感知规则时才补、`ensureMatchFallbackRule` 在无 `MATCH` 时才补、`injectQuicTrafficRules` 对同文规则不重复）；覆写（全局/单订阅）在 `generateProfile` 首步生效，用户或订阅一旦表过态，内置默认必须让路。AI API 端点（`api.commandcode.ai` / `opencode.ai` / `open-design.ai`）不预设直连：是否直连只由用户的全局覆写 `sparkle-ai-direct` 决定，关闭覆写即回到订阅规则，没有第二个来源把直连补回。`work/config.yaml` 是生成物，禁止手改。
 8. **分组展示顺序固定** — `proxyGroupOrder` 在写盘前统一排序：`自动选择` → 五个专用组（`🎯 Cursor 专用` / `grok 专用` / `gemini专用` / `📧 邮件专用` / `🎯 agy 专用`，隐藏探测组 `__sparkle_mail_probe__` 紧随邮件组）→ `Sparkle-<地区>` → 其余；同档位保持订阅原顺序，代理页按该顺序渲染。
 9. **延迟快照必须可验证** — `sparkle-fast-delays.json` 只保存带 `providerFingerprint` 的 v2 快照；加载时指纹必须匹配当前 provider 配置，且成功样本覆盖率必须 ≥80%。旧格式、配置变化、覆盖不足一律视为无快照并强制逐点补测，禁止用残缺/过期样本跳过探测。
 10. **合并订阅不得丢失来源 DNS** — 来源订阅自带 `dns.proxy-server-nameserver`（如 YYSSR 的 carrier DoH）时，合并结果必须按来源节点 `server` 域名写入 `proxy-server-nameserver-policy`；只对来源自身域名生效，base 的 DNS 不得覆盖来源节点入口解析。
@@ -46,7 +46,7 @@ mihomo (TUN) → 节点 leaf → 目标站点
 13. **Grok 选路必须用真实请求口径** — `grok 专用` 为 `select`，成员来自 `sparkle-grok` provider；节点可用性只能由「通过 mixed-port 真实请求 `https://grok.com/` 得到 200 且无 `cf-mitigated: challenge`」判定（发现阶段同样逐个切换并真实请求验证）。稳态 60 秒只复核当前节点（网络超时重试一次），失败才按池内 RTT 顺序切换；池内全灭才扩到全量发现（3 个可用即停）。候选顺序非香港优先；provider 不做周期健康检查。
 
 14. **旁路不得改变主流程** — 日志只用于诊断：`appendAppLog` 落盘失败只丢这一段、永不 reject，编排层经 `bestEffortLog` 包装注入的日志函数；`postCoreBootstrap` 的每个服务经 `guarded` 隔离，任一服务失败只记日志，不影响其余（尤其故障转移）。
-15. **规则策略只经 `ruleSyntax` 读写** — 规则的字段布局、策略读取与改写在 `ruleSyntax` 一处定义（改写只换策略字段，`no-resolve`、`src` 等参数原样保留）；`antigravityRuleInjection` / `profileGroupNormalize` / `fakeIpRoutingIntegrity` / `cursorRuleInjection` / `cursorDedicatedRuleRewrite` / `customProxyGroups` 读写策略目标一律经它，不各自 `split(',')`。`vpsDirectBypass` / `aiApiDirectRules` 只按「类型 + 载荷」两个前导字段判断是否已有规则，不读不改策略。兜底 `MATCH` 的目标只能是内置出口、订阅组或顶层内联节点。
+15. **规则策略只经 `ruleSyntax` 读写** — 规则的字段布局、策略读取与改写在 `ruleSyntax` 一处定义（改写只换策略字段，`no-resolve`、`src` 等参数原样保留）；`antigravityRuleInjection` / `profileGroupNormalize` / `fakeIpRoutingIntegrity` / `cursorRuleInjection` / `cursorDedicatedRuleRewrite` / `customProxyGroups` 读写策略目标一律经它，不各自 `split(',')`。`vpsDirectBypass` 只按「类型 + 载荷」两个前导字段判断是否已有规则，不读不改策略。兜底 `MATCH` 的目标只能是内置出口、订阅组或顶层内联节点。
 16. **YAML 读写保 Reality `short-id` 原文** — 纯数字写法（`01234567`、`1e5`）经 `parseYaml` 仍是原字符串，不丢前导零、不变成 Infinity；服务端要求逐字相同。
 17. **测试门禁收集全部测试** — `pnpm run test:node-quality` 以 glob 收集 `src/**` 与 `scripts/**` 的全部 `*.test.ts`，新增测试文件无需登记；随机化不变量测试用固定 seed，失败可原样重放。
 18. **升级一次到位，禁止反复重启试错** — 任何改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交），再只执行一次 `pnpm run agent:upgrade:mac` 完成构建/安装/重启，一次命令对应一次启停；升级被中断后先查 dist 新鲜度、`/Applications` 落盘与 App 日志再决定续跑，验收失败先离线分析根因，不得以重复安装代替排查（事故记录：`scripts/scripts_20261107_20261113_BUGFIX_LOG.md` BUG-2026-11-13-003）。

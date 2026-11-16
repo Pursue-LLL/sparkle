@@ -1,5 +1,4 @@
-// [INPUT] aiApiDirectRules::ensureAiApiDirectRules (POS: AI API 默认直连规则) ·
-//         antigravityRuleInjection::injectAntigravityTrafficRules (POS: agy 专用组前置规则) ·
+// [INPUT] antigravityRuleInjection::injectAntigravityTrafficRules (POS: agy 专用组前置规则) ·
 //         buildDriftCore::logBuildDriftAtStartup (POS: 构建漂移日志) ·
 //         cnDirectBaseline::ensureCnDirectBaseline (POS: 国内直连兜底规则) ·
 //         config::getControledMihomoConfig/getProfileConfig/getProfile/getProfileStr… (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
@@ -29,7 +28,7 @@
 //         vlessVisionMuxGuardCore::applyVlessVisionMuxGuard/summarizeVlessVisionMuxGuard (POS: VLESS Vision 与 mux 互斥防护) ·
 //         vpsDirectBypass::ensureVpsDirectBypass (POS: VPS 直连规则)
 // [OUTPUT] generateProfile: 生成 work/config.yaml · loadRuntimeConfigFromDisk · hydrateRuntimeConfigFromDiskIfEmpty · getRuntimeConfig(Str) · getRawProfileStr · getCurrentProfileStr · getOverrideProfileStr
-// [POS] runtime 配置生成流水线的编排与落盘：覆写 → 节点 provider 与基础配置 → Vision 防护 → Sparkle 分组与专用流量规则 → 规则目标修复 → 自动选路组 → 分组排序与成员清理 → provider 文件 → VPS 直连旁路、Cursor / 公司 / AI 直连规则、DNS 与 fake-ip 完整性 → agy 规则 → 国内直连基线 → 兜底 `MATCH` → QUIC 阻断 → 序列化写盘；每一步职责在各自模块。
+// [POS] runtime 配置生成流水线的编排与落盘：覆写 → 节点 provider 与基础配置 → Vision 防护 → Sparkle 分组与专用流量规则 → 规则目标修复 → 自动选路组 → 分组排序与成员清理 → provider 文件 → VPS 直连旁路、Cursor / 公司直连规则、DNS 与 fake-ip 完整性 → agy 规则 → 国内直连基线 → 兜底 `MATCH` → QUIC 阻断 → 序列化写盘；每一步职责在各自模块。
 
 import {
   getControledMihomoConfig,
@@ -69,7 +68,6 @@ import { resolveEffectiveRegionPriority } from './regionPriority'
 import { ensureVpsDirectBypass } from './vpsDirectBypass'
 import { injectCursorDomainRules } from './cursorRuleInjection'
 import { ensureCorporateDirectRules, ensureCorporateDnsPolicy } from './corporateDirectRules'
-import { ensureAiApiDirectRules } from './aiApiDirectRules'
 import { ensureFakeIpRoutingIntegrity } from './fakeIpRoutingIntegrity'
 import { ensureDnsFallbackIntegrity, ensureTunStrictRoute } from './dnsFallbackIntegrity'
 import { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } from './vlessVisionMuxGuardCore'
@@ -280,7 +278,6 @@ async function generateProfileImpl(): Promise<void> {
   }
   await logGenerateProfileStep('cursor_rules', stepStartedAtMs)
   ensureCorporateDirectRules(profile)
-  ensureAiApiDirectRules(profile)
   await ensureCorporateDnsPolicy(profile)
   await logGenerateProfileStep('corporate_dns', stepStartedAtMs)
   ensureFakeIpRoutingIntegrity(profile)

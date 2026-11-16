@@ -118,7 +118,6 @@ describe('factory: runtime config pipeline', () => {
       ])
       for (const expected of [
         'DOMAIN-KEYWORD,cloudcode-pa,🎯 agy 专用',
-        'DOMAIN-SUFFIX,opencode.ai,DIRECT',
         'DOMAIN-SUFFIX,koolearn.com,DIRECT',
         'DOMAIN-SUFFIX,grok.com,grok 专用',
         'DOMAIN-SUFFIX,gemini.google.com,gemini专用',
@@ -128,6 +127,14 @@ describe('factory: runtime config pipeline', () => {
         `DOMAIN-SUFFIX,example.com,${GROUP}`
       ]) {
         assert.ok(rules.includes(expected), expected)
+      }
+    })
+
+    it('leaves AI API endpoints to the user’s override instead of a built-in direct rule', async () => {
+      const rules = rulesOf(await rig.generate())
+
+      for (const host of ['opencode.ai', 'api.commandcode.ai', 'open-design.ai']) {
+        assert.ok(!rules.some((rule) => rule.includes(host)), host)
       }
     })
 
