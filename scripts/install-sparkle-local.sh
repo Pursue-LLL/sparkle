@@ -175,7 +175,7 @@ record_installed_cdhash() {
 }
 
 # ad-hoc 构建的放行记在 CDHash 上：只有装进来的 CDHash 与之前不同（含首次安装）才需要告诉用户
-# 手动放行的办法。评估本身在真机上要 7~20 秒，同一份字节重装时不必再付这个代价。
+# 手动放行的办法。评估本身在真机上要几秒到二十秒（随系统负载而变），同一份字节重装时不必再付这个代价。
 advise_gatekeeper() {
   if [[ "$OLD_CDHASH" == "$SRC_CDHASH" ]]; then
     return 0
