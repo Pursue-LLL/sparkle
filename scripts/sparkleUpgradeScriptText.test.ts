@@ -274,4 +274,12 @@ describe('install transaction structure', () => {
       assert.match(text, /trap /, `${name} must release the lock on exit`)
     }
   })
+
+  it('removes the pnpm shim directory it creates on every way out of the script', () => {
+    const script = readScript('upgrade-sparkle-local.sh')
+    assert.match(code(script), /PNPM_SHIM_DIR="\$\(mktemp -d /)
+    assert.match(functionBody(script, 'cleanup_on_exit'), /rm -rf "\$PNPM_SHIM_DIR"/)
+    assert.match(script, /trap 'cleanup_on_exit' EXIT/)
+    assert.match(functionBody(script, 'handle_upgrade_signal'), /cleanup_on_exit/)
+  })
 })

@@ -77,12 +77,22 @@ release_upgrade_lock() {
 }
 acquire_upgrade_lock
 UPGRADE_LOCK_HELD=1
-# INT/TERM 必须「释放后退出」，否则进程会带着已释放的锁继续跑，形成并发写窗口。
-handle_upgrade_signal() {
+
+# pnpm 垫片目录由本脚本创建，也由本脚本在退出时删除（成功、失败、被信号打断都一样），临时目录里不留东西。
+PNPM_SHIM_DIR=""
+cleanup_on_exit() {
   release_upgrade_lock
+  if [[ -n "$PNPM_SHIM_DIR" ]]; then
+    rm -rf "$PNPM_SHIM_DIR" 2>/dev/null || true
+    PNPM_SHIM_DIR=""
+  fi
+}
+# INT/TERM 必须「清理后退出」，否则进程会带着已释放的锁继续跑，形成并发写窗口。
+handle_upgrade_signal() {
+  cleanup_on_exit
   exit 130
 }
-trap 'release_upgrade_lock' EXIT
+trap 'cleanup_on_exit' EXIT
 trap 'handle_upgrade_signal' INT TERM
 
 # electron-builder 26 node module collector runs `pnpm list --depth Infinity`.
@@ -115,17 +125,16 @@ resolve_corepack_bin() {
 }
 
 ensure_electron_builder_pnpm() {
-  local pm_ver corepack_bin wrap_dir resolved_ver
+  local pm_ver corepack_bin resolved_ver
   pm_ver="$(node -p "(require('./package.json').packageManager||'pnpm@11.1.1').split('@')[1]")"
   corepack_bin="$(resolve_corepack_bin || true)"
   [[ -n "$corepack_bin" ]] || fail "corepack not found — required for pnpm@${pm_ver} (electron-builder node module collector)"
   "$corepack_bin" enable >/dev/null 2>&1 || true
   "$corepack_bin" prepare "pnpm@${pm_ver}" --activate
-  wrap_dir="${SPARKLE_PNPM_SHIM_DIR:-$(mktemp -d)}"
-  export SPARKLE_PNPM_SHIM_DIR="$wrap_dir"
-  printf '#!/usr/bin/env bash\nexec "%s" pnpm "$@"\n' "$corepack_bin" > "${wrap_dir}/pnpm"
-  chmod +x "${wrap_dir}/pnpm"
-  export PATH="${wrap_dir}:${PATH}"
+  PNPM_SHIM_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sparkle-pnpm-shim.XXXXXX")"
+  printf '#!/usr/bin/env bash\nexec "%s" pnpm "$@"\n' "$corepack_bin" > "${PNPM_SHIM_DIR}/pnpm"
+  chmod +x "${PNPM_SHIM_DIR}/pnpm"
+  export PATH="${PNPM_SHIM_DIR}:${PATH}"
   resolved_ver="$(pnpm --version 2>/dev/null || echo unknown)"
   [[ "$resolved_ver" == "$pm_ver" ]] || fail "pnpm shim version=$resolved_ver expected=$pm_ver (PATH/corepack mismatch)"
   log "electron-builder pnpm shim active: $resolved_ver"
