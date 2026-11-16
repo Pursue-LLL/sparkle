@@ -238,18 +238,26 @@ describe('install transaction structure', () => {
     assert.match(installer, /trap 'exit 129' HUP/)
   })
 
-  it('can only delete the three transaction directories, never the installed app', () => {
+  it('only deletes the three transaction directories and older parked duplicates, never the installed app', () => {
     const deleting = [...LIBRARIES, 'install-sparkle-local.sh'].flatMap((name) =>
       code(readScript(name))
         .split('\n')
         .filter((line) => /\brm\s+(-[a-zA-Z]*[rR][a-zA-Z]*)\b/.test(line))
         .map((line) => ({ name, line: line.trim() }))
     )
-    assert.deepEqual(deleting, [{ name: 'lib/install-transaction.sh', line: 'rm -rf "$target"' }])
+    assert.deepEqual(deleting, [
+      { name: 'lib/install-transaction.sh', line: 'rm -rf "$target"' },
+      { name: 'install-sparkle-local.sh', line: 'elif rm -rf "$parked"; then' }
+    ])
     assert.match(
       functionBody(readScript('lib/install-transaction.sh'), 'txn_remove_scratch'),
       /rm -rf "\$target"/
     )
+    // 第二处删除的候选只从 ${USER_COPY}.bak.* 里遍历，够不着 $DEST（/Applications/Sparkle.app）。
+    const prune = functionBody(installer, 'prune_older_parked_duplicates')
+    assert.match(prune, /prefix="\$\{USER_COPY\}\.bak\."/)
+    assert.match(prune, /for parked in "\$\{prefix\}"\*; do/)
+    assert.match(prune, /rm -rf "\$parked"/)
   })
 
   it('owns the background workers: refreshes both before touching the app and refuses stale ones', () => {

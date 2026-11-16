@@ -1,8 +1,9 @@
 #!/bin/bash
-# [INPUT] SIM_DIR（模拟状态目录）· 新包的 Contents/Resources/sim-behavior · SIM_FAIL_* / SIM_KILL_AT / SIM_HOLD_AT 等
-#         故障与崩溃注入开关 · 由 scripts/testing/installSandbox.ts 建立的符号链接名（决定模拟哪条命令）
-# [OUTPUT] 对 codesign / ditto / mv / rm / df / osascript / pgrep / pkill / ps / nc / curl / launchctl / defaults /
-#          sw_vers / uname / dscl / spctl / sleep / tsx 的模拟，调用记录写入 $SIM_DIR/calls.log
+# [INPUT] SIM_DIR（模拟状态目录）· 新包的 Contents/Resources/sim-behavior · SIM_FAIL_* / SIM_KILL_AT / SIM_HOLD_AT /
+#         SIM_LSREGISTER（registered | unregistered | broken）等故障与崩溃注入开关 ·
+#         由 scripts/testing/installSandbox.ts 建立的符号链接名（决定模拟哪条命令）
+# [OUTPUT] 对 codesign / ditto / mv / rm / df / osascript / pgrep / pkill / ps / nc / curl / launchctl / lsregister /
+#          defaults / sw_vers / uname / dscl / spctl / sleep / tsx 的模拟，调用记录写入 $SIM_DIR/calls.log
 # [POS] 安装流水线沙箱的命令桩：单文件分发器，按被调用的名字（符号链接名）模拟系统命令。
 #
 # 真实的 mv / rm / ditto / find / stat / sed 等文件系统命令照常执行（事务靠 rename 的真实语义），
@@ -266,6 +267,16 @@ case "$NAME" in
         # SIM_FAIL_BOOTOUT=1：bootout 没能卸掉 job（返回非零，job 仍在），安装脚本用 `|| true` 吞掉了这个失败。
         [[ "${SIM_FAIL_BOOTOUT:-0}" != "1" ]] || exit 5
         rm -f "$SIM/launchd.$label" ;;
+    esac
+    exit 0 ;;
+
+  lsregister)
+    record "$@"
+    # 与真实 lsregister -u 一致：已登记的路径注销成功；本来就没登记的返回 1 并报 -10814
+    # （SIM_LSREGISTER=unregistered）；工具本身出错则报别的错误（SIM_LSREGISTER=broken）。
+    case "${SIM_LSREGISTER:-registered}" in
+      unregistered) echo "failed to scan ${2:-}: -10814  from spotlight" >&2; exit 1 ;;
+      broken) echo "lsregister: LaunchServices is unreachable (simulated)" >&2; exit 1 ;;
     esac
     exit 0 ;;
 

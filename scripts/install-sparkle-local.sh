@@ -2,12 +2,14 @@
 # [INPUT] dist/mac-arm64/Sparkle.app（SPARKLE_INSTALL_SRC 可覆盖；须已由 afterSign 深度签名）·
 #         lib/install-transaction.sh (POS: 升级事务库：暂存校验 → 静默 → rename 换装 → 门禁通过才提交，否则回滚) ·
 #         lib/launchd-agent.sh (POS: LaunchAgent 幂等安装库) · lib/login-home.sh (POS: 把 HOME 钉到登录用户的
-#         真实家目录) · SPARKLE_FORCE_REINSTALL · SPARKLE_INSTALL_SHORT_CIRCUIT_MARKER · SPARKLE_NONINTERACTIVE
+#         真实家目录) · SPARKLE_FORCE_REINSTALL · SPARKLE_INSTALL_SHORT_CIRCUIT_MARKER · SPARKLE_NONINTERACTIVE ·
+#         SPARKLE_LSREGISTER（LaunchServices 注销工具的路径，测试用桩替换）
 # [OUTPUT] 把新包装到 SPARKLE_INSTALL_DEST（默认 /Applications/Sparkle.app）· 退出码 0 成功（含幂等短路）/
 #          1 失败（系统未变或已恢复）/ 3 新包被门禁拒绝并已回滚 / 4 自动回滚失败需人工 ·
-#          每一步写入 ${SPARKLE_STATE_DIR}/install-last.log · 提交后记录 last-sparkle-cdhash
+#          每一步写入 ${SPARKLE_STATE_DIR}/install-last.log · 提交后记录 last-sparkle-cdhash，并把重复的
+#          ~/Applications/Sparkle.app 改名为 .bak.<UTC 时间>、注销并回收更早的同类备份
 # [POS] 本地安装的唯一入口：整个安装是一个可回滚的事务，任何一步失败（含 Ctrl-C、被 kill）都把旧包原样放回；
-#       同时清走会造成 service/GUI 脑裂的 ~/Applications/Sparkle.app 重复安装。
+#       同时清走会造成 service/GUI 脑裂的 ~/Applications/Sparkle.app 重复安装（改名留存，只留最近一份）。
 #
 # AI Agent: see BUGFIX_LOG.md §「AI Agent 操作约束」. Launch via Finder POSIX open (not open -a).
 #
@@ -35,6 +37,7 @@ source "$ROOT/scripts/lib/launchd-agent.sh"
 SRC="${SPARKLE_INSTALL_SRC:-$ROOT/dist/mac-arm64/Sparkle.app}"
 DEST="$SPARKLE_INSTALL_DEST"
 USER_COPY="${HOME}/Applications/Sparkle.app"
+: "${SPARKLE_LSREGISTER:=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
 CDHASH_FILE="$SPARKLE_STATE_DIR/last-sparkle-cdhash"
 SRC_CDHASH=""
 OLD_CDHASH=""
@@ -185,6 +188,40 @@ advise_gatekeeper() {
   fi
 }
 
+# 注销 root 下所有 .app 子包（Electron 的 Helper）在 LaunchServices 里的登记。
+# lsregister -u 对「本来就没登记」的路径返回 1 并报 -10814，那是正常情况，不算失败；
+# 其余错误（工具不存在、LaunchServices 不可达）才算失败，调用方据此保留备份。
+unregister_nested_apps() {
+  local root="$1" apps app out
+  apps="$(find "$root" -type d -name '*.app')" || return 1
+  while IFS= read -r app; do
+    [[ -n "$app" ]] || continue
+    if ! out="$("$SPARKLE_LSREGISTER" -u "$app" 2>&1)" && [[ "$out" != *"-10814"* ]]; then
+      return 1
+    fi
+  done <<< "$apps"
+}
+
+# 重复安装的备份只留最近一份：新备份落地后，本脚本更早留下的备份（`.bak.` 后面精确是 UTC 时间戳）
+# 注销登记后删除；手工命名的备份不是本脚本建的，不动。
+# 必须先注销再删：只删不注销，登记会指向已不存在的路径，Dock 随后出现幽灵图标。
+# 注销失败就保留这一份，留给下一次安装重试。
+prune_older_parked_duplicates() {
+  local keep="$1" prefix="${USER_COPY}.bak." parked stamp stamp_re='^[0-9]{8}T[0-9]{6}Z$'
+  for parked in "${prefix}"*; do
+    [[ "$parked" != "$keep" && -d "$parked" && ! -L "$parked" ]] || continue
+    stamp=${parked#"$prefix"}
+    [[ "$stamp" =~ $stamp_re ]] || continue
+    if ! unregister_nested_apps "$parked"; then
+      log "WARN: could not unregister $parked from LaunchServices — keeping it, the next install retries"
+    elif rm -rf "$parked"; then
+      log "Removed older parked duplicate: $parked"
+    else
+      log "WARN: could not remove older parked duplicate $parked"
+    fi
+  done
+}
+
 # 提交之后旧包已删，下面都是收尾，失败只告警，不会也不应回滚已验证的新包、更不能让一次已验证的
 # 安装以非零码退出。可能失败的步骤各自显式容错：把整个函数挂在 `|| log` 后面靠 errexit 被抑制来
 # 「容错」既看不出意图，失败时也不会有任何告警。
@@ -202,6 +239,7 @@ post_commit() {
     backup="${USER_COPY}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
     if mv "$USER_COPY" "$backup"; then
       log "Moved duplicate user install: $USER_COPY -> $backup"
+      prune_older_parked_duplicates "$backup"
     else
       log "WARN: could not move duplicate user install $USER_COPY (it can cause service/GUI split-brain)"
     fi
