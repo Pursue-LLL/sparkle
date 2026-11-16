@@ -9,7 +9,6 @@ import {
   planInterruptedUpgradeRecovery,
   type RecoveryStep,
   resolveInstallShortCircuit,
-  resolvePostInstallRecoveryRounds,
   UPGRADE_MARKER_TTL_MINUTES,
   type UpgradePhase
 } from './sparkleInstallSafetyCore'
@@ -65,28 +64,6 @@ describe('resolveInstallShortCircuit', () => {
     const decision = resolveInstallShortCircuit({ ...healthy, corePermissionSatisfied: false })
     assert.equal(decision.skip, false)
     assert.equal(decision.reason, 'core_setuid_missing')
-  })
-})
-
-describe('resolvePostInstallRecoveryRounds', () => {
-  it('defaults to zero so a failed install stops instead of rebooting the app', () => {
-    assert.equal(resolvePostInstallRecoveryRounds(undefined), 0)
-    assert.equal(resolvePostInstallRecoveryRounds(''), 0)
-    assert.equal(resolvePostInstallRecoveryRounds('   '), 0)
-  })
-
-  it('honours an explicit opt-in for diagnosis runs', () => {
-    assert.equal(resolvePostInstallRecoveryRounds('1'), 1)
-    assert.equal(resolvePostInstallRecoveryRounds('2'), 2)
-  })
-
-  it('clamps junk and runaway values', () => {
-    for (const raw of ['abc', '-1', '1.5', '99']) {
-      const rounds = resolvePostInstallRecoveryRounds(raw)
-      assert.ok(rounds >= 0 && rounds <= 3, raw)
-      assert.equal(Number.isInteger(rounds), true, raw)
-    }
-    assert.equal(resolvePostInstallRecoveryRounds('99'), 3)
   })
 })
 

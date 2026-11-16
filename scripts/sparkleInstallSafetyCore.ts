@@ -1,12 +1,12 @@
 // [INPUT] 已安装 App 的 build meta / CDHash / 内核权限状态 · 升级事务阶段与目录存在性 ·
-//         升级锁 owner · 恢复轮次环境变量
+//         升级锁 owner
 // [OUTPUT] CORE_BINARY_NAMES · isCoreSetuidMode · resolveInstallShortCircuit ·
 //          planInterruptedUpgradeRecovery · UPGRADE_MARKER_TTL_MINUTES ·
-//          resolvePostInstallRecoveryRounds · parseLockOwner · isLockOwnerActive · formatLockOwner ·
+//          parseLockOwner · isLockOwnerActive · formatLockOwner ·
 //          CoreBinaryName · InstallShortCircuitInput / InstallShortCircuitDecision · UpgradePhase ·
 //          InterruptedUpgradeState · RecoveryStep · LockOwner
 // [POS] Agent 本地升级的幂等与安全判定纯函数：决定「是否需要真的安装/启停」、被打断的事务
-// 如何恢复、失败后是否允许自动重启。这里是判定语义的 SSOT 与文档；shell 侧为了不依赖
+// 如何恢复。这里是判定语义的 SSOT 与文档；shell 侧为了不依赖
 // `tsx -e` 传参（参数会被 node 当成选项解析）而用等价的纯 bash 实现
 // （lib/install-gate.sh、lib/install-transaction.sh），两者由 scripts 下的契约测试逐格对齐。
 
@@ -120,23 +120,6 @@ export function planInterruptedUpgradeRecovery(state: InterruptedUpgradeState): 
     steps.push(state.destExists ? 'remove_prev' : 'restore_prev')
   }
   return steps
-}
-
-/**
- * 安装后自动恢复轮次。默认 0：失败就停下留现场，让调用方读日志定位根因，
- * 而不是自动重启 App 两次——每次重启都会因内核 setuid 缺失再要一次密码，
- * 用户感受到的「装完又退出、又要输密码」正是这样叠出来的。
- * 显式设置环境变量可临时放开（排查用），但不会成为默认行为。
- */
-export function resolvePostInstallRecoveryRounds(raw: string | undefined): number {
-  if (raw === undefined || raw.trim().length === 0) {
-    return 0
-  }
-  const parsed = Number.parseInt(raw, 10)
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return 0
-  }
-  return Math.min(parsed, 3)
 }
 
 export interface LockOwner {

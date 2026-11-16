@@ -30,7 +30,7 @@ lock_pid_of() {
 lock_started_sec_of() {
   local text="$1"
   if [[ "$text" =~ started=([0-9]+) ]]; then
-    echo "$(( ${BASH_REMATCH[1]} / 1000 ))"
+    echo "$(( BASH_REMATCH[1] / 1000 ))"
   else
     echo ""
   fi
@@ -207,7 +207,14 @@ source "$ROOT/scripts/lib/login-home.sh"
 sparkle_pin_login_home
 
 SPARKLE_LOG_DIR="$HOME/Library/Application Support/sparkle/logs"
-APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
+
+# App 日志按天分文件，只能按修改时间取最新；文件名由 App 生成（ASCII），find 做不到按时间排序。
+latest_app_log() {
+  # shellcheck disable=SC2012
+  ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true
+}
+
+APP_LOG="$(latest_app_log)"
 INSTALL_GATE_SINCE_LINE=0
 if [[ -n "$APP_LOG" && -f "$APP_LOG" ]]; then
   INSTALL_GATE_SINCE_LINE="$(wc -l < "$APP_LOG" | tr -d ' ')"
@@ -230,7 +237,7 @@ if [[ "${MACOS_PRODUCT_MAJOR:-0}" -ge 26 && "$MACOS26_FORCE_GUI" != true ]]; the
   log "Post-install: macOS 26 headless path (GUI may exit after bootstrap)"
   headless_ok=0
   for _ in $(seq 1 30); do
-    APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
+    APP_LOG="$(latest_app_log)"
     if [[ -n "$APP_LOG" && -f "$APP_LOG" ]]; then
       headless_ok="$(
         "$ROOT/node_modules/.bin/tsx" -e "
@@ -269,60 +276,40 @@ if [[ -z "${SPARKLE_LOG_DIR:-}" ]]; then
   SPARKLE_LOG_DIR="$HOME/Library/Application Support/sparkle/logs"
 fi
 if [[ -z "${APP_LOG:-}" ]]; then
-  APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
+  APP_LOG="$(latest_app_log)"
 fi
 if [[ -n "$APP_LOG" ]]; then
-  post_install_bootstrap_ok=false
-  recovery_round=0
-  # 默认 0 轮：失败就停下留现场，由操作者读日志定位根因。
-  # 每轮恢复都会 quit + 重启 App，而每次重启在内核 setuid 缺失时还会再要一次密码，
-  # 自动重试只会把「装一次」变成「反复启停 + 反复输密码」。
-  max_recovery_rounds="${SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS:-0}"
-  [[ "$max_recovery_rounds" =~ ^[0-9]+$ ]] || max_recovery_rounds=0
-  (( max_recovery_rounds > 3 )) && max_recovery_rounds=3
-  while [[ "$post_install_bootstrap_ok" != true ]]; do
-    log "Waiting for PostCoreBootstrap mihomo API ready (up to 90s)..."
-    bootstrap_state=wait
-    for _ in $(seq 1 18); do
-      if [[ -f "$APP_LOG" ]]; then
-        bootstrap_state="$(
-          "$ROOT/node_modules/.bin/tsx" -e "
-            import { readFileSync } from 'node:fs';
-            import {
-              countPostCoreBootstrapFailuresSinceLine,
-              hasMihomoApiReadySinceLine,
-            } from './scripts/upgradeSparklePostInstallGateCore.ts';
-            const text = readFileSync(process.argv[1], 'utf8');
-            const since = Number(process.argv[2]);
-            if (countPostCoreBootstrapFailuresSinceLine(text, since) > 0) {
-              process.stdout.write('fail');
-            } else if (hasMihomoApiReadySinceLine(text, since)) {
-              process.stdout.write('ok');
-            } else {
-              process.stdout.write('wait');
-            }
-          " "$APP_LOG" "$INSTALL_GATE_SINCE_LINE"
-        )"
-        [[ "$bootstrap_state" == "ok" ]] && break
-      fi
-      sleep 5
-      APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
-    done
-    if [[ "$bootstrap_state" == "ok" ]]; then
-      post_install_bootstrap_ok=true
-      log "PostCoreBootstrap OK (mihomo API ready)"
-      break
+  # 不就绪就停下留现场，由操作者读日志定位根因：自动重启 App 重试会把「装一次」变成「反复启停」，
+  # 而且没有静默标记时 App 会被退出确认框拦住，重启并不会真的发生。
+  log "Waiting for PostCoreBootstrap mihomo API ready (up to 90s)..."
+  bootstrap_state="wait"
+  for _ in $(seq 1 18); do
+    if [[ -f "$APP_LOG" ]]; then
+      bootstrap_state="$(
+        "$ROOT/node_modules/.bin/tsx" -e "
+          import { readFileSync } from 'node:fs';
+          import {
+            countPostCoreBootstrapFailuresSinceLine,
+            hasMihomoApiReadySinceLine,
+          } from './scripts/upgradeSparklePostInstallGateCore.ts';
+          const text = readFileSync(process.argv[1], 'utf8');
+          const since = Number(process.argv[2]);
+          if (countPostCoreBootstrapFailuresSinceLine(text, since) > 0) {
+            process.stdout.write('fail');
+          } else if (hasMihomoApiReadySinceLine(text, since)) {
+            process.stdout.write('ok');
+          } else {
+            process.stdout.write('wait');
+          }
+        " "$APP_LOG" "$INSTALL_GATE_SINCE_LINE"
+      )"
+      [[ "$bootstrap_state" == "ok" ]] && break
     fi
-    if (( recovery_round >= max_recovery_rounds )); then
-      fail "PostCoreBootstrap not ready after ${max_recovery_rounds} recovery round(s) — check $APP_LOG"
-    fi
-    recovery_round=$((recovery_round + 1))
-    log "Post-install recovery round ${recovery_round}/${max_recovery_rounds} (socket hygiene + GUI relaunch)..."
-    if ! "$ROOT/node_modules/.bin/tsx" "$ROOT/scripts/upgrade-sparkle-post-install-recovery.mts" "$INSTALL_GATE_SINCE_LINE" "$recovery_round"; then
-      fail "Post-install recovery round ${recovery_round} failed — check $APP_LOG"
-    fi
-    APP_LOG="$(ls -t "$SPARKLE_LOG_DIR"/app-*.log 2>/dev/null | head -1 || true)"
+    sleep 5
+    APP_LOG="$(latest_app_log)"
   done
+  [[ "$bootstrap_state" == "ok" ]] || fail "PostCoreBootstrap not ready within 90s (state=${bootstrap_state}) — check $APP_LOG"
+  log "PostCoreBootstrap OK (mihomo API ready)"
 else
   log "WARN: no sparkle app-*.log yet — skip PostCoreBootstrap gate"
 fi

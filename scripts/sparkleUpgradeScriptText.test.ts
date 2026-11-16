@@ -40,6 +40,13 @@ function code(text: string): string {
     .join('\n')
 }
 
+/** scripts 目录（含子目录）下除测试外的全部脚本源文件。 */
+function nonTestScriptFiles(): string[] {
+  return readdirSync(SCRIPTS_DIR, { recursive: true, encoding: 'utf8' }).filter(
+    (name) => /\.(sh|mts|ts)$/.test(name) && !name.endsWith('.test.ts')
+  )
+}
+
 /** 取一个顶格定义的 shell 函数的完整函数体。 */
 function functionBody(text: string, name: string): string {
   const match = new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`, 'm').exec(text)
@@ -134,19 +141,30 @@ describe('install path safety', () => {
     }
   })
 
-  it('does not relaunch the app by default when post-install bootstrap fails', () => {
+  it('stops on the spot when post-install bootstrap fails instead of restarting the app to retry', () => {
     assert.match(
-      readScript('upgrade-sparkle-local.sh'),
-      /SPARKLE_POST_INSTALL_RECOVERY_MAX_ROUNDS:-0\}/,
-      'recovery rounds must default to 0 so a failure stops instead of rebooting the app'
+      code(readScript('upgrade-sparkle-local.sh')),
+      /\[\[ "\$bootstrap_state" == "ok" \]\] \|\| fail "PostCoreBootstrap not ready/,
+      'a bootstrap that never became ready must abort the upgrade and leave the evidence in place'
     )
+    // 自动重启重试要么被退出确认框拦住而无效，要么把「装一次」变成反复启停，所以不留任何入口。
+    for (const name of nonTestScriptFiles()) {
+      assert.equal(
+        /post-install-recovery/.test(name),
+        false,
+        `${name} is a post-install restart helper`
+      )
+      assert.doesNotMatch(
+        code(readScript(name)),
+        /POST_INSTALL_RECOVERY/,
+        `${name} re-adds automatic post-install restart rounds`
+      )
+    }
   })
 
   it('never restarts the root service from a script (the daemon would be restarting itself mid-request)', () => {
     const forbidden = new RegExp(`/service/${'restart'}`)
-    const files = readdirSync(SCRIPTS_DIR, { recursive: true, encoding: 'utf8' }).filter(
-      (name) => /\.(sh|mts|ts)$/.test(name) && !name.endsWith('.test.ts')
-    )
+    const files = nonTestScriptFiles()
     assert.ok(files.length > 20, 'the scan must actually cover the scripts directory')
     for (const name of files) {
       assert.equal(forbidden.test(readScript(name)), false, `${name} restarts the service`)
