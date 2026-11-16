@@ -1,10 +1,10 @@
 import asar from '@electron/asar'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it } from 'node:test'
 import { parseBakedBuildStamp, readBakedBuildStampFromAsar } from './sparkleBakedBuildStampCore'
+import { makeTempDir } from './testing/tempDirs'
 
 describe('parseBakedBuildStamp', () => {
   it('reads the declarations as the bundler emits them', () => {
@@ -58,7 +58,7 @@ describe('parseBakedBuildStamp', () => {
 
 /** 把文件树打成 asar（只含传入的 main chunk），返回 asar 路径。 */
 async function packMainChunks(chunks: Record<string, string>): Promise<string> {
-  const root = mkdtempSync(path.join(tmpdir(), 'sparkle-baked-stamp-'))
+  const root = makeTempDir('sparkle-baked-stamp-')
   const mainDir = path.join(root, 'app', 'out', 'main')
   mkdirSync(mainDir, { recursive: true })
   for (const [name, content] of Object.entries(chunks)) {
@@ -93,7 +93,7 @@ describe('readBakedBuildStampFromAsar', () => {
   })
 
   it('throws for an asar without main-process chunks instead of reporting a false unknown', async () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'sparkle-baked-stamp-empty-'))
+    const root = makeTempDir('sparkle-baked-stamp-empty-')
     mkdirSync(path.join(root, 'app'), { recursive: true })
     writeFileSync(path.join(root, 'app', 'package.json'), '{}', 'utf8')
     const asarPath = path.join(root, 'app.asar')

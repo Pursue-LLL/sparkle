@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, it } from 'node:test'
+import { after, describe, it } from 'node:test'
 import {
   createGitRunner,
   evaluateBuildDrift,
@@ -12,13 +12,28 @@ import {
   type GitRunner
 } from './buildDriftGit'
 
+const scratchDirs: string[] = []
+
+/** 创建并登记临时目录，整个文件的测试跑完后统一删除，系统临时目录里不留东西。 */
+function makeScratchDir(prefix: string): string {
+  const dir = mkdtempSync(path.join(tmpdir(), prefix))
+  scratchDirs.push(dir)
+  return dir
+}
+
+after(() => {
+  for (const dir of scratchDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 /** 在临时目录里建一个真实 git 仓库；提交不受本机全局 git 配置（签名、钩子）影响。 */
 function createRepo(): {
   dir: string
   git: (...args: string[]) => string
   commit: (message: string) => string
 } {
-  const dir = mkdtempSync(path.join(tmpdir(), 'sparkle-drift-git-'))
+  const dir = makeScratchDir('sparkle-drift-git-')
   const git = (...args: string[]): string =>
     execFileSync(
       'git',
@@ -62,7 +77,7 @@ describe('createGitRunner', () => {
   })
 
   it('returns undefined outside a repository', () => {
-    const outside = mkdtempSync(path.join(tmpdir(), 'sparkle-drift-nogit-'))
+    const outside = makeScratchDir('sparkle-drift-nogit-')
     const git = createGitRunner(outside)
     assert.equal(git(['rev-parse', '--git-dir']), undefined)
   })
@@ -81,7 +96,7 @@ describe('readRepoGitFacts', () => {
   })
 
   it('reports unknown outside a repository and in a repository without commits', () => {
-    const outside = mkdtempSync(path.join(tmpdir(), 'sparkle-drift-nogit-'))
+    const outside = makeScratchDir('sparkle-drift-nogit-')
     assert.deepEqual(readRepoGitFacts(createGitRunner(outside)), { commit: 'unknown' })
     const empty = createRepo()
     assert.deepEqual(readRepoGitFacts(createGitRunner(empty.dir)), { commit: 'unknown' })
@@ -156,7 +171,7 @@ describe('listPathsChangedSince', () => {
   })
 
   it('returns undefined outside a repository, for unknown, and for values git could read as options', () => {
-    const outside = mkdtempSync(path.join(tmpdir(), 'sparkle-drift-nogit-'))
+    const outside = makeScratchDir('sparkle-drift-nogit-')
     assert.equal(listPathsChangedSince(createGitRunner(outside), 'a1b2c3d'), undefined)
     const repo = createRepo()
     write(repo.dir, 'a.txt', 'a')

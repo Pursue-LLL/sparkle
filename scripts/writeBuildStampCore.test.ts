@@ -1,20 +1,14 @@
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { after, describe, it } from 'node:test'
-import {
-  createCommittedRepo,
-  makeTempDir,
-  removeTempDirs,
-  writeRepoFile
-} from './testing/gitRepoFixture'
+import { describe, it } from 'node:test'
+import { createCommittedRepo, writeRepoFile } from './testing/gitRepoFixture'
+import { makeTempDir } from './testing/tempDirs'
 import {
   BUILD_STAMP_REL_PATH,
   formatSparkleBuildStamp,
   readBuildGitFacts
 } from './writeBuildStampCore'
-
-after(removeTempDirs)
 
 describe('formatSparkleBuildStamp', () => {
   it('formats YYYY.MMDD.HHMM in local time', () => {

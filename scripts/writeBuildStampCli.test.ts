@@ -2,15 +2,13 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { after, describe, it } from 'node:test'
-import { createCommittedRepo, removeTempDirs, writeRepoFile } from './testing/gitRepoFixture'
+import { describe, it } from 'node:test'
+import { createCommittedRepo, writeRepoFile } from './testing/gitRepoFixture'
 import { BUILD_STAMP_REL_PATH } from './writeBuildStampCore'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const TSX = path.join(ROOT, 'node_modules/.bin/tsx')
 const CLI = path.join(ROOT, 'scripts/write-build-stamp.ts')
-
-after(removeTempDirs)
 
 /** 在仓库目录里跑一次真实的写入脚本，返回它打印的结论行。 */
 function runWriteBuildStamp(cwd: string): string {
