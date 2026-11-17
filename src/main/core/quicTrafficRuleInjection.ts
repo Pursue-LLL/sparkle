@@ -1,6 +1,6 @@
 // [INPUT] 无本地依赖
 // [OUTPUT] QUIC_REJECT_RULE · STUN_CLOUDFLARE_REJECT_RULE · QUIC_PROTECTION_RULES · injectQuicTrafficRules
-// [POS] QUIC（UDP 443）与 Cloudflare STUN 阻断规则前置：避免 TCP 走代理而 UDP 回落直连造成双栈出口 IP 不一致；已有同文规则不重复。
+// [POS] QUIC（UDP 443）与 Cloudflare STUN 阻断规则：在规则链里恰好各一条且排在最前，避免 TCP 走代理而 UDP 回落直连造成双栈出口 IP 不一致；链中任何位置的同文副本（覆写或订阅带来的）都并入这一条。
 
 /**
  * QUIC (HTTP/3) and WebRTC STUN leak protection rules.
@@ -14,25 +14,19 @@ export const STUN_CLOUDFLARE_REJECT_RULE = 'DOMAIN-SUFFIX,stun.cloudflare.com,RE
 export const QUIC_PROTECTION_RULES = [QUIC_REJECT_RULE, STUN_CLOUDFLARE_REJECT_RULE] as const
 
 /**
- * Prepend QUIC and STUN rejection rules to the top of rules array.
+ * Put QUIC and STUN rejection rules at the top of the rules array, exactly once each.
  * Ensures browsers immediately drop UDP 443 with ICMP port unreachable
  * and fall back cleanly to HTTP/2 (TLS over TCP proxy).
+ *
+ * Same-text copies elsewhere in the chain are removed rather than left in place:
+ * a copy buried behind the dedicated-group and direct-bypass rules lets the UDP 443
+ * traffic those rules match skip the rejection.
  */
 export function injectQuicTrafficRules(profile: MihomoConfig): void {
-  const existing = (profile.rules as string[] | undefined) ?? []
-  const existingSet = new Set(existing.map((rule) => rule.trim()))
-  const prefix: string[] = []
+  const protection = new Set<string>(QUIC_PROTECTION_RULES)
+  const rest = ((profile.rules as string[] | undefined) ?? []).filter(
+    (rule) => !protection.has(rule.trim())
+  )
 
-  for (const rule of QUIC_PROTECTION_RULES) {
-    if (!existingSet.has(rule)) {
-      prefix.push(rule)
-      existingSet.add(rule)
-    }
-  }
-
-  if (prefix.length === 0) {
-    return
-  }
-
-  profile.rules = [...prefix, ...existing] as MihomoConfig['rules']
+  profile.rules = [...QUIC_PROTECTION_RULES, ...rest] as MihomoConfig['rules']
 }

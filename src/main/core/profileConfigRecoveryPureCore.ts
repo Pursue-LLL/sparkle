@@ -47,7 +47,6 @@ export function buildRecoveredProfileItemFromDisk(id: string, updatedMs: number)
     id,
     name: id.endsWith('sub001') ? (id.startsWith('77caf1') ? '移动订阅' : '主订阅') : id,
     type: 'remote',
-    verify: false,
     autoUpdate: true,
     disableRemoteInterval: true,
     substore: false,

@@ -265,22 +265,6 @@ const EditInfoModal: React.FC<Props> = (props) => {
                   )}
                 {values.type === 'remote' &&
                   renderField(
-                    '验证订阅格式',
-                    <Switch
-                      aria-label="验证订阅格式"
-                      size="sm"
-                      isSelected={values.verify ?? false}
-                      onChange={(v) => {
-                        setValues({ ...values, verify: v })
-                      }}
-                    >
-                      <Switch.Control>
-                        <Switch.Thumb />
-                      </Switch.Control>
-                    </Switch>
-                  )}
-                {values.type === 'remote' &&
-                  renderField(
                     '使用代理更新',
                     <Switch
                       aria-label="使用代理更新"

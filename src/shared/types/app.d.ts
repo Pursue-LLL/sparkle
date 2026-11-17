@@ -179,7 +179,6 @@ interface ProfileItem {
   ua?: string // remote
   file?: string // local
   merge?: MergeProfileSpec // local：由其他订阅派生，来源订阅更新时自动重建
-  verify?: boolean // remote
   interval?: number
   updateTime?: string
   home?: string

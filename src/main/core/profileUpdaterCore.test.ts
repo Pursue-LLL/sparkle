@@ -6,35 +6,7 @@ import {
   isRemoteProfileDue,
   latestScheduledSlotMs
 } from './profileUpdaterCore'
-
-/** 2026-10-<day> <hour>:<minute>，按本机时区构造，与被测代码的本地时间口径一致。 */
-const at = (day: number, hour: number, minute = 0): number =>
-  new Date(2026, 9, day, hour, minute).getTime()
-
-function remote(overrides: Partial<ProfileItem> = {}): ProfileItem {
-  return {
-    id: 'main',
-    name: '主订阅',
-    type: 'remote',
-    url: 'https://example.com/sub',
-    autoUpdate: true,
-    updateTime: '07:00',
-    updated: at(10, 7, 0),
-    ...overrides
-  }
-}
-
-function merged(overrides: Partial<ProfileItem> = {}): ProfileItem {
-  return {
-    id: 'merged',
-    name: '合并版',
-    type: 'local',
-    autoUpdate: true,
-    merge: { base: 'main', sources: ['main', 'mobile'], regions: [], dedicatedRegions: [] },
-    updated: at(12, 11, 7),
-    ...overrides
-  }
-}
+import { at, merged, remote } from './profileUpdaterRig'
 
 describe('latestScheduledSlotMs', () => {
   it('returns today slot once it has passed and yesterday slot before it', () => {
@@ -98,7 +70,10 @@ describe('isRemoteProfileDue (interval)', () => {
   })
 
   it('is never due without any schedule', () => {
-    assert.equal(isRemoteProfileDue(remote({ updateTime: undefined, interval: 0 }), at(12, 9, 0)), false)
+    assert.equal(
+      isRemoteProfileDue(remote({ updateTime: undefined, interval: 0 }), at(12, 9, 0)),
+      false
+    )
   })
 })
 

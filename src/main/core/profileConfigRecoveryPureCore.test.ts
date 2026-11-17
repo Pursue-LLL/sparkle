@@ -100,7 +100,6 @@ describe('buildRecoveredProfileItemFromDisk', () => {
       id: 'custom',
       name: 'custom',
       type: 'remote',
-      verify: false,
       autoUpdate: true,
       disableRemoteInterval: true,
       substore: false,

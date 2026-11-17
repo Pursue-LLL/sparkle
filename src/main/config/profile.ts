@@ -4,6 +4,7 @@
 //         mergeProfileCore::findDependentMergeItems (POS: 合并订阅) ·
 //         profileCacheRefreshCore::formatMissingSubscriptionUrlError/readProfileDiskUpdatedMs/reloadCurrentProfileFromDiskCache (POS: 订阅缓存重新生成) ·
 //         profileConfigRecoveryCore::isBlankProfileConfigRaw/isEmptyPersistableProfileConfig/recoverProfileConfigFromDisk (POS: 订阅配置恢复) ·
+//         profileContentCore::assertValidProfileContent (POS: 订阅内容写盘前校验) ·
 //         profileSubscriptionDisplayCore::normalizeSubscriptionExpireTimestamp (POS: 订阅到期展示) ·
 //         provider::deleteProvider (POS: 订阅节点 → provider 文件) ·
 //         resolve/server::subStorePort (POS: 本地服务端口) ·
@@ -15,7 +16,7 @@
 //         utils/userAgent::getUserAgent (POS: 请求 User-Agent) ·
 //         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] getProfileConfig · setProfileConfig · createProfile · changeCurrentProfile · addProfileItem · updateProfileItem · removeProfileItem · getProfileStr · setProfileStr · applyProfileStr 等
-// [POS] 订阅配置（profile.yaml）与订阅条目管理：配置读写与空 / 损坏恢复、订阅创建（远程下载含证书指纹校验）、增删改、当前订阅切换与订阅文件读写。
+// [POS] 订阅配置（profile.yaml）与订阅条目管理：配置读写与空 / 损坏恢复、订阅创建（远程下载含证书指纹校验；内容通不过校验就不写盘，旧文件原样保留）、增删改、当前订阅切换与订阅文件读写。
 
 import { getControledMihomoConfig } from './controledMihomo'
 import { mihomoProfileWorkDir, profileConfigPath, profilePath } from '../utils/dirs'
@@ -41,6 +42,7 @@ import {
   isEmptyPersistableProfileConfig,
   recoverProfileConfigFromDisk
 } from '../core/profileConfigRecoveryCore'
+import { assertValidProfileContent } from '../core/profileContentCore'
 import {
   formatMissingSubscriptionUrlError,
   readProfileDiskUpdatedMs,
@@ -186,7 +188,6 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
     fingerprint: item.fingerprint,
     ua: item.ua,
     merge: item.merge,
-    verify: item.verify ?? false,
     autoUpdate: item.autoUpdate ?? true,
     disableRemoteInterval: item.disableRemoteInterval ?? false,
     substore: item.substore || false,
@@ -340,13 +341,8 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
       if (userinfoKey) {
         newItem.extra = parseSubinfo(headers[userinfoKey])
       }
-      if (newItem.verify) {
-        try {
-          parseYaml<MihomoConfig>(data)
-        } catch (error) {
-          throw new Error('订阅格式错误，无法解析为有效的配置文件\n' + (error as Error).message)
-        }
-      }
+      // 校验必须在写盘之前：写进去的错误页会替换掉好的旧订阅，而且「更新成功」会让它整天不再重试。
+      assertValidProfileContent(data, newItem.name)
       await setProfileStr(id, data)
       break
     }

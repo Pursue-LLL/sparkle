@@ -1,8 +1,12 @@
-// [INPUT] 订阅列表（type · updated · updateTime · interval · merge）
-// [OUTPUT] PROFILE_UPDATE_DUE_ARG · latestScheduledSlotMs · isRemoteProfileDue · isMergeProfileDue · createDueProfileUpdateRunner
+// [INPUT] 订阅列表（type · updated · updateTime · interval · merge） ·
+//         profileContentCore::InvalidProfileContentError (POS: 订阅内容写盘前校验)
+// [OUTPUT] PROFILE_UPDATE_DUE_ARG · INVALID_CONTENT_RETRY_MS · latestScheduledSlotMs · isRemoteProfileDue · isMergeProfileDue · createDueProfileUpdateRunner
 // [POS] 订阅自动更新的唯一判定与编排：GUI 心跳与 LaunchAgent CLI 共用。
 // 不依赖定时器恰好在计划时刻触发——只看「上次成功更新是否早于最近一个计划时刻」，
-// 所以睡眠跨过计划时刻、断网导致失败后，下一次检查都会自动补上。
+// 所以睡眠跨过计划时刻、断网导致失败后，下一次检查都会自动补上；
+// 服务端返回「不是配置」的内容时旧文件保留、按递增间隔重试，不按心跳频率反复请求。
+
+import { InvalidProfileContentError } from './profileContentCore'
 
 export const PROFILE_UPDATE_DUE_ARG = '--sparkle-profile-update-due'
 
@@ -90,6 +94,17 @@ export function isMergeProfileDue(
 /** 订阅下载本身没有超时；单次更新卡住会让并发共享的这次执行永不结束，必须由编排器兜底。 */
 const DEFAULT_UPDATE_TIMEOUT_MS = 2 * 60 * 1000
 
+/**
+ * 服务端返回「不是配置」的内容（错误页、限流提示）后的重试间隔，按连续失败次数递增，封顶在最后一档。
+ * 每次重试都是一次真实请求；GUI 心跳与 LaunchAgent 各自每 5 分钟进来一次，
+ * 持续出错时照单全收既消耗机场订阅接口的额度，也可能因请求过密被封。
+ * 第一档与心跳同频，瞬时的坏响应下一次心跳就能恢复。
+ * 网络错误不走这张表：连接失败不会请求到服务端，仍然每次心跳重试。
+ */
+export const INVALID_CONTENT_RETRY_MS: readonly number[] = [5, 15, 30, 60].map(
+  (minutes) => minutes * 60 * 1000
+)
+
 export interface DueProfileUpdateDeps {
   listItems: () => Promise<readonly ProfileItem[]>
   update: (item: ProfileItem) => Promise<void>
@@ -113,20 +128,41 @@ function withTimeout(task: Promise<void>, timeoutMs: number): Promise<void> {
  * 检查并更新所有到期订阅，返回成功更新的个数。
  * - 先更新来源订阅，再重新读取列表补齐落后的合并订阅（来源更新会改写来源的 updated）。
  * - 单个订阅失败或超时只记日志，不影响其它订阅；失败不会推进 updated，下一次检查仍然到期，即自动重试。
+ * - 服务端返回的内容通不过校验（{@link InvalidProfileContentError}）时按 {@link INVALID_CONTENT_RETRY_MS} 递增退避，
+ *   退避期内的订阅不参与检查；退避状态只存内存，重启后重新计。
  * - 并发调用共享同一次执行，避免 GUI 心跳与 LaunchAgent 同时更新同一个订阅。
  */
 export function createDueProfileUpdateRunner(deps: DueProfileUpdateDeps): () => Promise<number> {
   const now = deps.now ?? Date.now
   const updateTimeoutMs = deps.updateTimeoutMs ?? DEFAULT_UPDATE_TIMEOUT_MS
+  /** 订阅 id → 因内容无效连续失败的次数与下一次允许重试的时刻；成功一次即清除。 */
+  const invalidContentRetries = new Map<string, { failures: number; retryAtMs: number }>()
+
+  const isWaitingToRetry = (item: ProfileItem): boolean =>
+    (invalidContentRetries.get(item.id)?.retryAtMs ?? 0) > now()
+
+  /** 记一次内容无效的失败，返回写进日志的后续安排。 */
+  const scheduleInvalidContentRetry = (item: ProfileItem): string => {
+    const failures = (invalidContentRetries.get(item.id)?.failures ?? 0) + 1
+    const delayMs =
+      INVALID_CONTENT_RETRY_MS[Math.min(failures, INVALID_CONTENT_RETRY_MS.length) - 1]
+    invalidContentRetries.set(item.id, { failures, retryAtMs: now() + delayMs })
+    return `；旧内容原样保留，第 ${failures} 次失败，${Math.round(delayMs / 60_000)} 分钟后重试`
+  }
 
   const attempt = async (item: ProfileItem): Promise<boolean> => {
     try {
       await withTimeout(deps.update(item), updateTimeoutMs)
+      invalidContentRetries.delete(item.id)
       await deps.log(`[ProfileUpdater]: update succeeded id=${item.id} name=${item.name}\n`)
       return true
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
-      await deps.log(`[ProfileUpdater]: update failed id=${item.id} name=${item.name}: ${reason}\n`)
+      const followUp =
+        error instanceof InvalidProfileContentError ? scheduleInvalidContentRetry(item) : ''
+      await deps.log(
+        `[ProfileUpdater]: update failed id=${item.id} name=${item.name}: ${reason}${followUp}\n`
+      )
       return false
     }
   }
@@ -135,12 +171,16 @@ export function createDueProfileUpdateRunner(deps: DueProfileUpdateDeps): () => 
     let updatedCount = 0
 
     const first = await deps.listItems()
-    for (const item of first.filter((candidate) => isRemoteProfileDue(candidate, now()))) {
+    for (const item of first.filter(
+      (candidate) => isRemoteProfileDue(candidate, now()) && !isWaitingToRetry(candidate)
+    )) {
       updatedCount += Number(await attempt(item))
     }
 
     const second = await deps.listItems()
-    for (const item of second.filter((candidate) => isMergeProfileDue(candidate, second, now()))) {
+    for (const item of second.filter(
+      (candidate) => isMergeProfileDue(candidate, second, now()) && !isWaitingToRetry(candidate)
+    )) {
       updatedCount += Number(await attempt(item))
     }
 
