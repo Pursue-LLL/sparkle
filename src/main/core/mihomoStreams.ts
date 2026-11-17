@@ -4,7 +4,7 @@
 //         utils/calc::calcTraffic (POS: 流量数值格式化)
 // [OUTPUT] start/stop MihomoTraffic·Memory·Logs·Connections · restartMihomoLogs/Connections · subscribeMihomoLogs · subscribeMihomoAlerts
 // [POS] mihomo 控制器 WebSocket 数据流层。traffic / memory / logs / connections 随界面与内核生命周期启停（断线重连 10 次）；
-//       alerts 是故障转移引擎专用的 warning 级日志流：级别固定、不受界面日志级别影响，随订阅者增减启停，断线持续重连。
+//       alerts 是 warning 级日志流（故障转移引擎与 agy 巡检共用）：级别固定、不受界面日志级别影响，随订阅者增减启停，断线持续重连。
 
 import WebSocket from 'ws'
 import { mainWindow } from '..'
