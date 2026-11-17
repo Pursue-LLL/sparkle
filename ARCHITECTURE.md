@@ -58,7 +58,7 @@ mihomo (TUN) → 节点 leaf → 目标站点
     - **只管自己钉的**：复查状态就是「这个固定是闸门钉的」标记，用户手动固定的节点永远不会被复查或替换；主动解除固定（`notifyAutoSelectUnfixed`）会作废进行中的遍历并清空复查状态。
     - **三处读同一份依据**：写 `sparkle-fast` 文件的配置生成、Gemini 审计重建、延迟重排都经 `loadFastProviderExclusions` 取剔除 / 沉底集合，漏读一处沉底节点就会在下一次重写时排回最前。
     - **探测通道只此一条**：邮件端口、Gemini 地区、吞吐三类探测共用本地隐藏监听器，必须经 `localProbeChannel` 串行化。
-21. **AnyTLS 节点不复用会话，防护只接在 `extractProxies`** — mihomo 的 AnyTLS（协议 v2）客户端在会话上开第 2 条及以后的流时起 3 秒看门狗，3 秒内没收到服务端的 SYNACK 就关闭整个会话；服务端不回 SYNACK 时，复用会话上存活超过 3 秒的流（Cursor Agent 的长连接首当其冲）在第 3 秒被切断，而新会话的第 1 条流不起看门狗。`applyAnytlsReuseGuard` 给没有显式设置 `disable-reuse` 的 AnyTLS 节点写 `disable-reuse: true`（显式写过的值，含 `false`，一律尊重），让每条流独占一个新会话；代价是每条连接多一次 TLS 握手（本机实测约 0.3–0.6 秒）。约束：
+21. **AnyTLS 节点不复用会话，防护只接在 `extractProxies`** — mihomo 的 AnyTLS（协议 v2）客户端在会话上开第 2 条及以后的流时起 3 秒看门狗，3 秒内没收到服务端的 SYNACK 就关闭整个会话；服务端不回 SYNACK 时，复用会话上存活超过 3 秒的流（Cursor Agent 的长连接首当其冲）在第 3 秒被切断，而新会话的第 1 条流不起看门狗。`applyAnytlsReuseGuard` 给没有显式设置 `disable-reuse` 的 AnyTLS 节点写 `disable-reuse: true`（显式写过的值，含 `false`，一律尊重），让每条流独占一个新会话；代价是每条连接多一次 TLS 握手（同日 A/B 实测中位多约 0.3 秒）。约束：
     - **防护只在节点入口**：五个派生 provider（fast / mail / agy / grok / gemini）的节点都取自 `extractProxies`，防护接在它与 `generateProxyProvider`（写盘）上；新增任何写节点的路径必须取节点自 `extractProxies` 或读回已写好的 provider 文件，不得直接用订阅原始节点。
     - **内核契约要验**：内核对未知键静默忽略，选项改名后防护会无声失效；升级或切换内核（含 alpha）后运行 `pnpm run verify:anytls-reuse`。
 
