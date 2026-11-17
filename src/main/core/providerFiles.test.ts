@@ -18,6 +18,14 @@ const visionNode = (name: string): Proxy => ({
   server: 'vps.example.com'
 })
 
+const anytlsNode = (name: string, extra: Proxy = {}): Proxy => ({
+  name,
+  type: 'anytls',
+  server: `${name}.example.com`,
+  port: 8443,
+  ...extra
+})
+
 const calls: string[] = []
 const logs: string[] = []
 let failing = new Set<string>()
@@ -26,10 +34,9 @@ let profilesDir = ''
 let workDir = ''
 
 const fileOf = (id: string): string => path.join(profilesDir, `${id}-proxies.yaml`)
-const namesIn = (id: string): string[] =>
-  (parseYaml<{ proxies: Proxy[] }>(readFileSync(fileOf(id), 'utf8')).proxies ?? []).map((proxy) =>
-    String(proxy.name)
-  )
+const nodesIn = (id: string): Proxy[] =>
+  parseYaml<{ proxies: Proxy[] }>(readFileSync(fileOf(id), 'utf8')).proxies ?? []
+const namesIn = (id: string): string[] => nodesIn(id).map((proxy) => String(proxy.name))
 
 describe('provider files', () => {
   let provider: typeof Provider
@@ -107,6 +114,26 @@ describe('provider files', () => {
       assert.equal(node.smux, false)
       assert.equal('multiplex' in node, false)
     })
+
+    it('stops AnyTLS nodes from reusing sessions, commercial and VPS alike, and leaves the rest alone', () => {
+      const proxies = provider.extractProxies(
+        profileWith(anytlsNode('台湾 01'), commercial('a'), anytlsNode('KR-VPS-AnyTLS'))
+      )
+
+      assert.deepEqual(proxies, [
+        anytlsNode('台湾 01', { 'disable-reuse': true }),
+        commercial('a'),
+        anytlsNode('KR-VPS-AnyTLS', { 'disable-reuse': true })
+      ])
+    })
+
+    it('keeps session reuse for an AnyTLS node whose subscription asks for it explicitly', () => {
+      const [node] = provider.extractProxies(
+        profileWith(anytlsNode('a', { 'disable-reuse': false }))
+      ) as Proxy[]
+
+      assert.equal(node['disable-reuse'], false)
+    })
   })
 
   describe('generateProxyProvider', () => {
@@ -123,6 +150,12 @@ describe('provider files', () => {
       const [node] = parseYaml<{ proxies: Proxy[] }>(readFileSync(fileOf('p1'), 'utf8')).proxies
       assert.equal(node.smux, false)
       assert.equal('multiplex' in node, false)
+    })
+
+    it('stops AnyTLS nodes from reusing sessions even when handed raw nodes', async () => {
+      await provider.generateProxyProvider('p1', [anytlsNode('a'), commercial('b')])
+
+      assert.deepEqual(nodesIn('p1'), [anytlsNode('a', { 'disable-reuse': true }), commercial('b')])
     })
   })
 
@@ -165,6 +198,32 @@ describe('provider files', () => {
         '[Provider]: vless_vision_mux_guard vision=1 stripped_multiplex=1 ensured_smux_off=1 nodes=[KR-VPS-Reality]\n'
       ])
     })
+
+    it('writes every AnyTLS node with session reuse off, in the commercial and the VPS file alike', async () => {
+      await provider.setupProfileProviders('p1', [
+        anytlsNode('a'),
+        vpsNode('KR-VPS-HY2'),
+        anytlsNode('KR-VPS-AnyTLS')
+      ])
+
+      assert.deepEqual(nodesIn('p1'), [anytlsNode('a', { 'disable-reuse': true })])
+      assert.deepEqual(nodesIn('p1-vps'), [
+        vpsNode('KR-VPS-HY2'),
+        anytlsNode('KR-VPS-AnyTLS', { 'disable-reuse': true })
+      ])
+    })
+
+    it('logs how many AnyTLS nodes have session reuse off, so an explicit opt-out shows up', async () => {
+      await provider.setupProfileProviders('p1', [
+        anytlsNode('台湾 01'),
+        anytlsNode('台湾 02', { 'disable-reuse': false }),
+        commercial('a')
+      ])
+
+      assert.deepEqual(logs, [
+        '[Provider]: anytls_reuse_guard anytls=2 reuse_disabled=1 nodes=[台湾 01,台湾 02]\n'
+      ])
+    })
   })
 
   describe('reloadMihomoProfileProviders', () => {
@@ -191,7 +250,13 @@ describe('provider files', () => {
     })
 
     it('carries on when a sparkle provider is not enabled', async () => {
-      failing = new Set(['sparkle-fast', 'sparkle-mail', 'sparkle-agy', 'sparkle-grok', 'gemini专用'])
+      failing = new Set([
+        'sparkle-fast',
+        'sparkle-mail',
+        'sparkle-agy',
+        'sparkle-grok',
+        'gemini专用'
+      ])
 
       await provider.reloadMihomoProfileProviders('p1', false)
 

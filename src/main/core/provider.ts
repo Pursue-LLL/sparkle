@@ -1,8 +1,10 @@
-// [INPUT] autoSwitchPinRelease::releaseAutoSwitchPins (POS: 自动组固定释放接线) ·
+// [INPUT] anytlsReuseGuardCore::applyAnytlsReuseGuard/summarizeAnytlsReuseGuard (POS: AnyTLS 会话复用防护) ·
+//         autoSwitchPinRelease::releaseAutoSwitchPins (POS: 自动组固定释放接线) ·
 //         mihomoApi::mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
 //         providerConfigCore::buildBaseConfigWithProviders (POS: provider 文档与健康检查配置) ·
 //         sparkleAgyProviderCore::AGY_NODE_PROVIDER_ID (POS: agy provider 与分组配置) ·
 //         sparkleFastProviderCore::FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
+//         sparkleGeminiProviderCore::GEMINI_NODE_PROVIDER_ID (POS: gemini provider 与分组配置) ·
 //         sparkleGrokProviderCore::GROK_NODE_PROVIDER_ID (POS: grok provider 与快照) ·
 //         sparkleMailProviderCore::MAIL_NODE_PROVIDER_ID (POS: 邮件 provider 与分组配置) ·
 //         utils/dirs::mihomoWorkDir/profilesDir (POS: 应用目录与路径常量) ·
@@ -11,7 +13,8 @@
 //         vlessVisionMuxGuardCore::applyVlessVisionMuxGuard/summarizeVlessVisionMuxGuard (POS: VLESS Vision 与 mux 互斥防护) ·
 //         vpsProviderSplitCore::partitionLeafProxies/resolveVpsProviderId (POS: VPS 节点拆分与 provider id)
 // [OUTPUT] extractProxies · generateProxyProvider · setupProfileProviders · reloadMihomoProfileProviders · generateBaseConfigWithProvider · deleteProvider
-// [POS] 订阅节点到 provider 文件的转换层：节点经 VLESS Vision 防护后拆成商用与 VPS provider 文件落盘，生成使用 provider 的基础配置，订阅刷新时让内核热重载 provider。
+// [POS] 订阅节点到 provider 文件的转换层：节点经 VLESS Vision 与 AnyTLS 会话复用防护后拆成商用与 VPS provider 文件落盘，生成使用 provider 的基础配置，订阅刷新时让内核热重载 provider。
+//       五个派生 provider（fast / mail / agy / grok / gemini）的节点都取自 `extractProxies`，防护在这里一次到位。
 
 import { writeFile, rm } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -19,6 +22,18 @@ import path from 'path'
 import { stringifyYaml } from '../utils/yaml'
 import { mihomoWorkDir, profilesDir } from '../utils/dirs'
 import { mihomoUpdateProxyProviders } from './mihomoApi'
+import { applyAnytlsReuseGuard, summarizeAnytlsReuseGuard } from './anytlsReuseGuardCore'
+import { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } from './vlessVisionMuxGuardCore'
+import { partitionLeafProxies, resolveVpsProviderId } from './vpsProviderSplitCore'
+import { buildBaseConfigWithProviders } from './providerConfigCore'
+import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
+import { MAIL_NODE_PROVIDER_ID } from './sparkleMailProviderCore'
+import { AGY_NODE_PROVIDER_ID } from './sparkleAgyProviderCore'
+import { GEMINI_NODE_PROVIDER_ID } from './sparkleGeminiProviderCore'
+import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
+import { appendAppLog } from '../utils/log'
+
+export { resolveVpsProviderId, partitionLeafProxies } from './vpsProviderSplitCore'
 
 /**
  * proxy-provider 文件绝对路径（读写磁盘用）
@@ -34,21 +49,17 @@ function getProviderConfigPath(profileId: string): string {
   return path.relative(mihomoWorkDir(), getProviderFilePath(profileId))
 }
 
-import { applyVlessVisionMuxGuard, summarizeVlessVisionMuxGuard } from './vlessVisionMuxGuardCore'
-import { partitionLeafProxies, resolveVpsProviderId } from './vpsProviderSplitCore'
-import { buildBaseConfigWithProviders } from './providerConfigCore'
-import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
-import { MAIL_NODE_PROVIDER_ID } from './sparkleMailProviderCore'
-import { AGY_NODE_PROVIDER_ID } from './sparkleAgyProviderCore'
-import { GEMINI_NODE_PROVIDER_ID } from './sparkleGeminiProviderCore'
-import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
-import { appendAppLog } from '../utils/log'
-
-export { resolveVpsProviderId, partitionLeafProxies } from './vpsProviderSplitCore'
+/**
+ * 节点进入 provider 之前的协议级防护。每条防护都是幂等的纯函数、彼此独立；
+ * 读路径（extractProxies）与写路径（generateProxyProvider）共用，新增防护只改这一处。
+ */
+function stabilizeProviderProxies(proxies: unknown[]): unknown[] {
+  return applyAnytlsReuseGuard(applyVlessVisionMuxGuard(proxies))
+}
 
 /** 从订阅配置中提取 proxies，并拆分为商业节点与自建 VPS 节点。 */
 export function extractProxies(config: MihomoConfig): unknown[] {
-  const stabilized = applyVlessVisionMuxGuard(config.proxies || [])
+  const stabilized = stabilizeProviderProxies(config.proxies || [])
   const { commercial, vps } = partitionLeafProxies(stabilized)
   return [...commercial, ...vps]
 }
@@ -64,6 +75,17 @@ async function logVlessVisionMuxGuard(proxies: unknown[]): Promise<void> {
   )
 }
 
+async function logAnytlsReuseGuard(proxies: unknown[]): Promise<void> {
+  const summary = summarizeAnytlsReuseGuard(proxies)
+  if (summary.nodeCount === 0) {
+    return
+  }
+  const nodeList = summary.nodeNames.join(',')
+  await appendAppLog(
+    `[Provider]: anytls_reuse_guard anytls=${summary.nodeCount} reuse_disabled=${summary.reuseDisabledCount} nodes=[${nodeList}]\n`
+  )
+}
+
 /**
  * 生成 proxy-provider 配置文件
  */
@@ -71,9 +93,8 @@ export async function generateProxyProvider(
   profileId: string,
   proxies: unknown[]
 ): Promise<string> {
-  const guardedProxies = applyVlessVisionMuxGuard(proxies)
   const providerConfig = {
-    proxies: guardedProxies
+    proxies: stabilizeProviderProxies(proxies)
   }
 
   const filePath = getProviderFilePath(profileId)
@@ -95,6 +116,7 @@ export async function setupProfileProviders(
   profileId: string,
   proxies: unknown[]
 ): Promise<{ commercial: unknown[]; vps: unknown[] }> {
+  await logAnytlsReuseGuard(proxies)
   const { commercial, vps } = partitionLeafProxies(proxies)
   if (vps.length === 0) {
     await generateProxyProvider(profileId, proxies)

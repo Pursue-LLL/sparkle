@@ -32,6 +32,7 @@
     "verify:bundle:full": "SPARKLE_VERIFY_WITH_ASAR=1 tsx scripts/verify-sparkle-bundle.mts",
     "verify:agygeo": "tsx scripts/verify-antigravity-geo-routing.mts",
     "verify:failover": "tsx scripts/verify-group-failover.mts",
+    "verify:anytls-reuse": "tsx scripts/verify-anytls-reuse-option.mts",
     "check:drift": "tsx scripts/check-build-drift.ts"
   },
   "dependencies": {
