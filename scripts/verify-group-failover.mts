@@ -2,9 +2,10 @@
 // [INPUT] groupFailoverCore::FailoverGroupSnapshot (POS: 故障转移纯决策层) ·
 //         groupFailoverEngine::createGroupFailoverEngine (POS: 故障转移编排引擎) ·
 //         mihomoGroupMembersCore::buildProviderProxyLookup/resolveGroupMemberProxies (POS: 分组成员解析) ·
+//         sparkleAgyProbeCore::parseTcpDialFailureGroup (POS: agy 巡检状态机，拨号失败告警解析) ·
 //         mihomoIsolatedHarness::closeServer/openAlertStream/proxiedGet/reserveFreePorts… (POS: 隔离内核端到端夹具)
 // [OUTPUT] pnpm run verify:failover [内核路径]: 退出码 0 = 引擎与内核的契约成立
-// [POS] 故障转移引擎对真实 mihomo 内核的端到端校验（隔离实例，约 2 分钟）。内核告警文案或拨号失败语义变化时在第一步失败；只接触自己创建的进程、端口与目录。
+// [POS] 故障转移引擎与 agy 被动触发对真实 mihomo 内核的端到端校验（隔离实例，约 2 分钟）。内核告警文案或拨号失败语义变化时在第一步失败；只接触自己创建的进程、端口与目录。
 
 /**
  * 故障转移引擎 × 真实 mihomo 内核的端到端校验。
@@ -15,6 +16,8 @@
  *   good-b ：全部放行但应答慢 120 ms → 探测延迟更高，url-test 仍选中 flaky-a
  *
  * 断言：连续两条计数告警 → 改选 good-b 且真实流量恢复 → 保留期满释放固定 → 用户固定的节点不被覆盖。
+ * 同一批真实失败还要让内核逐连接打出 `[TCP] dial <组名> (match …) … error:` 告警，且组名可被
+ * `parseTcpDialFailureGroup` 解析 —— 这是 agy 专用组被动触发修复（拨号失败风暴）依赖的外部契约。
  * 升级或切换内核（含 alpha）后运行：pnpm run verify:failover [内核路径]，约 2 分钟。
  * 内核告警措辞或拨号失败语义变化时，本脚本在第一步失败。
  */
@@ -50,6 +53,9 @@ const { createGroupFailoverEngine } = requireSource(
 const { buildProviderProxyLookup, resolveGroupMemberProxies } = requireSource(
   '../src/main/core/mihomoGroupMembersCore'
 ) as typeof import('../src/main/core/mihomoGroupMembersCore')
+const { parseTcpDialFailureGroup } = requireSource(
+  '../src/main/core/sparkleAgyProbeCore'
+) as typeof import('../src/main/core/sparkleAgyProbeCore')
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 /** 名称命中策略表的 failover 角色。 */
@@ -78,6 +84,8 @@ interface ScheduledTask {
 
 interface FailoverRig {
   engineLog: string[]
+  /** 告警流里每条 `[TCP] dial …` 拨号失败告警所属的组名。 */
+  tcpDialFailureGroups: string[]
   scheduled: ScheduledTask[]
   /** 制造一条会被引擎计数的内核告警（先静默满去重间隔），返回这批真实请求的状态码。 */
   countedFailure: () => Promise<number[]>
@@ -128,6 +136,7 @@ async function loadGroup(
 /** 真实引擎 + 真实告警流 + 真实控制器读写；定时器被捕获，由场景决定何时到期。 */
 function createRig(core: RunningCore, alerts: WebSocket, ports: Ports): FailoverRig {
   const engineLog: string[] = []
+  const tcpDialFailureGroups: string[] = []
   const alertTimes: number[] = []
   const scheduled: ScheduledTask[] = []
 
@@ -137,6 +146,10 @@ function createRig(core: RunningCore, alerts: WebSocket, ports: Ports): Failover
         const log = JSON.parse(data.toString()) as ControllerLog
         if (parseDialFailureGroup(log) !== undefined) {
           alertTimes.push(Date.now())
+        }
+        const dialFailureGroup = parseTcpDialFailureGroup(log)
+        if (dialFailureGroup !== undefined) {
+          tcpDialFailureGroups.push(dialFailureGroup)
         }
         listener(log)
       }
@@ -190,7 +203,7 @@ function createRig(core: RunningCore, alerts: WebSocket, ports: Ports): Failover
       `引擎日志 ${text}`
     )
 
-  return { engineLog, scheduled, countedFailure, engineLogged }
+  return { engineLog, tcpDialFailureGroups, scheduled, countedFailure, engineLogged }
 }
 
 async function runScenario(core: RunningCore, alerts: WebSocket, ports: Ports): Promise<void> {
@@ -216,6 +229,12 @@ async function runScenario(core: RunningCore, alerts: WebSocket, ports: Ports): 
     '改选前故障节点上的真实流量应失败'
   )
   assert.ok(!rig.engineLog.some((line) => line.includes('switched')), '首条计数告警只累计')
+  await waitFor(
+    () => rig.tcpDialFailureGroups.includes(GROUP),
+    STEP_TIMEOUT_MS,
+    `内核逐连接打出 [TCP] dial ${GROUP} (match …) 拨号失败告警（agy 被动触发依赖）`
+  )
+  say(`逐连接拨号失败告警：${rig.tcpDialFailureGroups.filter((name) => name === GROUP).length} 条`)
   const duringSwitch = await rig.countedFailure()
   await rig.engineLogged(`switched group=${GROUP} from=flaky-a to=good-b`)
   // 内核对每条连接最多重拨 10 次，改选在重拨窗口内生效时在途请求会被救回；数量随时序变化，仅作观察输出。

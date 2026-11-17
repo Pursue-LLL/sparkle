@@ -6,7 +6,7 @@
 //         sparkleAgyProviderCore::AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
 //         syncFsPromisesRig::mockFsPromisesSync (POS: fs/promises 同步化夹具) ·
 //         utils/yaml::parseYaml (POS: YAML 解析与序列化)
-// [OUTPUT] useAgyRig · snapshot/syncSnapshot/groupControl/agyCli · 文件读写辅助 · runBootstrap/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeWorld 的全部夹具
+// [OUTPUT] useAgyRig · snapshot/syncSnapshot/groupControl/agyCli · 文件读写辅助 · runBootstrap/runDialFailureRepair/emitAlerts/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeWorld 的全部夹具
 // [POS] sparkleAgyProbe 行为测试夹具：配置、mihomo 控制器与日志用替身，agy CLI 用可编排结局的假子进程，
 // 探测缓存、provider 文件与探测目录走临时目录里的真实文件。仅供测试使用。
 
@@ -120,6 +120,20 @@ export async function drive<T>(operation: Promise<T>): Promise<T> {
 /** 跑完一轮 bootstrap。 */
 export function runBootstrap(agy: typeof AgyProbe): Promise<void> {
   return drive(agy.bootstrapSparkleAgyProvider())
+}
+
+/** 跑完一轮被动入口（拨号失败风暴触发的修复）。 */
+export function runDialFailureRepair(agy: typeof AgyProbe): Promise<void> {
+  return drive(agy.repairSparkleAgyPinOnDialFailures())
+}
+
+/** 向探针订阅的内核告警流投递 `count` 条同一 payload 的 warning；时间由假时钟决定，调用方自行推进。 */
+export function emitAlerts(payload: string, count = 1): void {
+  for (let index = 0; index < count; index++) {
+    for (const listener of world.alertListeners) {
+      listener({ type: 'warning', payload })
+    }
+  }
 }
 
 function emitOutcome(child: FakeChild, outcome: CliOutcome, args: string[]): void {
@@ -245,6 +259,12 @@ function installMocks(): void {
         world.calls.push(`close:${group}`)
         if (world.closeFailure) {
           throw new Error('close failed')
+        }
+      },
+      subscribeMihomoAlerts: (listener: (log: ControllerLog) => void): (() => void) => {
+        world.alertListeners.push(listener)
+        return () => {
+          world.alertListeners = world.alertListeners.filter((item) => item !== listener)
         }
       },
       mihomoUpdateProxyProviders: async (id: string): Promise<void> => {

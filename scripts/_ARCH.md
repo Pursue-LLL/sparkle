@@ -50,7 +50,7 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 | `measure-connections-payload.mts` | 只读性能测量：经 service socket（Auth V2 签名）拉取真实 `/core/controller/connections` 负载，量出连接数、字节数、每条连接的平均字节、`JSON.parse` 的中位数/P95（200 次采样），并按 500ms 间隔折算常驻 CPU 占比。用于判断「连接流常驻」的开销是否值得按需启停；脚本只做 GET，不改任何配置或连接 |
 | `sparkle-mihomo-close-smoke.mts` | 关闭连接烟测：`DELETE /connections/{id}` 必须到达控制器（直连或 service 模式） |
 | `check-build-drift.ts` / `sparkleBakedBuildStampCore.ts` | `pnpm run check:drift`：从 `/Applications` 里 `app.asar` 的主进程 bundle 按内容读出烧进去的 commit 与 dirty（不依赖打包器的 chunk 文件名，独立 chunk 与内联进 `index.js` 两种产物都能读），对比仓库 HEAD（commit 不同时再看构建提交之后是否只改了文档 / 测试 / buildStamp，是则不算漂移，判定在 `src/main/core/buildDriftPureCore.ts`），退出码 1 = 漂移 |
-| `verify-group-failover.mts` | `pnpm run verify:failover [内核路径]`：故障转移引擎对真实 mihomo 内核的端到端校验（隔离实例，约 2 分钟）；升级或切换内核（含 alpha）后运行，内核告警文案或拨号失败语义变化时在第一步失败 |
+| `verify-group-failover.mts` | `pnpm run verify:failover [内核路径]`：故障转移引擎与 agy 被动触发对真实 mihomo 内核的端到端校验（隔离实例，约 2 分钟）；升级或切换内核（含 alpha）后运行，内核告警文案（含逐连接 `[TCP] dial` 行）或拨号失败语义变化时在第一步失败 |
 | `mihomoIsolatedHarness.ts` | 隔离 mihomo 端到端校验的公共夹具：随机回环端口、模拟 HTTP 目标与 SOCKS5 节点、内核子进程与控制器客户端；只接触自己创建的进程、端口与目录 |
 | `verify-antigravity-geo-routing.mts` | `pnpm run verify:agygeo`：agy / cloudcode-pa 流量必须落入 `🎯 agy 专用` |
 | `verify-vps-provider-split.sh` | 装后校验 VPS provider 拆分（日本四个标准叶子），非零退出 = 失败 |

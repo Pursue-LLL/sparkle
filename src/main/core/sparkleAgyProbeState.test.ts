@@ -166,6 +166,19 @@ describe('sparkleAgyProbe 跨轮状态：pin 超时累计', () => {
 
     assert.equal(logCount('repair start'), 1, '累计已清零，一轮超时不触发修复')
   })
+
+  it('修复成功后超时累计作废：新 pin 的第一次超时不立刻再触发修复', async () => {
+    outcomesByNode({ '台湾-1': HANG })
+    await runBootstrap(agy())
+    await runBootstrap(agy())
+    assert.equal(logCount('repaired pin'), 1)
+    assert.equal(world.selection, '台湾-2')
+
+    outcomesByNode({ '台湾-2': HANG })
+    await runBootstrap(agy())
+
+    assert.equal(logCount('repair start'), 1, '新 pin 只超时了一轮，继续容忍')
+  })
 })
 
 describe('sparkleAgyProbe 缓存落盘与展示快照', () => {

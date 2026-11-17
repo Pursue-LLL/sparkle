@@ -1,5 +1,5 @@
 // [INPUT] node:assert · proxyNodeFingerprintCore
-// [OUTPUT] NOW · 时间常量 · 节点夹具（TW1…US1/HK1/ANYTLS/NODES/POOL）· cacheKey/cacheRecord · CliOutcome 及常用结局 · world · resetWorld · callsStarting · outcomesByNode · assertLog/assertNoLog
+// [OUTPUT] NOW · 时间常量 · 节点夹具（TW1…US1/HK1/ANYTLS/NODES/POOL）· cacheKey/cacheRecord · CliOutcome 及常用结局 · dialFailureLine · world · resetWorld · callsStarting · outcomesByNode · assertLog/assertNoLog
 // [POS] sparkleAgyProbe 行为测试的共享状态与夹具数据：world 是替身（配置、mihomo 控制器、假 agy CLI）读写的唯一状态，
 // 用例通过它编排场景、读取观察结果。仅供测试使用。
 
@@ -61,6 +61,10 @@ export const LOCATION: CliOutcome = { kind: 'location' }
 export const HANG: CliOutcome = { kind: 'hang' }
 export const okAfter = (rttMs: number): CliOutcome => ({ kind: 'ok', rttMs })
 
+/** 内核对一条拨号失败的 TCP 连接打的 warning（真实日志的形状，见 verify:failover 对真实内核的校验）。 */
+export const dialFailureLine = (group: string, source = '198.18.0.1:62341(agy)'): string =>
+  `[TCP] dial ${group} (match DomainKeyword/cloudcode-pa) ${source} --> daily-cloudcode-pa.googleapis.com:443 error: 36.232.22.213:18115 connect error: dial tcp 36.232.22.213:18115: i/o timeout`
+
 export interface Spawned {
   bin: string
   args: string[]
@@ -98,6 +102,8 @@ export const world = {
   hangingTimeoutMs: undefined as number | undefined,
   /** 每次启动 agy 之前调用，参数是这是第几次启动（从 1 开始）。 */
   onSpawn: undefined as undefined | ((count: number) => void),
+  /** subscribeMihomoAlerts 登记的监听器；用例经 emitAlert 向它们投递内核告警。 */
+  alertListeners: [] as Array<(log: ControllerLog) => void>,
   calls: [] as string[],
   logs: [] as string[],
   logFailure: false
@@ -127,6 +133,7 @@ export function resetWorld(): void {
   world.perfNowMs = 0
   world.hangingTimeoutMs = undefined
   world.onSpawn = undefined
+  world.alertListeners = []
   world.calls = []
   world.logs = []
   world.logFailure = false

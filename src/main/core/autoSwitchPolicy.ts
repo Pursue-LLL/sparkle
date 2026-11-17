@@ -23,7 +23,7 @@ export type GroupRole =
   | 'regional-auto'
   /** Cursor 专用：只接受用户手动选点。 */
   | 'cursor-dedicated'
-  /** 邮件 / grok / agy 专用、gemini专用及邮件探测隐藏组：节点由各自的应用层探测选定。 */
+  /** 邮件 / grok / agy 专用、gemini专用及邮件探测隐藏组：节点由各自的应用层探测选定（agy 另按内核的拨号失败告警提前触发修复）。 */
   | 'probe-dedicated'
   /** 订阅自带的手动选择组：把自动选路组追加为可选成员，节点由用户选。 */
   | 'subscription-select'

@@ -1,9 +1,11 @@
-// [INPUT] 待巡检节点 · 已有缓存 · 依赖注入（单点探测 / 时钟） ·
+// [INPUT] 待巡检节点 · 已有缓存 · 内核 warning 告警 · 依赖注入（单点探测 / 时钟） ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         sparkleAgyProviderCore::agyProxyName/AgyNodeProbeRecord/AgyProbeVerdict/AgyProxyRecord (POS: agy provider 与分组配置)
-// [OUTPUT] runAgyAudit · shouldRepairAgyPin · resolveAgyAuditBackoffMs · AgyAuditResult
-// [POS] agy 巡检状态机（纯编排，无 I/O）：决定哪些节点被测、何时中止、缓存如何演进。
-// I/O（切组 + 调 magpie）由调用方注入，便于用假探针验证「不可用不下结论 / 致命错误中止 / 预算超时」等分支。
+// [OUTPUT] runAgyAudit · shouldRepairAgyPin · resolveAgyAuditBackoffMs · AgyAuditResult ·
+//          parseTcpDialFailureGroup · createAgyDialFailureWatch · AGY_DIAL_STORM_* / AGY_DIAL_OUTAGE_THRESHOLD
+// [POS] agy 巡检状态机（纯编排，无 I/O）：决定哪些节点被测、何时中止、缓存如何演进，以及何时不等定时复测、
+// 由生产流量的拨号失败风暴直接触发修复。
+// I/O（切组 + 调 magpie + 订阅告警）由调用方注入，便于用假探针验证「不可用不下结论 / 致命错误中止 / 预算超时」等分支。
 
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import {
@@ -51,7 +53,7 @@ export const AGY_PIN_UNKNOWN_STREAK_LIMIT = 2
  * pin 就地复测之后的处置：
  * - 明确 400 → 立即修复（此前已同节点复测一次排除账号轮转）；
  * - 没有 pin（组未生成 / 节点已从候选池消失）→ 立即修复；
- * - 超时 → 先累计轮次，连续 N 轮才修复，避免上游整体变慢时每 3 分钟把生产出口拖去扫一遍；
+ * - 超时 → 先累计轮次，连续 N 轮才修复，避免上游整体变慢时反复把生产出口拖去扫一遍；
  * - usable / fatal → 不修复（fatal 由调用方直接返回）。
  */
 export function shouldRepairAgyPin(input: {
@@ -121,4 +123,82 @@ export async function runAgyAudit(
   }
 
   return { probed, usable, aborted: false, usableNode }
+}
+
+/** 窗口内 agy 组的拨号失败达到该条数，判定当前出口已不可用：生产流量的失败是比定时复测更强的证据。 */
+export const AGY_DIAL_STORM_THRESHOLD = 30
+export const AGY_DIAL_STORM_WINDOW_MS = 120_000
+/** 触发后的静默期：长于一轮修复扫描，扫描自己探测坏节点产生的失败不会再次触发。 */
+export const AGY_DIAL_STORM_COOLDOWN_MS = 10 * 60_000
+/**
+ * 同一窗口内其它组的拨号失败达到该条数，说明是整网故障而不是 agy 出口的问题，不触发（换节点救不了断网）。
+ * 独立于风暴阈值：整网故障的判据只取决于其它组是否同时在失败。
+ */
+export const AGY_DIAL_OUTAGE_THRESHOLD = 15
+
+/**
+ * mihomo 对每条拨号失败的 TCP 连接打一条 warning：
+ * `[TCP] dial <组名> (match <规则>) <来源> --> <目标> error: <原因>`，组名是规则指向的出口组。
+ * 这行文案是被动触发依赖的外部契约，`pnpm run verify:failover` 在真实内核上校验它。
+ */
+const TCP_DIAL_FAILURE_PATTERN = /^\[TCP\] dial (.+?) \(match /
+
+/** 内核「TCP 拨号失败」告警所属的出口组名；其它日志返回 undefined。 */
+export function parseTcpDialFailureGroup(log: { payload?: string }): string | undefined {
+  return TCP_DIAL_FAILURE_PATTERN.exec(log.payload ?? '')?.[1]
+}
+
+/** 最近 `capacity` 次事件是否全部落在 `windowMs` 内：只留最近 capacity 个时间戳，内存与风暴规模无关。 */
+function createBurstCounter(
+  capacity: number,
+  windowMs: number
+): { record: (nowMs: number) => void; isBurst: (nowMs: number) => boolean } {
+  const hits: number[] = []
+  return {
+    record: (nowMs) => {
+      hits.push(nowMs)
+      if (hits.length > capacity) {
+        hits.shift()
+      }
+    },
+    isBurst: (nowMs) => {
+      const oldest = hits[0]
+      return hits.length === capacity && oldest !== undefined && nowMs - oldest <= windowMs
+    }
+  }
+}
+
+export interface AgyDialFailureWatch {
+  /** 喂入一条内核 warning 告警；返回 true 表示 agy 出口正在大面积拨号失败，应立即复核。 */
+  observe: (log: { payload?: string }, nowMs: number) => boolean
+}
+
+/**
+ * agy 出口的被动失效探测：定时复测按固定间隔采样，对抖动节点还会随机通过；
+ * 而用户的真实流量一旦打到坏节点，内核每条连接都会记一条拨号失败告警。
+ * 本函数只数这些现成的告警，不产生任何探测请求。
+ */
+export function createAgyDialFailureWatch(agyGroupName: string): AgyDialFailureWatch {
+  const agyFailures = createBurstCounter(AGY_DIAL_STORM_THRESHOLD, AGY_DIAL_STORM_WINDOW_MS)
+  const otherFailures = createBurstCounter(AGY_DIAL_OUTAGE_THRESHOLD, AGY_DIAL_STORM_WINDOW_MS)
+  let cooldownUntilMs = 0
+
+  return {
+    observe: (log, nowMs) => {
+      const group = parseTcpDialFailureGroup(log)
+      if (group === undefined) {
+        return false
+      }
+      if (group !== agyGroupName) {
+        otherFailures.record(nowMs)
+        return false
+      }
+      agyFailures.record(nowMs)
+      if (nowMs < cooldownUntilMs || !agyFailures.isBurst(nowMs) || otherFailures.isBurst(nowMs)) {
+        return false
+      }
+      cooldownUntilMs = nowMs + AGY_DIAL_STORM_COOLDOWN_MS
+      return true
+    }
+  }
 }
