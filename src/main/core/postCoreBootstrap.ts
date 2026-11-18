@@ -7,6 +7,7 @@
 //         regionalUrlTestWarmup (POS: 地区组按需预热) · utils/bestEffortLog · utils/errorMessage::describeError ·
 //         autoSelectStickyPin::startAutoSelectStickyPin (POS: `自动选择` 粘性固定) ·
 //         cursorDedicatedDefault::applyCursorDedicatedVpsSelection (POS: Cursor 专用组默认节点) ·
+//         cursorProxyGroup::GROK_GROUP_ENABLED (POS: Grok 专用组总开关，关闭时不启动 grok 探针) ·
 //         mihomoControllerReadyCore::probeMihomoControllerVersion (POS: 控制器就绪探针) ·
 //         networkStartupGraceCore::NETWORK_MONITOR_STARTUP_GRACE_MS (POS: 内核就绪后的启动宽限常量) ·
 //         probeWarmupState::beginProbeWarmup/endProbeWarmup (POS: 测速预热窗口状态) ·
@@ -23,6 +24,7 @@
 import { bestEffortLog } from '../utils/bestEffortLog'
 import { describeError } from '../utils/errorMessage'
 import { appendAppLog } from '../utils/log'
+import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
 import { probeMihomoControllerVersion } from './mihomoControllerReadyCore'
 import { beginProbeWarmup, endProbeWarmup } from './probeWarmupState'
@@ -126,12 +128,15 @@ async function runPostReadyServices(): Promise<void> {
     startSparkleMailProbeLoop()
   })
 
-  void guarded('[SparkleGrokProbe]: bootstrap failed', async () => {
-    const { bootstrapSparkleGrokProvider, startSparkleGrokProbeLoop } =
-      await import('./sparkleGrokProbe')
-    await bootstrapSparkleGrokProvider()
-    startSparkleGrokProbeLoop()
-  })
+  // grok 组关闭时组本身不存在，探针循环只会白白请求 grok.com，所以整体不启动。
+  if (GROK_GROUP_ENABLED) {
+    void guarded('[SparkleGrokProbe]: bootstrap failed', async () => {
+      const { bootstrapSparkleGrokProvider, startSparkleGrokProbeLoop } =
+        await import('./sparkleGrokProbe')
+      await bootstrapSparkleGrokProvider()
+      startSparkleGrokProbeLoop()
+    })
+  }
 
   void guarded('[SparkleAgyProbe]: bootstrap failed', async () => {
     const { bootstrapSparkleAgyProvider, startSparkleAgyProbeLoop } =

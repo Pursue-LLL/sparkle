@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { after, before, beforeEach, describe, it } from 'node:test'
 import yaml from 'yaml'
+import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
 import {
   GROUP,
   groupNames,
@@ -43,7 +44,7 @@ describe('factory: runtime config pipeline', () => {
         'p1',
         'sparkle-agy',
         'sparkle-fast',
-        'sparkle-grok',
+        ...(GROK_GROUP_ENABLED ? ['sparkle-grok'] : []),
         'sparkle-mail'
       ])
       const provider = yaml.parse(
@@ -71,7 +72,7 @@ describe('factory: runtime config pipeline', () => {
       assert.deepEqual(groupNames(config), [
         '自动选择',
         '🎯 Cursor 专用',
-        'grok 专用',
+        ...(GROK_GROUP_ENABLED ? ['grok 专用'] : []),
         'gemini专用',
         '📧 邮件专用',
         '__sparkle_mail_probe__',
@@ -106,7 +107,7 @@ describe('factory: runtime config pipeline', () => {
         'stringify_runtime'
       ]
       assert.deepEqual(rig.steps().slice(0, -1), expected)
-      assert.match(rig.steps().at(-1) ?? '', /^done groups=11$/)
+      assert.equal(rig.steps().at(-1), `done groups=${GROK_GROUP_ENABLED ? 11 : 10}`)
     })
 
     it('adds every built-in rule set around the subscription’s rules', async () => {
@@ -119,7 +120,7 @@ describe('factory: runtime config pipeline', () => {
       for (const expected of [
         'DOMAIN-KEYWORD,cloudcode-pa,🎯 agy 专用',
         'DOMAIN-SUFFIX,koolearn.com,DIRECT',
-        'DOMAIN-SUFFIX,grok.com,grok 专用',
+        ...(GROK_GROUP_ENABLED ? ['DOMAIN-SUFFIX,grok.com,grok 专用'] : []),
         'DOMAIN-SUFFIX,gemini.google.com,gemini专用',
         'DOMAIN-SUFFIX,aistudio.google.com,gemini专用',
         'DOMAIN,imap.gmail.com,📧 邮件专用',
@@ -128,6 +129,11 @@ describe('factory: runtime config pipeline', () => {
       ]) {
         assert.ok(rules.includes(expected), expected)
       }
+      assert.equal(
+        rules.some((rule) => rule.includes('grok.com')),
+        GROK_GROUP_ENABLED,
+        'the grok.com rule exists only while the Grok group is enabled'
+      )
     })
 
     it('leaves AI API endpoints to the user’s override instead of a built-in direct rule', async () => {
@@ -242,39 +248,39 @@ describe('factory: runtime config pipeline', () => {
       )
     })
 
-  it('keeps AnyTLS nodes in the automatic groups like any other protocol', async () => {
-    state.current = 'default'
-    state.profile = subscription({
-      proxies: [proxy('台湾 01', { type: ' AnyTLS ' }), proxy('台湾 02'), proxy('日本 01')]
+    it('keeps AnyTLS nodes in the automatic groups like any other protocol', async () => {
+      state.current = 'default'
+      state.profile = subscription({
+        proxies: [proxy('台湾 01', { type: ' AnyTLS ' }), proxy('台湾 02'), proxy('日本 01')]
+      })
+
+      const config = await rig.generate()
+
+      assert.deepEqual(groupOf(config, 'Sparkle-台湾')?.proxies, ['台湾 01', '台湾 02'])
     })
-
-    const config = await rig.generate()
-
-    assert.deepEqual(groupOf(config, 'Sparkle-台湾')?.proxies, ['台湾 01', '台湾 02'])
-  })
   })
 
   describe('nodes of every shape', () => {
-  it('keeps AnyTLS nodes in an inline url-test group', async () => {
-    state.current = 'default'
-    state.profile = subscription({
-      proxies: [proxy('A', { type: 'anytls' }), proxy('B', { type: 'trojan' })],
-      'proxy-groups': [
-        { name: GROUP, type: 'select', proxies: ['🇭🇰 香港节点', 'DIRECT'] },
-        {
-          name: '🇭🇰 香港节点',
-          type: 'url-test',
-          url: 'https://example.com',
-          interval: 300,
-          proxies: ['A', 'B']
-        }
-      ]
+    it('keeps AnyTLS nodes in an inline url-test group', async () => {
+      state.current = 'default'
+      state.profile = subscription({
+        proxies: [proxy('A', { type: 'anytls' }), proxy('B', { type: 'trojan' })],
+        'proxy-groups': [
+          { name: GROUP, type: 'select', proxies: ['🇭🇰 香港节点', 'DIRECT'] },
+          {
+            name: '🇭🇰 香港节点',
+            type: 'url-test',
+            url: 'https://example.com',
+            interval: 300,
+            proxies: ['A', 'B']
+          }
+        ]
+      })
+
+      const config = await rig.generate()
+
+      assert.deepEqual(groupOf(config, '🇭🇰 香港节点')?.proxies, ['A', 'B'])
     })
-
-    const config = await rig.generate()
-
-    assert.deepEqual(groupOf(config, '🇭🇰 香港节点')?.proxies, ['A', 'B'])
-  })
 
     it('copes with nodes that have no usable name or no type, and keeps one-letter names', async () => {
       state.current = 'default'

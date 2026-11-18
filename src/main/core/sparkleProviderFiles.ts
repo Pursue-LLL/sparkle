@@ -1,6 +1,7 @@
 // [INPUT] provider::extractProxies · regionPriority · sparkle-fast/mail/agy/grok/gemini provider 文档构建与探测缓存 ·
 //         sparkleAgyProbeCache::loadSparkleAgyProbeCache (POS: agy 探测缓存读写) ·
 //         sparkleAgyProviderCore::buildSparkleAgyProviderDocument/AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
+//         cursorProxyGroup::GROK_GROUP_ENABLED (POS: Grok 专用组总开关，关闭时不写 grok provider 文件) ·
 //         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
 //         sparkleFastProviderCore::buildSparkleFastProviderDocument/FAST_NODE_PROVIDER_FILENAME (POS: sparkle-fast provider 文件生成) ·
 //         sparkleFastProviderExclusions::loadFastProviderExclusions (POS: sparkle-fast 剔除/沉底依据) ·
@@ -19,6 +20,7 @@ import { writeFileSync } from 'fs'
 import path from 'path'
 import { profilesDir } from '../utils/dirs'
 import { stringifyYaml } from '../utils/yaml'
+import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
 import { extractProxies } from './provider'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 
@@ -34,8 +36,23 @@ interface ProviderFile {
   document: { proxies: readonly unknown[] }
 }
 
+/** grok provider 仅在 `GROK_GROUP_ENABLED` 开启时参与落盘。 */
+async function buildGrokProviderFile({ proxies }: ProviderInput): Promise<ProviderFile> {
+  const { buildSparkleGrokProviderDocument, GROK_NODE_PROVIDER_FILENAME } =
+    await import('./sparkleGrokProviderCore')
+  const { loadSparkleGrokProbeCache } = await import('./sparkleGrokProbeCache')
+  const probeCache = await loadSparkleGrokProbeCache()
+  return {
+    filename: GROK_NODE_PROVIDER_FILENAME,
+    document: buildSparkleGrokProviderDocument({
+      proxies,
+      probeCache
+    })
+  }
+}
+
 /**
- * 五个 Sparkle 专用 provider（自动选择 / 邮件 / agy / grok / gemini）：各自产出目标文件名与文档。
+ * Sparkle 专用 provider（自动选择 / 邮件 / agy / gemini，grok 视 `GROK_GROUP_ENABLED` 而定）：各自产出目标文件名与文档。
  * 构建模块与探测缓存按需加载：它们依赖 mihomo / 日志，只在写 provider 时才用得到。
  */
 const PROVIDER_FILE_BUILDERS: ReadonlyArray<(input: ProviderInput) => Promise<ProviderFile>> = [
@@ -86,19 +103,7 @@ const PROVIDER_FILE_BUILDERS: ReadonlyArray<(input: ProviderInput) => Promise<Pr
       })
     }
   },
-  async ({ proxies }) => {
-    const { buildSparkleGrokProviderDocument, GROK_NODE_PROVIDER_FILENAME } =
-      await import('./sparkleGrokProviderCore')
-    const { loadSparkleGrokProbeCache } = await import('./sparkleGrokProbeCache')
-    const probeCache = await loadSparkleGrokProbeCache()
-    return {
-      filename: GROK_NODE_PROVIDER_FILENAME,
-      document: buildSparkleGrokProviderDocument({
-        proxies,
-        probeCache
-      })
-    }
-  },
+  ...(GROK_GROUP_ENABLED ? [buildGrokProviderFile] : []),
   async ({ proxies, regionPriority }) => {
     const { buildSparkleGeminiProviderDocument, GEMINI_NODE_PROVIDER_FILENAME } =
       await import('./sparkleGeminiProviderCore')

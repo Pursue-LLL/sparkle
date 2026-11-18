@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:test'
+import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
 import { flush } from './groupFailoverEngineHarness'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
 import type * as PostCoreBootstrap from './postCoreBootstrap'
@@ -277,13 +278,17 @@ describe('postCoreBootstrap', () => {
         'mail:current-node',
         'mail:bootstrap',
         'mail:loop',
-        'grok:bootstrap',
-        'grok:loop',
+        ...(GROK_GROUP_ENABLED ? ['grok:bootstrap', 'grok:loop'] : []),
         'agy:bootstrap',
         'agy:loop'
       ]) {
         assert.ok(calls.includes(background), background)
       }
+      assert.equal(
+        calls.some((call) => call.startsWith('grok:')),
+        GROK_GROUP_ENABLED,
+        'grok probe starts only while the Grok group is enabled'
+      )
       assert.ok(
         calls.indexOf('mail:current-node') < calls.indexOf('mail:bootstrap') &&
           calls.indexOf('mail:bootstrap') < calls.indexOf('mail:loop'),
@@ -354,7 +359,9 @@ describe('postCoreBootstrap', () => {
         '[SparkleGeminiProbe]: bootstrap failed: gemini:bootstrap boom',
         '[SparkleMailProbe]: current node probe start failed: mail:current-node boom',
         '[SparkleMailProbe]: bootstrap failed: mail:bootstrap boom',
-        '[SparkleGrokProbe]: bootstrap failed: grok:bootstrap boom',
+        ...(GROK_GROUP_ENABLED
+          ? ['[SparkleGrokProbe]: bootstrap failed: grok:bootstrap boom']
+          : []),
         '[SparkleAgyProbe]: bootstrap failed: agy:bootstrap boom',
         '[AutoSelectSticky]: start failed: sticky-pin boom',
         '[ProfileUpdater]: init failed: profile-updater boom',

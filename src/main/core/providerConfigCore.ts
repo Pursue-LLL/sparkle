@@ -13,6 +13,7 @@ import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 import {
   DEFAULT_GENERAL_DELAY_TEST_URL,
   GEMINI_REACHABILITY_PROBE_URL,
+  GROK_GROUP_ENABLED,
   MAIL_DELAY_TEST_URL
 } from './cursorProxyGroup'
 import {
@@ -125,10 +126,12 @@ export function buildBaseConfigWithProviders(
 
   // grok 专用组是 select + 应用层探针（sparkleGrokProbe）：稳态只复核当前节点，
   // provider 不做周期体检，避免池内节点被反复全量探测（这正是"找到一个就停"的前提）。
-  baseConfig['proxy-providers'][GROK_NODE_PROVIDER_ID] = {
-    type: 'file',
-    path: resolveProviderPath(GROK_NODE_PROVIDER_ID),
-    'health-check': { enable: false }
+  if (GROK_GROUP_ENABLED) {
+    baseConfig['proxy-providers'][GROK_NODE_PROVIDER_ID] = {
+      type: 'file',
+      path: resolveProviderPath(GROK_NODE_PROVIDER_ID),
+      'health-check': { enable: false }
+    }
   }
 
   if (vps.length > 0) {

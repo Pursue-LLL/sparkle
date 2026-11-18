@@ -6,6 +6,7 @@ import {
   CURSOR_DEDICATED_GROUP_NAME,
   GEMINI_DEDICATED_GROUP_NAME,
   GROK_DEDICATED_GROUP_NAME,
+  GROK_GROUP_ENABLED,
   LEGACY_CURSOR_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME,
@@ -113,27 +114,31 @@ describe('customProxyGroups', () => {
     )
   })
 
-  it('builds Grok group as select over the verified provider (app probe picks one)', () => {
-    const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+  it(
+    'builds Grok group as select over the verified provider (app probe picks one)',
+    { skip: !GROK_GROUP_ENABLED },
+    () => {
+      const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
+      ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
 
-    const grokGroup = (
-      (profile['proxy-groups'] as {
-        name: string
-        type?: string
-        use?: string[]
-        filter?: string
-      }[]) ?? []
-    ).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
+      const grokGroup = (
+        (profile['proxy-groups'] as {
+          name: string
+          type?: string
+          use?: string[]
+          filter?: string
+        }[]) ?? []
+      ).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
 
-    assert.equal(grokGroup?.type, 'select')
-    assert.deepEqual(grokGroup?.use, [GROK_NODE_PROVIDER_ID])
-    // 不限地区：任何真正返回 200 的节点都可以被探针选中。
-    assert.equal(grokGroup?.filter, undefined)
-  })
+      assert.equal(grokGroup?.type, 'select')
+      assert.deepEqual(grokGroup?.use, [GROK_NODE_PROVIDER_ID])
+      // 不限地区：任何真正返回 200 的节点都可以被探针选中。
+      assert.equal(grokGroup?.filter, undefined)
+    }
+  )
 
-  it('builds Grok group from every leaf in inline mode', () => {
+  it('builds Grok group from every leaf in inline mode', { skip: !GROK_GROUP_ENABLED }, () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
     ensureCustomProxyGroups(profile, ['HK-01', 'JP-01', 'HK-01', 'US-01'])
@@ -148,6 +153,16 @@ describe('customProxyGroups', () => {
 
     assert.equal(grokGroup?.type, 'select')
     assert.deepEqual(grokGroup?.proxies, ['HK-01', 'JP-01', 'US-01'])
+  })
+
+  it('injects the Grok group only while GROK_GROUP_ENABLED is on', () => {
+    for (const profileId of ['test-profile', undefined]) {
+      const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+
+      ensureCustomProxyGroups(profile, ['HK-01', 'JP-01', 'US-01'], profileId)
+
+      assert.equal(groupNames(profile).includes(GROK_DEDICATED_GROUP_NAME), GROK_GROUP_ENABLED)
+    }
   })
 
   it('builds Gemini group as fallback over the region-verified provider', () => {
@@ -169,7 +184,7 @@ describe('customProxyGroups', () => {
     assert.equal(geminiGroup?.filter, undefined)
   })
 
-  it('keeps Grok group even when there is no Hong Kong node', () => {
+  it('keeps Grok group even when there is no Hong Kong node', { skip: !GROK_GROUP_ENABLED }, () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
     ensureCustomProxyGroups(profile, ['JP-01', 'US-01'])
@@ -229,7 +244,7 @@ describe('customProxyGroups', () => {
     assert.deepEqual(groupNames(profile), [
       CURSOR_DEDICATED_GROUP_NAME,
       HONG_KONG_FILTER_GROUP_NAME,
-      GROK_DEDICATED_GROUP_NAME,
+      ...(GROK_GROUP_ENABLED ? [GROK_DEDICATED_GROUP_NAME] : []),
       GEMINI_DEDICATED_GROUP_NAME,
       MAIL_DEDICATED_GROUP_NAME,
       MAIL_PROBE_HIDDEN_GROUP_NAME,

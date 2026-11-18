@@ -114,7 +114,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 
 | 文件                                                                   | 职责                                                                                                                                             |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `cursorProxyGroup.ts` | Sparkle 分组名常量与判定谓词的单一出处（`AUTO_SELECT_GROUP_NAME`、各专用组名、`Sparkle-` 前缀判定）· Cursor 专用组成员过滤（`CURSOR_VPS_PROVIDER_FILTER`、`filterCursorEligibleVpsLeaves`）/ selector 解析 |
+| `cursorProxyGroup.ts` | Sparkle 分组名常量与判定谓词的单一出处（`AUTO_SELECT_GROUP_NAME`、各专用组名、`Sparkle-` 前缀判定）· Cursor 专用组成员过滤（`CURSOR_VPS_PROVIDER_FILTER`、`filterCursorEligibleVpsLeaves`）/ selector 解析 · `GROK_GROUP_ENABLED`：Grok 专用组总开关，当前为 `false`——`customProxyGroups` 不注入组（`dedicatedTrafficRuleInjection` 因组不存在而不注入 `grok.com` 规则）、`providerConfigCore` 不注册 `sparkle-grok`、`sparkleProviderFiles` 不写其 provider 文件、`postCoreBootstrap` 不启动探针；`sparkleGrok*` 实现原样保留，改为 `true` 即整体恢复 |
 | `cursorDedicatedDefault.ts`                                            | 启动恢复手选；无手选时默认节点 `CURSOR_DEFAULT_VPS_NODE`                                                                                         |
 | `cursorDedicatedSelectionCore.ts`                                      | 手选节点持久化（`writeCursorDedicatedManualSelection`）                                                                                          |
 | `cursorDedicatedManualOnlyCore.ts`                                     | Cursor 专用组仅允许手动 / 启动恢复切换，自动来源一律拒绝                                                                                         |

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it, mock } from 'node:test'
 import { parseYaml } from '../utils/yaml'
+import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
 import type { writeSparkleProviderFiles } from './sparkleProviderFiles'
 
 /**
@@ -18,9 +19,9 @@ const FILES = [
   'sparkle-fast-proxies.yaml',
   'sparkle-mail-proxies.yaml',
   'sparkle-agy-proxies.yaml',
-  'sparkle-grok-proxies.yaml',
+  ...(GROK_GROUP_ENABLED ? ['sparkle-grok-proxies.yaml'] : []),
   'gemini专用-proxies.yaml'
-] as const
+]
 
 const subscription: Proxy[] = [
   { name: '台湾 01', type: 'anytls', server: 'tw1.example.com', port: 8443 },

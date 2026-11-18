@@ -1,5 +1,5 @@
 // [INPUT] cursorDedicatedRuleRewrite::migrateLegacyCursorDedicatedGroupReferences/rewriteBroadCursorDedicatedRules (POS: Cursor 专用组规则整理) ·
-//         cursorProxyGroup::CURSOR_DEDICATED_GROUP_NAME/CURSOR_DEDICATED_DIRECT_PROXY/CURSOR_VPS_PROVIDER_FILTER/filterCursorEligibleVpsLeaves… (POS: Sparkle 分组名常量与判定谓词) ·
+//         cursorProxyGroup::CURSOR_DEDICATED_GROUP_NAME/CURSOR_DEDICATED_DIRECT_PROXY/CURSOR_VPS_PROVIDER_FILTER/filterCursorEligibleVpsLeaves/GROK_GROUP_ENABLED… (POS: Sparkle 分组名常量与判定谓词) ·
 //         ruleSyntax::rewriteRulePolicies (POS: 规则文本解析与策略改写) ·
 //         sparkleAgyProviderCore::buildAgyGroupConfig (POS: agy provider 与分组配置) ·
 //         sparkleGeminiProviderCore::buildGeminiGroupConfig (POS: gemini provider 与分组配置) ·
@@ -7,7 +7,7 @@
 //         sparkleMailProviderCore::buildMailGroupConfig/buildMailProbeHiddenGroupConfig/ensureMailProbeListener (POS: 邮件 provider 与分组配置) ·
 //         vpsProviderSplitCore::resolveVpsProviderId (POS: VPS 节点拆分与 provider id)
 // [OUTPUT] HONG_KONG_FILTER_GROUP_NAME · ensureCustomProxyGroups: 注入 / 刷新 Sparkle 自有分组
-// [POS] Sparkle 自有分组注入：`🎯 Cursor 专用`、`Sparkle-香港`、`grok 专用`、`gemini专用`、`📧 邮件专用`、隐藏探测组与 `🎯 agy 专用` 放在订阅分组之前；订阅自带分组原样保留，并迁移指向旧 Cursor 组名的引用与规则。
+// [POS] Sparkle 自有分组注入：`🎯 Cursor 专用`、`Sparkle-香港`、`grok 专用`、`gemini专用`、`📧 邮件专用`、隐藏探测组与 `🎯 agy 专用` 放在订阅分组之前（`grok 专用` 仅在 `GROK_GROUP_ENABLED` 开启时注入）；订阅自带分组原样保留，并迁移指向旧 Cursor 组名的引用与规则。
 
 import {
   CURSOR_DEDICATED_GROUP_NAME,
@@ -20,6 +20,7 @@ import {
   GEMINI_DEDICATED_GROUP_NAME,
   HONG_KONG_DELAY_TEST_URL,
   GROK_DEDICATED_GROUP_NAME,
+  GROK_GROUP_ENABLED,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
@@ -191,11 +192,16 @@ function buildHongKongGroupConfig(
  * Grok 专用组：`select` + 应用层探针（sparkleGrokProbe）。
  * 不再用 url-test 全量排名——稳态只复核当前节点，失败才按池内顺序找下一个，找到即停。
  * 成员来自 `sparkle-grok` provider（只含实测 200 的节点，任意地区）。
+ * `GROK_GROUP_ENABLED` 关闭时不注入。
  */
 function buildGrokGroupConfig(
   leafNames: string[],
   profileId: string | undefined
 ): ProxyGroupConfig | null {
+  if (!GROK_GROUP_ENABLED) {
+    return null
+  }
+
   if (profileId) {
     return {
       name: GROK_DEDICATED_GROUP_NAME,
