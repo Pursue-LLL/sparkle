@@ -15,6 +15,7 @@ import {
 import type { ServiceSysproxyEvent } from '../service/api'
 import { appendAppLog } from '../utils/log'
 import { showNotification } from '../utils/notification'
+import { timeSwitchOperation } from '../utils/switchTiming'
 
 let defaultBypass: string[]
 let triggerSysProxyTimer: NodeJS.Timeout | null = null
@@ -26,10 +27,20 @@ function registryArgs(useRegistry: boolean): string[] {
   return process.platform === 'win32' && useRegistry ? ['--use-registry'] : []
 }
 
-export async function triggerSysProxy(
+export function triggerSysProxy(
   enable: boolean,
   onlyActiveDevice: boolean,
   useRegistry = false
+): Promise<void> {
+  return timeSwitchOperation('triggerSysProxy', () =>
+    applySysProxy(enable, onlyActiveDevice, useRegistry)
+  )
+}
+
+async function applySysProxy(
+  enable: boolean,
+  onlyActiveDevice: boolean,
+  useRegistry: boolean
 ): Promise<void> {
   if (enable) {
     if (net.isOnline()) {

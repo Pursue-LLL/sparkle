@@ -10,7 +10,9 @@
 | `agy-probe-display.ts` | agy 真实请求实测的格式口径：`rttMs` → 秒级文案 / 色调；无样本显示「未测」 |
 | `grok-probe-display.ts` | grok 真实请求实测的格式口径：200 → 毫秒、403 → 「403」挑战、超时/其它 → 「超时/失败」；无样本显示「—」 |
 | `calc.ts` | 流量/百分比格式化 |
+| `config-patch-preview.ts` | `previewConfigPatch(current, patch)`：按主进程 `deepMerge` 口径（对象递归合并、数组与标量整体替换）预览补丁结果，返回新对象、不改入参；只用于开关的乐观显示，真实结果以随后的重新读取为准（`nameserver-policy` / `hosts` 等特殊处理不在内） |
 | `connection-filter-autocomplete.ts` | 连接过滤输入框的补全建议 |
+| `core-restart-gate.ts` | 内核重启闸门（`coreRestartGate`，上限 120 秒）：同一时刻只有一次重启在跑，运行中到达的请求合并成唯一一次随后重启（只适用于无参数、只读磁盘配置的幂等任务）；失败只拒绝对应调用方，超时放开闸门并报错；`subscribe` / `isBusy` 供界面显示「重启中」 |
 | `cursor-proxy-groups.ts` | Cursor / Sparkle 组名、各组的延迟探针地址与显示名解析 |
 | `debounce.ts` | 防抖 |
 | `delay-test.ts` | 代理页批量测速的并发控制 |
@@ -21,14 +23,14 @@
 | `image.ts` | Canvas / 图片取色与 group icon 处理 |
 | `includes.ts` | 忽略大小写的包含判断 |
 | `init.ts` | 启动初始化：platform / version / buildStamp |
-| `ipc.ts` | 渲染进程 IPC 唯一入口（mihomo、配置、agy/grok 快照等） |
+| `ipc.ts` | 渲染进程 IPC 唯一入口（mihomo、配置、agy/grok 快照等）；`restartCore()` 经 `coreRestartGate`，是渲染进程里唯一直接 invoke `restartCore` 的地方（`restartGateWiring.test.ts` 守护） |
 | `mihomo-log-store.ts` | 内核日志的内存存储与订阅 |
 | `notification.ts` | 应用通知 / Toast |
 | `proxy-group-view.ts` | 代理页视图纯函数：把各组展开 / 搜索 / 排序状态折算为虚拟列表的每组行数与可见节点 |
 | `proxy-delay-sample-age.ts` | 延迟样本年龄、tooltip 文案：当前失败如实写「最近一次测速失败」，历史成功值只作「N分前成功」溯源，不冒充当前延迟 |
 | `routingIntegrity.ts` | 连接路由完整性不一致检测与提示 |
 | `validate.ts` | IPv4 / IPv6 等输入校验 |
-| `*.test.ts` | 对应纯函数的 `node:test` 单测（agy / grok / cursor 组 / 延迟测试 / 错误格式化 / 延迟样本年龄） |
+| `*.test.ts` | 对应纯函数的 `node:test` 单测（agy / grok / cursor 组 / 延迟测试 / 错误格式化 / 延迟样本年龄 / 重启闸门 / 补丁预览，含扫描全部渲染进程源码的重启入口守卫） |
 
 ## 依赖
 

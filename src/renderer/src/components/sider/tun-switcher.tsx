@@ -1,9 +1,12 @@
 import { Button, Card, CardBody, CardFooter, Tooltip } from '@heroui/react'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
+import { useCoreRestarting } from '@renderer/hooks/use-core-restarting'
+import { usePendingAction } from '@renderer/hooks/use-pending-action'
 import BorderSwitch from '@renderer/components/base/border-swtich'
 import { TbDeviceIpadHorizontalBolt } from 'react-icons/tb'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { restartCore } from '@renderer/utils/ipc'
+import { notify } from '@renderer/utils/notification'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import React from 'react'
@@ -23,6 +26,24 @@ const TunSwitcher: React.FC<Props> = (props) => {
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
   const { tun } = controledMihomoConfig || {}
   const { enable } = tun || {}
+  const restarting = useCoreRestarting()
+  const { pendingTarget, run: toggleTun } = usePendingAction(
+    async (next: boolean): Promise<void> => {
+      const applied = await patchControledMihomoConfig(
+        next ? { tun: { enable: next }, dns: { enable: true } } : { tun: { enable: next } }
+      )
+      // 补丁失败时配置没变，重启内核只会白白中断连接。
+      if (!applied) return
+      try {
+        await restartCore()
+      } catch (e) {
+        notify(e, { variant: 'danger' })
+      }
+      window.electron.ipcRenderer.send('updateFloatingWindow')
+      window.electron.ipcRenderer.send('updateTrayMenu')
+    }
+  )
+  const displayedEnable = pendingTarget ?? enable
   const {
     attributes,
     listeners,
@@ -34,16 +55,6 @@ const TunSwitcher: React.FC<Props> = (props) => {
     id: 'tun'
   })
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
-  const onChange = async (enable: boolean): Promise<void> => {
-    if (enable) {
-      await patchControledMihomoConfig({ tun: { enable }, dns: { enable: true } })
-    } else {
-      await patchControledMihomoConfig({ tun: { enable } })
-    }
-    await restartCore()
-    window.electron.ipcRenderer.send('updateFloatingWindow')
-    window.electron.ipcRenderer.send('updateTrayMenu')
-  }
 
   if (iconOnly) {
     return (
@@ -95,9 +106,10 @@ const TunSwitcher: React.FC<Props> = (props) => {
               />
             </Button>
             <BorderSwitch
-              isShowBorder={match && enable}
-              isSelected={enable}
-              onValueChange={onChange}
+              isShowBorder={match && displayedEnable}
+              isSelected={displayedEnable}
+              isDisabled={pendingTarget !== undefined || restarting}
+              onValueChange={toggleTun}
             />
           </div>
         </CardBody>

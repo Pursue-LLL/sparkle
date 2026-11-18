@@ -3,6 +3,7 @@ import BorderSwitch from '@renderer/components/base/border-swtich'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
+import { usePendingAction } from '@renderer/hooks/use-pending-action'
 import { triggerSysProxy } from '@renderer/utils/ipc'
 import { AiOutlineGlobal } from 'react-icons/ai'
 import React from 'react'
@@ -42,16 +43,22 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
 
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
   const disabled = mixedPort == 0
-  const onChange = async (enable: boolean): Promise<void> => {
-    if (mode == 'manual' && disabled) return
-    try {
-      await triggerSysProxy(enable, onlyActiveDevice)
-      await patchAppConfig({ sysProxy: { enable } })
-      window.electron.ipcRenderer.send('updateFloatingWindow')
-      window.electron.ipcRenderer.send('updateTrayMenu')
-    } catch (e) {
-      notify(e, { variant: 'danger' })
+  const { pendingTarget, run: toggleSysProxy } = usePendingAction(
+    async (next: boolean): Promise<void> => {
+      try {
+        await triggerSysProxy(next, onlyActiveDevice)
+        await patchAppConfig({ sysProxy: { enable: next } })
+        window.electron.ipcRenderer.send('updateFloatingWindow')
+        window.electron.ipcRenderer.send('updateTrayMenu')
+      } catch (e) {
+        notify(e, { variant: 'danger' })
+      }
     }
+  )
+  const displayedEnable = pendingTarget ?? enable
+  const onChange = (next: boolean): void => {
+    if (mode == 'manual' && disabled) return
+    void toggleSysProxy(next)
   }
 
   if (iconOnly) {
@@ -104,9 +111,9 @@ const SysproxySwitcher: React.FC<Props> = (props) => {
               />
             </Button>
             <BorderSwitch
-              isShowBorder={match && enable}
-              isSelected={!(mode != 'auto' && disabled) && enable}
-              isDisabled={mode == 'manual' && disabled}
+              isShowBorder={match && displayedEnable}
+              isSelected={!(mode != 'auto' && disabled) && displayedEnable}
+              isDisabled={(mode == 'manual' && disabled) || pendingTarget !== undefined}
               onValueChange={onChange}
             />
           </div>

@@ -75,6 +75,9 @@ mihomo (TUN) → 节点 leaf → 目标站点
     - **关闭即零探测**：每个探测循环入参一个 `dedicatedGroupGate`，每个 tick 现读最新开关，关闭则整轮跳过、不发任何请求；`自动选择` 的 Gemini 地区核验（`verifyNodeGeminiRegion`）与隐藏探测组 `__sparkle_mail_probe__` + 本地监听器 `127.0.0.1:17899` 是公共设施，不受开关影响。
     - **切换 = 落盘 → 重新生成 → 整配置强制重载，串行执行**：`patchAppConfigAndReloadProfile` 把连续的切换排成一队；重载成功后才为刚打开的组补一轮探测，内核未运行或重载失败不探测；重载失败时开关已保存，界面收到「已保存但应用失败」提示，下次生成配置时生效。
     - **已关闭的组在代理页保留占位标题**：关闭的组在内核里不存在，页面按 `groupDisplayRank` 在原位置插回一个只读占位，用户可原地重新开启；关闭 / 开启过程中占位与真实标题在同一槽位交换，列表长度保持不变。
+24. **切换类操作先反馈、后等待，内核重启一律经闸门** — 开关与切换点击后界面必须立即翻到目标值，不等主进程：`ControledMihomoConfigProvider.patchControledMihomoConfig` 先把 `previewConfigPatch` 算出的预览写进 SWR 缓存，主进程处理完后重新读取真实配置，失败回滚并提示，并返回「是否已生效」（失败时调用方不得接着重启内核）；虚拟网卡与系统代理开关由 `usePendingAction` 管「进行中」（展示值翻到目标值、执行期间禁用、重复点击忽略）。渲染进程的内核重启只能走 `utils/ipc.ts` 的 `restartCore()`：`coreRestartGate` 保证同一时刻只有一次重启在跑，运行中到达的请求合并成唯一一次随后重启（所以重启必须保持「无参数、只读磁盘上的配置」才能合并），执行超过 120 秒视为卡死、放开闸门并报错（不取消主进程那次重启）；页头显示「内核重启中…」，虚拟网卡开关在重启期间禁用；`restartGateWiring.test.ts` 拦住绕过入口的写法。主进程 `patchControledMihomoConfig`、`restartCore`、`triggerSysProxy` 各记一行 `[SwitchTiming]`（耗时、`os.loadavg()` 的 1 分钟负载、空闲内存；旁路，遵守第 14 条）。
+    - **边界**：预览只近似主进程的合并规则（`nameserver-policy` / `proxy-server-nameserver-policy` / `hosts` 的整体替换、`controlDns` / `controlSniff` 关闭时的删除不在预览里，以随后的重新读取为准）；多个补丁重叠时，较早失败的补丁要等最后结束的那个才被纠正（SWR 只让最后结束的变更重新读取）；闸门只管渲染进程的入口，托盘、快捷键与主进程自己发起的重启不经过它，主进程 `restartCore` 本身没有互斥；`use-dedicated-group-switches.ts` 有一份同类的「进行中」实现，没有并入 `usePendingAction`。
+    - **事故记录**：BUG-2026-11-18-005（`src/main/core/core_20261114_20261120_BUGFIX_LOG.md`）。
 
 ## 外部依赖
 
