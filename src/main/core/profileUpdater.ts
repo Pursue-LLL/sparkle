@@ -1,11 +1,13 @@
 // [INPUT] config::addProfileItem/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
 //         profileUpdaterCore::createDueProfileUpdateRunner (POS: 订阅到期判定与更新执行) ·
-//         utils/log::appendAppLog (POS: 应用日志与内核日志)
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         utils/notification::showNotification (POS: 应用通知)
 // [OUTPUT] runDueProfileUpdates · initProfileUpdater: 订阅到期检查与 GUI 心跳
-// [POS] 订阅自动更新的运行时接线：GUI 每 5 分钟心跳（启动后 60 秒首次）与 LaunchAgent 共用同一个到期检查；每次 init 换新一代，旧一代在途检查结束后不再续排。
+// [POS] 订阅自动更新的运行时接线：GUI 每 5 分钟心跳（启动后 60 秒首次）与 LaunchAgent 共用同一个到期检查；每次 init 换新一代，旧一代在途检查结束后不再续排；连续失败的提醒以系统 / 弹窗通知送达。
 
 import { addProfileItem, getProfileConfig } from '../config'
 import { appendAppLog } from '../utils/log'
+import { showNotification } from '../utils/notification'
 import { createDueProfileUpdateRunner } from './profileUpdaterCore'
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000
@@ -20,7 +22,8 @@ const STARTUP_DELAY_MS = 60 * 1000
 export const runDueProfileUpdates = createDueProfileUpdateRunner({
   listItems: async () => (await getProfileConfig()).items,
   update: addProfileItem,
-  log: appendAppLog
+  log: appendAppLog,
+  notify: (notice) => showNotification({ ...notice, variant: 'warning' })
 })
 
 let heartbeat: NodeJS.Timeout | undefined

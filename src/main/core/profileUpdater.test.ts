@@ -21,9 +21,20 @@ const world: {
   listFailure: unknown
   /** 设置后读取订阅列表会一直等到它完成，模拟一次耗时的检查。 */
   gate: Promise<void> | undefined
+  /** 设置后每次更新订阅都以网络错误失败。 */
+  updateFailure: Error | undefined
   updated: string[]
   logs: string[]
-} = { items: [], listFailure: undefined, gate: undefined, updated: [], logs: [] }
+  notices: Array<{ id?: string; title: string; body?: string; variant?: string }>
+} = {
+  items: [],
+  listFailure: undefined,
+  gate: undefined,
+  updateFailure: undefined,
+  updated: [],
+  logs: [],
+  notices: []
+}
 
 let moduleMocked = false
 
@@ -39,6 +50,9 @@ function loadModule(): typeof import('./profileUpdater') {
           return { items: world.items }
         },
         addProfileItem: async (item: ProfileItem) => {
+          if (world.updateFailure) {
+            throw world.updateFailure
+          }
           world.updated.push(item.id)
         }
       }
@@ -47,6 +61,13 @@ function loadModule(): typeof import('./profileUpdater') {
       exports: {
         appendAppLog: async (message: string) => {
           world.logs.push(message)
+        }
+      }
+    })
+    mock.module('../utils/notification', {
+      exports: {
+        showNotification: async (payload: (typeof world.notices)[number]) => {
+          world.notices.push(payload)
         }
       }
     })
@@ -67,8 +88,10 @@ describe('profileUpdater', () => {
     world.items = [dueItem()]
     world.listFailure = undefined
     world.gate = undefined
+    world.updateFailure = undefined
     world.updated = []
     world.logs = []
+    world.notices = []
     mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.UTC(2026, 10, 12, 12, 0, 0) })
   })
 
@@ -162,5 +185,30 @@ describe('profileUpdater', () => {
 
     assert.deepEqual(results, [1, 1])
     assert.deepEqual(world.updated, ['main'])
+  })
+
+  it('shows one warning notification once a subscription has kept failing for a heartbeat', async () => {
+    world.updateFailure = new Error('网络连接被重置或超时：https://sub.example.com')
+    const { runDueProfileUpdates } = loadModule()
+
+    await runDueProfileUpdates()
+    await advance(HEARTBEAT_MS - 1)
+    await runDueProfileUpdates()
+    assert.deepEqual(world.notices, [])
+
+    await advance(1)
+    await runDueProfileUpdates()
+    assert.deepEqual(world.notices, [
+      {
+        id: 'profile-update-failed:main',
+        title: '订阅更新失败',
+        body: '「主订阅」已连续 3 次更新失败，仍在使用上一份内容：网络连接被重置或超时：https://sub.example.com',
+        variant: 'warning'
+      }
+    ])
+
+    await advance(HEARTBEAT_MS)
+    await runDueProfileUpdates()
+    assert.equal(world.notices.length, 1, 'once per streak')
   })
 })

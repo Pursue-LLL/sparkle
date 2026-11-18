@@ -1,10 +1,11 @@
 // [INPUT] 订阅列表（type · updated · updateTime · interval · merge） ·
 //         profileContentCore::InvalidProfileContentError (POS: 订阅内容写盘前校验)
-// [OUTPUT] PROFILE_UPDATE_DUE_ARG · INVALID_CONTENT_RETRY_MS · latestScheduledSlotMs · isRemoteProfileDue · isMergeProfileDue · createDueProfileUpdateRunner
+// [OUTPUT] PROFILE_UPDATE_DUE_ARG · INVALID_CONTENT_RETRY_MS · FAILURE_NOTICE_AFTER_MS · FailureNotice · latestScheduledSlotMs · isRemoteProfileDue · isMergeProfileDue · createDueProfileUpdateRunner
 // [POS] 订阅自动更新的唯一判定与编排：GUI 心跳与 LaunchAgent CLI 共用。
 // 不依赖定时器恰好在计划时刻触发——只看「上次成功更新是否早于最近一个计划时刻」，
 // 所以睡眠跨过计划时刻、断网导致失败后，下一次检查都会自动补上；
-// 服务端返回「不是配置」的内容时旧文件保留、按递增间隔重试，不按心跳频率反复请求。
+// 服务端返回「不是配置」的内容时旧文件保留、按递增间隔重试，不按心跳频率反复请求；
+// 同一订阅持续失败超过一个心跳周期时提醒一次，否则失败只写日志，没人会发现订阅已经停在旧内容上。
 
 import { InvalidProfileContentError } from './profileContentCore'
 
@@ -105,12 +106,50 @@ export const INVALID_CONTENT_RETRY_MS: readonly number[] = [5, 15, 30, 60].map(
   (minutes) => minutes * 60 * 1000
 )
 
+/**
+ * 同一订阅从第一次失败起持续这么久仍在失败，才提醒一次；每个失败序列只提醒一次，成功一次即清零。
+ * 以时间而不是次数为准：GUI 心跳与 LaunchAgent 各自每 5 分钟进来一次、相位不同，
+ * 连续两次失败可以只隔几秒（睡眠唤醒后网络还没恢复时就是这样），撑过一个心跳周期仍在失败才算真的出了问题。
+ * 计数只存内存：LaunchAgent 在 GUI 没运行时是一次性进程，一个序列里只有一次失败、撑不到这么久，所以不会每 5 分钟弹一次。
+ */
+export const FAILURE_NOTICE_AFTER_MS = 5 * 60 * 1000
+
+const NOTICE_REASON_MAX_CHARS = 100
+
+export interface FailureNotice {
+  id: string
+  title: string
+  body: string
+}
+
+/** 一个订阅当前的失败序列：第一次失败的时刻、失败次数、是否已经提醒过。 */
+interface FailureStreak {
+  sinceMs: number
+  failures: number
+  noticed: boolean
+}
+
 export interface DueProfileUpdateDeps {
   listItems: () => Promise<readonly ProfileItem[]>
   update: (item: ProfileItem) => Promise<void>
   log: (message: string) => Promise<void>
+  /** 失败持续超过 {@link FAILURE_NOTICE_AFTER_MS} 时每个失败序列调用一次；它抛出的错误只记日志。 */
+  notify?: (notice: FailureNotice) => Promise<void>
   now?: () => number
   updateTimeoutMs?: number
+}
+
+/** 同一订阅共用一个通知 id：系统通知模式下，下一个失败序列的提醒会顶替还留在屏幕上的上一条。 */
+function buildFailureNotice(item: ProfileItem, failures: number, reason: string): FailureNotice {
+  const brief =
+    reason.length > NOTICE_REASON_MAX_CHARS
+      ? `${reason.slice(0, NOTICE_REASON_MAX_CHARS)}…`
+      : reason
+  return {
+    id: `profile-update-failed:${item.id}`,
+    title: '订阅更新失败',
+    body: `「${item.name}」已连续 ${failures} 次更新失败，仍在使用上一份内容：${brief}`
+  }
 }
 
 function withTimeout(task: Promise<void>, timeoutMs: number): Promise<void> {
@@ -130,6 +169,7 @@ function withTimeout(task: Promise<void>, timeoutMs: number): Promise<void> {
  * - 单个订阅失败或超时只记日志，不影响其它订阅；失败不会推进 updated，下一次检查仍然到期，即自动重试。
  * - 服务端返回的内容通不过校验（{@link InvalidProfileContentError}）时按 {@link INVALID_CONTENT_RETRY_MS} 递增退避，
  *   退避期内的订阅不参与检查；退避状态只存内存，重启后重新计。
+ * - 任何原因的失败持续超过 {@link FAILURE_NOTICE_AFTER_MS} 时通过 `notify` 提醒一次（每个失败序列一次）。
  * - 并发调用共享同一次执行，避免 GUI 心跳与 LaunchAgent 同时更新同一个订阅。
  */
 export function createDueProfileUpdateRunner(deps: DueProfileUpdateDeps): () => Promise<number> {
@@ -137,6 +177,8 @@ export function createDueProfileUpdateRunner(deps: DueProfileUpdateDeps): () => 
   const updateTimeoutMs = deps.updateTimeoutMs ?? DEFAULT_UPDATE_TIMEOUT_MS
   /** 订阅 id → 因内容无效连续失败的次数与下一次允许重试的时刻；成功一次即清除。 */
   const invalidContentRetries = new Map<string, { failures: number; retryAtMs: number }>()
+  /** 订阅 id → 任何原因的失败序列；成功一次即清除。 */
+  const failureStreaks = new Map<string, FailureStreak>()
 
   const isWaitingToRetry = (item: ProfileItem): boolean =>
     (invalidContentRetries.get(item.id)?.retryAtMs ?? 0) > now()
@@ -150,10 +192,37 @@ export function createDueProfileUpdateRunner(deps: DueProfileUpdateDeps): () => 
     return `；旧内容原样保留，第 ${failures} 次失败，${Math.round(delayMs / 60_000)} 分钟后重试`
   }
 
+  /** 记一次失败，序列持续够久时提醒一次；提醒失败只记日志，不影响本轮其它订阅。 */
+  const recordFailure = async (item: ProfileItem, reason: string): Promise<void> => {
+    const at = now()
+    const previous = failureStreaks.get(item.id)
+    const failures = (previous?.failures ?? 0) + 1
+    const sinceMs = previous?.sinceMs ?? at
+    const due = !previous?.noticed && at - sinceMs >= FAILURE_NOTICE_AFTER_MS
+    failureStreaks.set(item.id, { sinceMs, failures, noticed: previous?.noticed === true || due })
+    if (!due || !deps.notify) {
+      return
+    }
+
+    try {
+      await deps.notify(buildFailureNotice(item, failures, reason))
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : String(error)
+      await deps.log(
+        `[ProfileUpdater]: failure notice failed id=${item.id} name=${item.name}: ${cause}\n`
+      )
+      return
+    }
+    await deps.log(
+      `[ProfileUpdater]: failure notice sent id=${item.id} name=${item.name} failures=${failures}\n`
+    )
+  }
+
   const attempt = async (item: ProfileItem): Promise<boolean> => {
     try {
       await withTimeout(deps.update(item), updateTimeoutMs)
       invalidContentRetries.delete(item.id)
+      failureStreaks.delete(item.id)
       await deps.log(`[ProfileUpdater]: update succeeded id=${item.id} name=${item.name}\n`)
       return true
     } catch (error) {
@@ -163,6 +232,7 @@ export function createDueProfileUpdateRunner(deps: DueProfileUpdateDeps): () => 
       await deps.log(
         `[ProfileUpdater]: update failed id=${item.id} name=${item.name}: ${reason}${followUp}\n`
       )
+      await recordFailure(item, reason)
       return false
     }
   }
