@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, before, beforeEach, describe, it, mock } from 'node:test'
 import yaml from 'yaml'
-import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
+import { ALL_GROUPS_OFF, ALL_GROUPS_ON } from './dedicatedGroupsRig'
+import { DEDICATED_GROUP_IDS } from './dedicatedGroups'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import type { writeSparkleProviderFiles } from './sparkleProviderFiles'
 
@@ -18,10 +19,7 @@ const FILES: Record<Provider, string> = {
   grok: 'sparkle-grok-proxies.yaml',
   gemini: 'gemini专用-proxies.yaml'
 }
-/** 实际会落盘的 provider：grok 只在 `GROK_GROUP_ENABLED` 开启时参与。 */
-const PROVIDERS = (Object.keys(FILES) as Provider[]).filter(
-  (provider) => provider !== 'grok' || GROK_GROUP_ENABLED
-)
+const PROVIDERS = Object.keys(FILES) as Provider[]
 const PREVIOUS = 'previous'
 
 const NOW = Date.now()
@@ -140,7 +138,7 @@ describe('writeSparkleProviderFiles', () => {
   })
 
   it('writes one provider file per Sparkle group, shaped by that group’s own rules', async () => {
-    await write(profile, ['台湾', '日本'])
+    await write(profile, ['台湾', '日本'], ALL_GROUPS_ON)
 
     assert.deepEqual(namesIn('fast'), ['台湾 01', '日本 01'], 'Hong Kong stays out of auto-select')
     assert.deepEqual(
@@ -149,13 +147,11 @@ describe('writeSparkleProviderFiles', () => {
       'Hong Kong is the last resort'
     )
     assert.deepEqual(namesIn('agy'), ['台湾 01', '日本 01'], 'Hong Kong is not an agy region')
-    if (GROK_GROUP_ENABLED) {
-      assert.deepEqual(
-        namesIn('grok'),
-        ['日本 01', '台湾 01', '香港 01'],
-        'no samples keeps profile order'
-      )
-    }
+    assert.deepEqual(
+      namesIn('grok'),
+      ['日本 01', '台湾 01', '香港 01'],
+      'no samples keeps profile order'
+    )
     assert.deepEqual(
       namesIn('gemini'),
       ['台湾 01', '日本 01', '香港 01'],
@@ -163,14 +159,41 @@ describe('writeSparkleProviderFiles', () => {
     )
   })
 
-  it('writes the grok provider file only while GROK_GROUP_ENABLED is on', async () => {
-    await write(profile, ['台湾', '日本'])
+  it('writes only the providers whose group switch is on, always including fast', async () => {
+    for (const id of DEDICATED_GROUP_IDS) {
+      for (const provider of PROVIDERS) {
+        rmSync(fileOf(provider), { force: true })
+      }
 
-    assert.equal(existsSync(fileOf('grok')), GROK_GROUP_ENABLED)
+      await write(profile, ['台湾', '日本'], { ...ALL_GROUPS_ON, [id]: false })
+
+      assert.deepEqual(
+        PROVIDERS.filter((provider) => existsSync(fileOf(provider))),
+        PROVIDERS.filter((provider) => provider !== id),
+        `switch ${id} off`
+      )
+    }
+
+    for (const provider of PROVIDERS) {
+      rmSync(fileOf(provider), { force: true })
+    }
+    await write(profile, ['台湾', '日本'], ALL_GROUPS_OFF)
+    assert.deepEqual(
+      PROVIDERS.filter((provider) => existsSync(fileOf(provider))),
+      ['fast']
+    )
+  })
+
+  it('keeps a disabled provider’s previous file untouched so re-enabling is instant', async () => {
+    seedAll()
+
+    await write(profile, ['台湾', '日本'], { ...ALL_GROUPS_ON, grok: false })
+
+    assert.deepEqual(untouched(), ['grok'])
   })
 
   it('applies the configured region priority to every region-aware provider', async () => {
-    await write(profile, ['日本', '台湾'])
+    await write(profile, ['日本', '台湾'], ALL_GROUPS_ON)
 
     assert.deepEqual(namesIn('fast'), ['日本 01', '台湾 01'])
     assert.deepEqual(namesIn('mail'), ['日本 01', '台湾 01', '香港 01'])
@@ -181,7 +204,7 @@ describe('writeSparkleProviderFiles', () => {
   it('keeps nodes Google blocks for Gemini out of the fast provider', async () => {
     state.blocked = new Set(['台湾 01'])
 
-    await write(profile, ['台湾', '日本'])
+    await write(profile, ['台湾', '日本'], ALL_GROUPS_ON)
 
     assert.deepEqual(namesIn('fast'), ['日本 01'])
   })
@@ -189,7 +212,7 @@ describe('writeSparkleProviderFiles', () => {
   it('moves nodes sunk for slow downloads to the end of the fast provider without dropping them', async () => {
     state.sunk = new Set(['台湾 01'])
 
-    await write(profile, ['台湾', '日本'])
+    await write(profile, ['台湾', '日本'], ALL_GROUPS_ON)
 
     assert.deepEqual(namesIn('fast'), ['日本 01', '台湾 01'])
   })
@@ -202,7 +225,7 @@ describe('writeSparkleProviderFiles', () => {
       ['台湾 03', 200]
     ])
 
-    await write(profile, ['台湾'])
+    await write(profile, ['台湾'], ALL_GROUPS_ON)
 
     assert.deepEqual(namesIn('fast'), ['台湾 02', '台湾 03', '台湾 01'])
   })
@@ -226,13 +249,11 @@ describe('writeSparkleProviderFiles', () => {
       ]
     ])
 
-    await write(profile, ['台湾', '日本'])
+    await write(profile, ['台湾', '日本'], ALL_GROUPS_ON)
 
     assert.deepEqual(namesIn('mail'), ['日本 01'])
     assert.deepEqual(namesIn('agy'), ['台湾 01'])
-    if (GROK_GROUP_ENABLED) {
-      assert.deepEqual(namesIn('grok'), ['香港 01'])
-    }
+    assert.deepEqual(namesIn('grok'), ['香港 01'])
     assert.deepEqual(namesIn('gemini'), ['台湾 01', '日本 01'], 'only region-verified nodes')
   })
 
@@ -241,12 +262,10 @@ describe('writeSparkleProviderFiles', () => {
       [computeProxyNodeFingerprint(japan), { alive: true, rttMs: 50, checkedAt: NOW }]
     ])
 
-    await write(profile, ['台湾', '日本'])
+    await write(profile, ['台湾', '日本'], ALL_GROUPS_ON)
 
     assert.deepEqual(namesIn('agy'), ['台湾 01', '日本 01'])
-    if (GROK_GROUP_ENABLED) {
-      assert.deepEqual(namesIn('grok'), ['日本 01', '台湾 01', '香港 01'])
-    }
+    assert.deepEqual(namesIn('grok'), ['日本 01', '台湾 01', '香港 01'])
   })
 
   it('does not let a provider mutate the node list the others share', async () => {
@@ -254,7 +273,7 @@ describe('writeSparkleProviderFiles', () => {
       [japan, taiwan, hongKong].map((proxy) => Object.freeze({ ...proxy }))
     )
 
-    await write(profile, ['台湾', '日本'])
+    await write(profile, ['台湾', '日本'], ALL_GROUPS_ON)
 
     assert.deepEqual(untouched(), [], 'no file may be missing')
     for (const provider of PROVIDERS) {
@@ -267,7 +286,7 @@ describe('writeSparkleProviderFiles', () => {
       state.proxies = [{ ...taiwan, type: 'anytls' }]
       seedAll()
 
-      await write(profile, ['台湾'])
+      await write(profile, ['台湾'], ALL_GROUPS_ON)
 
       assert.deepEqual(untouched(), [])
       for (const provider of PROVIDERS) {
@@ -279,7 +298,7 @@ describe('writeSparkleProviderFiles', () => {
       state.proxies = [{ type: 'vless' }]
       seedAll()
 
-      await write(profile, ['台湾'])
+      await write(profile, ['台湾'], ALL_GROUPS_ON)
 
       assert.deepEqual(untouched(), PROVIDERS)
     })
@@ -287,7 +306,7 @@ describe('writeSparkleProviderFiles', () => {
     it('does not create a file for an empty provider', async () => {
       state.proxies = []
 
-      await write(profile, ['台湾'])
+      await write(profile, ['台湾'], ALL_GROUPS_ON)
 
       assert.deepEqual(
         PROVIDERS.filter((provider) => existsSync(fileOf(provider))),
@@ -302,7 +321,7 @@ describe('writeSparkleProviderFiles', () => {
       ['sunk', 'fast'],
       ['mail-cache', 'mail'],
       ['agy-cache', 'agy'],
-      ...(GROK_GROUP_ENABLED ? ([['grok-cache', 'grok']] as const) : []),
+      ['grok-cache', 'grok'],
       ['gemini-cache', 'gemini']
     ]
 
@@ -311,7 +330,7 @@ describe('writeSparkleProviderFiles', () => {
         seedAll()
         state.failing = new Set([failing])
 
-        await write(profile, ['台湾'])
+        await write(profile, ['台湾'], ALL_GROUPS_ON)
 
         assert.deepEqual(untouched(), [affected])
       })
@@ -321,7 +340,7 @@ describe('writeSparkleProviderFiles', () => {
       seedAll()
       state.extractFails = true
 
-      await assert.doesNotReject(write(profile, ['台湾']))
+      await assert.doesNotReject(write(profile, ['台湾'], ALL_GROUPS_ON))
 
       assert.deepEqual(untouched(), PROVIDERS)
     })
@@ -331,7 +350,7 @@ describe('writeSparkleProviderFiles', () => {
       profilesDir = path.join(original, 'missing', 'dir')
 
       try {
-        await assert.doesNotReject(write(profile, ['台湾']))
+        await assert.doesNotReject(write(profile, ['台湾'], ALL_GROUPS_ON))
         assert.equal(existsSync(profilesDir), false)
       } finally {
         profilesDir = original

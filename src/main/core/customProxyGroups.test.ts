@@ -6,7 +6,6 @@ import {
   CURSOR_DEDICATED_GROUP_NAME,
   GEMINI_DEDICATED_GROUP_NAME,
   GROK_DEDICATED_GROUP_NAME,
-  GROK_GROUP_ENABLED,
   LEGACY_CURSOR_DEDICATED_GROUP_NAME,
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME,
@@ -14,6 +13,12 @@ import {
 } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME, ensureCustomProxyGroups } from './customProxyGroups'
 import { groupNames, groupProxies, profileOf } from './customProxyGroupsRig'
+import {
+  DEDICATED_GROUP_IDS,
+  DEDICATED_GROUPS,
+  resolveDedicatedGroupSwitches
+} from './dedicatedGroups'
+import { ALL_GROUPS_OFF, ALL_GROUPS_ON } from './dedicatedGroupsRig'
 import { GEMINI_NODE_PROVIDER_ID } from './sparkleGeminiProviderCore'
 import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 import { MAIL_PROBE_LISTENER_PORT } from './sparkleMailProviderCore'
@@ -43,7 +48,12 @@ describe('customProxyGroups', () => {
       ]
     } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['SG-01', 'KR-VPS-HY2', 'TW-01', 'HK-01'], 'test-profile')
+    ensureCustomProxyGroups(
+      profile,
+      ['SG-01', 'KR-VPS-HY2', 'TW-01', 'HK-01'],
+      ALL_GROUPS_ON,
+      'test-profile'
+    )
 
     assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
       CURSOR_DEDICATED_DIRECT_PROXY
@@ -68,7 +78,7 @@ describe('customProxyGroups', () => {
   it('keeps Cursor group without VPS provider when there are no VPS nodes', () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['SG-01', 'JP-02'], 'test-profile')
+    ensureCustomProxyGroups(profile, ['SG-01', 'JP-02'], ALL_GROUPS_ON, 'test-profile')
 
     const cursorGroup = (
       (profile['proxy-groups'] as { name: string; use?: string[]; filter?: string }[]) ?? []
@@ -99,7 +109,12 @@ describe('customProxyGroups', () => {
       ]
     } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['MY-VPS-01', '香港-A', 'SG-01'], 'test-profile')
+    ensureCustomProxyGroups(
+      profile,
+      ['MY-VPS-01', '香港-A', 'SG-01'],
+      ALL_GROUPS_ON,
+      'test-profile'
+    )
 
     assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
       CURSOR_DEDICATED_DIRECT_PROXY
@@ -114,34 +129,30 @@ describe('customProxyGroups', () => {
     )
   })
 
-  it(
-    'builds Grok group as select over the verified provider (app probe picks one)',
-    { skip: !GROK_GROUP_ENABLED },
-    () => {
-      const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
-
-      ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
-
-      const grokGroup = (
-        (profile['proxy-groups'] as {
-          name: string
-          type?: string
-          use?: string[]
-          filter?: string
-        }[]) ?? []
-      ).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
-
-      assert.equal(grokGroup?.type, 'select')
-      assert.deepEqual(grokGroup?.use, [GROK_NODE_PROVIDER_ID])
-      // 不限地区：任何真正返回 200 的节点都可以被探针选中。
-      assert.equal(grokGroup?.filter, undefined)
-    }
-  )
-
-  it('builds Grok group from every leaf in inline mode', { skip: !GROK_GROUP_ENABLED }, () => {
+  it('builds Grok group as select over the verified provider (app probe picks one)', () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['HK-01', 'JP-01', 'HK-01', 'US-01'])
+    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], ALL_GROUPS_ON, 'test-profile')
+
+    const grokGroup = (
+      (profile['proxy-groups'] as {
+        name: string
+        type?: string
+        use?: string[]
+        filter?: string
+      }[]) ?? []
+    ).find((group) => group.name === GROK_DEDICATED_GROUP_NAME)
+
+    assert.equal(grokGroup?.type, 'select')
+    assert.deepEqual(grokGroup?.use, [GROK_NODE_PROVIDER_ID])
+    // 不限地区：任何真正返回 200 的节点都可以被探针选中。
+    assert.equal(grokGroup?.filter, undefined)
+  })
+
+  it('builds Grok group from every leaf in inline mode', () => {
+    const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+
+    ensureCustomProxyGroups(profile, ['HK-01', 'JP-01', 'HK-01', 'US-01'], ALL_GROUPS_ON)
 
     const grokGroup = (
       (profile['proxy-groups'] as {
@@ -155,20 +166,84 @@ describe('customProxyGroups', () => {
     assert.deepEqual(grokGroup?.proxies, ['HK-01', 'JP-01', 'US-01'])
   })
 
-  it('injects the Grok group only while GROK_GROUP_ENABLED is on', () => {
-    for (const profileId of ['test-profile', undefined]) {
-      const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
+  it('injects each toggleable dedicated group only while its switch is on', () => {
+    const dedicatedNames = new Set<string>(
+      DEDICATED_GROUP_IDS.map((id) => DEDICATED_GROUPS[id].name)
+    )
+    const dedicatedIn = (profile: MihomoConfig): string[] =>
+      groupNames(profile).filter((name) => dedicatedNames.has(name))
 
-      ensureCustomProxyGroups(profile, ['HK-01', 'JP-01', 'US-01'], profileId)
+    for (const id of DEDICATED_GROUP_IDS) {
+      const on = profileOf([])
+      ensureCustomProxyGroups(
+        on,
+        ['HK-01', 'JP-01', 'US-01'],
+        { ...ALL_GROUPS_OFF, [id]: true },
+        'test-profile'
+      )
+      assert.deepEqual(dedicatedIn(on), [DEDICATED_GROUPS[id].name], `${id}: only its own group`)
 
-      assert.equal(groupNames(profile).includes(GROK_DEDICATED_GROUP_NAME), GROK_GROUP_ENABLED)
+      for (const profileId of ['test-profile', undefined]) {
+        const off = profileOf([])
+        ensureCustomProxyGroups(
+          off,
+          ['HK-01', 'JP-01', 'US-01'],
+          { ...ALL_GROUPS_ON, [id]: false },
+          profileId
+        )
+        assert.ok(
+          !dedicatedIn(off).includes(DEDICATED_GROUPS[id].name),
+          `${id} stays out while off (profile=${profileId})`
+        )
+      }
     }
+  })
+
+  it('injects nothing but Cursor / Hong Kong / the probe channel when every switch is off', () => {
+    const profile = profileOf([{ name: '套餐', type: 'select', proxies: ['SG-01'] }])
+
+    ensureCustomProxyGroups(
+      profile,
+      ['MY-VPS-HY2', '香港-A', 'SG-01'],
+      ALL_GROUPS_OFF,
+      'test-profile'
+    )
+
+    assert.deepEqual(groupNames(profile), [
+      CURSOR_DEDICATED_GROUP_NAME,
+      HONG_KONG_FILTER_GROUP_NAME,
+      MAIL_PROBE_HIDDEN_GROUP_NAME,
+      '套餐'
+    ])
+    const listeners = profile.listeners as { port: number }[]
+    assert.deepEqual(
+      listeners.map(({ port }) => port),
+      [MAIL_PROBE_LISTENER_PORT],
+      'the shared local probe listener stays regardless of switches'
+    )
+  })
+
+  it('drops a same-named subscription group when its switch is off', () => {
+    const profile = profileOf([
+      { name: GROK_DEDICATED_GROUP_NAME, type: 'select', proxies: ['SG-01'] },
+      { name: '套餐', type: 'select', proxies: ['SG-01'] }
+    ])
+
+    ensureCustomProxyGroups(
+      profile,
+      ['SG-01'],
+      resolveDedicatedGroupSwitches(undefined),
+      'test-profile'
+    )
+
+    assert.ok(!groupNames(profile).includes(GROK_DEDICATED_GROUP_NAME))
+    assert.ok(groupNames(profile).includes('套餐'))
   })
 
   it('builds Gemini group as fallback over the region-verified provider', () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
+    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], ALL_GROUPS_ON, 'test-profile')
 
     const geminiGroup = (
       (profile['proxy-groups'] as {
@@ -184,10 +259,10 @@ describe('customProxyGroups', () => {
     assert.equal(geminiGroup?.filter, undefined)
   })
 
-  it('keeps Grok group even when there is no Hong Kong node', { skip: !GROK_GROUP_ENABLED }, () => {
+  it('keeps Grok group even when there is no Hong Kong node', () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['JP-01', 'US-01'])
+    ensureCustomProxyGroups(profile, ['JP-01', 'US-01'], ALL_GROUPS_ON)
 
     assert.ok(!groupNames(profile).includes(HONG_KONG_FILTER_GROUP_NAME))
     assert.ok(groupNames(profile).includes(GROK_DEDICATED_GROUP_NAME))
@@ -202,7 +277,7 @@ describe('customProxyGroups', () => {
       ]
     } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['MY-VPS-01', 'SG-01'])
+    ensureCustomProxyGroups(profile, ['MY-VPS-01', 'SG-01'], ALL_GROUPS_ON)
 
     assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
       CURSOR_DEDICATED_DIRECT_PROXY,
@@ -223,7 +298,12 @@ describe('customProxyGroups', () => {
       ]
     } as unknown as MihomoConfig
 
-    const migrated = ensureCustomProxyGroups(profile, ['KR-VPS-Reality'], 'test-profile')
+    const migrated = ensureCustomProxyGroups(
+      profile,
+      ['KR-VPS-Reality'],
+      ALL_GROUPS_ON,
+      'test-profile'
+    )
 
     assert.equal(migrated, true)
     assert.deepEqual(profile.rules, [
@@ -239,12 +319,17 @@ describe('customProxyGroups', () => {
   it('puts the Sparkle groups ahead of the subscription groups in a fixed order', () => {
     const profile = profileOf([{ name: '套餐', type: 'select', proxies: ['SG-01'] }])
 
-    ensureCustomProxyGroups(profile, ['MY-VPS-HY2', '香港-A', 'SG-01'], 'test-profile')
+    ensureCustomProxyGroups(
+      profile,
+      ['MY-VPS-HY2', '香港-A', 'SG-01'],
+      ALL_GROUPS_ON,
+      'test-profile'
+    )
 
     assert.deepEqual(groupNames(profile), [
       CURSOR_DEDICATED_GROUP_NAME,
       HONG_KONG_FILTER_GROUP_NAME,
-      ...(GROK_GROUP_ENABLED ? [GROK_DEDICATED_GROUP_NAME] : []),
+      GROK_DEDICATED_GROUP_NAME,
       GEMINI_DEDICATED_GROUP_NAME,
       MAIL_DEDICATED_GROUP_NAME,
       MAIL_PROBE_HIDDEN_GROUP_NAME,
@@ -261,13 +346,11 @@ describe('customProxyGroups', () => {
   it('builds the inline Cursor group from eligible VPS leaves only, sorted', () => {
     const profile = profileOf([])
 
-    ensureCustomProxyGroups(profile, [
-      'B-VPS-HY2',
-      'A-VPS-Reality',
-      'A-VPS-Reality',
-      'KR-VPS-TLS',
-      'SG-01'
-    ])
+    ensureCustomProxyGroups(
+      profile,
+      ['B-VPS-HY2', 'A-VPS-Reality', 'A-VPS-Reality', 'KR-VPS-TLS', 'SG-01'],
+      ALL_GROUPS_ON
+    )
 
     assert.deepEqual(groupProxies(profile, CURSOR_DEDICATED_GROUP_NAME), [
       CURSOR_DEDICATED_DIRECT_PROXY,
@@ -280,7 +363,7 @@ describe('customProxyGroups', () => {
   it('creates only the Cursor group while there is no node to build the others from', () => {
     const profile = profileOf([{ name: '套餐', type: 'select', proxies: [] }])
 
-    const migrated = ensureCustomProxyGroups(profile, [])
+    const migrated = ensureCustomProxyGroups(profile, [], ALL_GROUPS_ON)
 
     assert.equal(migrated, false)
     assert.deepEqual(groupNames(profile), [CURSOR_DEDICATED_GROUP_NAME, '套餐'])

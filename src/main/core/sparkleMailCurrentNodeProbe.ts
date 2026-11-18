@@ -8,7 +8,8 @@
 //         mihomoProxyDelayCore::isMihomoApiResourceNotFoundError (POS: 节点延迟探测判定) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
-//         utils/log::appendAppLog (POS: 应用日志与内核日志)
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
 // [OUTPUT] startSparkleMailCurrentNodeProbeLoop
 // [POS] 邮件组当前节点的按需保护：只在邮件最近被使用时复测 993/465（拨号失败后 30s 提前触发、5 分钟兜底）；失败让 provider 剔除节点并触发自动切换，未使用时不探测。
 
@@ -34,6 +35,7 @@ import {
   writeSparkleMailProviderFromCache
 } from './sparkleMailProbe'
 import { probeSingleNodeMailPorts } from './sparkleMailPortProbe'
+import { runWhenEnabled, type DedicatedGroupGate } from './dedicatedGroups'
 
 const CURRENT_NODE_RECHECK_INTERVAL_MS = 5 * 60 * 1000
 /** 邮件活动日志后延迟触发一次当前节点复测；避免 Mail.app 连续重连时形成探测风暴。 */
@@ -46,6 +48,8 @@ let lastMailActivityAtMs = 0
 let currentCheckQueued = false
 let currentNodeTimer: NodeJS.Timeout | undefined
 let activityProbeTimer: NodeJS.Timeout | undefined
+/** 循环启动前不探测；启动时由编排层注入真实开关。 */
+let isCurrentNodeProbeEnabled: DedicatedGroupGate = async () => false
 
 /** 内核日志里出现邮件组或邮件收发域名即视为邮件被使用（成功/失败都触发，覆盖长时间空闲后的第一次连接尝试）。 */
 function noteMailLogActivity(log: ControllerLog): void {
@@ -136,18 +140,22 @@ function scheduleCurrentNodeCheck(): void {
     return
   }
   currentCheckQueued = true
-  void runSparkleMailProbeExclusive(checkCurrentMailNode)
+  // 定时兜底与邮件日志触发的提前复测共用这一入口，开关只需在此把关一次。
+  void runWhenEnabled(isCurrentNodeProbeEnabled, () =>
+    runSparkleMailProbeExclusive(checkCurrentMailNode)
+  )
     .catch(() => undefined)
     .finally(() => {
       currentCheckQueued = false
     })
 }
 
-/** 幂等：5 分钟检查一次是否有邮件活动；没有活动时本轮 0 次端口探测。 */
-export function startSparkleMailCurrentNodeProbeLoop(): void {
+/** 幂等：5 分钟检查一次是否有邮件活动；没有活动、或邮件组被关闭时本轮 0 次端口探测。 */
+export function startSparkleMailCurrentNodeProbeLoop(isEnabled: DedicatedGroupGate): void {
   if (currentNodeTimer) {
     return
   }
+  isCurrentNodeProbeEnabled = isEnabled
   subscribeMihomoLogs(noteMailLogActivity)
   currentNodeTimer = setInterval(scheduleCurrentNodeCheck, CURRENT_NODE_RECHECK_INTERVAL_MS)
   currentNodeTimer.unref()

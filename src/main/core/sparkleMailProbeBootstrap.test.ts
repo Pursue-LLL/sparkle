@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it, mock } from 'node:test'
+import { GATE_OPEN } from './dedicatedGroupsRig'
 import {
   ANYTLS_TW,
   assertLog,
@@ -312,7 +313,7 @@ describe('sparkleMailProbe hourly loop', () => {
 
   it('runs a bootstrap every hour, and not a moment earlier', async () => {
     world.profileProxies = [SS_TW]
-    mail.probe().startSparkleMailProbeLoop()
+    mail.probe().startSparkleMailProbeLoop(GATE_OPEN)
 
     mock.timers.tick(HOUR_MS - 1)
     await settle()
@@ -329,11 +330,26 @@ describe('sparkleMailProbe hourly loop', () => {
     assertLog('loaded 1 verified mail nodes from cache')
   })
 
+  it('skips every hourly round while the mail group is off and resumes once it is back on', async () => {
+    world.profileProxies = [SS_TW]
+    let open = false
+    mail.probe().startSparkleMailProbeLoop(async () => open)
+
+    mock.timers.tick(HOUR_MS)
+    await settle()
+    assert.deepEqual(world.calls, [])
+
+    open = true
+    mock.timers.tick(HOUR_MS)
+    await settle()
+    assert.deepEqual(callsStarting('probe:'), ['probe:台湾-SS'])
+  })
+
   it('registers one hourly timer that does not keep the process alive', () => {
     const timers = spyOnTimer('setInterval')
     try {
-      mail.probe().startSparkleMailProbeLoop()
-      mail.probe().startSparkleMailProbeLoop()
+      mail.probe().startSparkleMailProbeLoop(GATE_OPEN)
+      mail.probe().startSparkleMailProbeLoop(GATE_OPEN)
 
       assert.deepEqual(timers.delays, [HOUR_MS])
       assert.equal(timers.unrefs(), 1)

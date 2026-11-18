@@ -32,6 +32,14 @@ interface IHost {
   value: string | string[]
 }
 
+/** 可由用户开关的专用分组（true = 启用）。 */
+interface DedicatedGroupSwitches {
+  grok: boolean
+  gemini: boolean
+  mail: boolean
+  agy: boolean
+}
+
 interface AppConfig {
   updateChannel: 'stable' | 'beta'
   notificationMode?: AppNotificationMode
@@ -104,6 +112,8 @@ interface AppConfig {
   cursorBidiOptimize?: boolean
   /** Optional macOS Cursor .app bundle path prefixes for path-scoped rules; empty = all Cursor traffic → 🎯 Cursor 专用. */
   cursorProxyAppPathPrefixes?: string[]
+  /** 专用分组开关；缺省值见 core/dedicatedGroups。 */
+  dedicatedGroups?: Partial<DedicatedGroupSwitches>
   proxySwitchPriority?: string[]
   /** macOS 26+: keep Electron GUI open (default is headless bootstrap + exit). */
   macos26ForceGui?: boolean

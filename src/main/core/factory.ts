@@ -6,6 +6,7 @@
 //         cursorProxyGroup::CURSOR_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         cursorRuleInjection::injectCursorDomainRules (POS: Cursor 路由规则注入) ·
 //         customProxyGroups::ensureCustomProxyGroups (POS: Sparkle 自有分组注入) ·
+//         dedicatedGroups::resolveDedicatedGroupSwitches (POS: 可开关专用组注册表与开关解析) ·
 //         dedicatedTrafficRuleInjection::injectDedicatedTrafficRules (POS: 香港 / grok 专用流量前置规则) ·
 //         defaultAutoSwitchProxy::ensureSelectGroupsDefaultToAutoSwitch (POS: 自动选择与地区组默认配置) ·
 //         dnsFallbackIntegrity::ensureDnsFallbackIntegrity/ensureTunStrictRoute (POS: DNS 引导与 fallback 完整性) ·
@@ -53,6 +54,7 @@ import {
   rewriteMissingRuleProxyGroupTargets
 } from './profileGroupNormalize'
 import { ensureCustomProxyGroups } from './customProxyGroups'
+import { resolveDedicatedGroupSwitches } from './dedicatedGroups'
 import { ensureCnDirectBaseline } from './cnDirectBaseline'
 import { cleanProfile, dedupeProxyGroupProviderUse } from './runtimeConfigSanitize'
 import { overrideProfile } from './overrideProfile'
@@ -163,7 +165,14 @@ async function generateProfileImpl(): Promise<void> {
   await logGenerateProfileStep('begin', stepStartedAtMs)
   await logBuildDriftAtStartup()
   const { current } = await getProfileConfig()
-  const { diffWorkDir = false, controlDns = true, controlSniff = true } = await getAppConfig()
+  const {
+    diffWorkDir = false,
+    controlDns = true,
+    controlSniff = true,
+    dedicatedGroups
+  } = await getAppConfig()
+  // 一次生成内的开关快照：分组 / provider 配置 / provider 文件三处必须同口径，否则会出现悬空引用。
+  const dedicatedSwitches = resolveDedicatedGroupSwitches(dedicatedGroups)
   const currentProfileConfig = await getProfile(current)
   rawProfileStr = await getProfileStr(current)
   currentProfileStr = stringifyYaml(currentProfileConfig)
@@ -190,7 +199,7 @@ async function generateProfileImpl(): Promise<void> {
     if (proxies.length > 0) {
       await setupProfileProviders(current, proxies)
       await logGenerateProfileStep('setup_profile_providers', stepStartedAtMs)
-      const baseConfig = generateBaseConfigWithProvider(currentProfile, current)
+      const baseConfig = generateBaseConfigWithProvider(currentProfile, current, dedicatedSwitches)
       profile = deepMerge(JSON.parse(JSON.stringify(baseConfig)), configToMerge)
       await logGenerateProfileStep('merge_provider_base', stepStartedAtMs)
     } else {
@@ -236,6 +245,7 @@ async function generateProfileImpl(): Promise<void> {
   const legacyCursorGroupMigrated = ensureCustomProxyGroups(
     profile,
     leafProxyNames,
+    dedicatedSwitches,
     providerProfileId
   )
   injectDedicatedTrafficRules(profile)
@@ -269,7 +279,7 @@ async function generateProfileImpl(): Promise<void> {
       .join('; ')
     await appendAppLog(`[Factory]: dropped unknown group members: ${summary}\n`)
   }
-  await writeSparkleProviderFiles(currentProfile, proxySwitchPriority)
+  await writeSparkleProviderFiles(currentProfile, proxySwitchPriority, dedicatedSwitches)
   await ensureVpsDirectBypass(profile, extractProxies(currentProfile))
   await logGenerateProfileStep('vps_direct_bypass', stepStartedAtMs)
   const { cursorBidiOptimize = true, cursorProxyAppPathPrefixes } = await getAppConfig()

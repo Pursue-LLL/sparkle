@@ -8,7 +8,8 @@
 //         sparkleAgyCli::AGY_PROBE_MODEL (POS: 官方 agy CLI 请求) ·
 //         sparkleAgyProbeCore::resolveAgyAuditBackoffMs/runAgyAudit/shouldRepairAgyPin/createAgyDialFailureWatch/AgyAuditOutcome/AgyAuditResult (POS: agy 巡检状态机) ·
 //         sparkleAgyProviderCore::agyProxyName/orderAgyRepairProxies/AgyNodeProbeRecord/AgyProbeVerdict… (POS: agy provider 与分组配置) ·
-//         utils/log::appendAppLog (POS: 应用日志与内核日志)
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
 // [OUTPUT] bootstrapSparkleAgyProvider · repairSparkleAgyPinOnDialFailures · startSparkleAgyProbeLoop
 // [POS] 用官方 agy CLI 的真实请求给节点定性：200 = 可用，400 `User location is not supported` = 不可用。
 // 本模块只做巡检编排：pin 就地复测 → 必要时修复扫描 → 收敛 provider；
@@ -41,6 +42,7 @@ import {
   type AgyProbeVerdict,
   type AgyProxyRecord
 } from './sparkleAgyProviderCore'
+import { runWhenEnabled, type DedicatedGroupGate } from './dedicatedGroups'
 
 /**
  * pin（当前钉住的节点）就地复测周期：只发 1 个 1-token 请求、不切组、不断流。
@@ -344,20 +346,23 @@ export async function repairSparkleAgyPinOnDialFailures(): Promise<void> {
 
 let agyProbeTimer: NodeJS.Timeout | undefined
 
-/** 启动定时巡检，并订阅内核告警以便在拨号失败风暴时不等下一轮；重复调用无副作用。 */
-export function startSparkleAgyProbeLoop(): void {
+/**
+ * 启动定时巡检，并订阅内核告警以便在拨号失败风暴时不等下一轮；重复调用无副作用。
+ * 定时巡检与告警触发的修复都先问开关：agy 组被关闭时整轮跳过，不发任何探测请求。
+ */
+export function startSparkleAgyProbeLoop(isEnabled: DedicatedGroupGate): void {
   if (agyProbeTimer) {
     return
   }
   agyProbeTimer = setInterval(() => {
-    bootstrapSparkleAgyProvider().catch(() => undefined)
+    runWhenEnabled(isEnabled, bootstrapSparkleAgyProvider).catch(() => undefined)
   }, PIN_CHECK_INTERVAL_MS)
   agyProbeTimer.unref()
 
   const dialFailureWatch = createAgyDialFailureWatch(AGY_DEDICATED_GROUP_NAME)
   subscribeMihomoAlerts((log) => {
     if (dialFailureWatch.observe(log, Date.now())) {
-      repairSparkleAgyPinOnDialFailures().catch(() => undefined)
+      runWhenEnabled(isEnabled, repairSparkleAgyPinOnDialFailures).catch(() => undefined)
     }
   })
 }

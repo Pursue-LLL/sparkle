@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, before, beforeEach, describe, it, mock } from 'node:test'
 import { parseYaml } from '../utils/yaml'
+import { ALL_GROUPS_ON } from './dedicatedGroupsRig'
 import type * as Provider from './provider'
 
 type Proxy = Record<string, unknown>
@@ -316,7 +317,8 @@ describe('provider files', () => {
     it('points the subscription provider at its file relative to the core work dir', () => {
       const config = provider.generateBaseConfigWithProvider(
         { proxies: [commercial('a')], rules: [] } as unknown as MihomoConfig,
-        'p1'
+        'p1',
+        ALL_GROUPS_ON
       )
 
       const providers = config['proxy-providers'] as Record<string, { path: string }>

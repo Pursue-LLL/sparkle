@@ -12,6 +12,12 @@ React 状态订阅 hooks：把主进程配置 / 代理组 / 探测状态桥接�
 | `use-card-dnd-sensors.ts` | 卡片拖拽的 dnd-kit sensors |
 | `use-controled-mihomo-config.tsx` | mihomo 受控配置 Provider/订阅（模式/端口等） |
 | `use-groups.tsx` | 代理组数据源：轮询 `mihomoGroups`，暴露 `mutate` |
+| `use-dedicated-group-switches.ts` | 专用组开关：从应用配置解析四个开关，`setEnabled` 经 `patchAppConfig` 落盘并等主进程重载完成后刷新分组；切换期间该组标记为「进行中」（防重入、开关禁用），失败由 `patchAppConfig` 统一提示 |
+| `use-proxy-group-state.ts` | 代理页分组的展开 / 搜索 / 测速中状态（与分组列表下标对齐，仅在分组数量变化时重对齐），含跨页缓存与展开记忆 |
+| `use-proxy-group-delay-test.ts` | 代理页单节点 / 整组测速：按「测速地址范围」决定探针 URL，整组测速先展开该组、结束后刷新代理组；返回稳定的 `onProxyDelay` / `onGroupDelay` |
+| `use-proxy-group-locate.ts` | 「定位当前节点」：目标组未展开时先展开，内容渲染完成后平滑滚动到该节点所在行 |
+| `use-proxy-columns.ts` | 代理页节点网格列数：固定列数取配置值，`auto` 时按视口宽度断点计算并随窗口缩放更新 |
+| `use-latest.ts` | 「最新值」ref，让回调保持稳定引用而不读到过期闭包 |
 | `use-override-config.tsx` | 覆写配置 Provider/订阅 |
 | `use-probe-warmup.ts` | 内核启动测速预热标志（IPC 事件 + 首拉） |
 | `use-profile-config.tsx` | 订阅配置 Provider/订阅 |

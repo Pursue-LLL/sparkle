@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it, mock } from 'node:test'
+import { GATE_OPEN } from './dedicatedGroupsRig'
 import {
   cacheKey,
   cacheRecord,
@@ -203,8 +204,8 @@ describe('startSparkleAgyProbeLoop', () => {
   it('registers one 30-minute timer that does not keep the process alive', () => {
     const timers = spyOnTimer('setInterval')
     try {
-      agy().startSparkleAgyProbeLoop()
-      agy().startSparkleAgyProbeLoop()
+      agy().startSparkleAgyProbeLoop(GATE_OPEN)
+      agy().startSparkleAgyProbeLoop(GATE_OPEN)
 
       assert.deepEqual(timers.delays, [INTERVAL_MS])
       assert.equal(timers.unrefs(), 1)
@@ -215,7 +216,7 @@ describe('startSparkleAgyProbeLoop', () => {
 
   it('runs one round every 30 minutes', async () => {
     world.profile = {}
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
 
     mock.timers.tick(INTERVAL_MS - 1)
     await settle()
@@ -230,10 +231,26 @@ describe('startSparkleAgyProbeLoop', () => {
     assert.equal(world.profileReads, 2)
   })
 
+  it('skips every round while the agy group is off and resumes once it is back on', async () => {
+    world.profile = {}
+    let open = false
+    agy().startSparkleAgyProbeLoop(async () => open)
+
+    mock.timers.tick(INTERVAL_MS)
+    await settle()
+    assert.equal(world.profileReads, 0)
+    assert.equal(world.spawns.length, 0)
+
+    open = true
+    mock.timers.tick(INTERVAL_MS)
+    await settle()
+    assert.equal(world.profileReads, 1)
+  })
+
   it('survives a round that cannot even write its log', async () => {
     world.profileFailure = { reason: new Error('profile config unreadable') }
     world.logFailure = true
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
 
     mock.timers.tick(INTERVAL_MS)
     await settle()

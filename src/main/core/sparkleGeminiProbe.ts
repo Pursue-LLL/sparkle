@@ -15,7 +15,8 @@
 //         sparkleMailProviderCore::MailProxyRecord (POS: 邮件 provider 与分组配置) ·
 //         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
-//         utils/yaml::stringifyYaml (POS: YAML 解析与序列化)
+//         utils/yaml::stringifyYaml (POS: YAML 解析与序列化) ·
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
 // [OUTPUT] loadSparkleGeminiRegionCache · loadGeminiBlockedNodeNames · verifyNodeGeminiRegion · rebuildAndReloadGeminiProvider · bootstrapSparkleGeminiRegionAudit · startSparkleGeminiRegionAuditLoop
 // [POS] 识别「HTTP 200 但被 Google GeoIP 判定为送中/不支持地区（如 vXmutd="ZZ"/"CN"/"HK" 或 google.cn）」的节点：
 // 确认锁区/送中的节点从 `sparkle-fast-proxies.yaml`（`自动选择`）中剔除，确认解锁的节点维护进 `gemini专用` provider，
@@ -58,6 +59,7 @@ import { streamProbeGeminiRegionViaLocalListener } from './sparkleGeminiStreamPr
 import type { MailProxyRecord } from './sparkleMailProviderCore'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { withLocalProbeChannelLock } from './localProbeChannel'
+import { runWhenEnabled, type DedicatedGroupGate } from './dedicatedGroups'
 
 const CACHE_FILENAME = 'sparkle-gemini-nodes.json'
 const ELIGIBLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
@@ -384,12 +386,16 @@ export async function bootstrapSparkleGeminiRegionAudit(): Promise<void> {
 
 let geminiAuditTimer: NodeJS.Timeout | undefined
 
-export function startSparkleGeminiRegionAuditLoop(): void {
+/**
+ * 每轮先问开关：gemini 组被关闭时整轮跳过后台审计。
+ * 自动选择挑节点时的按需地区校验（verifyNodeGeminiRegion）不经过这里，不受开关影响。
+ */
+export function startSparkleGeminiRegionAuditLoop(isEnabled: DedicatedGroupGate): void {
   if (geminiAuditTimer) {
     return
   }
   geminiAuditTimer = setInterval(() => {
-    bootstrapSparkleGeminiRegionAudit().catch(() => undefined)
+    runWhenEnabled(isEnabled, bootstrapSparkleGeminiRegionAudit).catch(() => undefined)
   }, AUDIT_INTERVAL_MS)
   geminiAuditTimer.unref()
 }

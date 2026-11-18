@@ -1,7 +1,7 @@
 /**
  * [INPUT] MihomoConfig profile（分组全部构建完成、写盘之前） ·
  *         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME/AUTO_SELECT_GROUP_NAME/CURSOR_DEDICATED_GROUP_NAME/GROK_DEDICATED_GROUP_NAME… (POS: Sparkle 分组名常量与判定谓词)
- * [OUTPUT] orderProxyGroups: 统一 proxy-groups 的展示顺序
+ * [OUTPUT] groupDisplayRank · orderProxyGroups: 分组展示档位 / 统一 proxy-groups 的展示顺序
  * [POS] 只调整分组顺序（自动选择 → 专用组 → Sparkle 地区组 → 其余），不改组内容与成员顺序。
  */
 import {
@@ -32,7 +32,8 @@ const OTHER_RANK = 30
 /** 地区组由订阅注入，命名统一为 `Sparkle-<地区>`；新增地区无需改这里。 */
 const REGION_GROUP_PREFIX = 'Sparkle-'
 
-function rankOf(name: string): number {
+/** 展示档位：自动选择 → 专用组 → Sparkle 地区组 → 其余；渲染进程插入占位分组时共用同一口径。 */
+export function groupDisplayRank(name: string): number {
   if (name === AUTO_SELECT_GROUP_NAME) {
     return AUTO_SELECT_RANK
   }
@@ -53,7 +54,7 @@ export function orderProxyGroups(profile: MihomoConfig): void {
     return
   }
   const ordered = groups
-    .map((group) => ({ group, rank: rankOf(String(group?.name ?? '')) }))
+    .map((group) => ({ group, rank: groupDisplayRank(String(group?.name ?? '')) }))
     .sort((a, b) => a.rank - b.rank)
     .map(({ group }) => group)
   profile['proxy-groups'] = ordered as MihomoConfig['proxy-groups']

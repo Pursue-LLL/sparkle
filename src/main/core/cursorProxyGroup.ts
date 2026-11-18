@@ -1,8 +1,10 @@
-// [INPUT] 无本地依赖
-// [OUTPUT] AUTO_SELECT_GROUP_NAME · *_DEDICATED_GROUP_NAME（含旧组名）· GROK_GROUP_ENABLED（Grok 专用组总开关）· GENERAL_PROXY_GROUP_NAME(S) · *_DELAY_TEST_URL · is*GroupName 谓词 · resolveDelayTestUrl · resolveCursorStableSelectorGroup · resolveGeneralProxySelectGroup · filterCursorEligibleVpsLeaves
+// [INPUT] dedicatedGroups::DEDICATED_GROUPS（POS: 可开关专用组的组名注册表）
+// [OUTPUT] AUTO_SELECT_GROUP_NAME · *_DEDICATED_GROUP_NAME（含旧组名）· GENERAL_PROXY_GROUP_NAME(S) · *_DELAY_TEST_URL · is*GroupName 谓词 · resolveDelayTestUrl · resolveCursorStableSelectorGroup · resolveGeneralProxySelectGroup · filterCursorEligibleVpsLeaves
 // [POS] Sparkle 分组命名、类型判定与延迟测试地址的唯一出处：分组名常量与按名认组的谓词、各组探测地址，以及 Cursor 专用 selector 组与通用选择组的解析。
 
 /** Shared helpers: Cursor traffic must use fixed Selector nodes, never UrlTest auto-hop. */
+
+import { DEDICATED_GROUPS } from './dedicatedGroups'
 
 /** Sparkle 重写订阅 ♻️ / 节点选择 后的 fallback 自动选择组（粘性固定组）。 */
 export const AUTO_SELECT_GROUP_NAME = '自动选择' as const
@@ -25,23 +27,17 @@ export const LEGACY_CURSOR_DEDICATED_GROUP_NAMES = [
 
 export const CURSOR_DEDICATED_GROUP_NAME = '🎯 Cursor 专用' as const
 
-export const MAIL_DEDICATED_GROUP_NAME = '📧 邮件专用' as const
+export const MAIL_DEDICATED_GROUP_NAME = DEDICATED_GROUPS.mail.name
 export const MAIL_PROBE_HIDDEN_GROUP_NAME = '__sparkle_mail_probe__' as const
 
 /** Grok 专用出口组：select + 应用层探针选一个固定节点，避免 url-test 全量排名。 */
-export const GROK_DEDICATED_GROUP_NAME = 'grok 专用' as const
-
-/**
- * Grok 专用组总开关。关闭时：不注入 `grok 专用` 组与 `grok.com` 规则、不注册也不写
- * `sparkle-grok` provider、不启动探针循环；相关实现全部保留，改为 `true` 即整体恢复。
- */
-export const GROK_GROUP_ENABLED = false
+export const GROK_DEDICATED_GROUP_NAME = DEDICATED_GROUPS.grok.name
 
 /** Gemini 专用出口组：fallback，只收录经 vXmutd 地区校验确认解锁的节点。 */
-export const GEMINI_DEDICATED_GROUP_NAME = 'gemini专用' as const
+export const GEMINI_DEDICATED_GROUP_NAME = DEDICATED_GROUPS.gemini.name
 
 /** Antigravity / Code Assist（cloudcode-pa）专用出口组：只收真实 agy 请求验证通过的节点。 */
-export const AGY_DEDICATED_GROUP_NAME = '🎯 agy 专用' as const
+export const AGY_DEDICATED_GROUP_NAME = DEDICATED_GROUPS.agy.name
 
 /** Cursor 专用组 provider 模式的 VPS 过滤器：只收 Reality / HY2 叶子。 */
 export const CURSOR_VPS_PROVIDER_FILTER = '(?i)-VPS-(Reality|HY2)$'

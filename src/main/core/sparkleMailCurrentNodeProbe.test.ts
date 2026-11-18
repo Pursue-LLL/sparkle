@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it, mock } from 'node:test'
+import { GATE_OPEN } from './dedicatedGroupsRig'
 import {
   assertLog,
   cacheFileExists,
@@ -53,8 +54,8 @@ describe('sparkleMailCurrentNodeProbe loop', () => {
   const mail = useMailRig()
 
   it('listens to the core logs once however often it is started', () => {
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
     assert.equal(world.subscriptions, 1)
   })
@@ -62,8 +63,8 @@ describe('sparkleMailCurrentNodeProbe loop', () => {
   it('registers one five-minute timer that does not keep the process alive', () => {
     const timers = spyOnTimer('setInterval')
     try {
-      mail.current().startSparkleMailCurrentNodeProbeLoop()
-      mail.current().startSparkleMailCurrentNodeProbeLoop()
+      mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
+      mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
       assert.deepEqual(timers.delays, [CHECK_INTERVAL_MS])
       assert.equal(timers.unrefs(), 1)
@@ -75,13 +76,29 @@ describe('sparkleMailCurrentNodeProbe loop', () => {
   it('checks after exactly five minutes', async () => {
     mailInUse()
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
     await advance(CHECK_INTERVAL_MS - 1)
     assert.deepEqual(callsStarting('detail:'), [])
 
     await advance(1)
     assert.deepEqual(callsStarting('detail:'), [`detail:${MAIL_GROUP}`])
+  })
+
+  it('does no work on the timer or the log-triggered path while the mail group is off, and resumes once it is back on', async () => {
+    mailInUse()
+    mailGroupOn('台湾-HY2')
+    let open = false
+    mail.current().startSparkleMailCurrentNodeProbeLoop(async () => open)
+
+    await check()
+    logLine(FAILED_DIAL)
+    await advance(EARLY_CHECK_DELAY_MS)
+    assert.deepEqual(world.calls, [])
+
+    open = true
+    await check()
+    assert.deepEqual(callsStarting('probe:'), ['probe:台湾-HY2'])
   })
 })
 
@@ -90,7 +107,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
 
   it('stays quiet while the mail group is unused', async () => {
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
     await check()
 
@@ -100,7 +117,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
   it('counts unreachable connection data as no activity', async () => {
     world.connectionsFailure = true
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
     await check()
 
@@ -110,7 +127,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
   it('probes the current node when a connection runs through the mail group', async () => {
     mailInUse()
     mailGroupOn('台湾-HY2', ['台湾-HY2', '台湾-SS'])
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
     await check()
 
@@ -120,7 +137,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
   it('keeps checking for half an hour after the last mail connection, then stops', async () => {
     mailInUse()
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     await check()
     world.connections = undefined
 
@@ -142,7 +159,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
       world.calls = []
       mailInUse()
       mailGroupOn(now, [...all])
-      mail.current().startSparkleMailCurrentNodeProbeLoop()
+      mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
       await check()
 
@@ -153,7 +170,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
   it('has nothing to probe when the current node is not in the profile', async () => {
     mailInUse()
     mailGroupOn('ghost', ['ghost'])
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
     await check()
 
@@ -164,7 +181,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
   it('has nothing to probe when the current node is not a member of the mail group', async () => {
     mailInUse()
     mailGroupOn('台湾-HY2', ['台湾-SS'])
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
     await check()
 
@@ -175,7 +192,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
   it('probes the node under its trimmed name', async () => {
     mailInUse()
     mailGroupOn(' 台湾-HY2 ', ['台湾-HY2'])
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
 
     await check()
 
@@ -185,7 +202,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
   it('never runs two checks at once', async () => {
     mailInUse()
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     let release: () => void = () => undefined
     world.onPortProbe = () =>
       new Promise<void>((resolve) => {
@@ -207,7 +224,7 @@ describe('sparkleMailCurrentNodeProbe when to check', () => {
   it('waits its turn behind other mail probing', async () => {
     mailInUse()
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     let release: () => void = () => undefined
     const running = mail.probe().runSparkleMailProbeExclusive(
       () =>
@@ -233,7 +250,7 @@ describe('sparkleMailCurrentNodeProbe verdicts', () => {
   function armed(): void {
     mailInUse()
     mailGroupOn('台湾-HY2', ['台湾-HY2', '台湾-SS'])
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
   }
 
   it('publishes the first verdict it takes for the node', async () => {
@@ -339,7 +356,7 @@ describe('sparkleMailCurrentNodeProbe failures', () => {
   function armed(): void {
     mailInUse()
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
   }
 
   it('ignores a controller resource that no longer exists', async () => {
@@ -395,7 +412,7 @@ describe('sparkleMailCurrentNodeProbe core log activity', () => {
   ]) {
     it(`counts "${payload}" as mail being used`, async () => {
       mailGroupOn('台湾-HY2')
-      mail.current().startSparkleMailCurrentNodeProbeLoop()
+      mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
       logLine(payload)
 
       await check()
@@ -406,7 +423,7 @@ describe('sparkleMailCurrentNodeProbe core log activity', () => {
 
   it('ignores log lines that have nothing to do with mail', async () => {
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     logLine('[TCP] x --> github.com:443 match using 自动选择')
     logLine(undefined)
 
@@ -417,7 +434,7 @@ describe('sparkleMailCurrentNodeProbe core log activity', () => {
 
   it('ignores what the hidden probe channel itself logs', async () => {
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     logLine(`${SUCCESSFUL_MATCH} __sparkle_mail_probe__ dial error`)
 
     await advance(EARLY_CHECK_DELAY_MS)
@@ -428,7 +445,7 @@ describe('sparkleMailCurrentNodeProbe core log activity', () => {
 
   it('brings a check forward half a minute after a failed dial', async () => {
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     logLine(FAILED_DIAL)
 
     await advance(EARLY_CHECK_DELAY_MS - 1)
@@ -440,7 +457,7 @@ describe('sparkleMailCurrentNodeProbe core log activity', () => {
 
   it('brings a check forward after any error line, even one that is no dial', async () => {
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     logLine('imap.gmail.com: error EOF')
 
     await advance(EARLY_CHECK_DELAY_MS)
@@ -450,7 +467,7 @@ describe('sparkleMailCurrentNodeProbe core log activity', () => {
 
   it('leaves a successful connection to the regular five-minute check', async () => {
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     logLine(SUCCESSFUL_MATCH)
 
     await advance(EARLY_CHECK_DELAY_MS)
@@ -462,7 +479,7 @@ describe('sparkleMailCurrentNodeProbe core log activity', () => {
 
   it('schedules one early check at a time, and a new one once it has fired', async () => {
     mailGroupOn('台湾-HY2')
-    mail.current().startSparkleMailCurrentNodeProbeLoop()
+    mail.current().startSparkleMailCurrentNodeProbeLoop(GATE_OPEN)
     const timers = spyOnTimer('setTimeout')
     try {
       logLine(FAILED_DIAL)

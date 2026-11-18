@@ -175,13 +175,20 @@ export async function reloadMihomoProfileProviders(
 export function generateBaseConfigWithProvider(
   originalConfig: MihomoConfig,
   profileId: string,
+  switches: DedicatedGroupSwitches,
   healthCheck?: {
     enable: boolean
     url?: string
     interval?: number
   }
 ): MihomoConfig {
-  return buildBaseConfigWithProviders(originalConfig, profileId, getProviderConfigPath, healthCheck)
+  return buildBaseConfigWithProviders(
+    originalConfig,
+    profileId,
+    getProviderConfigPath,
+    switches,
+    healthCheck
+  )
 }
 
 /**
