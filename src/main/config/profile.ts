@@ -1,5 +1,6 @@
 // [INPUT] config/controledMihomo::getControledMihomoConfig (POS: 内核控制配置读写) ·
 //         config/mergeProfile::rebuildDependentMergeProfiles (POS: 合并订阅构建) ·
+//         downloadErrorCore::toDownloadError (POS: 下载失败的错误文本，地址脱敏) ·
 //         manager::restartCore (POS: 内核进程生命周期) ·
 //         mergeProfileCore::findDependentMergeItems (POS: 合并订阅) ·
 //         profileCacheRefreshCore::formatMissingSubscriptionUrlError/readProfileDiskUpdatedMs/reloadCurrentProfileFromDiskCache (POS: 订阅缓存重新生成) ·
@@ -43,6 +44,7 @@ import {
   recoverProfileConfigFromDisk
 } from '../core/profileConfigRecoveryCore'
 import { assertValidProfileContent } from '../core/profileContentCore'
+import { toDownloadError } from '../core/downloadErrorCore'
 import {
   formatMissingSubscriptionUrlError,
   readProfileDiskUpdatedMs,
@@ -293,20 +295,7 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
             responseType: 'text'
           })
         } catch (error) {
-          if (axios.isAxiosError(error)) {
-            if (error.code === 'ECONNRESET' || error.code === 'ECONNABORTED') {
-              throw new Error(`网络连接被重置或超时：${item.url}`)
-            } else if (error.code === 'CERT_HAS_EXPIRED') {
-              throw new Error(`服务器证书已过期：${item.url}`)
-            } else if (error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE') {
-              throw new Error(`无法验证服务器证书：${item.url}`)
-            } else if (error.message.includes('Certificate verification failed')) {
-              throw new Error(`证书验证失败：${item.url}`)
-            } else {
-              throw new Error(`请求失败：${error.message}`)
-            }
-          }
-          throw error
+          throw toDownloadError(error, item.url)
         }
       }
 

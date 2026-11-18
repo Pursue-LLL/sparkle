@@ -10,7 +10,7 @@ import { InvalidProfileContentError } from '../core/profileContentCore'
 const STORED = 'proxies:\n  - {name: 旧节点, type: ss, server: old.example.com, port: 8388}\n'
 const FRESH = 'proxies:\n  - {name: 新节点, type: ss, server: new.example.com, port: 8388}\n'
 
-const reply = { status: 200, body: '' }
+const reply = { status: 200, body: '', hangUp: false }
 const rebuilt: string[] = []
 
 describe('remote subscription content', () => {
@@ -40,7 +40,11 @@ describe('remote subscription content', () => {
     root = mkdtempSync(path.join(tmpdir(), 'sparkle-profile-content-'))
     mkdirSync(path.join(root, 'profiles'))
 
-    server = createServer((_request, response) => {
+    server = createServer((request, response) => {
+      if (reply.hangUp) {
+        request.socket.destroy()
+        return
+      }
       response.statusCode = reply.status
       response.setHeader('content-type', 'text/plain; charset=utf-8')
       response.end(reply.body)
@@ -86,6 +90,7 @@ describe('remote subscription content', () => {
   beforeEach(async () => {
     reply.status = 200
     reply.body = ''
+    reply.hangUp = false
     rebuilt.length = 0
     writeFileSync(storedFile(), STORED, 'utf8')
     writeFileSync(
@@ -154,6 +159,19 @@ describe('remote subscription content', () => {
     await assert.rejects(
       profile.addProfileItem(remoteItem(false)),
       (error: unknown) => error instanceof Error && !(error instanceof InvalidProfileContentError)
+    )
+
+    assert.equal(readFileSync(storedFile(), 'utf8'), STORED)
+  })
+
+  it('keeps the subscription address out of a network failure message', async () => {
+    reply.hangUp = true
+    // 令牌放在路径与查询串里：错误信息会写进 App 日志，只能带协议、主机与端口。
+    const url = `http://127.0.0.1:${port}/link/PATHSECRET0123?token=QUERYSECRET`
+
+    await assert.rejects(
+      profile.addProfileItem({ ...remoteItem(false), url }),
+      new Error(`网络连接被重置或超时：http://127.0.0.1:${port}`)
     )
 
     assert.equal(readFileSync(storedFile(), 'utf8'), STORED)

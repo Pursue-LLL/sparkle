@@ -8,6 +8,7 @@ import http from 'http'
 import tls from 'tls'
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { getCertFingerprint } from './profile'
+import { toDownloadError } from '../core/downloadErrorCore'
 
 let overrideConfig: OverrideConfig // override.yaml
 
@@ -135,20 +136,7 @@ export async function createOverride(item: Partial<OverrideItem>): Promise<Overr
           responseType: 'text'
         })
       } catch (error) {
-        if (axios.isAxiosError(error)) {
-          if (error.code === 'ECONNRESET' || error.code === 'ECONNABORTED') {
-            throw new Error(`网络连接被重置或超时：${item.url}`)
-          } else if (error.code === 'CERT_HAS_EXPIRED') {
-            throw new Error(`服务器证书已过期：${item.url}`)
-          } else if (error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE') {
-            throw new Error(`无法验证服务器证书：${item.url}`)
-          } else if (error.message.includes('Certificate verification failed')) {
-            throw new Error(`证书验证失败：${item.url}`)
-          } else {
-            throw new Error(`请求失败：${error.message}`)
-          }
-        }
-        throw error
+        throw toDownloadError(error, item.url)
       }
 
       const data = res.data
