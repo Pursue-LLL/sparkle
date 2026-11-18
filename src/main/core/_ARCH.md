@@ -126,7 +126,7 @@ Cursor 相关范围仅限：`🎯 Cursor 专用` 组（成员、仅手动选择�
 
 | 文件 | 职责 |
 | ---- | ---- |
-| `dedicatedGroups.ts` | 可由用户开关的四个专用组唯一注册表：组名、默认开关（grok 关，其余开）、面向用户的说明文案；`resolveDedicatedGroupSwitches` 把缺省 / 不完整的持久化开关补全，`newlyEnabledGroupIds` 找出本次由关到开的组，`runWhenEnabled` 是探测循环的门控入口；无副作用，主进程与渲染进程共用（Cursor 专用与 `Sparkle-香港` 不在此列） |
+| `dedicatedGroups.ts` | 可由用户开关的四个专用组唯一注册表：组名、默认开关（grok 关，其余开）、面向用户的说明文案；`resolveDedicatedGroupSwitches` 把缺省 / 不完整的持久化开关补全，`newlyEnabledGroupIds` 找出本次由关到开的组，`withPendingTargets` 把切换中的组换成目标值供界面展示，`runWhenEnabled` 是探测循环的门控入口；无副作用，主进程与渲染进程共用（Cursor 专用与 `Sparkle-香港` 不在此列） |
 | `dedicatedGroupSwitch.ts` | 运行时读开关：`dedicatedGroupGate(id)` 每次调用都读最新应用配置，用户切换后下一轮探测立即生效，无需重启 |
 | `appConfigProfileReloadCore.ts` | 应用配置补丁里哪些键要求重新生成 runtime 配置（Cursor 应用路径前缀、专用组开关） |
 | `appConfigProfileReload.ts` | 补丁到内核的接线：补丁含上述键时，在一条串行队列里完成「落盘 → `generateProfile` → `syncRuntimeConfigToCore({ force: true })`」，重载成功后才为刚打开的组补一轮探测（不阻塞 IPC 返回）；内核没有采用新配置（`reloaded=false`）与同步抛错同属重载失败：开关补丁向界面抛「已保存但应用失败」，Cursor 路径补丁保持只记日志 |

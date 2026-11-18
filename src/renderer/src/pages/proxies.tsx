@@ -41,7 +41,7 @@ const Proxies: React.FC = () => {
   const { controledMihomoConfig } = useControledMihomoConfig()
   const { mode = 'rule' } = controledMihomoConfig || {}
   const { groups: liveGroups = [], mutate } = useGroups()
-  const { switches, pendingIds, setEnabled } = useDedicatedGroupSwitches(mutate)
+  const { switches, displayedSwitches, pendingIds, setEnabled } = useDedicatedGroupSwitches(mutate)
   const { groups, placeholderNames } = useMemo(
     () => withDisabledGroupPlaceholders(liveGroups, switches, pendingIds),
     [liveGroups, switches, pendingIds]
@@ -205,6 +205,7 @@ const Proxies: React.FC = () => {
           <DisabledGroupHeader
             id={dedicatedId}
             isLast={isLast}
+            enabled={displayedSwitches[dedicatedId]}
             pending={pendingIds.has(dedicatedId)}
             onToggle={onToggleDedicated}
           />
@@ -222,7 +223,7 @@ const Proxies: React.FC = () => {
           searchValue={searchValueRef.current[index]}
           delaying={delayingRef.current[index]}
           dedicatedId={dedicatedId}
-          dedicatedEnabled={dedicatedId ? switches[dedicatedId] : false}
+          dedicatedEnabled={dedicatedId ? displayedSwitches[dedicatedId] : false}
           dedicatedPending={dedicatedId ? pendingIds.has(dedicatedId) : false}
           onToggleDedicated={onToggleDedicated}
           onToggle={toggleOpenRef.current}
@@ -232,7 +233,7 @@ const Proxies: React.FC = () => {
         />
       )
     },
-    [isOpen, scrollToCurrentProxy, onGroupDelay, switches, pendingIds, onToggleDedicated]
+    [isOpen, scrollToCurrentProxy, onGroupDelay, displayedSwitches, pendingIds, onToggleDedicated]
   )
 
   const itemContent = useCallback(

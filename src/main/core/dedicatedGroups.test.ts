@@ -16,7 +16,8 @@ import {
   dedicatedGroupIdOf,
   newlyEnabledGroupIds,
   resolveDedicatedGroupSwitches,
-  runWhenEnabled
+  runWhenEnabled,
+  withPendingTargets
 } from './dedicatedGroups'
 import { ALL_GROUPS_OFF, ALL_GROUPS_ON } from './dedicatedGroupsRig'
 import { groupDisplayRank } from './proxyGroupOrder'
@@ -105,6 +106,31 @@ describe('resolveDedicatedGroupSwitches', () => {
       resolveDedicatedGroupSwitches(undefined),
       resolveDedicatedGroupSwitches(undefined)
     )
+  })
+})
+
+describe('withPendingTargets', () => {
+  it('shows the target value for a group whose switch is still being applied', () => {
+    assert.deepEqual(withPendingTargets(ALL_GROUPS_OFF, new Map([['grok', true]])), {
+      ...ALL_GROUPS_OFF,
+      grok: true
+    })
+    assert.deepEqual(withPendingTargets(ALL_GROUPS_ON, new Map([['mail', false]])), {
+      ...ALL_GROUPS_ON,
+      mail: false
+    })
+  })
+
+  it('keeps the saved value for every group that is not being switched', () => {
+    const saved = { ...ALL_GROUPS_OFF, gemini: true }
+    assert.deepEqual(withPendingTargets(saved, new Map()), saved)
+    assert.deepEqual(withPendingTargets(saved, new Map([['agy', true]])), { ...saved, agy: true })
+  })
+
+  it('does not modify the saved switches it was given', () => {
+    const saved = { ...ALL_GROUPS_OFF }
+    withPendingTargets(saved, new Map([['grok', true]]))
+    assert.deepEqual(saved, ALL_GROUPS_OFF)
   })
 })
 
