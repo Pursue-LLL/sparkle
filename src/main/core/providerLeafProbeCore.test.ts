@@ -60,7 +60,10 @@ describe('providerLeafProbeCore', () => {
           history: [at(8, 320), at(7, 0), at(3, 310), at(2, 0), at(1, 305)],
           extra: {
             [GEMINI]: { alive: false, history: [at(7, 0), at(2, 0), at(1, 0)] },
-            'http://www.gstatic.com/generate_204': { alive: true, history: [at(8, 320), at(3, 310)] }
+            'http://www.gstatic.com/generate_204': {
+              alive: true,
+              history: [at(8, 320), at(3, 310)]
+            }
           }
         },
         {
