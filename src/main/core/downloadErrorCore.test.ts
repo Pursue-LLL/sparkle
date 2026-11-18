@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
-import { AxiosError } from 'axios'
+import { createServer, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { after, before, describe, it } from 'node:test'
+import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 import { redactUrl, toDownloadError } from './downloadErrorCore'
 
 // 令牌可能在路径、查询串或 `用户:密码@` 里，三处都放进来，错误信息里一个都不能出现。
@@ -96,4 +98,85 @@ describe('toDownloadError', () => {
     assert.equal(toDownloadError('boom', URL_WITH_SECRETS), 'boom')
     assert.equal(toDownloadError(undefined, URL_WITH_SECRETS), undefined)
   })
+})
+
+// 「请求失败：」后面是 axios / Node 自己写的消息；升级后它们若开始回显地址，这里会第一个发现。
+describe('toDownloadError with failures raised by real axios', () => {
+  const tail = `/link/${PATH_SECRET}?token=${QUERY_SECRET}`
+  let server: Server
+  let origin = ''
+
+  before(async () => {
+    server = createServer((request, response) => {
+      const requested = request.url ?? ''
+      if (requested.startsWith('/loop')) {
+        response.writeHead(302, { location: requested }).end()
+      } else if (requested.startsWith('/big')) {
+        response.end('x'.repeat(5000))
+      } else {
+        response.writeHead(requested.startsWith('/missing') ? 404 : 503).end()
+      }
+    })
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  after(() => {
+    server.closeAllConnections()
+    server.close()
+  })
+
+  async function closedPortOrigin(): Promise<string> {
+    const probe = createServer()
+    await new Promise<void>((resolve) => {
+      probe.listen(0, '127.0.0.1', resolve)
+    })
+    const { port } = probe.address() as AddressInfo
+    await new Promise<void>((resolve) => {
+      probe.close(() => resolve())
+    })
+    return `http://127.0.0.1:${port}`
+  }
+
+  async function failureOf(url: string, config: AxiosRequestConfig): Promise<unknown> {
+    try {
+      await axios.get(url, { proxy: false, timeout: 4000, ...config })
+    } catch (error) {
+      return error
+    }
+    throw new Error('the request was expected to fail')
+  }
+
+  async function assertAddressStaysOut(
+    url: string,
+    config: AxiosRequestConfig = {}
+  ): Promise<void> {
+    const text = messageOf(toDownloadError(await failureOf(url, config), url))
+    for (const secret of [PATH_SECRET, QUERY_SECRET]) {
+      assert.ok(!text.includes(secret), `${secret} survived in ${text}`)
+    }
+  }
+
+  it('keeps the address out of an HTTP error status', () =>
+    assertAddressStaysOut(`${origin}/status${tail}`))
+
+  it('keeps the address out of a missing page', () =>
+    assertAddressStaysOut(`${origin}/missing${tail}`))
+
+  it('keeps the address out of a redirect loop', () =>
+    assertAddressStaysOut(`${origin}/loop${tail}`))
+
+  it('keeps the address out of an oversized response', () =>
+    assertAddressStaysOut(`${origin}/big${tail}`, { maxContentLength: 100 }))
+
+  it('keeps the address out of a refused connection', async () =>
+    assertAddressStaysOut(`${await closedPortOrigin()}${tail}`))
+
+  it('keeps the address out of an unsupported scheme', () =>
+    assertAddressStaysOut(`ftp://127.0.0.1${tail}`))
+
+  it('keeps the address out of an unparseable address', () =>
+    assertAddressStaysOut(`http://[bad${tail}`))
 })
