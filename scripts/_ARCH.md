@@ -81,7 +81,7 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 | 文件 | 职责 |
 | --- | --- |
 | `regenerate-work-config.mjs` / `regenerate-work-config.ts` / `tsconfig.regen.json` / `electron-hook.mjs` / `electron-mock.mjs` / `electron-toolkit-mock.mjs` | 在 Electron 之外调用 `generateProfile()` 重写 `work/config.yaml`：加载钩子把 `electron` 与 `@electron-toolkit/utils` 换成桩 |
-| `patch-work-config.cjs` / `patch-work-config.ts` | 不启动 App，对现有 `work/config.yaml` 就地补跑分组注入、规则目标修复、分组归一与自动选路组，输出 `PATCH_OK` |
+| `patch-work-config.cjs` / `patch-work-config.ts` | 不启动 App，对现有 `work/config.yaml` 就地补跑分组注入（专用分组按应用配置里的开关注入，与 App 同口径）、规则目标修复、分组归一与自动选路组，输出 `PATCH_OK` |
 | `reload-mihomo-via-service.mts` | 经 `/tmp/sparkle-service.sock` 的 `SPARKLE-AUTH-V2` 签名请求（共享签名库 `lib/serviceSignedRequest.ts`），对 service 模式内核执行 `PUT /configs?force=true`（整配置重载，输出 `reload_ok`） |
 | `vps-deploy/` | VPS 侧 sing-box 部署与运维脚本（首尔 Cursor 节点 / 东京通用节点安装、迁移为纯 sing-box、审计日志、2 GB swap 与 OOM 防护），经 ssh 在 VPS 上执行，不被 App 构建链引用 |
 

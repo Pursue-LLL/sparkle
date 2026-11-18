@@ -1,5 +1,5 @@
 // [INPUT] @renderer/hooks/use-app-config（POS: 应用配置读写） · @renderer/hooks/use-latest（POS: 最新值 ref） ·
-//         @sparkle-core/dedicatedGroups（POS: 可开关专用组注册表）
+//         @sparkle-core/dedicatedGroups（POS: 可开关专用组注册表与开关解析）
 // [OUTPUT] useDedicatedGroupSwitches: 专用分组开关状态与切换动作
 // [POS] 代理页专用分组开关：已保存的开关取自应用配置；点击后该组立即进入「切换中」——展示值先翻到目标值（界面不能等
 //       数秒才有反应）、同组重复点击被忽略；主进程重载完成并刷新分组列表后才解除，保证分组列表不会先于内核变化。

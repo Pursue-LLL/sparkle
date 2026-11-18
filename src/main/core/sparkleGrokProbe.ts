@@ -4,11 +4,12 @@
 //         sparkleGrokProbeSnapshot::syncGrokProbeSnapshot (POS: grok 展示快照) ·
 //         sparkleGrokProviderCore::orderGrokCandidates/orderGrokProxies/orderGrokRepairCandidates/grokProxyName… (POS: grok provider 与快照) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
-//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析)
 // [OUTPUT] bootstrapSparkleGrokProvider · startSparkleGrokProbeLoop
 // [POS] `grok 专用` 的选路探针：节点是否可用只由「真实请求 grok.com 得到 200 且无 cf-mitigated challenge」判定；
 //       候选池只收录 routed 验证通过的节点。稳态每 60 秒只复核当前节点，失败才按池内顺序找下一个（找到即停）；
 //       每 5 分钟用非侵入式 group-delay(expected=200) 全量刷新池内延迟，不切组、不断连。
+//       循环入参开关门控：每轮先读最新开关，`grok 专用` 关闭则整轮跳过、不发任何请求。
 
 import { getProfile, getProfileConfig } from '../config'
 import { appendAppLog } from '../utils/log'

@@ -15,7 +15,7 @@
 //         overrideProfile::overrideProfile (POS: 覆写层) ·
 //         profileGroupNormalize::collectSubscriptionGroupNames/dropUnknownGroupMembers/ensureMatchFallbackRule/removeNonSubscriptionProxyGroups… (POS: 订阅分组归一与规则目标修复) ·
 //         provider::extractProxies/setupProfileProviders/generateBaseConfigWithProvider (POS: 订阅节点 → provider 文件) ·
-//         proxyGroupOrder::orderProxyGroups (POS: 分组展示顺序) ·
+//         proxyGroupOrder::orderProxyGroups (POS: 分组展示顺序与档位) ·
 //         quicTrafficRuleInjection::injectQuicTrafficRules (POS: QUIC / STUN 阻断规则) ·
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
 //         regionalAutoSelectGroupsCore::ProxyCatalogEntry (POS: 地区 url-test 组构建) ·
@@ -29,7 +29,7 @@
 //         vlessVisionMuxGuardCore::applyVlessVisionMuxGuard/summarizeVlessVisionMuxGuard (POS: VLESS Vision 与 mux 互斥防护) ·
 //         vpsDirectBypass::ensureVpsDirectBypass (POS: VPS 直连规则)
 // [OUTPUT] generateProfile: 生成 work/config.yaml · loadRuntimeConfigFromDisk · hydrateRuntimeConfigFromDiskIfEmpty · getRuntimeConfig(Str) · getRawProfileStr · getCurrentProfileStr · getOverrideProfileStr
-// [POS] runtime 配置生成流水线的编排与落盘：覆写 → 节点 provider 与基础配置 → Vision 防护 → Sparkle 分组与专用流量规则 → 规则目标修复 → 自动选路组 → 分组排序与成员清理 → provider 文件 → VPS 直连旁路、Cursor / 公司直连规则、DNS 与 fake-ip 完整性 → agy 规则 → 国内直连基线 → 兜底 `MATCH` → QUIC 阻断 → 序列化写盘；每一步职责在各自模块。
+// [POS] runtime 配置生成流水线的编排与落盘：覆写 → 节点 provider 与基础配置 → Vision 防护 → Sparkle 分组与专用流量规则 → 规则目标修复 → 自动选路组 → 分组排序与成员清理 → provider 文件 → VPS 直连旁路、Cursor / 公司直连规则、DNS 与 fake-ip 完整性 → agy 规则 → 国内直连基线 → 兜底 `MATCH` → QUIC 阻断 → 序列化写盘；每一步职责在各自模块；四个可开关专用组的开关在一次生成开头只读一次，基础配置、分组注入与 provider 文件写入共用这一份，避免出现悬空引用。
 
 import {
   getControledMihomoConfig,

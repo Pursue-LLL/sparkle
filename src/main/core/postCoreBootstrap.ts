@@ -7,7 +7,7 @@
 //         regionalUrlTestWarmup (POS: 地区组按需预热) · utils/bestEffortLog · utils/errorMessage::describeError ·
 //         autoSelectStickyPin::startAutoSelectStickyPin (POS: `自动选择` 粘性固定) ·
 //         cursorDedicatedDefault::applyCursorDedicatedVpsSelection (POS: Cursor 专用组默认节点) ·
-//         dedicatedGroups::runWhenEnabled · dedicatedGroupSwitch::dedicatedGroupGate (POS: 专用分组开关；关闭的组不探测) ·
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析) · dedicatedGroupSwitch::dedicatedGroupGate (POS: 专用分组开关的运行时读取) ·
 //         mihomoControllerReadyCore::probeMihomoControllerVersion (POS: 控制器就绪探针) ·
 //         networkStartupGraceCore::NETWORK_MONITOR_STARTUP_GRACE_MS (POS: 内核就绪后的启动宽限常量) ·
 //         probeWarmupState::beginProbeWarmup/endProbeWarmup (POS: 测速预热窗口状态) ·

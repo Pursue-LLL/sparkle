@@ -1,4 +1,4 @@
-// [INPUT] dedicatedGroups::DEDICATED_GROUPS（POS: 可开关专用组的组名注册表）
+// [INPUT] dedicatedGroups::DEDICATED_GROUPS（POS: 可开关专用组注册表与开关解析）
 // [OUTPUT] AUTO_SELECT_GROUP_NAME · *_DEDICATED_GROUP_NAME（含旧组名）· GENERAL_PROXY_GROUP_NAME(S) · *_DELAY_TEST_URL · is*GroupName 谓词 · resolveDelayTestUrl · resolveCursorStableSelectorGroup · resolveGeneralProxySelectGroup · filterCursorEligibleVpsLeaves
 // [POS] Sparkle 分组命名、类型判定与延迟测试地址的唯一出处：分组名常量与按名认组的谓词、各组探测地址，以及 Cursor 专用 selector 组与通用选择组的解析。
 

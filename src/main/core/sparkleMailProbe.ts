@@ -9,10 +9,10 @@
 //         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
 //         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化) ·
-//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
-// [OUTPUT] loadSparkleMailProbeCache · saveSparkleMailProbeCache · writeSparkleMailProviderFromCache · ensureMailProviderReloaded · reloadAndWarmMailGroup · bootstrapSparkleMailProvider · loadCurrentMailProxies · runSparkleMailProbeExclusive · startSparkleMailProbeLoop
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析)
+// [OUTPUT] MailProviderWriteResult · loadSparkleMailProbeCache · saveSparkleMailProbeCache · writeSparkleMailProviderFromCache · ensureMailProviderReloaded · reloadAndWarmMailGroup · bootstrapSparkleMailProvider · loadCurrentMailProxies · runSparkleMailProbeExclusive · startSparkleMailProbeLoop
 // [POS] 邮件 provider 的全量探测与同步：对订阅叶子执行真实 993/465 校验，把结果写入 `sparkle-mail-proxies.yaml`；成员集合变化时热重载 `📧 邮件专用`，
-// 热重载失败保留 pending 由后续按需/每小时探测重试。
+// 热重载失败保留 pending 由后续按需/每小时探测重试。每小时的定时探测经开关门控：`📧 邮件专用` 关闭则整轮跳过、不做任何端口探测。
 
 import { readFile, writeFile } from 'fs/promises'
 import path from 'path'

@@ -14,7 +14,8 @@
 //         vpsProviderSplitCore::partitionLeafProxies/resolveVpsProviderId (POS: VPS 节点拆分与 provider id)
 // [OUTPUT] extractProxies · generateProxyProvider · setupProfileProviders · reloadMihomoProfileProviders · generateBaseConfigWithProvider · deleteProvider
 // [POS] 订阅节点到 provider 文件的转换层：节点经 VLESS Vision 与 AnyTLS 会话复用防护后拆成商用与 VPS provider 文件落盘，生成使用 provider 的基础配置，订阅刷新时让内核热重载 provider。
-//       五个派生 provider（fast / mail / agy / grok / gemini）的节点都取自 `extractProxies`，防护在这里一次到位。
+//       五个派生 provider（fast / mail / agy / grok / gemini）的节点都取自 `extractProxies`，防护在这里一次到位；
+//       基础配置里 mail / agy / grok / gemini 四个 provider 按专用组开关注册（关闭即不声明，fast 始终声明）。
 
 import { writeFile, rm } from 'fs/promises'
 import { existsSync } from 'fs'

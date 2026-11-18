@@ -1,8 +1,9 @@
-// [INPUT] dedicatedGroups::DEDICATED_GROUPS/DEDICATED_GROUP_IDS (POS: 可开关专用组注册表) ·
-//         proxyGroupOrder::groupDisplayRank (POS: 分组展示档位)
+// [INPUT] dedicatedGroups::DEDICATED_GROUPS/DEDICATED_GROUP_IDS (POS: 可开关专用组注册表与开关解析) ·
+//         proxyGroupOrder::groupDisplayRank (POS: 分组展示顺序与档位)
 // [OUTPUT] GroupsWithPlaceholders · withDisabledGroupPlaceholders
 // [POS] 代理页「已关闭专用组」的占位：关闭的组在内核里不存在，页面按它原本的展示档位插回一个只读占位，
-//       让用户在原位置就能重新开启。无副作用，仅在渲染进程用于代理页，不改变分组数据源。
+//       让用户在原位置就能重新开启；切换进行中的组保持切换前的样子（关闭中仍是真实标题，开启中仍是占位），列表长度不抖动。
+//       无副作用，仅在渲染进程用于代理页，不改变分组数据源。
 
 import { DEDICATED_GROUPS, DEDICATED_GROUP_IDS, type DedicatedGroupId } from './dedicatedGroups'
 import { groupDisplayRank } from './proxyGroupOrder'

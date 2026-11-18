@@ -1,5 +1,5 @@
 // [INPUT] config::getAppConfig/patchAppConfig/getControledMihomoConfig/patchControledMihomoConfig… (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
-//         appConfigProfileReload::patchAppConfigAndReloadProfile (POS: 应用配置补丁落盘并按需重载 runtime 配置) ·
+//         appConfigProfileReload::patchAppConfigAndReloadProfile (POS: 应用配置补丁到运行内核的接线) ·
 //         factory::getRuntimeConfig/getRuntimeConfigStr/getRawProfileStr/getCurrentProfileStr… (POS: runtime 配置生成) ·
 //         manager::quitWithoutCore/restartCore/startNetworkDetection/stopCore… (POS: 内核进程生命周期) ·
 //         mihomoApi::mihomoChangeProxy/mihomoCloseConnections/mihomoCloseConnection/mihomoGroupDelay… (POS: mihomo 控制器访问层) ·

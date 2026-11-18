@@ -1,4 +1,5 @@
-// [INPUT] react-virtuoso（POS: 分组虚拟列表句柄） · @renderer/hooks/use-latest（POS: 最新值 ref）
+// [INPUT] react-virtuoso（POS: 分组虚拟列表句柄） · @renderer/hooks/use-latest（POS: 最新值 ref） ·
+//         @renderer/utils/proxy-group-view（POS: 可见节点折算，取 `ProxyLike` 类型）
 // [OUTPUT] useProxyGroupLocate: 「定位当前节点」按钮的滚动逻辑（返回身份稳定的回调）
 // [POS] 代理页定位：目标组未展开时先展开，待内容渲染完成后再平滑滚动到当前节点所在行。
 

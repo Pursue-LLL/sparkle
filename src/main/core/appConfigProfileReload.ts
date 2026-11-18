@@ -1,12 +1,13 @@
-// [INPUT] appConfigProfileReloadCore::profileReloadKeys/shouldReloadProfileForAppConfigPatch (POS: 触发重载的配置键) ·
-//         dedicatedGroupSwitch::loadDedicatedGroupSwitches (POS: 专用分组开关读取) ·
-//         dedicatedGroups::newlyEnabledGroupIds/resolveDedicatedGroupSwitches (POS: 可开关专用组注册表) ·
+// [INPUT] appConfigProfileReloadCore::profileReloadKeys/shouldReloadProfileForAppConfigPatch (POS: 会改变 runtime 配置内容的应用配置键) ·
+//         dedicatedGroupSwitch::loadDedicatedGroupSwitches (POS: 专用分组开关的运行时读取) ·
+//         dedicatedGroups::newlyEnabledGroupIds/resolveDedicatedGroupSwitches (POS: 可开关专用组注册表与开关解析) ·
 //         factory::generateProfile (POS: runtime 配置生成) · runtimeConfigSync::syncRuntimeConfigToCore (POS: 运行时配置对齐执行层) ·
 //         sparkleGrokProbe/sparkleGeminiProbe/sparkleMailProbe/sparkleAgyProbe (POS: 各专用组探测，仅取 bootstrap) ·
-//         utils/errorMessage::describeError · utils/log::appendAppLog (POS: 应用日志与内核日志)
+//         utils/errorMessage::describeError (POS: 失败路径上的异常文本化) · utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] patchAppConfigAndReloadProfile: 应用配置补丁落盘 → 必要时重新生成并重载 runtime 配置
 // [POS] 应用配置补丁到运行内核的接线：补丁含影响 runtime 配置的键时，在同一串行队列里完成「落盘 → 生成 → 整配置重载」，
-//       重载成功后才为刚开启的专用组补一轮探测（内核没有采用新配置则不探测，下次内核就绪时自然启动）。
+//       重载成功后才为刚开启的专用组补一轮探测（内核没有采用新配置则不探测，下次内核就绪时自然启动）；
+//       日志里分开记生成与重载两段耗时（`generate_ms` / `reload_ms`），界面感知的等待花在哪一段凭日志即可定位。
 
 import { describeError } from '../utils/errorMessage'
 import { appendAppLog } from '../utils/log'

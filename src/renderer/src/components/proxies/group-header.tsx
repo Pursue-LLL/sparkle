@@ -1,5 +1,7 @@
-// [INPUT] @renderer/utils/cursor-proxy-groups（POS: 探针地址展示） · @sparkle-core/cursorProxyGroup（POS: 专用组名） ·
-//         @renderer/components/proxies/dedicated-group-switch（POS: 启用开关） · @sparkle-core/dedicatedGroups（POS: 可开关专用组 id）
+// [INPUT] @renderer/utils/cursor-proxy-groups（POS: 探针地址展示） · @sparkle-core/cursorProxyGroup（POS: Sparkle 分组名常量与判定谓词） ·
+//         @renderer/components/base/collapse-input（POS: 可折叠搜索框） ·
+//         @renderer/components/proxies/dedicated-group-switch（POS: 专用组启用开关） ·
+//         @sparkle-core/dedicatedGroups（POS: 可开关专用组注册表与开关解析，仅取 `DedicatedGroupId` 类型）
 // [OUTPUT] GroupHeader · GroupProbeMode · resolveGroupProbeMode
 // [POS] 代理页分组标题行：名称/当前节点/探针口径、可开关专用组的启用开关、节点数、搜索、定位、组测速与展开箭头。
 import { Button, Card, CardBody, Chip } from '@heroui/react'

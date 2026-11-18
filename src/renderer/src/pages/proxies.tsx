@@ -1,13 +1,20 @@
 // [INPUT] @renderer/hooks/use-groups（POS: 代理组数据源） · @renderer/hooks/use-proxy-group-state（POS: 展开/搜索/测速中状态） ·
 //         @renderer/hooks/use-proxy-group-delay-test（POS: 单节点/整组测速） · @renderer/hooks/use-proxy-group-locate（POS: 定位当前节点） ·
-//         @renderer/hooks/use-proxy-columns（POS: 网格列数） · @renderer/hooks/use-dedicated-group-switches（POS: 专用分组开关） ·
-//         @renderer/hooks/use-agy-probe-snapshot（POS: agy 真实请求快照） ·
-//         @renderer/hooks/use-grok-probe-snapshot（POS: grok 真实请求快照） · @renderer/utils/ipc（POS: 主进程能力桥） ·
-//         @renderer/utils/proxy-group-view（POS: 可见节点折算） · @sparkle-core/cursorProxyGroup（POS: 专用组名） ·
-//         @sparkle-core/dedicatedGroupPlaceholderCore（POS: 已关闭专用组占位）
+//         @renderer/hooks/use-proxy-columns（POS: 网格列数） · @renderer/hooks/use-dedicated-group-switches（POS: 专用分组开关状态与切换动作） ·
+//         @renderer/hooks/use-latest（POS: 最新值 ref） · @renderer/hooks/use-app-config（POS: 应用配置读写） ·
+//         @renderer/hooks/use-controled-mihomo-config（POS: 内核配置读写，取代理模式） ·
+//         @renderer/hooks/use-agy-probe-snapshot（POS: agy 真实请求快照） · @renderer/hooks/use-grok-probe-snapshot（POS: grok 真实请求快照） ·
+//         @renderer/components/proxies/group-header（POS: 代理页分组标题行） · @renderer/components/proxies/disabled-group-header（POS: 已关闭专用组的占位标题） ·
+//         @renderer/components/proxies/proxy-item（POS: 代理页节点卡片） · @renderer/components/proxies/proxy-setting-drawer（POS: 代理页设置抽屉） ·
+//         @renderer/components/proxies/probe-warmup-chip（POS: 页头测速预热提示） · @renderer/components/base/base-page（POS: 页面外壳） ·
+//         @renderer/utils/ipc（POS: 渲染进程 IPC 唯一入口） · @renderer/utils/proxy-group-view（POS: 可见节点折算） ·
+//         @renderer/utils/cursor-proxy-groups（POS: 探针 / 测速地址解析） · @renderer/utils/init（POS: 渲染进程启动信息，取构建标识） ·
+//         @sparkle-core/cursorProxyGroup（POS: Sparkle 分组名常量与判定谓词） ·
+//         @sparkle-core/dedicatedGroups（POS: 可开关专用组注册表与开关解析） ·
+//         @sparkle-core/dedicatedGroupPlaceholderCore（POS: 代理页「已关闭专用组」的占位）
 // [OUTPUT] Proxies: 代理组页面（分组渲染、节点选择、手动测速、agy/grok 实测展示、设置抽屉）
 // [POS] 代理页容器：计算每组的 probeUrl、按组类型下发 agy/grok 快照、把已关闭的专用组以占位标题插回原位，
-//       组合 GroupHeader / DisabledGroupHeader / ProxyItem / 设置抽屉。
+//       专用组标题与占位标题的开关显示「展示值」（切换进行中已是目标值），组合 GroupHeader / DisabledGroupHeader / ProxyItem / 设置抽屉。
 import { Button, Chip } from '@heroui/react'
 import { buildStamp } from '@renderer/utils/init'
 import BasePage from '@renderer/components/base/base-page'

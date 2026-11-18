@@ -6,7 +6,7 @@
 
 | 文件 | 职责 |
 |------|------|
-| `types/` | 全局 TypeScript 类型（`app.d.ts` · `types.d.ts` · `controller.d.ts`，含跨进程 `AgyProbeSample`（rttMs / checkedAt / state：usable|unusable|failed / reason）与 `AgyProbeSnapshot`） |
+| `types/` | 全局 TypeScript 类型（`app.d.ts` · `types.d.ts` · `controller.d.ts`，含跨进程 `AgyProbeSample`（rttMs / checkedAt / state：usable|unusable|failed / reason）、`AgyProbeSnapshot`，以及 `DedicatedGroupSwitches`（grok / gemini / mail / agy 四个专用组开关的形状，`AppConfig.dedicatedGroups` 的值类型，缺省值见 `core/dedicatedGroups.ts`）） |
 | `buildStamp.ts` | **生成物**：`SPARKLE_BUILD_STAMP`（`YYYY.MMDD.HHMM`）+ `SPARKLE_SEMVER` + `SPARKLE_GIT_COMMIT` + `SPARKLE_GIT_DIRTY`（构建时除本文件自身外是否还有未提交改动）；由 `scripts/write-build-stamp.ts` 写入，禁止手改 |
 
 ## 数据流
