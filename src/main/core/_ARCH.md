@@ -156,6 +156,7 @@ index.ts → runCoreReadinessPipeline('gui') (coreReadinessGate.ts)
 | 文件 | 职责 |
 | --- | --- |
 | `utils/bestEffortLog.ts` | 把注入的日志函数包成永不 reject 的版本；`runtimeConfigSyncEngine` / `groupFailoverEngine` / `autoSwitchPinReleaseEngine` / `postCoreBootstrap` 统一用它，日志写入失败不改变任何控制流 |
+| `switchTimingCore.ts` / `utils/switchTiming.ts` | 切换类操作耗时旁路：`timeSwitchOperation(op, run)` 在 `run` 结束时（无论成败）记一行 `[SwitchTiming]: op=… threw=… ms=… load1=… free_mem_mb=…`；`patchControledMihomoConfig` / `restartCore` / `triggerSysProxy` 各接一处；时钟 / 负载 / 内存 / 日志全部注入（Core 是纯逻辑，真实装配在 `utils/switchTiming.ts`），取样或写日志失败不改变被计时操作的返回值与异常；`threw` 只表示被计时函数是否抛出（`restartCore` 内部吞掉并通知的失败不算） |
 | `utils/errorMessage.ts` | `describeError`：失败路径的异常文本化，按 `message` 字段而非 `instanceof Error` 判断（跨执行环境的 Error 同样可读），自身永不抛 |
 | `utils/log.ts` | 应用日志与内核日志：`appendAppLog` 永不 reject（落盘失败只丢这一段）；写入流出错时摘掉坏流、下次写入重开；`publishMihomoLog` 缓存内核日志并推送渲染进程；文件大小按记账控制、超限裁剪 |
 | `utils/logFileSizeCore.ts` / `utils/logLineParseCore.ts` | 日志文件大小记账与按行裁剪的纯函数 · 内核 logfmt 输出行的解析（转义序列单趟解码） |

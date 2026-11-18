@@ -1,4 +1,5 @@
 import { TitleBarOverlayOptions } from 'electron'
+import { coreRestartGate } from './core-restart-gate'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ipcErrorWrapper(response: any): any {
@@ -263,8 +264,11 @@ export async function setOverride(id: string, ext: 'js' | 'yaml', str: string): 
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('setOverride', id, ext, str))
 }
 
+/** 所有重启入口都走这里：闸门保证不并发、连续触发合并成一次，并驱动界面的「重启中」状态。 */
 export async function restartCore(): Promise<void> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('restartCore'))
+  return coreRestartGate.run(async () =>
+    ipcErrorWrapper(await window.electron.ipcRenderer.invoke('restartCore'))
+  )
 }
 
 export async function stopCore(): Promise<void> {

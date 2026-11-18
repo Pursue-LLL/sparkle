@@ -1,5 +1,6 @@
-import { Button, Divider } from '@heroui/react'
+import { Button, Divider, Spinner } from '@heroui/react'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
+import { useCoreRestarting } from '@renderer/hooks/use-core-restarting'
 import { platform } from '@renderer/utils/init'
 import { isAlwaysOnTop, setAlwaysOnTop } from '@renderer/utils/ipc'
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
@@ -15,6 +16,7 @@ let saveOnTop = false
 const BasePage = forwardRef<HTMLDivElement, Props>((props, ref) => {
   const { appConfig } = useAppConfig()
   const { useWindowFrame = false, disableAnimation = false } = appConfig || {}
+  const restarting = useCoreRestarting()
   const [overlayWidth, setOverlayWidth] = React.useState(0)
   const [onTop, setOnTop] = useState(saveOnTop)
 
@@ -51,6 +53,12 @@ const BasePage = forwardRef<HTMLDivElement, Props>((props, ref) => {
             style={{ marginRight: overlayWidth }}
             className="header flex gap-1 h-full items-center"
           >
+            {restarting && (
+              <div role="status" className="flex items-center gap-1 text-xs text-foreground-500">
+                <Spinner size="sm" />
+                内核重启中…
+              </div>
+            )}
             {props.header}
             <Button
               data-react-aria-top-layer="true"

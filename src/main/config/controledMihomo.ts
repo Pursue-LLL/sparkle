@@ -5,6 +5,7 @@ import { generateProfile } from '../core/factory'
 import { getAppConfig } from './app'
 import { defaultControledMihomoConfig } from '../utils/template'
 import { deepMerge } from '../utils/merge'
+import { timeSwitchOperation } from '../utils/switchTiming'
 
 let controledMihomoConfig: Partial<MihomoConfig> // mihomo.yaml
 
@@ -26,7 +27,11 @@ export async function getControledMihomoConfig(force = false): Promise<Partial<M
   return controledMihomoConfig
 }
 
-export async function patchControledMihomoConfig(patch: Partial<MihomoConfig>): Promise<void> {
+export function patchControledMihomoConfig(patch: Partial<MihomoConfig>): Promise<void> {
+  return timeSwitchOperation('patchControledMihomoConfig', () => applyControledMihomoPatch(patch))
+}
+
+async function applyControledMihomoPatch(patch: Partial<MihomoConfig>): Promise<void> {
   await getControledMihomoConfig()
   const { controlDns = true, controlSniff = true } = await getAppConfig()
   if (!controlDns) {

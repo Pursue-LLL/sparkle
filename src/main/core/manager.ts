@@ -18,7 +18,8 @@
 //         tunStartupGuard::ensureTunCorePermissionBeforeStart/resetTunStartupGuardState/verifyTunAfterCoreReady/watchTunStartupLogLine (POS: TUN 启动守卫) ·
 //         utils/dirs::dataDir/coreLogPath/ensureLogDir/mihomoCorePath… (POS: 应用目录与路径常量) ·
 //         utils/log::appendAppLog/createLogWritable/setMihomoLogSource (POS: 应用日志与内核日志) ·
-//         utils/notification::dismissNotification/showNotification/AppNotificationPayload/AppNotificationVariant (POS: 应用通知)
+//         utils/notification::dismissNotification/showNotification/AppNotificationPayload/AppNotificationVariant (POS: 应用通知) ·
+//         utils/switchTiming::timeSwitchOperation (POS: 切换类操作耗时日志)
 // [OUTPUT] startCore · stopCore · restartCore · keepCoreAlive · quitWithoutCore · startNetworkDetection
 // [POS] mihomo 内核进程生命周期：启动（先生成配置并校验通过才停旧核）、停止、重启、守护与退出；service 模式经签名 API 控制特权内核。
 
@@ -78,6 +79,7 @@ import {
   type AppNotificationPayload,
   type AppNotificationVariant
 } from '../utils/notification'
+import { timeSwitchOperation } from '../utils/switchTiming'
 import { stopChildProcess } from './process-control'
 import {
   recoverDNS,
@@ -1125,7 +1127,11 @@ async function fallbackUnavailableServiceModes(reason: unknown): Promise<void> {
   }
 }
 
-export async function restartCore(force = false): Promise<void> {
+export function restartCore(force = false): Promise<void> {
+  return timeSwitchOperation('restartCore', () => restartCoreUntimed(force))
+}
+
+async function restartCoreUntimed(force: boolean): Promise<void> {
   try {
     clearTailscaleAuthNotifications()
     await stopCore(force)
