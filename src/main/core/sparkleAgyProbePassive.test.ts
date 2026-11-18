@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict'
 import { describe, it, mock } from 'node:test'
+import { GATE_OPEN } from './dedicatedGroupsRig'
 import {
   AGY_DIAL_OUTAGE_THRESHOLD,
   AGY_DIAL_STORM_COOLDOWN_MS,
@@ -161,14 +162,14 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
   }
 
   it('只订阅一次，重复启动不重复订阅', () => {
-    agy().startSparkleAgyProbeLoop()
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
 
     assert.equal(world.alertListeners.length, 1)
   })
 
   it('agy 出口的拨号失败达到阈值就触发修复', async () => {
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
 
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
     await drain()
@@ -177,8 +178,24 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
     assert.equal(world.selection, '台湾-2')
   })
 
+  it('agy 组关闭时拨号风暴不触发任何修复，重新开启后照常修复', async () => {
+    let open = false
+    agy().startSparkleAgyProbeLoop(async () => open)
+
+    emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
+    await drain()
+    assertQuiet()
+
+    open = true
+    mock.timers.tick(AGY_DIAL_STORM_COOLDOWN_MS)
+    emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
+    await drain()
+
+    assertLog('pin 台湾-1 trigger=dial-failures')
+  })
+
   it('未到阈值不触发，也不产生任何探测', async () => {
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
 
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD - 1)
     await drain()
@@ -187,7 +204,7 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
   })
 
   it('其它组同时在失败（整网故障）不触发', async () => {
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
 
     emitAlerts(dialFailureLine('grok 专用', '127.0.0.1:63819(Sparkle)'), AGY_DIAL_OUTAGE_THRESHOLD)
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD * 2)
@@ -197,7 +214,7 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
   })
 
   it('只数 TCP 拨号失败：健康检查告警与 UDP 失败都不算', async () => {
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
 
     emitAlerts(`because ${AGY_GROUP} failed multiple times, activate health check`, 100)
     emitAlerts(agyFailure.replace('[TCP]', '[UDP]'), 100)
@@ -207,7 +224,7 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
   })
 
   it('冷却期内的再次风暴被忽略，冷却期满后风暴仍在才再修复', async () => {
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
     await drain()
     assert.equal(logCount('repaired pin'), 1)
@@ -226,7 +243,7 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
   it('一轮修复连日志都写不出去也不外抛，下一次风暴照常修复', async () => {
     world.profileFailure = { reason: new Error('profile config unreadable') }
     world.logFailure = true
-    agy().startSparkleAgyProbeLoop()
+    agy().startSparkleAgyProbeLoop(GATE_OPEN)
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
     await drain()
 

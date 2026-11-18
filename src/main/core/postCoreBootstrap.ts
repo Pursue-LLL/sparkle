@@ -7,7 +7,7 @@
 //         regionalUrlTestWarmup (POS: 地区组按需预热) · utils/bestEffortLog · utils/errorMessage::describeError ·
 //         autoSelectStickyPin::startAutoSelectStickyPin (POS: `自动选择` 粘性固定) ·
 //         cursorDedicatedDefault::applyCursorDedicatedVpsSelection (POS: Cursor 专用组默认节点) ·
-//         cursorProxyGroup::GROK_GROUP_ENABLED (POS: Grok 专用组总开关，关闭时不启动 grok 探针) ·
+//         dedicatedGroups::runWhenEnabled · dedicatedGroupSwitch::dedicatedGroupGate (POS: 专用分组开关；关闭的组不探测) ·
 //         mihomoControllerReadyCore::probeMihomoControllerVersion (POS: 控制器就绪探针) ·
 //         networkStartupGraceCore::NETWORK_MONITOR_STARTUP_GRACE_MS (POS: 内核就绪后的启动宽限常量) ·
 //         probeWarmupState::beginProbeWarmup/endProbeWarmup (POS: 测速预热窗口状态) ·
@@ -24,7 +24,8 @@
 import { bestEffortLog } from '../utils/bestEffortLog'
 import { describeError } from '../utils/errorMessage'
 import { appendAppLog } from '../utils/log'
-import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
+import { dedicatedGroupGate } from './dedicatedGroupSwitch'
+import { runWhenEnabled } from './dedicatedGroups'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
 import { probeMihomoControllerVersion } from './mihomoControllerReadyCore'
 import { beginProbeWarmup, endProbeWarmup } from './probeWarmupState'
@@ -110,39 +111,41 @@ async function runPostReadyServices(): Promise<void> {
   })
 
   // 以下探测相互独立且耗时，放到后台并行，不阻塞后面的服务启动。
+  // 循环始终启动、每轮读最新开关：用户中途开启 / 关闭专用组无需重启，关闭的组整轮不发任何请求。
   void guarded('[SparkleGeminiProbe]: bootstrap failed', async () => {
     const { bootstrapSparkleGeminiRegionAudit, startSparkleGeminiRegionAuditLoop } =
       await import('./sparkleGeminiProbe')
-    await bootstrapSparkleGeminiRegionAudit()
-    startSparkleGeminiRegionAuditLoop()
+    const isEnabled = dedicatedGroupGate('gemini')
+    await runWhenEnabled(isEnabled, bootstrapSparkleGeminiRegionAudit)
+    startSparkleGeminiRegionAuditLoop(isEnabled)
   })
 
   void guarded('[SparkleMailProbe]: bootstrap failed', async () => {
     const { bootstrapSparkleMailProvider, startSparkleMailProbeLoop } =
       await import('./sparkleMailProbe')
+    const isEnabled = dedicatedGroupGate('mail')
     await guarded('[SparkleMailProbe]: current node probe start failed', async () => {
       const { startSparkleMailCurrentNodeProbeLoop } = await import('./sparkleMailCurrentNodeProbe')
-      startSparkleMailCurrentNodeProbeLoop()
+      startSparkleMailCurrentNodeProbeLoop(isEnabled)
     })
-    await bootstrapSparkleMailProvider()
-    startSparkleMailProbeLoop()
+    await runWhenEnabled(isEnabled, bootstrapSparkleMailProvider)
+    startSparkleMailProbeLoop(isEnabled)
   })
 
-  // grok 组关闭时组本身不存在，探针循环只会白白请求 grok.com，所以整体不启动。
-  if (GROK_GROUP_ENABLED) {
-    void guarded('[SparkleGrokProbe]: bootstrap failed', async () => {
-      const { bootstrapSparkleGrokProvider, startSparkleGrokProbeLoop } =
-        await import('./sparkleGrokProbe')
-      await bootstrapSparkleGrokProvider()
-      startSparkleGrokProbeLoop()
-    })
-  }
+  void guarded('[SparkleGrokProbe]: bootstrap failed', async () => {
+    const { bootstrapSparkleGrokProvider, startSparkleGrokProbeLoop } =
+      await import('./sparkleGrokProbe')
+    const isEnabled = dedicatedGroupGate('grok')
+    await runWhenEnabled(isEnabled, bootstrapSparkleGrokProvider)
+    startSparkleGrokProbeLoop(isEnabled)
+  })
 
   void guarded('[SparkleAgyProbe]: bootstrap failed', async () => {
     const { bootstrapSparkleAgyProvider, startSparkleAgyProbeLoop } =
       await import('./sparkleAgyProbe')
-    await bootstrapSparkleAgyProvider()
-    startSparkleAgyProbeLoop()
+    const isEnabled = dedicatedGroupGate('agy')
+    await runWhenEnabled(isEnabled, bootstrapSparkleAgyProvider)
+    startSparkleAgyProbeLoop(isEnabled)
   })
 
   // 排序失败也要启动：固定逻辑只依赖 controller，与重排相互独立。

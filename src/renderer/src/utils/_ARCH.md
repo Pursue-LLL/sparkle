@@ -26,6 +26,7 @@
 | `ipc.ts` | 渲染进程 IPC 唯一入口（mihomo、配置、agy/grok 快照等）；`restartCore()` 经 `coreRestartGate`，是渲染进程里唯一直接 invoke `restartCore` 的地方（`restartGateWiring.test.ts` 守护） |
 | `mihomo-log-store.ts` | 内核日志的内存存储与订阅 |
 | `notification.ts` | 应用通知 / Toast |
+| `proxy-group-view.ts` | 代理页视图纯函数：把各组展开 / 搜索 / 排序状态折算为虚拟列表的每组行数与可见节点 |
 | `proxy-delay-sample-age.ts` | 延迟样本年龄、tooltip 文案：当前失败如实写「最近一次测速失败」，历史成功值只作「N分前成功」溯源，不冒充当前延迟 |
 | `routingIntegrity.ts` | 连接路由完整性不一致检测与提示 |
 | `validate.ts` | IPv4 / IPv6 等输入校验 |

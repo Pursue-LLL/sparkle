@@ -8,7 +8,8 @@
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
 //         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
-//         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化)
+//         utils/yaml::parseYaml/stringifyYaml (POS: YAML 解析与序列化) ·
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
 // [OUTPUT] loadSparkleMailProbeCache · saveSparkleMailProbeCache · writeSparkleMailProviderFromCache · ensureMailProviderReloaded · reloadAndWarmMailGroup · bootstrapSparkleMailProvider · loadCurrentMailProxies · runSparkleMailProbeExclusive · startSparkleMailProbeLoop
 // [POS] 邮件 provider 的全量探测与同步：对订阅叶子执行真实 993/465 校验，把结果写入 `sparkle-mail-proxies.yaml`；成员集合变化时热重载 `📧 邮件专用`，
 // 热重载失败保留 pending 由后续按需/每小时探测重试。
@@ -35,6 +36,7 @@ import {
   type MailProxyRecord
 } from './sparkleMailProviderCore'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
+import { runWhenEnabled, type DedicatedGroupGate } from './dedicatedGroups'
 
 const CACHE_FILENAME = 'sparkle-mail-nodes.json'
 const ALIVE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
@@ -285,12 +287,13 @@ async function runBootstrapSparkleMailProvider(): Promise<void> {
 
 let mailProbeTimer: NodeJS.Timeout | undefined
 
-export function startSparkleMailProbeLoop(): void {
+/** 每轮先问开关：邮件组被关闭时整轮跳过，不做任何端口探测。 */
+export function startSparkleMailProbeLoop(isEnabled: DedicatedGroupGate): void {
   if (mailProbeTimer) {
     return
   }
   mailProbeTimer = setInterval(() => {
-    bootstrapSparkleMailProvider().catch(() => undefined)
+    runWhenEnabled(isEnabled, bootstrapSparkleMailProvider).catch(() => undefined)
   }, RECHECK_INTERVAL_MS)
   mailProbeTimer.unref()
 }

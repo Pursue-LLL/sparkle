@@ -13,7 +13,6 @@ import { GROK_NODE_PROVIDER_ID } from './sparkleGrokProviderCore'
 import {
   DEFAULT_GENERAL_DELAY_TEST_URL,
   GEMINI_REACHABILITY_PROBE_URL,
-  GROK_GROUP_ENABLED,
   MAIL_DELAY_TEST_URL
 } from './cursorProxyGroup'
 import {
@@ -43,6 +42,7 @@ export function buildBaseConfigWithProviders(
   originalConfig: MihomoConfig,
   profileId: string,
   resolveProviderPath: (providerId: string) => string,
+  switches: DedicatedGroupSwitches,
   healthCheck?: ProviderHealthCheckOverride
 ): MihomoConfig {
   const baseConfig = { ...originalConfig }
@@ -84,49 +84,47 @@ export function buildBaseConfigWithProviders(
     }
   }
 
-  baseConfig['proxy-providers'][MAIL_NODE_PROVIDER_ID] = {
-    type: 'file',
-    path: resolveProviderPath(MAIL_NODE_PROVIDER_ID),
-    'health-check': {
-      enable: commercialHealthCheck.enable,
-      url: MAIL_DELAY_TEST_URL,
-      interval: commercialHealthCheck.interval,
-      timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
-      lazy: true
+  // grok / gemini / 邮件 / agy 四个专用 provider 由开关控制：关闭即不注册，
+  // 对应分组同样不会注入（见 ensureCustomProxyGroups），不会出现悬空引用。
+  const dedicatedHealthCheck = (url: string): Record<string, string | number | boolean> => ({
+    enable: commercialHealthCheck.enable,
+    url,
+    interval: commercialHealthCheck.interval,
+    timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
+    lazy: true
+  })
+
+  if (switches.mail) {
+    baseConfig['proxy-providers'][MAIL_NODE_PROVIDER_ID] = {
+      type: 'file',
+      path: resolveProviderPath(MAIL_NODE_PROVIDER_ID),
+      'health-check': dedicatedHealthCheck(MAIL_DELAY_TEST_URL)
     }
   }
 
   // gemini专用 的成员资格由 vXmutd 地区探测把关（sparkleGeminiProbe），
   // 这里的 health-check 只用轻量 204 量存活与延迟，供 fallback 顺延与面板展示。
-  baseConfig['proxy-providers'][GEMINI_NODE_PROVIDER_ID] = {
-    type: 'file',
-    path: resolveProviderPath(GEMINI_NODE_PROVIDER_ID),
-    'health-check': {
-      enable: commercialHealthCheck.enable,
-      url: DEFAULT_GENERAL_DELAY_TEST_URL,
-      interval: commercialHealthCheck.interval,
-      timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
-      lazy: true
+  if (switches.gemini) {
+    baseConfig['proxy-providers'][GEMINI_NODE_PROVIDER_ID] = {
+      type: 'file',
+      path: resolveProviderPath(GEMINI_NODE_PROVIDER_ID),
+      'health-check': dedicatedHealthCheck(DEFAULT_GENERAL_DELAY_TEST_URL)
     }
   }
 
   // agy 组的可用性来自真实 agy 请求探测（sparkle-agy-nodes.json），
   // 这里的 health-check 只用于面板上显示延迟，不参与选路（组类型是 select）。
-  baseConfig['proxy-providers'][AGY_NODE_PROVIDER_ID] = {
-    type: 'file',
-    path: resolveProviderPath(AGY_NODE_PROVIDER_ID),
-    'health-check': {
-      enable: commercialHealthCheck.enable,
-      url: GEMINI_REACHABILITY_PROBE_URL,
-      interval: commercialHealthCheck.interval,
-      timeout: AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS,
-      lazy: true
+  if (switches.agy) {
+    baseConfig['proxy-providers'][AGY_NODE_PROVIDER_ID] = {
+      type: 'file',
+      path: resolveProviderPath(AGY_NODE_PROVIDER_ID),
+      'health-check': dedicatedHealthCheck(GEMINI_REACHABILITY_PROBE_URL)
     }
   }
 
   // grok 专用组是 select + 应用层探针（sparkleGrokProbe）：稳态只复核当前节点，
   // provider 不做周期体检，避免池内节点被反复全量探测（这正是"找到一个就停"的前提）。
-  if (GROK_GROUP_ENABLED) {
+  if (switches.grok) {
     baseConfig['proxy-providers'][GROK_NODE_PROVIDER_ID] = {
       type: 'file',
       path: resolveProviderPath(GROK_NODE_PROVIDER_ID),

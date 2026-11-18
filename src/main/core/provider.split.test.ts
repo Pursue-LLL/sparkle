@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { CURSOR_DELAY_TEST_URL } from './cursorProxyGroup'
 import { AUTO_SELECT_DELAY_PROBE_URL } from './defaultAutoSwitchProxy'
+import { ALL_GROUPS_ON } from './dedicatedGroupsRig'
 import { buildBaseConfigWithProviders } from './providerConfigCore'
 import { FAST_NODE_PROVIDER_ID } from './sparkleFastProviderCore'
 import {
@@ -32,6 +33,7 @@ describe('provider VPS split integration', () => {
       profile,
       profileId,
       (providerId) => `${providerId}-proxies.yaml`,
+      ALL_GROUPS_ON,
       {
         enable: true,
         interval: 300,
@@ -62,15 +64,12 @@ describe('provider VPS split integration', () => {
       VPS_PROVIDER_HEALTH_CHECK_INTERVAL_SEC
     )
     assert.equal(providers[vpsProviderId]['health-check'].lazy, true)
-    assert.equal(
-      providers[FAST_NODE_PROVIDER_ID]['health-check'].url,
-      AUTO_SELECT_DELAY_PROBE_URL
-    )
+    assert.equal(providers[FAST_NODE_PROVIDER_ID]['health-check'].url, AUTO_SELECT_DELAY_PROBE_URL)
     assert.equal(providers[FAST_NODE_PROVIDER_ID]['health-check'].lazy, true)
 
-    const cursorGroup = (base['proxy-groups'] as { name: string; use?: string[]; filter?: string }[]).find(
-      (group) => group.name === '🎯 Cursor 专用'
-    )
+    const cursorGroup = (
+      base['proxy-groups'] as { name: string; use?: string[]; filter?: string }[]
+    ).find((group) => group.name === '🎯 Cursor 专用')
     assert.deepEqual(cursorGroup?.use, [vpsProviderId])
     assert.equal(cursorGroup?.filter, undefined)
   })
@@ -82,7 +81,12 @@ describe('provider VPS split integration', () => {
       'proxy-groups': [{ name: '自动选择', type: 'url-test', proxies: ['SG-01'] }]
     } as unknown as MihomoConfig
 
-    const base = buildBaseConfigWithProviders(profile, profileId, (providerId) => `${providerId}-proxies.yaml`)
+    const base = buildBaseConfigWithProviders(
+      profile,
+      profileId,
+      (providerId) => `${providerId}-proxies.yaml`,
+      ALL_GROUPS_ON
+    )
     const providers = base['proxy-providers'] as Record<string, unknown>
 
     assert.ok(providers[profileId])

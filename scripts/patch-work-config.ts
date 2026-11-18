@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import yaml from 'yaml'
@@ -23,13 +23,25 @@ async function main() {
     .map((proxy) => proxy.name)
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 
+  // 与 App 同源：专用分组按应用配置里的开关注入，缺省走各组默认值。
+  const appConfigPath = path.join(userData, 'config.yaml')
+  const appConfig = existsSync(appConfigPath)
+    ? parseYaml<Pick<AppConfig, 'dedicatedGroups'>>(readFileSync(appConfigPath, 'utf8'))
+    : {}
+  const { resolveDedicatedGroupSwitches } = await import('../src/main/core/dedicatedGroups')
+
   const customProxyGroups = await import('../src/main/core/customProxyGroups')
   const defaultAutoSwitchProxy = await import('../src/main/core/defaultAutoSwitchProxy')
   const profileGroupNormalize = await import('../src/main/core/profileGroupNormalize')
 
   const subscriptionGroupNames =
     profileGroupNormalize.collectSubscriptionGroupNames(subscriptionProfile)
-  customProxyGroups.ensureCustomProxyGroups(profile, leafProxyNames, current)
+  customProxyGroups.ensureCustomProxyGroups(
+    profile,
+    leafProxyNames,
+    resolveDedicatedGroupSwitches(appConfig.dedicatedGroups),
+    current
+  )
   profileGroupNormalize.rewriteMissingRuleProxyGroupTargets(profile)
   profileGroupNormalize.removeNonSubscriptionProxyGroups(profile, subscriptionGroupNames)
   defaultAutoSwitchProxy.ensureSelectGroupsDefaultToAutoSwitch(profile, current)

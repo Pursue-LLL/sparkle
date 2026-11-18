@@ -19,6 +19,7 @@ import {
   MAIL_DEDICATED_GROUP_NAME,
   MAIL_PROBE_HIDDEN_GROUP_NAME
 } from './cursorProxyGroup'
+import { DEDICATED_GROUPS, DEDICATED_GROUP_IDS, type DedicatedGroupId } from './dedicatedGroups'
 
 describe('resolveGroupRole', () => {
   it('maps every Sparkle-owned group to its role by name, ignoring the type', () => {
@@ -127,16 +128,22 @@ describe('isUrlTestGroupType', () => {
 /** 订阅自带、Sparkle 不拥有的分组名常量。 */
 const SUBSCRIPTION_OWNED_GROUP_NAMES: ReadonlySet<string> = new Set(['🚀 节点选择'])
 
+/** 组名常量有两种写法：字面量，或由可开关专用组注册表派生（`DEDICATED_GROUPS.<id>.name`）。 */
 function collectGroupNameConstants(): { constant: string; value: string }[] {
-  const pattern = /export const ([A-Z_]*GROUP_NAME)\s*=\s*'([^']+)'/g
+  const literal = /export const ([A-Z_]*GROUP_NAME)\s*=\s*'([^']+)'/g
+  const fromRegistry = /export const ([A-Z_]*GROUP_NAME)\s*=\s*DEDICATED_GROUPS\.(\w+)\.name/g
   return readdirSync(__dirname)
     .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
-    .flatMap((file) =>
-      [...readFileSync(join(__dirname, file), 'utf8').matchAll(pattern)].map((match) => ({
-        constant: match[1],
-        value: match[2]
-      }))
-    )
+    .flatMap((file) => {
+      const source = readFileSync(join(__dirname, file), 'utf8')
+      return [
+        ...[...source.matchAll(literal)].map((match) => ({ constant: match[1], value: match[2] })),
+        ...[...source.matchAll(fromRegistry)].map((match) => ({
+          constant: match[1],
+          value: DEDICATED_GROUPS[match[2] as DedicatedGroupId].name
+        }))
+      ]
+    })
 }
 
 describe('group name coverage', () => {
@@ -167,6 +174,16 @@ describe('group name coverage', () => {
       assert.ok(
         role !== 'subscription-select' && role !== 'subscription-managed',
         `${constant} ('${value}') falls through to ${role}: teach resolveGroupRole about it`
+      )
+    }
+  })
+
+  it('classifies every toggleable dedicated group as a probe-dedicated role', () => {
+    for (const id of DEDICATED_GROUP_IDS) {
+      assert.equal(
+        resolveGroupRole({ name: DEDICATED_GROUPS[id].name, type: 'select' }),
+        'probe-dedicated',
+        id
       )
     }
   })

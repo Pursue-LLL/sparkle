@@ -4,7 +4,7 @@ import { mihomoGroups } from '@renderer/utils/ipc'
 
 interface GroupsContextType {
   groups: ControllerMixedGroup[] | undefined
-  mutate: () => void
+  mutate: () => Promise<unknown>
 }
 
 const GroupsContext = createContext<GroupsContextType | undefined>(undefined)

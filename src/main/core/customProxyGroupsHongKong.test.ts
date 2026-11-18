@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import { CURSOR_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { HONG_KONG_FILTER_GROUP_NAME, ensureCustomProxyGroups } from './customProxyGroups'
 import { groupNames, groupProxies, profileOf, subscriptionGroupNames } from './customProxyGroupsRig'
+import { ALL_GROUPS_ON } from './dedicatedGroupsRig'
 
 describe('customProxyGroups · 香港组', () => {
   it('matches Hong Kong nodes with HK keyword variants', () => {
@@ -10,13 +11,11 @@ describe('customProxyGroups · 香港组', () => {
       'proxy-groups': [{ name: '默认', type: 'select', proxies: [] }]
     } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, [
-      '香港 01',
-      'HK-Node',
-      'Hong Kong Premium',
-      'hongkong-lite',
-      'SG-01'
-    ])
+    ensureCustomProxyGroups(
+      profile,
+      ['香港 01', 'HK-Node', 'Hong Kong Premium', 'hongkong-lite', 'SG-01'],
+      ALL_GROUPS_ON
+    )
 
     const hkGroup = (
       (profile['proxy-groups'] as { name: string; type?: string; proxies?: string[] }[]) ?? []
@@ -28,7 +27,7 @@ describe('customProxyGroups · 香港组', () => {
   it('builds Hong Kong provider group as url-test (auto lowest, manual pin supported)', () => {
     const profile = { 'proxy-groups': [] } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
+    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], ALL_GROUPS_ON, 'test-profile')
 
     const hkGroup = (profile['proxy-groups'] as { name: string }[]).find(
       (group) => group.name === HONG_KONG_FILTER_GROUP_NAME
@@ -52,7 +51,7 @@ describe('customProxyGroups · 香港组', () => {
       ['DOMAIN,x.com,香港专用']
     )
 
-    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], 'test-profile')
+    ensureCustomProxyGroups(profile, ['HK-01', 'SG-01'], ALL_GROUPS_ON, 'test-profile')
 
     assert.deepEqual(subscriptionGroupNames(profile), [])
     assert.deepEqual(profile.rules, [`DOMAIN,x.com,${HONG_KONG_FILTER_GROUP_NAME}`])
@@ -75,7 +74,7 @@ describe('customProxyGroups · 香港组', () => {
       ]
     } as unknown as MihomoConfig
 
-    ensureCustomProxyGroups(profile, ['KR-VPS-HY2', 'HK-1'], 'test-profile')
+    ensureCustomProxyGroups(profile, ['KR-VPS-HY2', 'HK-1'], ALL_GROUPS_ON, 'test-profile')
 
     assert.ok(!groupNames(profile).includes('香港专用'))
     assert.deepEqual(profile.rules, [
@@ -96,7 +95,7 @@ describe('customProxyGroups · 香港组', () => {
       ['DOMAIN,a.com,HK 出口', 'DOMAIN,b.com,港区专用', 'DOMAIN,c.com,🚀 节点选择']
     )
 
-    ensureCustomProxyGroups(profile, ['HK-01'], 'test-profile')
+    ensureCustomProxyGroups(profile, ['HK-01'], ALL_GROUPS_ON, 'test-profile')
 
     assert.deepEqual(subscriptionGroupNames(profile), ['🚀 节点选择'])
     assert.deepEqual(profile.rules, [
@@ -114,7 +113,7 @@ describe('customProxyGroups · 香港组', () => {
       { name: '香港空组', type: 'select' }
     ])
 
-    ensureCustomProxyGroups(profile, ['HK-01'], 'test-profile')
+    ensureCustomProxyGroups(profile, ['HK-01'], ALL_GROUPS_ON, 'test-profile')
 
     assert.deepEqual(subscriptionGroupNames(profile), [
       '香港备用',
@@ -131,7 +130,7 @@ describe('customProxyGroups · 香港组', () => {
       [...rules]
     )
 
-    ensureCustomProxyGroups(profile, ['SG-01'])
+    ensureCustomProxyGroups(profile, ['SG-01'], ALL_GROUPS_ON)
 
     assert.deepEqual(subscriptionGroupNames(profile), ['香港专用'])
     assert.deepEqual(profile.rules, rules)
@@ -143,7 +142,7 @@ describe('customProxyGroups · 香港组', () => {
       ['IP-CIDR,1.2.3.4/32,香港专用,no-resolve', 'DOMAIN-KEYWORD,香港专用,套餐', 'MATCH,香港专用']
     )
 
-    ensureCustomProxyGroups(profile, ['HK-01'], 'test-profile')
+    ensureCustomProxyGroups(profile, ['HK-01'], ALL_GROUPS_ON, 'test-profile')
 
     assert.deepEqual(profile.rules, [
       `IP-CIDR,1.2.3.4/32,${HONG_KONG_FILTER_GROUP_NAME},no-resolve`,

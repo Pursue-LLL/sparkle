@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { GATE_OPEN } from './dedicatedGroupsRig'
 import { spyOnTimer } from './timerSpyHarness'
 import {
   JP1,
@@ -340,8 +341,8 @@ describe('sparkleGrokProbe：循环', () => {
   it('只启动一个 60 秒的定时器，且不阻止进程退出', () => {
     const interval = spyOnTimer('setInterval')
     try {
-      grok().startSparkleGrokProbeLoop()
-      grok().startSparkleGrokProbeLoop()
+      grok().startSparkleGrokProbeLoop(GATE_OPEN)
+      grok().startSparkleGrokProbeLoop(GATE_OPEN)
 
       assert.deepEqual(interval.delays, [60 * SECOND_MS])
       assert.equal(interval.unrefs(), 1)
@@ -351,7 +352,7 @@ describe('sparkleGrokProbe：循环', () => {
   })
 
   it('每 60 秒跑一轮 bootstrap', async () => {
-    grok().startSparkleGrokProbeLoop()
+    grok().startSparkleGrokProbeLoop(GATE_OPEN)
     assert.equal(world.profileReads, 0)
 
     advance(60 * SECOND_MS)
@@ -363,10 +364,27 @@ describe('sparkleGrokProbe：循环', () => {
     assert.equal(world.profileReads, 2)
   })
 
+  it('开关关闭时每个 tick 都整轮跳过（不读订阅、不发请求），重新开启后下一轮恢复', async () => {
+    let open = false
+    grok().startSparkleGrokProbeLoop(async () => open)
+
+    advance(60 * SECOND_MS)
+    await settle()
+    advance(60 * SECOND_MS)
+    await settle()
+    assert.equal(world.profileReads, 0)
+    assert.equal(world.requests.length, 0)
+
+    open = true
+    advance(60 * SECOND_MS)
+    await settle()
+    assert.equal(world.profileReads, 1)
+  })
+
   it('某一轮连日志都写不进去也不会让循环崩溃', async () => {
     world.profileFailure = { reason: new Error('profile unreadable') }
     world.logFailure = true
-    grok().startSparkleGrokProbeLoop()
+    grok().startSparkleGrokProbeLoop(GATE_OPEN)
 
     advance(60 * SECOND_MS)
     await settle()

@@ -6,7 +6,7 @@
 
 | 文件 | 职责 |
 |------|------|
-| `proxies.tsx` | 代理组页面：分组渲染、节点选择、手动测速、`🎯 agy 专用` / `grok 专用` 真实实测展示、设置抽屉 |
+| `proxies.tsx` | 代理组页面容器：把 `useGroups` 的分组与「已关闭专用组占位」合并后交给虚拟列表渲染，组合 `hooks/use-proxy-group-*`（展开 / 搜索 / 测速 / 定位）与 `components/proxies` 的分组标题；`🎯 agy 专用` / `grok 专用` 真实实测展示、专用组开关、设置抽屉 |
 | `connections.tsx` | 连接列表、过滤、详情与关闭 |
 | `rules.tsx` | 分流规则列表与启用开关 |
 | `resources.tsx` | 外部资源（proxy provider / rule provider） |

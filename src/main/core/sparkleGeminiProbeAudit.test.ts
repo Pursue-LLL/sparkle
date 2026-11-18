@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it, mock } from 'node:test'
+import { GATE_OPEN } from './dedicatedGroupsRig'
 import {
   assertLog,
   AUDIT_INTERVAL_MS,
@@ -254,7 +255,7 @@ describe('sparkleGeminiProbe audit loop', () => {
 
   it('audits every half hour', async () => {
     world.leaves = [leaf('台湾-1', true)]
-    gemini().startSparkleGeminiRegionAuditLoop()
+    gemini().startSparkleGeminiRegionAuditLoop(GATE_OPEN)
 
     await tickAudit()
 
@@ -263,7 +264,7 @@ describe('sparkleGeminiProbe audit loop', () => {
 
   it('waits out the full half hour before the first round', async () => {
     world.leaves = [leaf('台湾-1', true)]
-    gemini().startSparkleGeminiRegionAuditLoop()
+    gemini().startSparkleGeminiRegionAuditLoop(GATE_OPEN)
 
     mock.timers.tick(AUDIT_INTERVAL_MS - 1)
     await settle()
@@ -277,8 +278,8 @@ describe('sparkleGeminiProbe audit loop', () => {
   it('registers one timer that does not keep the process alive', () => {
     const timers = spyOnTimer('setInterval')
     try {
-      gemini().startSparkleGeminiRegionAuditLoop()
-      gemini().startSparkleGeminiRegionAuditLoop()
+      gemini().startSparkleGeminiRegionAuditLoop(GATE_OPEN)
+      gemini().startSparkleGeminiRegionAuditLoop(GATE_OPEN)
 
       assert.deepEqual(timers.delays, [AUDIT_INTERVAL_MS])
       assert.equal(timers.unrefs(), 1)
@@ -287,9 +288,39 @@ describe('sparkleGeminiProbe audit loop', () => {
     }
   })
 
+  it('skips every round while the gemini group is off and audits again once it is back on', async () => {
+    world.leaves = [leaf('台湾-1', true)]
+    let open = false
+    gemini().startSparkleGeminiRegionAuditLoop(async () => open)
+
+    await tickAudit()
+    await tickAudit()
+    assert.deepEqual(world.calls, [])
+
+    open = true
+    await tickAudit()
+    assert.deepEqual(callsStarting('lock:'), ['lock:台湾-1'])
+  })
+
+  it('treats an unreadable switch as a skipped round and recovers on the next one', async () => {
+    world.leaves = [leaf('台湾-1', true)]
+    let broken = true
+    gemini().startSparkleGeminiRegionAuditLoop(async () => {
+      if (broken) throw new Error('config unreadable')
+      return true
+    })
+
+    await tickAudit()
+    assert.deepEqual(world.calls, [])
+
+    broken = false
+    await tickAudit()
+    assert.deepEqual(callsStarting('lock:'), ['lock:台湾-1'])
+  })
+
   it('keeps going after a failed round', async () => {
     world.providersFailure = { reason: new Error('controller down') }
-    gemini().startSparkleGeminiRegionAuditLoop()
+    gemini().startSparkleGeminiRegionAuditLoop(GATE_OPEN)
     await tickAudit()
 
     world.providersFailure = undefined

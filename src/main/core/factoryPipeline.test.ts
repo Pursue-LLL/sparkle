@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { after, before, beforeEach, describe, it } from 'node:test'
 import yaml from 'yaml'
-import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
 import {
   GROUP,
   groupNames,
@@ -44,7 +43,6 @@ describe('factory: runtime config pipeline', () => {
         'p1',
         'sparkle-agy',
         'sparkle-fast',
-        ...(GROK_GROUP_ENABLED ? ['sparkle-grok'] : []),
         'sparkle-mail'
       ])
       const provider = yaml.parse(
@@ -72,7 +70,6 @@ describe('factory: runtime config pipeline', () => {
       assert.deepEqual(groupNames(config), [
         '自动选择',
         '🎯 Cursor 专用',
-        ...(GROK_GROUP_ENABLED ? ['grok 专用'] : []),
         'gemini专用',
         '📧 邮件专用',
         '__sparkle_mail_probe__',
@@ -107,7 +104,7 @@ describe('factory: runtime config pipeline', () => {
         'stringify_runtime'
       ]
       assert.deepEqual(rig.steps().slice(0, -1), expected)
-      assert.equal(rig.steps().at(-1), `done groups=${GROK_GROUP_ENABLED ? 11 : 10}`)
+      assert.equal(rig.steps().at(-1), 'done groups=10')
     })
 
     it('adds every built-in rule set around the subscription’s rules', async () => {
@@ -120,7 +117,6 @@ describe('factory: runtime config pipeline', () => {
       for (const expected of [
         'DOMAIN-KEYWORD,cloudcode-pa,🎯 agy 专用',
         'DOMAIN-SUFFIX,koolearn.com,DIRECT',
-        ...(GROK_GROUP_ENABLED ? ['DOMAIN-SUFFIX,grok.com,grok 专用'] : []),
         'DOMAIN-SUFFIX,gemini.google.com,gemini专用',
         'DOMAIN-SUFFIX,aistudio.google.com,gemini专用',
         'DOMAIN,imap.gmail.com,📧 邮件专用',
@@ -131,8 +127,8 @@ describe('factory: runtime config pipeline', () => {
       }
       assert.equal(
         rules.some((rule) => rule.includes('grok.com')),
-        GROK_GROUP_ENABLED,
-        'the grok.com rule exists only while the Grok group is enabled'
+        false,
+        'the grok group is off by default, and so are its rules'
       )
     })
 

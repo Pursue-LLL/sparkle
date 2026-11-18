@@ -1,200 +1,23 @@
 import assert from 'node:assert/strict'
-import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:test'
-import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
+import { describe, it } from 'node:test'
 import { flush } from './groupFailoverEngineHarness'
 import { NETWORK_MONITOR_STARTUP_GRACE_MS } from './networkStartupGraceCore'
-import type * as PostCoreBootstrap from './postCoreBootstrap'
-
-const calls: string[] = []
-const logs: string[] = []
-const behavior: {
-  probe: () => Promise<void>
-  syncResult: boolean
-  warmedGroups: number
-  cursorSwitched: boolean
-  logFails: boolean
-  failing: Set<string>
-} = {
-  probe: async () => undefined,
-  syncResult: true,
-  warmedGroups: 0,
-  cursorSwitched: true,
-  logFails: false,
-  failing: new Set()
-}
-
-/** 记录调用顺序；被标记为失败的步骤抛错，用来验证单步失败不会拖垮后续服务。 */
-function step<Args extends unknown[], Result>(
-  label: string,
-  result?: Result
-): (...args: Args) => Promise<Result> {
-  return async () => {
-    calls.push(label)
-    if (behavior.failing.has(label)) {
-      throw new Error(`${label} boom`)
-    }
-    return result as Result
-  }
-}
-
-function syncStep<Result>(label: string, result?: Result): () => Result {
-  return () => {
-    calls.push(label)
-    if (behavior.failing.has(label)) {
-      throw new Error(`${label} boom`)
-    }
-    return result as Result
-  }
-}
-
-/** 假时钟按 500ms 推进，每步之后让异步流程跑完。 */
-async function advance(ms: number): Promise<void> {
-  for (let remaining = ms; remaining > 0; remaining -= 500) {
-    mock.timers.tick(Math.min(500, remaining))
-    await flush()
-  }
-}
-
-/** 动态 import 与异步步骤需要若干轮事件循环才能全部跑完。 */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 20; round++) {
-    await flush()
-  }
-}
+import {
+  advance,
+  behavior,
+  calls,
+  logs,
+  runBootstrap,
+  settle,
+  usePostCoreBootstrapRig
+} from './postCoreBootstrapRig'
 
 describe('postCoreBootstrap', () => {
-  let bootstrap: typeof PostCoreBootstrap
-
-  before(async () => {
-    mock.module('../utils/log', {
-      exports: {
-        appendAppLog: async (line: string): Promise<void> => {
-          if (behavior.logFails) throw new Error('disk full')
-          logs.push(line)
-        }
-      }
-    })
-    mock.module('./mihomoControllerReadyCore', {
-      exports: { probeMihomoControllerVersion: (): Promise<void> => behavior.probe() }
-    })
-    mock.module('./probeWarmupState', {
-      exports: {
-        beginProbeWarmup: syncStep('warmup:begin'),
-        endProbeWarmup: syncStep('warmup:end')
-      }
-    })
-    mock.module('./runtimeConfigSync', {
-      exports: {
-        syncRuntimeConfigToCore: async (): Promise<boolean> => {
-          calls.push('sync')
-          if (behavior.failing.has('sync')) throw new Error('sync boom')
-          return behavior.syncResult
-        }
-      }
-    })
-    mock.module('./autoSwitchPinRelease', {
-      exports: {
-        releaseAutoSwitchPins: async (scope: string): Promise<void> => {
-          calls.push(`release:${scope}`)
-        }
-      }
-    })
-    mock.module('./sparkleFastLatencyOrder', {
-      exports: {
-        bootstrapSparkleFastLatencyOrder: step('fast:bootstrap'),
-        startSparkleFastLatencyOrderLoop: syncStep('fast:loop')
-      }
-    })
-    mock.module('./sparkleGeminiProbe', {
-      exports: {
-        bootstrapSparkleGeminiRegionAudit: step('gemini:bootstrap'),
-        startSparkleGeminiRegionAuditLoop: syncStep('gemini:loop')
-      }
-    })
-    mock.module('./sparkleMailProbe', {
-      exports: {
-        bootstrapSparkleMailProvider: step('mail:bootstrap'),
-        startSparkleMailProbeLoop: syncStep('mail:loop')
-      }
-    })
-    mock.module('./sparkleMailCurrentNodeProbe', {
-      exports: { startSparkleMailCurrentNodeProbeLoop: syncStep('mail:current-node') }
-    })
-    mock.module('./sparkleGrokProbe', {
-      exports: {
-        bootstrapSparkleGrokProvider: step('grok:bootstrap'),
-        startSparkleGrokProbeLoop: syncStep('grok:loop')
-      }
-    })
-    mock.module('./sparkleAgyProbe', {
-      exports: {
-        bootstrapSparkleAgyProvider: step('agy:bootstrap'),
-        startSparkleAgyProbeLoop: syncStep('agy:loop')
-      }
-    })
-    mock.module('./autoSelectStickyPin', {
-      exports: { startAutoSelectStickyPin: syncStep('sticky-pin') }
-    })
-    mock.module('./groupFailover', { exports: { startGroupFailover: syncStep('failover') } })
-    mock.module('./profileUpdater', {
-      exports: { initProfileUpdater: syncStep('profile-updater') }
-    })
-    mock.module('./cursorDedicatedDefault', {
-      exports: {
-        applyCursorDedicatedVpsSelection: async (): Promise<boolean> => {
-          calls.push('cursor-default')
-          if (behavior.failing.has('cursor-default')) throw new Error('cursor-default boom')
-          return behavior.cursorSwitched
-        }
-      }
-    })
-    mock.module('./mihomoApi', {
-      exports: {
-        mihomoGroups: step('groups', []),
-        mihomoChangeProxy: step('change-proxy', true),
-        mihomoGetConnections: step('connections', { connections: [] }),
-        mihomoGroupDelay: step('group-delay', {})
-      }
-    })
-    mock.module('./regionalUrlTestWarmup', {
-      exports: {
-        collectActiveWarmupGroupNames: (): Set<string> => new Set(['Sparkle-台湾']),
-        warmupRegionalUrlTestGroups: async (): Promise<number> => {
-          calls.push('warmup:regional')
-          if (behavior.failing.has('warmup:regional')) throw new Error('warmup boom')
-          return behavior.warmedGroups
-        }
-      }
-    })
-    mock.module('./providerLeafProbe', {
-      exports: { verifyUnconfirmedFailures: step('verify-failures', 0) }
-    })
-    bootstrap = await import('./postCoreBootstrap')
-  })
-
-  beforeEach(() => {
-    calls.length = 0
-    logs.length = 0
-    behavior.probe = async () => undefined
-    behavior.syncResult = true
-    behavior.warmedGroups = 0
-    behavior.cursorSwitched = true
-    behavior.logFails = false
-    behavior.failing = new Set()
-    mock.timers.enable({ apis: ['setTimeout', 'Date'] })
-  })
-
-  afterEach(() => {
-    mock.timers.reset()
-  })
-
-  after(() => {
-    mock.restoreAll()
-  })
+  const bootstrap = usePostCoreBootstrapRig()
 
   describe('waitForMihomoControllerReady', () => {
     it('is ready as soon as the controller answers', async () => {
-      assert.equal(await bootstrap.waitForMihomoControllerReady(), true)
+      assert.equal(await bootstrap().waitForMihomoControllerReady(), true)
       assert.deepEqual(logs, [])
     })
 
@@ -205,7 +28,7 @@ describe('postCoreBootstrap', () => {
         if (attempts < 4) throw new Error('not yet')
       }
 
-      const ready = bootstrap.waitForMihomoControllerReady(10_000)
+      const ready = bootstrap().waitForMihomoControllerReady(10_000)
       await flush()
       await advance(1499)
       assert.equal(attempts, 3)
@@ -222,7 +45,7 @@ describe('postCoreBootstrap', () => {
         throw new Error(`down ${attempts}`)
       }
 
-      const ready = bootstrap.waitForMihomoControllerReady(2000)
+      const ready = bootstrap().waitForMihomoControllerReady(2000)
       await flush()
       await advance(2500)
 
@@ -235,7 +58,7 @@ describe('postCoreBootstrap', () => {
     it('describes non-Error failures and truncates long ones', async () => {
       behavior.probe = () => Promise.reject({ code: 'ECONNREFUSED', pad: 'x'.repeat(1000) })
 
-      const ready = bootstrap.waitForMihomoControllerReady(500)
+      const ready = bootstrap().waitForMihomoControllerReady(500)
       await flush()
       await advance(1000)
 
@@ -258,12 +81,7 @@ describe('postCoreBootstrap', () => {
       'cursor-default'
     ]
 
-    async function run(coreInit: Promise<void> = Promise.resolve()): Promise<void> {
-      const done = bootstrap.runPostCoreBootstrap(coreInit)
-      await settle()
-      await done
-      await settle()
-    }
+    const run = (coreInit?: Promise<void>): Promise<void> => runBootstrap(bootstrap(), coreInit)
 
     it('starts every service in dependency order once the controller is ready', async () => {
       await run()
@@ -278,17 +96,13 @@ describe('postCoreBootstrap', () => {
         'mail:current-node',
         'mail:bootstrap',
         'mail:loop',
-        ...(GROK_GROUP_ENABLED ? ['grok:bootstrap', 'grok:loop'] : []),
+        'grok:bootstrap',
+        'grok:loop',
         'agy:bootstrap',
         'agy:loop'
       ]) {
         assert.ok(calls.includes(background), background)
       }
-      assert.equal(
-        calls.some((call) => call.startsWith('grok:')),
-        GROK_GROUP_ENABLED,
-        'grok probe starts only while the Grok group is enabled'
-      )
       assert.ok(
         calls.indexOf('mail:current-node') < calls.indexOf('mail:bootstrap') &&
           calls.indexOf('mail:bootstrap') < calls.indexOf('mail:loop'),
@@ -311,7 +125,7 @@ describe('postCoreBootstrap', () => {
       const neverReady = new Promise<void>(() => {
         // 故意不落定：模拟内核一直没有初始化完成
       })
-      const done = bootstrap.runPostCoreBootstrap(neverReady)
+      const done = bootstrap().runPostCoreBootstrap(neverReady)
       await settle()
       assert.deepEqual<string[]>(calls, [])
       assert.deepEqual(logs, [])
@@ -326,7 +140,7 @@ describe('postCoreBootstrap', () => {
     it('starts nothing when the controller never becomes reachable', async () => {
       behavior.probe = () => Promise.reject(new Error('down'))
 
-      const done = bootstrap.runPostCoreBootstrap(Promise.resolve())
+      const done = bootstrap().runPostCoreBootstrap(Promise.resolve())
       await flush()
       await advance(31_000)
       await done
@@ -359,9 +173,7 @@ describe('postCoreBootstrap', () => {
         '[SparkleGeminiProbe]: bootstrap failed: gemini:bootstrap boom',
         '[SparkleMailProbe]: current node probe start failed: mail:current-node boom',
         '[SparkleMailProbe]: bootstrap failed: mail:bootstrap boom',
-        ...(GROK_GROUP_ENABLED
-          ? ['[SparkleGrokProbe]: bootstrap failed: grok:bootstrap boom']
-          : []),
+        '[SparkleGrokProbe]: bootstrap failed: grok:bootstrap boom',
         '[SparkleAgyProbe]: bootstrap failed: agy:bootstrap boom',
         '[AutoSelectSticky]: start failed: sticky-pin boom',
         '[ProfileUpdater]: init failed: profile-updater boom',

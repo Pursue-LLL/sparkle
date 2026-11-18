@@ -1,5 +1,5 @@
 // [INPUT] config::getAppConfig/patchAppConfig/getControledMihomoConfig/patchControledMihomoConfig… (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
-//         cursorPathPrefixProfileReloadCore::shouldReloadProfileForAppConfigPatch (POS: Cursor 路径前缀变更的重载判定) ·
+//         appConfigProfileReload::patchAppConfigAndReloadProfile (POS: 应用配置补丁落盘并按需重载 runtime 配置) ·
 //         factory::getRuntimeConfig/getRuntimeConfigStr/getRawProfileStr/getCurrentProfileStr… (POS: runtime 配置生成) ·
 //         manager::quitWithoutCore/restartCore/startNetworkDetection/stopCore… (POS: 内核进程生命周期) ·
 //         mihomoApi::mihomoChangeProxy/mihomoCloseConnections/mihomoCloseConnection/mihomoGroupDelay… (POS: mihomo 控制器访问层) ·
@@ -195,24 +195,12 @@ function ipcErrorWrapper<T>( // eslint-disable-next-line @typescript-eslint/no-e
   }
 }
 
-import { shouldReloadProfileForAppConfigPatch } from '../core/cursorPathPrefixProfileReloadCore'
+import { patchAppConfigAndReloadProfile } from '../core/appConfigProfileReload'
 
 async function patchAppConfigWithServiceSync(patch: Partial<AppConfig>): Promise<AppConfig> {
-  const nextConfig = await patchAppConfig(await normalizeServiceModePatch(patch))
-
-  if (shouldReloadProfileForAppConfigPatch(patch)) {
-    try {
-      const { generateProfile } = await import('../core/factory')
-      const { syncRuntimeConfigToCore } = await import('../core/runtimeConfigSync')
-      await generateProfile()
-      const reloaded = await syncRuntimeConfigToCore({ force: true })
-      void appendAppLog(
-        `[AppConfig]: cursorProxyAppPathPrefixes profile regenerated reloaded=${reloaded} prefixes=${JSON.stringify(nextConfig.cursorProxyAppPathPrefixes ?? [])}\n`
-      )
-    } catch (error) {
-      void appendAppLog(`[AppConfig]: cursorProxyAppPathPrefixes profile reload failed, ${error}\n`)
-    }
-  }
+  const nextConfig = await patchAppConfigAndReloadProfile(patch, async () =>
+    patchAppConfig(await normalizeServiceModePatch(patch))
+  )
 
   if (!('saveLogs' in patch || 'maxLogFileSizeMB' in patch)) {
     return nextConfig

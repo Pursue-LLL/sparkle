@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it, mock } from 'node:test'
 import { parseYaml } from '../utils/yaml'
-import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
+import { ALL_GROUPS_ON } from './dedicatedGroupsRig'
 import type { writeSparkleProviderFiles } from './sparkleProviderFiles'
 
 /**
@@ -19,7 +19,7 @@ const FILES = [
   'sparkle-fast-proxies.yaml',
   'sparkle-mail-proxies.yaml',
   'sparkle-agy-proxies.yaml',
-  ...(GROK_GROUP_ENABLED ? ['sparkle-grok-proxies.yaml'] : []),
+  'sparkle-grok-proxies.yaml',
   'gemini专用-proxies.yaml'
 ]
 
@@ -59,7 +59,11 @@ describe('AnyTLS session reuse guard across every Sparkle provider file', () => 
     mock.module('./sparkleAgyProbeCache', { exports: { loadSparkleAgyProbeCache: empty } })
     mock.module('./sparkleGrokProbeCache', { exports: { loadSparkleGrokProbeCache: empty } })
     write = (await import('./sparkleProviderFiles')).writeSparkleProviderFiles
-    await write({ proxies: subscription } as unknown as MihomoConfig, ['台湾', '日本'])
+    await write(
+      { proxies: subscription } as unknown as MihomoConfig,
+      ['台湾', '日本'],
+      ALL_GROUPS_ON
+    )
   })
 
   after(() => {

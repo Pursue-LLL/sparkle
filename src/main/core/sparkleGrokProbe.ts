@@ -3,7 +3,8 @@
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         sparkleGrokProbeSnapshot::syncGrokProbeSnapshot (POS: grok 展示快照) ·
 //         sparkleGrokProviderCore::orderGrokCandidates/orderGrokProxies/orderGrokRepairCandidates/grokProxyName… (POS: grok provider 与快照) ·
-//         utils/log::appendAppLog (POS: 应用日志与内核日志)
+//         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
 // [OUTPUT] bootstrapSparkleGrokProvider · startSparkleGrokProbeLoop
 // [POS] `grok 专用` 的选路探针：节点是否可用只由「真实请求 grok.com 得到 200 且无 cf-mitigated challenge」判定；
 //       候选池只收录 routed 验证通过的节点。稳态每 60 秒只复核当前节点，失败才按池内顺序找下一个（找到即停）；
@@ -37,6 +38,7 @@ import {
   writeProviderDocument
 } from './sparkleGrokProviderSync'
 import { requestGrokViaRoute, resolveMixedPort } from './sparkleGrokRoutedCheck'
+import { runWhenEnabled, type DedicatedGroupGate } from './dedicatedGroups'
 
 const RECHECK_INTERVAL_MS = 60 * 1000
 /** 单轮探测总预算：超时就保存已测结果，避免一次卡死把后续循环全部挡掉。 */
@@ -300,12 +302,13 @@ export async function bootstrapSparkleGrokProvider(): Promise<void> {
 
 let grokProbeTimer: NodeJS.Timeout | undefined
 
-export function startSparkleGrokProbeLoop(): void {
+/** 每轮先问开关：grok 组被关闭时整轮跳过，不向 grok.com 发任何请求。 */
+export function startSparkleGrokProbeLoop(isEnabled: DedicatedGroupGate): void {
   if (grokProbeTimer) {
     return
   }
   grokProbeTimer = setInterval(() => {
-    bootstrapSparkleGrokProvider().catch(() => undefined)
+    runWhenEnabled(isEnabled, bootstrapSparkleGrokProvider).catch(() => undefined)
   }, RECHECK_INTERVAL_MS)
   grokProbeTimer.unref()
 }

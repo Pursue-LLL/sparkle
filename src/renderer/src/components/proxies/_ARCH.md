@@ -18,6 +18,9 @@
 |------|------|
 | `proxy-item.tsx` | 节点卡片；测速按钮；条件绑定 hover/touch → 详情弹窗（agy/grok 组不绑定、分别改用 `agy-delay-control.tsx` / `grok-delay-control.tsx`）；对已锁定节点支持点击卡片/图钉一键解钉（Toggle Off）恢复自动优选 |
 | `proxy-item.tsx` 延迟显示 | 经 `judgeProxyForUrl(proxy, probeUrl)` 判定：最新一次失败诚实显示「超时」，近期成功过在悬停与小标提供「N分前成功」客观溯源，绝不把旧延迟当成当前有效数值展示；`📧 邮件专用` 的 993/465 真实故障切换由主进程按需探测负责 |
+| `group-header.tsx` | 分组标题：名称 / 当前节点 / 数量 / 测速入口；grok / gemini / 邮件 / agy 四个专用组的标题最前面带启用开关（`dedicated-group-switch.tsx`）；agy / grok 组按口径显示「实测」标记并隐藏 mihomo 手动测速 |
+| `dedicated-group-switch.tsx` | 专用组启用开关：悬停说明取自 `DEDICATED_GROUPS[id].summary`，切换进行中禁用 |
+| `disabled-group-header.tsx` | 已关闭专用组的占位标题：置灰组名 +「已关闭 · 不再检测」，可在原位置重新开启；不可展开 |
 | `probe-delay-control.tsx` | 应用层实测 Chip 的共同外壳：短文案 + 色调 + tooltip + 样本年龄；不参与口径换算 |
 | `agy-delay-control.tsx` | `🎯 agy 专用` 组的延迟展示：只显示**真实 agy 结论**：可用显示秒级 + 距上次探测时间，失败显示「失败」+ 原因，锁区显示「锁区」，未探测显示「—」；该组组头显示「agy 实测」、隐藏 group 手动测速按钮、不渲染 mihomo 详情弹窗/柱图，避免用 gstatic 网络 RTT 冒充 agy 响应时间 |
 | `grok-delay-control.tsx` | `grok 专用` 组的延迟展示：只显示**真实 grok.com HEAD 结论**：200 显示毫秒 + 样本年龄，403 显示「403」（Cloudflare 挑战），超时显示「超时」，未探测显示「—」；该组组头显示「grok 实测」、隐藏会误判 403 的 mihomo 手动测速、不渲染 mihomo 详情弹窗 |
@@ -44,4 +47,5 @@
 - `@renderer/utils/grok-probe-display` — grok 实测毫秒 / 403 / 超时 → 文案与色调
 - `@renderer/hooks/use-agy-probe-snapshot` — agy 快照轮询
 - `@renderer/hooks/use-grok-probe-snapshot` — grok 快照轮询
+- `@sparkle-core/dedicatedGroups` — 专用组注册表（组名与开关说明文案）
 - `@renderer/pages/proxies.tsx` — 列表容器，传入 `showProxyDetailTooltip` 等 props
