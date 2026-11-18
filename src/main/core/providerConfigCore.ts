@@ -1,3 +1,15 @@
+// [INPUT] vpsProviderSplitCore::partitionLeafProxies/resolveVpsProviderId/buildCommercialProviderHealthCheck/buildVpsProviderHealthCheck/rewriteVpsFilteredGroupsToDedicatedProvider (POS: VPS 节点拆分与 provider id) ·
+//         sparkleFastProviderCore::FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
+//         sparkleMailProviderCore::MAIL_NODE_PROVIDER_ID (POS: 邮件 provider 与分组配置) ·
+//         sparkleAgyProviderCore::AGY_NODE_PROVIDER_ID (POS: agy provider 与分组配置) ·
+//         sparkleGeminiProviderCore::GEMINI_NODE_PROVIDER_ID (POS: gemini provider 与分组配置) ·
+//         sparkleGrokProviderCore::GROK_NODE_PROVIDER_ID (POS: grok provider 与快照) ·
+//         cursorProxyGroup::DEFAULT_GENERAL_DELAY_TEST_URL/GEMINI_REACHABILITY_PROBE_URL/MAIL_DELAY_TEST_URL (POS: Sparkle 分组名常量与判定谓词) ·
+//         defaultAutoSwitchProxy::AUTO_SELECT_DELAY_PROBE_URL/AUTO_SELECT_DELAY_PROBE_TIMEOUT_MS (POS: 自动选择与地区组默认配置)
+// [OUTPUT] buildBaseConfigWithProviders: 订阅配置 → 按 provider 引用节点的基础配置 · ProviderHealthCheckOverride: 调用方覆盖体检开关 / 地址 / 间隔的形状
+// [POS] provider 文档与健康检查配置（纯函数，无文件系统 / Electron 依赖，可直接 node:test）：商用 / VPS / `sparkle-fast` provider 始终声明，
+//       mail / gemini / agy / grok 四个专用 provider 按专用组开关声明（关闭即不声明，与分组注入同一份开关），分组里的节点引用改为 `use` provider。
+
 import {
   buildCommercialProviderHealthCheck,
   buildVpsProviderHealthCheck,

@@ -16,12 +16,13 @@
 //         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
 //         utils/yaml::stringifyYaml (POS: YAML 解析与序列化) ·
-//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
-// [OUTPUT] loadSparkleGeminiRegionCache · loadGeminiBlockedNodeNames · verifyNodeGeminiRegion · rebuildAndReloadGeminiProvider · bootstrapSparkleGeminiRegionAudit · startSparkleGeminiRegionAuditLoop
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析)
+// [OUTPUT] loadSparkleGeminiRegionCache · loadGeminiBlockedNodeNames · verifyNodeGeminiRegion · rebuildAndReloadSparkleFastProvider · rebuildAndReloadGeminiProvider · bootstrapSparkleGeminiRegionAudit · startSparkleGeminiRegionAuditLoop
 // [POS] 识别「HTTP 200 但被 Google GeoIP 判定为送中/不支持地区（如 vXmutd="ZZ"/"CN"/"HK" 或 google.cn）」的节点：
 // 确认锁区/送中的节点从 `sparkle-fast-proxies.yaml`（`自动选择`）中剔除，确认解锁的节点维护进 `gemini专用` provider，
 // 两条线共用同一份地区缓存与同一轮审计，成员集合变化才热重载。
 // 网络超时或连接瞬断绝不误判为锁区（仅当明确提取到不支持的地区码时才记入锁区缓存）。
+// 后台定时审计经开关门控：`gemini专用` 关闭则整轮跳过、不发任何请求；`自动选择` 挑节点时的按需地区校验（`verifyNodeGeminiRegion`）不经门控，不受开关影响。
 
 import { readFile, writeFile } from 'fs/promises'
 import path from 'path'

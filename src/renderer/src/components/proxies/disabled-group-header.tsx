@@ -1,4 +1,4 @@
-// [INPUT] @renderer/components/proxies/dedicated-group-switch（POS: 启用开关） · @sparkle-core/dedicatedGroups（POS: 专用组名）
+// [INPUT] @renderer/components/proxies/dedicated-group-switch（POS: 启用开关） · @sparkle-core/dedicatedGroups（POS: 可开关专用组注册表与开关解析）
 // [OUTPUT] DisabledGroupHeader: 已关闭专用组的占位标题
 // [POS] 代理页里已关闭的专用组：停在它原本的位置，只显示名称与「已关闭」说明和开关，可随时重新开启；不可展开，也没有节点。
 //       开启进行中（内核尚未载入该组）开关已翻到「开」，说明改为「正在开启…」。

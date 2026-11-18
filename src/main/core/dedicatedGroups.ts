@@ -1,7 +1,9 @@
 // [INPUT] shared/types/app.d.ts::DedicatedGroupSwitches（POS: 专用组开关形状，全局类型）
-// [OUTPUT] DedicatedGroupId · DedicatedGroupGate · DEDICATED_GROUPS · DEDICATED_GROUP_IDS · dedicatedGroupIdOf · resolveDedicatedGroupSwitches · withPendingTargets · newlyEnabledGroupIds · runWhenEnabled
-// [POS] 可由用户开关的专用分组唯一注册表：组名、默认开关与面向用户的说明；无副作用，主进程与渲染进程共用。
-//       Cursor 专用与 Sparkle-香港 承载核心路由，不在此列、不可关闭。
+// [OUTPUT] DEDICATED_GROUPS / DEDICATED_GROUP_IDS: 四个专用组的组名、默认开关与面向用户的说明 · DedicatedGroupId · DedicatedGroupGate: 开关实时读取方 ·
+//          dedicatedGroupIdOf: 组名 → 专用组 id · resolveDedicatedGroupSwitches: 补全缺省 / 不完整的持久化开关 ·
+//          withPendingTargets: 切换进行中的组换成目标值（界面展示用） · newlyEnabledGroupIds: 本次由关到开的组 · runWhenEnabled: 探测循环的开关门控入口
+// [POS] 可开关专用组注册表与开关解析：四个专用组（grok / gemini / 邮件 / agy）的组名、默认开关与面向用户的说明唯一出处，
+//       并提供开关补全、界面展示值与探测门控；无副作用，主进程与渲染进程共用。Cursor 专用与 Sparkle-香港 承载核心路由，不在此列、不可关闭。
 
 export type DedicatedGroupId = keyof DedicatedGroupSwitches
 

@@ -1,7 +1,7 @@
 // [INPUT] provider::extractProxies · regionPriority · sparkle-fast/mail/agy/grok/gemini provider 文档构建与探测缓存 ·
 //         sparkleAgyProbeCache::loadSparkleAgyProbeCache (POS: agy 探测缓存读写) ·
 //         sparkleAgyProviderCore::buildSparkleAgyProviderDocument/AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
-//         dedicatedGroups::DEDICATED_GROUP_IDS (POS: 可开关专用组注册表，关闭的组不写 provider 文件) ·
+//         dedicatedGroups::DEDICATED_GROUP_IDS (POS: 可开关专用组注册表与开关解析) ·
 //         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
 //         sparkleFastProviderCore::buildSparkleFastProviderDocument/FAST_NODE_PROVIDER_FILENAME (POS: sparkle-fast provider 文件生成) ·
 //         sparkleFastProviderExclusions::loadFastProviderExclusions (POS: sparkle-fast 剔除/沉底依据) ·

@@ -1,6 +1,6 @@
 // [INPUT] node:test 假时钟与模块替身 · postCoreBootstrap（被测模块，替身之后动态加载）·
 //         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
-//         dedicatedGroups::DedicatedGroupGate/DedicatedGroupId (POS: 可开关专用组注册表)
+//         dedicatedGroups::DedicatedGroupGate/DedicatedGroupId (POS: 可开关专用组注册表与开关解析)
 // [OUTPUT] usePostCoreBootstrapRig · calls · logs · behavior · gates · allEnabled · advance · settle · runBootstrap
 // [POS] postCoreBootstrap*.test.ts 共用夹具：把内核就绪后要启动的各服务换成按调用顺序记账的替身，
 //       开关用 `behavior.enabled` 控制，各探测循环收到的开关留在 `gates`。仅供测试使用。

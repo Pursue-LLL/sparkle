@@ -1,4 +1,4 @@
-// [INPUT] @sparkle-core/dedicatedGroups（POS: 可开关专用组注册表：组名与面向用户的说明）
+// [INPUT] @sparkle-core/dedicatedGroups（POS: 可开关专用组注册表与开关解析）
 // [OUTPUT] DedicatedGroupSwitch: 分组标题上的启用开关
 // [POS] 专用分组的开关控件（含说明气泡）；放在标题栏的事件隔离区内，点击不会展开 / 收起分组。
 //       切换进行中开关已翻到目标值并在滑块里转圈，让数秒的重新生成与重载有可见的进度。

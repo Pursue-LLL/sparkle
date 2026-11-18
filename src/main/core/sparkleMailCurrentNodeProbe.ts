@@ -9,9 +9,9 @@
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
-//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关门控)
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析)
 // [OUTPUT] startSparkleMailCurrentNodeProbeLoop
-// [POS] 邮件组当前节点的按需保护：只在邮件最近被使用时复测 993/465（拨号失败后 30s 提前触发、5 分钟兜底）；失败让 provider 剔除节点并触发自动切换，未使用时不探测。
+// [POS] 邮件组当前节点的按需保护：只在邮件最近被使用时复测 993/465（拨号失败后 30s 提前触发、5 分钟兜底）；失败让 provider 剔除节点并触发自动切换，未使用时不探测；定时兜底与日志触发的提前复测共用一道开关门控，`📧 邮件专用` 关闭则不探测。
 
 import { getAppConfig } from '../config'
 import { appendAppLog } from '../utils/log'
