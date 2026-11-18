@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, before, beforeEach, describe, it, mock } from 'node:test'
 import yaml from 'yaml'
+import { GROK_GROUP_ENABLED } from './cursorProxyGroup'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import type { writeSparkleProviderFiles } from './sparkleProviderFiles'
 
@@ -17,7 +18,10 @@ const FILES: Record<Provider, string> = {
   grok: 'sparkle-grok-proxies.yaml',
   gemini: 'gemini专用-proxies.yaml'
 }
-const PROVIDERS = Object.keys(FILES) as Provider[]
+/** 实际会落盘的 provider：grok 只在 `GROK_GROUP_ENABLED` 开启时参与。 */
+const PROVIDERS = (Object.keys(FILES) as Provider[]).filter(
+  (provider) => provider !== 'grok' || GROK_GROUP_ENABLED
+)
 const PREVIOUS = 'previous'
 
 const NOW = Date.now()
@@ -145,16 +149,24 @@ describe('writeSparkleProviderFiles', () => {
       'Hong Kong is the last resort'
     )
     assert.deepEqual(namesIn('agy'), ['台湾 01', '日本 01'], 'Hong Kong is not an agy region')
-    assert.deepEqual(
-      namesIn('grok'),
-      ['日本 01', '台湾 01', '香港 01'],
-      'no samples keeps profile order'
-    )
+    if (GROK_GROUP_ENABLED) {
+      assert.deepEqual(
+        namesIn('grok'),
+        ['日本 01', '台湾 01', '香港 01'],
+        'no samples keeps profile order'
+      )
+    }
     assert.deepEqual(
       namesIn('gemini'),
       ['台湾 01', '日本 01', '香港 01'],
       'no region verdicts yet keeps every node as cold-start fallback'
     )
+  })
+
+  it('writes the grok provider file only while GROK_GROUP_ENABLED is on', async () => {
+    await write(profile, ['台湾', '日本'])
+
+    assert.equal(existsSync(fileOf('grok')), GROK_GROUP_ENABLED)
   })
 
   it('applies the configured region priority to every region-aware provider', async () => {
@@ -218,7 +230,9 @@ describe('writeSparkleProviderFiles', () => {
 
     assert.deepEqual(namesIn('mail'), ['日本 01'])
     assert.deepEqual(namesIn('agy'), ['台湾 01'])
-    assert.deepEqual(namesIn('grok'), ['香港 01'])
+    if (GROK_GROUP_ENABLED) {
+      assert.deepEqual(namesIn('grok'), ['香港 01'])
+    }
     assert.deepEqual(namesIn('gemini'), ['台湾 01', '日本 01'], 'only region-verified nodes')
   })
 
@@ -230,7 +244,9 @@ describe('writeSparkleProviderFiles', () => {
     await write(profile, ['台湾', '日本'])
 
     assert.deepEqual(namesIn('agy'), ['台湾 01', '日本 01'])
-    assert.deepEqual(namesIn('grok'), ['日本 01', '台湾 01', '香港 01'])
+    if (GROK_GROUP_ENABLED) {
+      assert.deepEqual(namesIn('grok'), ['日本 01', '台湾 01', '香港 01'])
+    }
   })
 
   it('does not let a provider mutate the node list the others share', async () => {
@@ -286,7 +302,7 @@ describe('writeSparkleProviderFiles', () => {
       ['sunk', 'fast'],
       ['mail-cache', 'mail'],
       ['agy-cache', 'agy'],
-      ['grok-cache', 'grok'],
+      ...(GROK_GROUP_ENABLED ? ([['grok-cache', 'grok']] as const) : []),
       ['gemini-cache', 'gemini']
     ]
 
