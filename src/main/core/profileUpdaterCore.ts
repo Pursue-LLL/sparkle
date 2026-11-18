@@ -116,6 +116,9 @@ export const FAILURE_NOTICE_AFTER_MS = 5 * 60 * 1000
 
 const NOTICE_REASON_MAX_CHARS = 100
 
+/** 通知会停留在锁屏与通知中心：内容无效时不转述服务端返回的文字，细节只留在日志里。 */
+const INVALID_CONTENT_NOTICE_REASON = '服务端返回的内容不是有效的配置'
+
 export interface FailureNotice {
   id: string
   title: string
@@ -227,12 +230,12 @@ export function createDueProfileUpdateRunner(deps: DueProfileUpdateDeps): () => 
       return true
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
-      const followUp =
-        error instanceof InvalidProfileContentError ? scheduleInvalidContentRetry(item) : ''
+      const invalidContent = error instanceof InvalidProfileContentError
+      const followUp = invalidContent ? scheduleInvalidContentRetry(item) : ''
       await deps.log(
         `[ProfileUpdater]: update failed id=${item.id} name=${item.name}: ${reason}${followUp}\n`
       )
-      await recordFailure(item, reason)
+      await recordFailure(item, invalidContent ? INVALID_CONTENT_NOTICE_REASON : reason)
       return false
     }
   }

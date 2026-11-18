@@ -33,7 +33,7 @@ describe('createDueProfileUpdateRunner: telling the user a subscription keeps fa
           }
           if (outcome === 'invalid') {
             throw new InvalidProfileContentError(
-              `订阅内容不是有效的配置：${item.name}（不是配置文件）`
+              `订阅内容不是有效的配置：${item.name}（不是配置文件，开头：「<!DOCTYPE html>」）`
             )
           }
           if (outcome === 'long') {
@@ -186,7 +186,21 @@ describe('createDueProfileUpdateRunner: telling the user a subscription keeps fa
     advance(1)
     await run()
     assert.equal(notices.length, 1)
-    assert.match(notices[0].body, /订阅内容不是有效的配置：订阅main/)
+    assert.match(notices[0].body, /已连续 2 次/, 'the run during the wait was skipped, not counted')
+  })
+
+  it('does not repeat what the server sent back when the content is invalid', async () => {
+    const { run, notices, logs, advance, outcome } = setup()
+    outcome('main', 'invalid')
+    await run()
+    advance(FAILURE_NOTICE_AFTER_MS)
+    await run()
+
+    assert.equal(
+      notices[0].body,
+      '「订阅main」已连续 2 次更新失败，仍在使用上一份内容：服务端返回的内容不是有效的配置'
+    )
+    assert.match(logs.join(''), /开头：「<!DOCTYPE html>」/, 'the details stay in the log')
   })
 
   it('treats failures of different kinds as one streak', async () => {
