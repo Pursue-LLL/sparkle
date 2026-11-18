@@ -1,5 +1,5 @@
 // [INPUT] shared/types/app.d.ts::DedicatedGroupSwitches（POS: 专用组开关形状，全局类型）
-// [OUTPUT] DedicatedGroupId · DedicatedGroupGate · DEDICATED_GROUPS · DEDICATED_GROUP_IDS · dedicatedGroupIdOf · resolveDedicatedGroupSwitches · newlyEnabledGroupIds · runWhenEnabled
+// [OUTPUT] DedicatedGroupId · DedicatedGroupGate · DEDICATED_GROUPS · DEDICATED_GROUP_IDS · dedicatedGroupIdOf · resolveDedicatedGroupSwitches · withPendingTargets · newlyEnabledGroupIds · runWhenEnabled
 // [POS] 可由用户开关的专用分组唯一注册表：组名、默认开关与面向用户的说明；无副作用，主进程与渲染进程共用。
 //       Cursor 专用与 Sparkle-香港 承载核心路由，不在此列、不可关闭。
 
@@ -55,6 +55,19 @@ export function resolveDedicatedGroupSwitches(
     gemini: persisted?.gemini ?? DEDICATED_GROUPS.gemini.defaultEnabled,
     mail: persisted?.mail ?? DEDICATED_GROUPS.mail.defaultEnabled,
     agy: persisted?.agy ?? DEDICATED_GROUPS.agy.defaultEnabled
+  }
+}
+
+/** 界面展示用的开关：切换进行中的组立即显示用户要的目标值，其余沿用已保存的值。 */
+export function withPendingTargets(
+  switches: DedicatedGroupSwitches,
+  pendingTargets: ReadonlyMap<DedicatedGroupId, boolean>
+): DedicatedGroupSwitches {
+  return {
+    grok: pendingTargets.get('grok') ?? switches.grok,
+    gemini: pendingTargets.get('gemini') ?? switches.gemini,
+    mail: pendingTargets.get('mail') ?? switches.mail,
+    agy: pendingTargets.get('agy') ?? switches.agy
   }
 }
 

@@ -58,10 +58,13 @@ async function regenerateAndReload(
   try {
     const { generateProfile } = await import('./factory')
     const { syncRuntimeConfigToCore } = await import('./runtimeConfigSync')
+    const startedAt = Date.now()
     await generateProfile()
+    const generatedAt = Date.now()
     const reloaded = await syncRuntimeConfigToCore({ force: true })
+    // 两段耗时分开记：用户感知的「卡住」几秒花在生成还是重载，凭日志就能定位。
     void appendAppLog(
-      `[AppConfig]: profile regenerated keys=${keys} reloaded=${reloaded} dedicated=${JSON.stringify(next)}\n`
+      `[AppConfig]: profile regenerated keys=${keys} reloaded=${reloaded} generate_ms=${generatedAt - startedAt} reload_ms=${Date.now() - generatedAt} dedicated=${JSON.stringify(next)}\n`
     )
     if (!reloaded) {
       // 强制重载下返回 false 只有一种含义：内核没有采用新配置（未运行或重载被拒），不能当作成功。
