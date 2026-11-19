@@ -1,5 +1,5 @@
-// [INPUT] sidecar API · bootstrap · startCore · mihomo API · HTTP proxy probe
-// [OUTPUT] runCoreReadinessPipeline · checkProfileWithRetry · verifyDataPlaneLive
+// [INPUT] sidecar API · bootstrap · startCore · mihomo API
+// [OUTPUT] CoreReadinessCaller · ensureSidecarReachable · verifyDataPlaneLive · CoreReadinessPipelineResult · runCoreReadinessPipeline
 // [POS] SSOT startup gate for GUI / CLI / upgrade verification.
 
 import { getAppConfig } from '../config'
@@ -13,7 +13,7 @@ import {
   DATA_PLANE_READY_MAX_MS,
   SIDECAR_PROBE_TIMEOUT_MS,
   formatCoreReadinessPhaseLog,
-  type CoreReadinessPhase,
+  type CoreReadinessPhase
 } from './coreReadinessGateCore'
 
 export type CoreReadinessCaller = 'gui' | 'profile-update-cli' | 'macos26-headless-bootstrap'
@@ -29,7 +29,7 @@ async function logPhase(phase: CoreReadinessPhase, outcome: string, detail = '')
 }
 
 export async function ensureSidecarReachable(
-  timeoutMs: number = SIDECAR_PROBE_TIMEOUT_MS,
+  timeoutMs: number = SIDECAR_PROBE_TIMEOUT_MS
 ): Promise<void> {
   const { corePermissionMode = 'elevated' } = await getAppConfig()
   if (corePermissionMode !== 'service') {
@@ -62,7 +62,7 @@ export async function ensureSidecarReachable(
 }
 
 export async function verifyDataPlaneLive(
-  maxWaitMs: number = DATA_PLANE_READY_MAX_MS,
+  maxWaitMs: number = DATA_PLANE_READY_MAX_MS
 ): Promise<boolean> {
   const apiReady = await waitForMihomoControllerReady(maxWaitMs)
   if (!apiReady) {
@@ -78,7 +78,7 @@ export interface CoreReadinessPipelineResult {
 }
 
 export async function runCoreReadinessPipeline(
-  caller: CoreReadinessCaller,
+  caller: CoreReadinessCaller
 ): Promise<CoreReadinessPipelineResult> {
   await appendAppLog(`[CoreReadiness]: pipeline begin caller=${caller}\n`)
 
@@ -91,12 +91,12 @@ export async function runCoreReadinessPipeline(
     void showNotification({
       title: 'Sparkle: 数据面未就绪',
       body: 'mihomo 已启动但控制器 API 暂不可用。请查看日志或重启 Sparkle。',
-      variant: 'danger',
+      variant: 'danger'
     })
     throw new CoreReadinessError(
       'DATA_PLANE_NOT_READY',
       'data_plane',
-      'mihomo controller API probe failed after core start',
+      'mihomo controller API probe failed after core start'
     )
   }
 
