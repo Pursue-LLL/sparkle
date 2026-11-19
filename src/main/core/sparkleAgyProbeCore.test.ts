@@ -135,7 +135,7 @@ describe('runAgyAudit', () => {
     assert.equal(cache.has(computeProxyNodeFingerprint(NODES[2]!)), false)
   })
 
-  it('stops the whole audit on a fatal magpie-side error', async () => {
+  it('stops the whole audit on a fatal outcome', async () => {
     const cache = new Map<string, AgyNodeProbeRecord>()
     const probed: string[] = []
 

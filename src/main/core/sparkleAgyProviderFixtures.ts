@@ -1,4 +1,4 @@
-// [INPUT] sparkleAgyProviderCore 的类型 · proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹)
+// [INPUT] sparkleAgyProviderCore::AgyNodeProbeRecord/AgyProxyRecord (POS: agy provider 与分组配置) · proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹)
 // [OUTPUT] NODES · REGION_PRIORITY · record · names · vmess · cacheOf
 // [POS] agy provider 排序类测试共用的节点夹具与小工具。仅供测试使用。
 

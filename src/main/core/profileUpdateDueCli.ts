@@ -1,3 +1,18 @@
+// [INPUT] LaunchAgent 唤起的 `--sparkle-profile-update-due` 一次性进程 ·
+//         manager::quitWithoutCore (POS: mihomo 内核进程生命周期) ·
+//         coreReadinessGate::runCoreReadinessPipeline (POS: SSOT startup gate for GUI / CLI / upgrade verification) ·
+//         profileUpdater::runDueProfileUpdates (POS: 订阅自动更新的运行时接线) ·
+//         dedicatedGroupSwitch::dedicatedGroupGate (POS: 专用分组开关的运行时读取) ·
+//         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析) ·
+//         sparkleAgyProbeCore::AGY_HEADLESS_DEADLINE_MS (POS: agy 巡检状态机) ·
+//         sparkleAgyProbe::runSparkleAgyDueDuty (POS: agy 巡检编排) ·
+//         sys/guiGracefulQuitMarker::markGracefulGuiQuit (POS: GUI 正常退出标记与崩溃台账的落盘) ·
+//         utils/errorMessage::describeError (POS: 失败路径上的异常文本化) ·
+//         utils/log::appendAppLog (POS: 应用日志与内核日志)
+// [OUTPUT] runProfileUpdateDueCli
+// [POS] 没有常驻 GUI 时的订阅刷新一次性进程（LaunchAgent 每 5 分钟唤起）：起内核 → 刷新到期订阅 → 顺带做一次 agy 出口的到期巡检 → 退出。
+// agy 巡检的截止时间从进程启动算起，失败只记日志，不影响订阅刷新与退出。
+
 import { quitWithoutCore } from './manager'
 import { runDueProfileUpdates } from './profileUpdater'
 import { dedicatedGroupGate } from './dedicatedGroupSwitch'

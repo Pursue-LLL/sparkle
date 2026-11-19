@@ -2,11 +2,11 @@
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         sparkleAgyProviderCore::agyProxyName/AgyNodeProbeRecord/AgyProbeVerdict/AgyProxyRecord (POS: agy provider 与分组配置) ·
 //         sparkleAgyReputation::flagAgyNode/AgyFlags (POS: agy 节点被拒记忆)
-// [OUTPUT] runAgyAudit · shouldRepairAgyPin · isPinCheckDue · resolveAgyAuditBackoffMs · resolveProbeTimeoutMs · AGY_PIN_CHECK_INTERVAL_MS · AGY_DUTY_TICK_MS · AGY_HEADLESS_DEADLINE_MS · AGY_MIN_PROBE_TIMEOUT_MS · AGY_PIN_UNKNOWN_STREAK_LIMIT · AgyAuditResult ·
-//          parseTcpDialFailureGroup · createAgyDialFailureWatch · AGY_DIAL_STORM_* / AGY_DIAL_OUTAGE_THRESHOLD
+// [OUTPUT] runAgyAudit · shouldRepairAgyPin · isPinCheckDue · resolveAgyAuditBackoffMs · resolveProbeTimeoutMs · AGY_PIN_CHECK_INTERVAL_MS · AGY_DUTY_TICK_MS · AGY_HEADLESS_DEADLINE_MS · AGY_MIN_PROBE_TIMEOUT_MS · AGY_PIN_UNKNOWN_STREAK_LIMIT · AgyAuditOutcome · AgyAuditDeps · AgyAuditInput · AgyAuditResult ·
+//          parseTcpDialFailureGroup · createAgyDialFailureWatch · AGY_DIAL_STORM_* · AGY_DIAL_OUTAGE_THRESHOLD
 // [POS] agy 巡检状态机（纯编排，无 I/O）：决定哪些节点被测、何时中止、缓存如何演进，以及何时不等定时复测、
 // 由生产流量的拨号失败风暴直接触发修复。
-// I/O（切组 + 调 magpie + 订阅告警）由调用方注入，便于用假探针验证「不可用不下结论 / 致命错误中止 / 预算超时」等分支。
+// I/O（单点探测、时钟）由调用方注入，便于用假探针验证「不可用不下结论 / 致命错误中止 / 预算超时」等分支。
 
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import {
@@ -20,7 +20,7 @@ import { flagAgyNode, type AgyFlags } from './sparkleAgyReputation'
 export interface AgyAuditOutcome {
   verdict: AgyProbeVerdict
   rttMs: number
-  /** magpie 侧不可用（网关未启动 / 模型缺失），继续巡检没有意义。 */
+  /** 探测手段本身不可用（agy CLI 起不来，或响应被判 `fatal`），继续巡检没有意义。 */
   fatal: boolean
 }
 
@@ -58,7 +58,7 @@ export interface AgyAuditResult {
 }
 
 /**
- * pin（当前钉住的节点）就地复测周期：只发 1 个 1-token 请求、不切组、不断流。
+ * pin（当前钉住的节点）就地复测周期：只发 1 个最小请求（让 agy 回复 `OK`）、不切组、不断流。
  * 可用缓存 TTL 是 12h（sparkleAgyProbeCache），30 分钟一轮已有 24 倍余量；
  * 5 分钟一轮纯属浪费官方账号配额（实测 6.9k input/次）。
  */

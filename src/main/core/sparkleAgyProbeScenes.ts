@@ -1,4 +1,5 @@
-// [INPUT] sparkleAgyProbeDirs（落盘状态）· sparkleAgyProbeWorld（场景状态与时间常量）
+// [INPUT] sparkleAgyProbeDirs::writeState (POS: sparkleAgy 行为测试的临时文件系统) ·
+//         sparkleAgyProbeWorld::MINUTE_MS/NOW/productionEvidence/world (POS: sparkleAgyProbe 行为测试的共享状态与夹具数据)
 // [OUTPUT] seedTenuredPin · rejectPinInProduction · showPinWorkingInProduction
 // [POS] 生产证据相关行为测试共用的场景铺设：在位已久的 pin、线上刚被拒、线上刚正常工作。仅供测试使用。
 

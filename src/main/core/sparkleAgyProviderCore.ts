@@ -3,10 +3,10 @@
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配) ·
 //         sparkleAgyReputation::partitionByReputation (POS: agy 节点被拒记忆)
-// [OUTPUT] AGY_NODE_PROVIDER_ID · AGY_LOCATION_REJECTION · classifyAgyProbeResponse · orderAgyProxies · orderAgyRepairProxies · buildSparkleAgyProviderDocument · buildAgyGroupConfig
+// [OUTPUT] AGY_NODE_PROVIDER_ID · AGY_NODE_PROVIDER_FILENAME · AGY_LOCATION_REJECTION · classifyAgyProbeResponse · AgyProxyRecord · AgyNodeProbeRecord · AgyNodeProbeCache · AgyProbeVerdict · AgyProxyGroupShape · agyProxyName · isEligibleAgyNode · collectEligibleAgyProxies · orderAgyProxies · orderAgyRepairProxies · buildAgyProbeSnapshot · buildSparkleAgyProviderDocument · buildAgyGroupConfig
 // [POS] `🎯 agy 专用` 的专属 provider：只收录通过了真实 agy 请求（HTTP 200）的节点。
 // 为什么不能复用 gemini.google.com 探测：cloudcode-pa 的地域校验发生在认证之后，无凭证请求
-// 只会拿到 401，无法区分「地区被拒」与「未认证」；只有让 magpie 真的发一次请求才能判定。
+// 只会拿到 401，无法区分「地区被拒」与「未认证」；只有让官方 agy CLI 真的发一次请求才能判定。
 
 import { AGY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
@@ -33,7 +33,7 @@ export type AgyNodeProbeCache = ReadonlyMap<string, AgyNodeProbeRecord>
  * - `usable`：HTTP 200，节点确实能过 cloudcode-pa；
  * - `unusable`：Google 明确拒绝了这个出口的地区（见 `AGY_LOCATION_REJECTION`）；
  * - `unknown`：限流/超时/其它 4xx，不足以给节点定性；
- * - `fatal`：magpie 侧问题（模型不存在等），继续测其他节点没有意义。
+ * - `fatal`：请求目标本身有问题（404 / 405：路由或模型不存在），继续测其他节点没有意义。
  */
 export type AgyProbeVerdict = 'usable' | 'unusable' | 'unknown' | 'fatal'
 

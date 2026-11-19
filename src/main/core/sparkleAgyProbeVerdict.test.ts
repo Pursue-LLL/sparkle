@@ -29,7 +29,7 @@ describe('classifyAgyProbeResponse', () => {
     assert.equal(classifyAgyProbeResponse(403, '"reason": "LOCATION_NOT_ELIGIBLE"'), 'unknown')
   })
 
-  it('flags 404/405 as fatal (magpie model/route mismatch)', () => {
+  it('flags 404/405 as fatal (route / model not found)', () => {
     assert.equal(classifyAgyProbeResponse(404, 'not found'), 'fatal')
     assert.equal(classifyAgyProbeResponse(405, 'method not allowed'), 'fatal')
   })

@@ -1,5 +1,5 @@
 // [INPUT] 一轮巡检上下文 · agy 组操作 · 探测缓存 ·
-//         computeProxyNodeFingerprint (POS: 节点指纹) ·
+//         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         sparkleAgyEvidenceCore::AgyProductionVerdict (POS: agy 出口生产证据) ·
 //         sparkleAgyGroupControl::convergeAgyProvider/probeSingleNode (POS: agy 组操作) ·
 //         sparkleAgyProbeCache::saveSparkleAgyProbeCache (POS: agy 探测缓存读写) ·

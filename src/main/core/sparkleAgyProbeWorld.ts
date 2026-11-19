@@ -1,5 +1,5 @@
-// [INPUT] node:assert · proxyNodeFingerprintCore · sparkleAgyEvidence::AgyProductionEvidence (POS: agy 出口生产证据采集)
-// [OUTPUT] NOW · 时间常量 · 节点夹具（TW1…US1/HK1/ANYTLS/NODES/POOL）· cacheKey/cacheRecord · CliOutcome 及常用结局（含只有 CLI 日志里才有 aicode 拒绝 / 超时记录的两种日志与结局）· dialFailureLine · productionEvidence · world · resetWorld · callsStarting · outcomesByNode · assertLog/assertNoLog
+// [INPUT] node:assert · proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) · sparkleAgyEvidence::AgyProductionEvidence (POS: agy 出口生产证据采集)
+// [OUTPUT] NOW · 时间常量 · AGY_GROUP · Proxy · 节点夹具（TW1…US1/HK1/ANYTLS/NODES/POOL）· cacheKey/cacheRecord · CliOutcome 及常用结局（含只有 CLI 日志里才有 aicode 拒绝 / 超时记录的两种日志与结局）· dialFailureLine · productionEvidence · world · Spawned（假 CLI 的一次启动记录）· resetWorld · callsStarting · outcomesByNode · assertLog/assertNoLog
 // [POS] sparkleAgyProbe 行为测试的共享状态与夹具数据：world 是替身（配置、mihomo 控制器、假 agy CLI）读写的唯一状态，
 // 用例通过它编排场景、读取观察结果。仅供测试使用。
 

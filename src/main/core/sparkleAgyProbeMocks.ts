@@ -1,4 +1,6 @@
-// [INPUT] node:test 模块替身 · sparkleAgyProbeWorld · sparkleAgyProbeDirs · 假的 agy CLI 进程 ·
+// [INPUT] node:test 模块替身 · 假的 agy CLI 进程 ·
+//         sparkleAgyProbeWorld::world/CliOutcome/Proxy (POS: sparkleAgyProbe 行为测试的共享状态与夹具数据) ·
+//         sparkleAgyProbeDirs::dataDirPath/profilesDirPath/readProviderMembers (POS: sparkleAgy 行为测试的临时文件系统) ·
 //         cursorProxyGroup::MAIL_PROBE_HIDDEN_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         syncFsPromisesRig::mockFsPromisesSync (POS: fs/promises 同步化夹具)
 // [OUTPUT] installMocks

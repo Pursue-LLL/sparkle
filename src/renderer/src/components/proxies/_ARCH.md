@@ -34,7 +34,7 @@
 
 ## agy / grok 组数据源
 
-`🎯 agy 专用` / `grok 专用` 不走 mihomo 的延迟样本：`useAgyProbeSnapshot` / `useGrokProbeSnapshot` 每 30s 经 IPC 读取主进程内存快照（`sparkleAgyProbe.ts` 的 `agyProbeSnapshot`、`sparkleGrokProbe.ts` 的 `grokProbeSnapshot`），节点卡片显示真实请求的 `rttMs` 与「N分前」；grok 的失败样本同时保留 HTTP 状态与原因（403 挑战 / 超时）。无样本显示「未测」/「—」。两组都不显示 mihomo 测速柱图与手动测速按钮。
+`🎯 agy 专用` / `grok 专用` 不走 mihomo 的延迟样本：`useAgyProbeSnapshot` / `useGrokProbeSnapshot` 每 30s 经 IPC 读取主进程内存快照（`sparkleAgyProbeSnapshot.ts` 的 `getSparkleAgyProbeSnapshot`、`sparkleGrokProbeSnapshot.ts` 的 `getSparkleGrokProbeSnapshot`），节点卡片显示真实请求的 `rttMs` 与「N分前」；grok 的失败样本同时保留 HTTP 状态与原因（403 挑战 / 超时）。无样本显示「未测」/「—」。两组都不显示 mihomo 测速柱图与手动测速按钮。
 
 ## gemini专用 组数据源
 

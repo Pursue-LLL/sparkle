@@ -2,7 +2,7 @@
 //         cursorProxyGroup::CURSOR_DEDICATED_DIRECT_PROXY/MAIL_DEDICATED_GROUP_NAME/MAIL_DELAY_TEST_URL/MAIL_PROBE_HIDDEN_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
-// [OUTPUT] MAIL_NODE_PROVIDER_ID · MAIL_PROBE_LISTENER_HOST/PORT · orderMailProxies · buildSparkleMailProviderDocument · buildMailGroupConfig（`fallback`）·
+// [OUTPUT] MAIL_NODE_PROVIDER_ID · MAIL_NODE_PROVIDER_FILENAME · MAIL_PROBE_LISTENER_NAME · MAIL_PROBE_LISTENER_HOST · MAIL_PROBE_LISTENER_PORT · MailProxyRecord · MailNodeProbeRecord · MailNodeProbeCache · MailProxyGroupShape · isPreferredMailCandidateType · orderMailProxies · buildSparkleMailProviderDocument · buildMailGroupConfig（`fallback`）·
 //          buildMailProbeHiddenGroupConfig · ensureMailProbeListener · mailProviderMembershipChanged
 // [POS] `📧 邮件专用` 的专属 provider 与组配置生成逻辑：
 // 只保留通过了 `imap.gmail.com:993` 与 `smtp.gmail.com:465` 双端口 TLS 握手与 Banner 校验的节点；

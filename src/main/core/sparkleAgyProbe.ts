@@ -10,13 +10,12 @@
 //         utils/errorMessage::describeError (POS: 失败路径上的异常文本化) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] bootstrapSparkleAgyProvider · runSparkleAgyDueDuty · repairSparkleAgyPinOnDialFailures · startSparkleAgyProbeLoop
-// [POS] 用官方 agy CLI 的真实请求给节点定性：200 = 可用，地区被拒（生成请求的 400 `User location is not supported`，
-// 或 aicode 的 `LOCATION_NOT_ELIGIBLE`）= 不可用。
-// 本模块只做巡检编排，与 GUI 是否常驻无关：状态落盘，每次巡检从状态接着判断，常驻进程每分钟、无头调度进程每次被唤起各调一次 runSparkleAgyDueDuty。
+// [POS] agy 巡检编排，与 GUI 是否常驻无关：状态落盘，每次巡检从状态接着判断，常驻进程每分钟、无头调度进程每次被唤起各调一次 runSparkleAgyDueDuty。
+// 节点靠官方 agy CLI 的真实请求定性：200 = 可用，地区被拒（生成请求的 400 `User location is not supported`，
+// 或 aicode 的 `LOCATION_NOT_ELIGIBLE`）= 不可用；CLI 请求在 sparkleAgyCli，对 `🎯 agy 专用` 组的操作在 sparkleAgyGroupControl。
 // 每次巡检先看生产证据（用户真实 agy 会话的日志对当前 pin 的判决，只读文件，零探测请求）：
 // 生产流量自己证明 pin 被拒就直接修复；否则只在 pin 复测到期时发探测 → 必要时修复扫描（sparkleAgyRepair）→ 收敛 provider。
 // 修复扫描有三个入口：证据判决被拒、复测判定 pin 不可用、拨号失败风暴（被动触发，越过 pin 复测）。
-// CLI 请求在 sparkleAgyCli，对 `🎯 agy 专用` 组的操作在 sparkleAgyGroupControl。
 // 三个入口都经开关门控：`🎯 agy 专用` 关闭则整轮跳过、不发任何请求。
 
 import { appendAppLog } from '../utils/log'

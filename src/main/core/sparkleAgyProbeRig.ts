@@ -1,9 +1,13 @@
-// [INPUT] node:test 假时钟 · sparkleAgyProbe 及其子模块（被测，每个用例重新加载）· sparkleAgyProbeMocks · sparkleAgyProbeDirs · sparkleAgyProbeWorld ·
+// [INPUT] node:test 假时钟 ·
+//         sparkleAgyProbe::bootstrapSparkleAgyProvider/runSparkleAgyDueDuty/repairSparkleAgyPinOnDialFailures (POS: agy 巡检编排) 及其子模块（被测，每个用例重新加载）·
 //         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
-//         localProbeChannel (POS: 本地隐藏探测通道) ·
-//         sparkleAgyCli (POS: 官方 agy CLI 请求) ·
-//         sparkleAgyGroupControl (POS: agy 组操作) ·
-//         sparkleAgyProbeSnapshot (POS: agy 展示快照)
+//         localProbeChannel::withLocalProbeChannelLock (POS: 本地隐藏探测通道) ·
+//         sparkleAgyCli::requestNativeAgy (POS: 官方 agy CLI 请求) ·
+//         sparkleAgyGroupControl::convergeAgyProvider/probeSingleNode/selectAgyNode (POS: agy 组操作) ·
+//         sparkleAgyProbeSnapshot::getSparkleAgyProbeSnapshot/syncAgyProbeSnapshot (POS: agy 展示快照) ·
+//         sparkleAgyProbeMocks::installMocks (POS: sparkleAgy 行为测试的模块替身) ·
+//         sparkleAgyProbeDirs::resetAgyDirs (POS: sparkleAgy 行为测试的临时文件系统) ·
+//         sparkleAgyProbeWorld::NOW/resetWorld/world/Proxy (POS: sparkleAgyProbe 行为测试的共享状态与夹具数据)
 // [OUTPUT] useAgyRig · restartProbe · snapshot/syncSnapshot/groupControl/agyCli/probeChannel · runBootstrap/runDueDuty/runDialFailureRepair/emitAlerts/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeDirs 与 sparkleAgyProbeWorld 的全部夹具
 // [POS] sparkleAgyProbe 行为测试夹具的入口：装配模块替身、每个用例重建临时目录与被测模块，并提供驱动被测代码的异步辅助。
 // 替身见 sparkleAgyProbeMocks，临时文件系统见 sparkleAgyProbeDirs，场景状态见 sparkleAgyProbeWorld。仅供测试使用。

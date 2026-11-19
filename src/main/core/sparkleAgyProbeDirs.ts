@@ -1,6 +1,6 @@
 // [INPUT] node:fs 临时目录 · utils/yaml::parseYaml (POS: YAML 解析与序列化) ·
 //         sparkleAgyProviderCore::AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
-//         sparkleAgyProbeWorld::Proxy (POS: agy 探针测试的共享状态与夹具数据)
+//         sparkleAgyProbeWorld::Proxy (POS: sparkleAgyProbe 行为测试的共享状态与夹具数据)
 // [OUTPUT] homeDir/dataDirPath/profilesDirPath/probeDir/probeCliDir · resetAgyDirs · writeCache/readCache/cacheFileExists · readState/writeState/blockStateWrites · readProviderMembers
 // [POS] sparkleAgy 行为测试的临时文件系统：整个测试进程共用一个临时根目录，用例之间各自重建 home / data / profiles；
 // 探测缓存、provider 文件与探测目录都是这里的真实文件。仅供测试使用。
