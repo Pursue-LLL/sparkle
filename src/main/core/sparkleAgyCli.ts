@@ -1,7 +1,7 @@
 // [INPUT] 官方 agy CLI（~/.local/bin/agy，keychain 登录）· 探测专用干净目录 ·
 //         sparkleAgyProviderCore::AGY_LOCATION_REJECTION (POS: agy provider 与分组配置) ·
 //         utils/dirs::dataDir (POS: 应用目录与路径常量)
-// [OUTPUT] AGY_PROBE_MODEL · requestNativeAgy · NativeAgyResponse
+// [OUTPUT] AGY_PROBE_MODEL · AGY_PROBE_DIR · requestNativeAgy · NativeAgyResponse
 // [POS] 跑一次官方 agy CLI 的真实请求，把这次运行归类成 HTTP 状态：地区被拒 → 400，退出码 0 → 200，登录问题 → 403，其余 → 500。
 // 地区被拒有两处证据：生成请求的 400 在 CLI 输出里；aicode 的 403 `LOCATION_NOT_ELIGIBLE` 只写进 CLI 日志，
 // 此时生成请求常常仍返回 200，所以每次运行都指定独立的日志文件并读取它。
@@ -22,7 +22,7 @@ export const AGY_PROBE_MODEL = 'gemini-3.8-flash-low'
  * 不能复用 ~/.gemini/antigravity-cli —— 那里会加载用户的 skills / MCP / 全局规则，
  * 单次 print 的 input 从 6.9k 膨胀到 34k（实测）。
  */
-const AGY_PROBE_DIR = path.join(dataDir(), 'agy-probe')
+export const AGY_PROBE_DIR = path.join(dataDir(), 'agy-probe')
 const AGY_PROBE_CLI_DIR = path.join(AGY_PROBE_DIR, 'antigravity-cli')
 const AGY_PROBE_LOG_SUBDIR = 'log'
 /**
