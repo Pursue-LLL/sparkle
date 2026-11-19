@@ -11,15 +11,12 @@ import path from 'node:path'
 import { describe, it, mock } from 'node:test'
 import {
   agyCli,
-  assertLog,
   assertNoLog,
   cacheFileExists,
   cacheKey,
-  callsStarting,
   HANG,
   homeDir,
   HOUR_MS,
-  LOCATION,
   NOW,
   outcomesByNode,
   probeCliDir,
@@ -34,6 +31,7 @@ import {
 } from './sparkleAgyProbeRig'
 
 const agy = useAgyRig()
+const PROXY = 'http://127.0.0.1:18888'
 
 const text = (stream: 'stdout' | 'stderr', body: string, code: number): CliOutcome => ({
   kind: 'chunks',
@@ -85,6 +83,41 @@ describe('sparkleAgyProbe agy CLI request', () => {
     assert.equal(env.PATH, process.env.PATH)
   })
 
+  it('sends every connection of the probe through the given proxy and lets nothing bypass it', async () => {
+    const saved = new Map<string, string | undefined>()
+    const userEnv: Record<string, string> = {
+      HTTPS_PROXY: 'http://the-users-proxy:1',
+      https_proxy: 'http://the-users-proxy:1',
+      HTTP_PROXY: 'http://the-users-proxy:1',
+      NO_PROXY: '.googleapis.com,localhost',
+      no_proxy: '.googleapis.com,localhost'
+    }
+    for (const [name, value] of Object.entries(userEnv)) {
+      saved.set(name, process.env[name])
+      process.env[name] = value
+    }
+
+    try {
+      await agyCli().requestNativeAgy(90_000, PROXY)
+    } finally {
+      for (const [name, value] of saved) {
+        if (value === undefined) {
+          delete process.env[name]
+        } else {
+          process.env[name] = value
+        }
+      }
+    }
+
+    const { env } = world.spawns[0]
+    for (const name of ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy']) {
+      assert.equal(env[name], PROXY, `${name} must point at the given proxy`)
+    }
+    for (const name of ['NO_PROXY', 'no_proxy']) {
+      assert.equal(name in env, false, `${name} would let connections skip the proxy`)
+    }
+  })
+
   it('still reports a timeout when the stuck process cannot be killed', async () => {
     world.killFailure = true
     outcomesByNode({ '台湾-1': HANG })
@@ -97,7 +130,7 @@ describe('sparkleAgyProbe agy CLI request', () => {
   })
 
   it('leaves a process alone that has already answered', async () => {
-    await agyCli().requestNativeAgy(90_000)
+    await agyCli().requestNativeAgy(90_000, PROXY)
 
     mock.timers.tick(HOUR_MS)
 
@@ -117,7 +150,7 @@ describe('sparkleAgyProbe agy CLI request', () => {
     ]
     for (const [allowedMs, expected] of cases) {
       it(`is ${expected} when the probe allows ${allowedMs / 1000} s`, async () => {
-        await agyCli().requestNativeAgy(allowedMs)
+        await agyCli().requestNativeAgy(allowedMs, PROXY)
 
         assert.equal(askedTimeout(), expected)
       })
@@ -288,7 +321,10 @@ describe('sparkleAgyProbe probe directory', () => {
         stillThere.push(existsSync(path.join(conversations(), 'old.db')))
       }
 
-      await Promise.all([agyCli().requestNativeAgy(90_000), agyCli().requestNativeAgy(90_000)])
+      await Promise.all([
+        agyCli().requestNativeAgy(90_000, PROXY),
+        agyCli().requestNativeAgy(90_000, PROXY)
+      ])
 
       assert.deepEqual(stillThere, [false, false])
     })
@@ -302,35 +338,5 @@ describe('sparkleAgyProbe probe directory', () => {
 
       assert.equal(existsSync(path.join(conversations(), 'late.db')), true)
     })
-  })
-})
-
-describe('sparkleAgyProbe attribution guard', () => {
-  it('never attributes a verdict while the old connections cannot be cut', async () => {
-    world.closeFailure = true
-
-    await runBootstrap(agy())
-    await runBootstrap(agy())
-
-    assert.equal(world.spawns.length, 0, 'no request may run on an unattributable exit')
-    assert.equal(cacheFileExists(), false)
-    assertLog('pin 台湾-1 verdict=unknown streak=2')
-    assertLog('(probed=0); keep 台湾-1 empty_rounds=1')
-  })
-
-  it('does not attribute a candidate result when the cut after switching fails', async () => {
-    world.outcomes = [LOCATION, LOCATION]
-    world.onSpawn = (count) => {
-      world.closeFailure = count >= 2
-    }
-
-    await runBootstrap(agy())
-
-    assert.equal(world.spawns.length, 2, 'only the pin was ever really probed')
-    assert.equal(readCache()[cacheKey(TW1)].usable, false)
-    assert.equal(Object.keys(readCache()).length, 1)
-    assert.deepEqual(callsStarting('change:'), ['change:台湾-2'], 'switched to, but not trusted')
-    assert.equal(world.selection, '台湾-2')
-    assertLog('(probed=0)')
   })
 })

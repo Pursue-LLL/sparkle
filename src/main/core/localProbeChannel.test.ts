@@ -3,6 +3,7 @@ import { after, before, beforeEach, describe, it, mock } from 'node:test'
 import { setImmediate as settle } from 'node:timers/promises'
 import { MAIL_PROBE_HIDDEN_GROUP_NAME } from './cursorProxyGroup'
 import type { withLocalProbeChannelLock } from './localProbeChannel'
+import { ensureMailProbeListener } from './sparkleMailProviderCore'
 
 interface Deferred {
   promise: Promise<void>
@@ -19,6 +20,7 @@ function deferred(): Deferred {
 
 describe('withLocalProbeChannelLock', () => {
   let lock: typeof withLocalProbeChannelLock
+  let proxyUrl: string
   const events: string[] = []
   let selectFailure: Error | undefined
 
@@ -34,7 +36,9 @@ describe('withLocalProbeChannelLock', () => {
         }
       }
     })
-    lock = (await import('./localProbeChannel')).withLocalProbeChannelLock
+    const channel = await import('./localProbeChannel')
+    lock = channel.withLocalProbeChannelLock
+    proxyUrl = channel.LOCAL_PROBE_PROXY_URL
   })
 
   beforeEach(() => {
@@ -44,6 +48,20 @@ describe('withLocalProbeChannelLock', () => {
 
   after(() => {
     mock.restoreAll()
+  })
+
+  it('offers the address the hidden probe listener is configured to serve', () => {
+    const profile = {} as MihomoConfig
+    ensureMailProbeListener(profile, 'profile-1')
+
+    const [listener] = (profile.listeners ?? []) as Array<{
+      listen: string
+      port: number
+      proxy: string
+    }>
+
+    assert.equal(proxyUrl, `http://${listener.listen}:${listener.port}`)
+    assert.equal(listener.proxy, MAIL_PROBE_HIDDEN_GROUP_NAME)
   })
 
   it('points the hidden probe group at the node before the task runs and returns its result', async () => {

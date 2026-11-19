@@ -1,4 +1,4 @@
-// [INPUT] 官方 agy CLI（~/.local/bin/agy，keychain 登录）· 探测专用干净目录 ·
+// [INPUT] 官方 agy CLI（~/.local/bin/agy，keychain 登录）· 探测专用干净目录 · 调用方给的出口代理地址 ·
 //         sparkleAgyProviderCore::AGY_LOCATION_REJECTION (POS: agy provider 与分组配置) ·
 //         utils/dirs::dataDir (POS: 应用目录与路径常量)
 // [OUTPUT] AGY_PROBE_MODEL · AGY_PROBE_DIR · requestNativeAgy · NativeAgyResponse
@@ -6,6 +6,7 @@
 // 地区被拒有两处证据：生成请求的 400 在 CLI 输出里；aicode 的 403 `LOCATION_NOT_ELIGIBLE` 只写进 CLI 日志，
 // 此时生成请求常常仍返回 200，所以每次运行都指定独立的日志文件并读取它。
 // 干净目录不加载用户的 skills / MCP / 全局规则（34k → 6.9k input），同时保留官方客户端的全部请求特征。
+// 出口由调用方用环境变量代理指定：探测进程的全部连接经这个代理出站，不碰用户正在使用的 TUN 路由。
 
 import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
@@ -152,16 +153,37 @@ function classifyCliRun({ code, output, log }: CliRun): { status: number; body: 
   return { status: AUTH_PROBLEM.test(output) ? 403 : 500, body: output }
 }
 
-export async function requestNativeAgy(timeoutMs: number): Promise<NativeAgyResponse> {
+/** 会改变请求目标或绕过出口代理的环境变量：探测必须只经指定出口、只打官方端点。 */
+const BYPASS_ENV_NAMES = [
+  'GEMINI_API_KEY',
+  'GOOGLE_GEMINI_BASE_URL',
+  'GOOGLE_API_KEY',
+  'CLOUD_CODE_URL',
+  'NO_PROXY',
+  'no_proxy'
+] as const
+
+/** 只给探测进程用的环境：全部出站走 `proxyUrl`，用户 shell 里的 NO_PROXY 之类不能让某些连接绕开它。 */
+function buildProbeEnv(proxyUrl: string): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  for (const name of BYPASS_ENV_NAMES) {
+    delete env[name]
+  }
+  for (const name of ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy']) {
+    env[name] = proxyUrl
+  }
+  return env
+}
+
+export async function requestNativeAgy(
+  timeoutMs: number,
+  proxyUrl: string
+): Promise<NativeAgyResponse> {
   await ensureAgyProbeDir()
   return new Promise((resolve) => {
     const printTimeoutSec = Math.max(15, Math.floor(timeoutMs / 1000) - 5)
     const logFile = nextProbeLogFile()
-    const env = { ...process.env }
-    delete env.GEMINI_API_KEY
-    delete env.GOOGLE_GEMINI_BASE_URL
-    delete env.GOOGLE_API_KEY
-    delete env.CLOUD_CODE_URL
+    const env = buildProbeEnv(proxyUrl)
     let child
     try {
       child = spawn(

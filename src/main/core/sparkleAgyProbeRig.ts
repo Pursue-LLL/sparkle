@@ -1,88 +1,26 @@
-// [INPUT] node:test 假时钟与模块替身 · sparkleAgyProbe 及其子模块（被测，每个用例重新加载）· 临时目录里的真实 HOME / 数据目录 / provider 文件 · 假的 agy CLI 进程 · sparkleAgyProbeWorld ·
+// [INPUT] node:test 假时钟 · sparkleAgyProbe 及其子模块（被测，每个用例重新加载）· sparkleAgyProbeMocks · sparkleAgyProbeDirs · sparkleAgyProbeWorld ·
 //         groupFailoverEngineHarness::flush (POS: 故障转移引擎测试夹具) ·
+//         localProbeChannel (POS: 本地隐藏探测通道) ·
 //         sparkleAgyCli (POS: 官方 agy CLI 请求) ·
 //         sparkleAgyGroupControl (POS: agy 组操作) ·
-//         sparkleAgyProbeSnapshot (POS: agy 展示快照) ·
-//         sparkleAgyProviderCore::AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
-//         syncFsPromisesRig::mockFsPromisesSync (POS: fs/promises 同步化夹具) ·
-//         utils/yaml::parseYaml (POS: YAML 解析与序列化)
-// [OUTPUT] useAgyRig · snapshot/syncSnapshot/groupControl/agyCli · 文件读写辅助 · runBootstrap/runDialFailureRepair/emitAlerts/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeWorld 的全部夹具
-// [POS] sparkleAgyProbe 行为测试夹具：配置、mihomo 控制器与日志用替身，agy CLI 用可编排结局的假子进程，
-// 探测缓存、provider 文件与探测目录走临时目录里的真实文件。仅供测试使用。
+//         sparkleAgyProbeSnapshot (POS: agy 展示快照)
+// [OUTPUT] useAgyRig · snapshot/syncSnapshot/groupControl/agyCli/probeChannel · runBootstrap/runDialFailureRepair/emitAlerts/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeDirs 与 sparkleAgyProbeWorld 的全部夹具
+// [POS] sparkleAgyProbe 行为测试夹具的入口：装配模块替身、每个用例重建临时目录与被测模块，并提供驱动被测代码的异步辅助。
+// 替身见 sparkleAgyProbeMocks，临时文件系统见 sparkleAgyProbeDirs，场景状态见 sparkleAgyProbeWorld。仅供测试使用。
 
-import { EventEmitter } from 'node:events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
 import { after, afterEach, before, beforeEach, mock } from 'node:test'
-import { parseYaml } from '../utils/yaml'
 import { flush } from './groupFailoverEngineHarness'
+import type * as ProbeChannel from './localProbeChannel'
 import type * as AgyCli from './sparkleAgyCli'
 import type * as AgyProbe from './sparkleAgyProbe'
 import type * as AgyGroupControl from './sparkleAgyGroupControl'
 import type * as AgySnapshot from './sparkleAgyProbeSnapshot'
-import { NOW, resetWorld, world, type CliOutcome, type Proxy } from './sparkleAgyProbeWorld'
-import { AGY_NODE_PROVIDER_FILENAME } from './sparkleAgyProviderCore'
-import { mockFsPromisesSync } from './syncFsPromisesRig'
+import { resetAgyDirs } from './sparkleAgyProbeDirs'
+import { installMocks } from './sparkleAgyProbeMocks'
+import { NOW, resetWorld, world, type Proxy } from './sparkleAgyProbeWorld'
 
+export * from './sparkleAgyProbeDirs'
 export * from './sparkleAgyProbeWorld'
-
-const CACHE_FILENAME = 'sparkle-agy-nodes.json'
-
-class FakeChild extends EventEmitter {
-  readonly stdout = new EventEmitter()
-  readonly stderr = new EventEmitter()
-
-  kill(signal: string): boolean {
-    world.killed.push(signal)
-    if (world.killFailure) {
-      throw new Error('process already exited')
-    }
-    return true
-  }
-}
-
-/** 整个测试进程共用一个临时根目录，进程结束时清理；用例之间各自重建 home/data/profiles。 */
-const root = mkdtempSync(path.join(tmpdir(), 'sparkle-agy-probe-'))
-process.once('exit', () => rmSync(root, { recursive: true, force: true }))
-
-const dirs = {
-  home: path.join(root, 'home'),
-  data: path.join(root, 'data'),
-  profiles: path.join(root, 'profiles')
-}
-
-export const homeDir = (): string => dirs.home
-export const probeDir = (): string => path.join(dirs.data, 'agy-probe')
-export const probeCliDir = (): string => path.join(probeDir(), 'antigravity-cli')
-const cacheFile = (): string => path.join(dirs.data, CACHE_FILENAME)
-const providerFile = (): string => path.join(dirs.profiles, AGY_NODE_PROVIDER_FILENAME)
-
-export function writeCache(records: Record<string, unknown>): void {
-  writeFileSync(cacheFile(), JSON.stringify(records), 'utf8')
-}
-
-export function readCache(): Record<string, { usable: boolean; rttMs: number; checkedAt: number }> {
-  return JSON.parse(readFileSync(cacheFile(), 'utf8'))
-}
-
-export function cacheFileExists(): boolean {
-  try {
-    readFileSync(cacheFile())
-    return true
-  } catch {
-    return false
-  }
-}
-
-export function readProviderMembers(): string[] | undefined {
-  try {
-    const { proxies = [] } = parseYaml<{ proxies?: Proxy[] }>(readFileSync(providerFile(), 'utf8'))
-    return proxies.map((proxy) => String(proxy.name))
-  } catch {
-    return undefined
-  }
-}
 
 export async function settle(): Promise<void> {
   for (let round = 0; round < 5; round++) {
@@ -136,169 +74,9 @@ export function emitAlerts(payload: string, count = 1): void {
   }
 }
 
-/** 假 CLI 像真的一样按 `--log-file` 把日志写到磁盘，在进程退出之前写完；没有这个参数就不写。 */
-function writeCliLog(args: string[], log: string | undefined): void {
-  const flagAt = args.indexOf('--log-file')
-  if (log === undefined || flagAt < 0) {
-    return
-  }
-  const file = args[flagAt + 1]
-  mkdirSync(path.dirname(file), { recursive: true })
-  writeFileSync(file, log, 'utf8')
-}
-
-function emitOutcome(child: FakeChild, outcome: CliOutcome, args: string[]): void {
-  queueMicrotask(() => {
-    writeCliLog(args, outcome.log)
-    if (outcome.kind !== 'hang') {
-      world.perfNowMs += outcome.rttMs ?? 1
-    }
-    switch (outcome.kind) {
-      case 'ok':
-        child.stdout.emit('data', Buffer.from('OK\n'))
-        child.emit('close', 0)
-        break
-      case 'location':
-        child.stderr.emit(
-          'data',
-          Buffer.from('Error 400: User location is not supported for the API use.')
-        )
-        child.emit('close', 1)
-        break
-      case 'error':
-        child.emit('error', new Error('spawn agy ENOENT'))
-        break
-      case 'chunks':
-        for (const chunk of outcome.chunks) {
-          ;(chunk.stream === 'stdout' ? child.stdout : child.stderr).emit(
-            'data',
-            Buffer.from(chunk.text)
-          )
-        }
-        child.emit('close', outcome.code)
-        break
-      case 'hang': {
-        const printTimeoutSec = Number.parseInt(args[args.indexOf('--print-timeout') + 1], 10)
-        world.hangingTimeoutMs = (printTimeoutSec + 5) * 1000
-        break
-      }
-      case 'throw':
-        break
-    }
-  })
-}
-
-function nextOutcome(selected: string): CliOutcome {
-  return world.outcomes.shift() ?? world.outcomeByNode[selected] ?? world.defaultOutcome
-}
-
-let mocksInstalled = false
-
-/** node:test 对同一个模块只允许替换一次，所以多处调用 useAgyRig 时只装一次。 */
-function installMocks(): void {
-  if (mocksInstalled) {
-    return
-  }
-  mocksInstalled = true
-  mockFsPromisesSync()
-  mock.module('node:child_process', {
-    exports: {
-      spawn: (bin: string, args: string[], options: { env: NodeJS.ProcessEnv }): FakeChild => {
-        world.spawns.push({ bin, args, env: options.env })
-        world.probedVia.push(world.selection ?? '')
-        world.onSpawn?.(world.spawns.length)
-        const outcome = nextOutcome(world.selection ?? '')
-        if (outcome.kind === 'throw') {
-          throw new Error('spawn failed')
-        }
-        const child = new FakeChild()
-        emitOutcome(child, outcome, args)
-        return child
-      }
-    }
-  })
-  mock.module('node:perf_hooks', { exports: { performance: { now: () => world.perfNowMs } } })
-  mock.module('../utils/dirs', {
-    exports: { dataDir: () => dirs.data, profilesDir: () => dirs.profiles }
-  })
-  mock.module('../utils/log', {
-    exports: {
-      appendAppLog: async (line: string): Promise<void> => {
-        if (world.logFailure) {
-          throw new Error('log file is not writable')
-        }
-        world.logs.push(line)
-      }
-    }
-  })
-  mock.module('../config', {
-    exports: {
-      getAppConfig: async () => world.appConfig,
-      getProfileConfig: async () => {
-        world.profileReads += 1
-        if (world.profileFailure) {
-          throw world.profileFailure.reason
-        }
-        return world.profile
-      },
-      getProfile: async () => ({ proxies: world.profileProxies })
-    }
-  })
-  mock.module('./provider', {
-    exports: { extractProxies: (profile: { proxies: Proxy[] }): Proxy[] => profile.proxies }
-  })
-  mock.module('./mihomoApi', {
-    exports: {
-      mihomoGroupDetail: async (group: string): Promise<{ now?: string; all: string[] }> => {
-        world.calls.push(`detail:${group}`)
-        if (world.groupMissing) {
-          throw new Error('Resource not found')
-        }
-        return { now: world.selection, all: [...world.members] }
-      },
-      mihomoChangeProxy: async (_group: string, node: string): Promise<boolean> => {
-        world.calls.push(`change:${node}`)
-        if (world.changeFailure) {
-          throw new Error('mihomo is down')
-        }
-        if (world.changeRefused.has(node) || !world.members.includes(node)) {
-          return false
-        }
-        world.selection = node
-        return true
-      },
-      mihomoCloseConnections: async (group: string): Promise<void> => {
-        world.calls.push(`close:${group}`)
-        if (world.closeFailure) {
-          throw new Error('close failed')
-        }
-      },
-      subscribeMihomoAlerts: (listener: (log: ControllerLog) => void): (() => void) => {
-        world.alertListeners.push(listener)
-        return () => {
-          world.alertListeners = world.alertListeners.filter((item) => item !== listener)
-        }
-      },
-      mihomoUpdateProxyProviders: async (id: string): Promise<void> => {
-        world.calls.push(`update:${id}`)
-        if (world.updateFailure) {
-          throw world.updateFailure.reason
-        }
-        // mihomo 重读 provider 文件后，组成员随之改变；选中的节点没了就落到第一个成员。
-        world.members = readProviderMembers() ?? []
-        if (world.selection && !world.members.includes(world.selection)) {
-          world.selection = world.members[0]
-        }
-        if (world.afterUpdateSelection !== undefined) {
-          world.selection = world.afterUpdateSelection
-        }
-      }
-    }
-  })
-}
-
 /** 每个用例都要从零开始：探针的几个模块各自带着内存状态。 */
 const AGY_MODULES = [
+  './localProbeChannel',
   './sparkleAgyCli',
   './sparkleAgyProbeSnapshot',
   './sparkleAgyGroupControl',
@@ -321,6 +99,11 @@ export function syncSnapshot(
 /** 本用例里的 agy CLI 请求模块（探针的最底层，可直接驱动）。 */
 export function agyCli(): typeof AgyCli {
   return require('./sparkleAgyCli') as typeof AgyCli
+}
+
+/** 本用例里的本地隐藏探测通道模块：与探针共用同一个实例，测试可以用它占住通道。 */
+export function probeChannel(): typeof ProbeChannel {
+  return require('./localProbeChannel') as typeof ProbeChannel
 }
 
 /** 本用例里的 agy 组操作模块（探针的下层，可直接驱动）。 */
@@ -356,11 +139,7 @@ export function useAgyRig(): () => typeof AgyProbe {
   })
   beforeEach(() => {
     resetWorld()
-    for (const dir of Object.values(dirs)) {
-      rmSync(dir, { recursive: true, force: true })
-      mkdirSync(dir, { recursive: true })
-    }
-    process.env.HOME = dirs.home
+    resetAgyDirs()
     mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: NOW })
     for (const module of AGY_MODULES) {
       delete require.cache[require.resolve(module)]

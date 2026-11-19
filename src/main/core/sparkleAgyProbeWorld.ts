@@ -97,6 +97,12 @@ export const world = {
   appConfig: {} as { proxySwitchPriority?: string[] },
   selection: '台湾-1' as string | undefined,
   members: [...POOL],
+  /** 隐藏探测通道当前固定的节点；探测进程每次启动时的出口就是它。 */
+  channelNode: undefined as string | undefined,
+  /** 通道切不到的节点（订阅里没有它之类）：切换接口报错。 */
+  channelRefused: new Set<string>(),
+  /** 控制器整体不可用：通道切换一律报错。 */
+  channelFailure: false,
   groupMissing: false,
   changeRefused: new Set<string>(),
   /** 切换接口本身报错（而不是返回「没切成」）。 */
@@ -109,7 +115,7 @@ export const world = {
   outcomes: [] as CliOutcome[],
   outcomeByNode: {} as Record<string, CliOutcome>,
   defaultOutcome: OK as CliOutcome,
-  /** 每次启动 agy 时组里选中的节点（探测结论归属的出口）。 */
+  /** 每次启动 agy 时隐藏探测通道固定的节点（探测结论归属的出口）。 */
   probedVia: [] as string[],
   spawns: [] as Spawned[],
   killed: [] as string[],
@@ -135,6 +141,9 @@ export function resetWorld(): void {
   world.appConfig = {}
   world.selection = '台湾-1'
   world.members = [...POOL]
+  world.channelNode = undefined
+  world.channelRefused = new Set()
+  world.channelFailure = false
   world.groupMissing = false
   world.changeRefused = new Set()
   world.changeFailure = false

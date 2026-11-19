@@ -66,15 +66,15 @@ describe('sparkleAgyProbe repair: choosing a replacement', () => {
     assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1', '日本-1'])
   })
 
-  it('skips a candidate that mihomo refuses to switch to', async () => {
-    world.changeRefused = new Set(['台湾-2'])
+  it('skips a candidate that the probe channel cannot be pinned to', async () => {
+    world.channelRefused = new Set(['台湾-2'])
     outcomesByNode({ '台湾-1': LOCATION })
 
     await runBootstrap(agy())
 
     assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1', '台湾-AnyTLS'])
     assert.equal(world.selection, '台湾-AnyTLS')
-    assert.equal(readCache()[cacheKey(TW2)], undefined, 'an unswitchable node gets no verdict')
+    assert.equal(readCache()[cacheKey(TW2)], undefined, 'an unreachable node gets no verdict')
     assertLog('probed=1 usable=1 pool=1')
   })
 
@@ -224,15 +224,15 @@ describe('sparkleAgyProbe repair: when nothing works', () => {
     assertLog('(probed=0); keep 台湾-2 empty_rounds=1')
   })
 
-  it('adopts the best candidate when the group has no selection at all', async () => {
+  it('adopts the best verified candidate when the group has no selection at all', async () => {
     world.selection = undefined
 
     await runBootstrap(agy())
 
-    assert.equal(world.spawns.length, 0, 'without a selection no result can be attributed')
+    assert.deepEqual(world.probedVia, ['台湾-1'], 'there is no pin to re-test')
     assert.equal(world.selection, '台湾-1')
     assertLog('pin n/a verdict=none')
-    assertLog('(probed=0); keep 台湾-1 empty_rounds=1')
+    assertLog('repaired pin n/a -> 台湾-1 probed=1 usable=1 pool=1')
   })
 })
 

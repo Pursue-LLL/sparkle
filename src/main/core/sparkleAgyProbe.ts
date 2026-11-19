@@ -39,6 +39,7 @@ import {
 import { syncAgyProbeSnapshot } from './sparkleAgyProbeSnapshot'
 import {
   agyProxyName,
+  collectEligibleAgyProxies,
   orderAgyRepairProxies,
   type AgyNodeProbeRecord,
   type AgyProbeVerdict,
@@ -209,11 +210,10 @@ async function keepPin(round: AgyRound, pinVerdict: AgyProbeVerdict | null): Pro
   }
 }
 
-/** 先扩 provider 让所有候选都能被切到（此时不改选择，线上出口不变），再按地区优先逐个实测；没有候选池时返回 undefined。 */
+/** 按地区优先逐个实测：探测走隐藏通道，任何订阅节点都能测、线上出口全程不变；没有候选池时返回 undefined。 */
 async function scanForUsableNode(round: AgyRound): Promise<AgyAuditResult | undefined> {
   const { proxies, regionPriority, cache, pinName } = round
-  const expanded = await convergeAgyProvider(proxies, regionPriority, undefined)
-  if (expanded.length === 0) {
+  if (collectEligibleAgyProxies(proxies).length === 0) {
     return undefined
   }
   pruneRepairAttempts(Date.now())

@@ -1,15 +1,17 @@
 // [INPUT] `🎯 agy 专用` 组（mihomo）· `sparkle-agy` provider 文件 · agy CLI 探测 · 探测缓存 ·
 //         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
+//         localProbeChannel::withLocalProbeChannelLock/LOCAL_PROBE_PROXY_URL (POS: 本地隐藏探测通道) ·
 //         mihomoApi::mihomoChangeProxy/mihomoCloseConnections/mihomoGroupDetail/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
-//         sparkleAgyCli::requestNativeAgy (POS: 官方 agy CLI 请求) ·
+//         sparkleAgyCli::requestNativeAgy/NativeAgyResponse (POS: 官方 agy CLI 请求) ·
 //         sparkleAgyProbeCore::AgyAuditOutcome (POS: agy 巡检状态机) ·
 //         sparkleAgyProbeSnapshot::recordAgyAttempt (POS: agy 展示快照) ·
 //         sparkleAgyProviderCore::AGY_NODE_PROVIDER_FILENAME/AGY_NODE_PROVIDER_ID/agyProxyName/buildSparkleAgyProviderDocument… (POS: agy provider 与分组配置) ·
 //         utils/dirs::profilesDir (POS: 应用目录与路径常量) ·
 //         utils/yaml::stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] probeSingleNode · convergeAgyProvider · selectAgyNode
-// [POS] 对 agy 组的全部操作：归因安全的单节点探测、provider 收敛、切换选择。
-// 归因约束：agy 每次探测都是新进程，切组后由 mihomo 的新连接接管；仍保留 mihomoCloseConnections 清掉旧连接。
+// [POS] 对 agy 的全部操作：归因安全且不碰线上出口的单节点探测、provider 收敛、切换选择。
+// 探测只走本地隐藏探测通道，`🎯 agy 专用` 组与用户的连接在探测期间纹丝不动；只有 provider 收敛与切换选择才会改动线上出口，
+// 改动后立即断掉旧连接，否则新请求可能复用旧出口。
 
 import { performance } from 'node:perf_hooks'
 import { writeFile } from 'fs/promises'
@@ -17,13 +19,14 @@ import path from 'path'
 import { profilesDir } from '../utils/dirs'
 import { stringifyYaml } from '../utils/yaml'
 import { AGY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
+import { LOCAL_PROBE_PROXY_URL, withLocalProbeChannelLock } from './localProbeChannel'
 import {
   mihomoChangeProxy,
   mihomoCloseConnections,
   mihomoGroupDetail,
   mihomoUpdateProxyProviders
 } from './mihomoApi'
-import { requestNativeAgy } from './sparkleAgyCli'
+import { requestNativeAgy, type NativeAgyResponse } from './sparkleAgyCli'
 import { recordAgyAttempt } from './sparkleAgyProbeSnapshot'
 import {
   AGY_NODE_PROVIDER_FILENAME,
@@ -51,45 +54,23 @@ async function closeAgyConnections(): Promise<void> {
   await mihomoCloseConnections(AGY_DEDICATED_GROUP_NAME)
 }
 
-/** 模块内记录上一次观察到的选择：外部（订阅刷新后 provider 收敛）改过选择也必须断一次旧连接。 */
-let lastObservedSelection: string | null = null
-
-function rememberSelection(node: string | null): void {
-  lastObservedSelection = node
-}
-
 /**
- * 单节点探测。归因保证：
- * 1. 组选择被外部改动过 → 先断旧连接；
- * 2. 目标不是当前选择 → 切组后立刻断连接；
- * 3. 断连接失败 → 返回 unknown，绝不把结果写到该节点头上。
+ * 单节点探测。归因保证：探测进程的全部连接经本地隐藏探测通道出站，通道在持锁期间固定在 `node` 上，
+ * 所以结论只可能属于这个节点；`🎯 agy 专用` 组与用户的连接全程不动。
+ * 通道切不到该节点（订阅已移除它、控制器不可用）时返回 unknown：跳过它，不要因为单个节点中止整轮巡检。
  */
 export async function probeSingleNode(node: string, timeoutMs: number): Promise<AgyAuditOutcome> {
+  let measured: { response: NativeAgyResponse; rttMs: number }
   try {
-    const selection = await currentAgySelection()
-    if (selection === null) {
-      return { verdict: 'unknown', rttMs: 0, fatal: false }
-    }
-    if (selection !== lastObservedSelection) {
-      await closeAgyConnections()
-      rememberSelection(selection)
-    }
-    if (selection !== node) {
-      const switched = await mihomoChangeProxy(AGY_DEDICATED_GROUP_NAME, node).catch(() => false)
-      if (!switched) {
-        // 典型原因：该节点已被订阅移除，或组尚未生成 —— 跳过它，不要因为单个节点中止整轮巡检。
-        return { verdict: 'unknown', rttMs: 0, fatal: false }
-      }
-      await closeAgyConnections()
-      rememberSelection(node)
-    }
+    measured = await withLocalProbeChannelLock(node, async () => {
+      const startMs = performance.now()
+      const response = await requestNativeAgy(timeoutMs, LOCAL_PROBE_PROXY_URL)
+      return { response, rttMs: Math.max(1, Math.round(performance.now() - startMs)) }
+    })
   } catch {
     return { verdict: 'unknown', rttMs: 0, fatal: false }
   }
-
-  const startMs = performance.now()
-  const response = await requestNativeAgy(timeoutMs)
-  const rttMs = Math.max(1, Math.round(performance.now() - startMs))
+  const { response, rttMs } = measured
 
   if (response.kind === 'unreachable') {
     recordAgyAttempt(node, 'failed', 'agy CLI 无法启动')
@@ -129,7 +110,6 @@ async function reloadAgyProvider(): Promise<void> {
   await mihomoUpdateProxyProviders(AGY_NODE_PROVIDER_ID)
   const after = await currentAgySelection()
   if (after !== before) {
-    rememberSelection(after)
     await closeAgyConnections().catch(() => undefined)
   }
 }
@@ -183,7 +163,6 @@ export async function selectAgyNode(
   if (!switched) {
     return before
   }
-  rememberSelection(target)
   await closeAgyConnections().catch(() => undefined)
   return target
 }

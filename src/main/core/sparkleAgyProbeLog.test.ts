@@ -24,6 +24,7 @@ import {
 } from './sparkleAgyProbeRig'
 
 const agy = useAgyRig()
+const PROXY = 'http://127.0.0.1:18888'
 
 const logDir = (): string => path.join(probeCliDir(), 'log')
 
@@ -35,7 +36,7 @@ const logFileOfSpawn = (index: number): string => {
 /** 让下一次 CLI 运行得到 `outcome`，直接取回被归类后的 HTTP 状态与判定依据。 */
 async function classified(outcome: CliOutcome): Promise<{ status: number; body: string }> {
   world.defaultOutcome = outcome
-  const response = await agyCli().requestNativeAgy(90_000)
+  const response = await agyCli().requestNativeAgy(90_000, PROXY)
   if (response.kind !== 'response') {
     assert.fail(`expected a response, got ${response.kind}`)
   }
@@ -44,8 +45,8 @@ async function classified(outcome: CliOutcome): Promise<{ status: number; body: 
 
 describe('sparkleAgyProbe CLI log file', () => {
   it('gives every run its own log file inside the probe directory', async () => {
-    await agyCli().requestNativeAgy(90_000)
-    await agyCli().requestNativeAgy(90_000)
+    await agyCli().requestNativeAgy(90_000, PROXY)
+    await agyCli().requestNativeAgy(90_000, PROXY)
 
     const [first, second] = [logFileOfSpawn(0), logFileOfSpawn(1)]
     assert.equal(path.dirname(first), logDir())
@@ -55,7 +56,10 @@ describe('sparkleAgyProbe CLI log file', () => {
   })
 
   it('gives concurrent runs different log files', async () => {
-    await Promise.all([agyCli().requestNativeAgy(90_000), agyCli().requestNativeAgy(90_000)])
+    await Promise.all([
+      agyCli().requestNativeAgy(90_000, PROXY),
+      agyCli().requestNativeAgy(90_000, PROXY)
+    ])
 
     assert.notEqual(logFileOfSpawn(0), logFileOfSpawn(1))
   })
@@ -164,7 +168,7 @@ describe('sparkleAgyProbe log cleanup', () => {
       stillThere.push(existsSync(path.join(logDir(), 'old.log')))
     }
 
-    await agyCli().requestNativeAgy(90_000)
+    await agyCli().requestNativeAgy(90_000, PROXY)
 
     assert.deepEqual(stillThere, [false])
   })

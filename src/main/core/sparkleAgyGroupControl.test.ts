@@ -1,6 +1,6 @@
 // [INPUT] sparkleAgyGroupControl（经 sparkleAgyProbeRig 装配：假 agy CLI / mihomo / 配置，真实临时文件）
 // [OUTPUT] agy 组操作三个导出函数的行为断言
-// [POS] 直接驱动 probeSingleNode / convergeAgyProvider / selectAgyNode：探测结论的归因保证、provider 收敛、选择切换。
+// [POS] 直接驱动 probeSingleNode / convergeAgyProvider / selectAgyNode：探测只走隐藏通道且结论只归属通道上的节点、provider 收敛、选择切换。
 // 上层巡检编排（sparkleAgyProbe）只通过这三个函数碰组，这里把它们各自的分支钉死。
 
 import assert from 'node:assert/strict'
@@ -20,7 +20,9 @@ import {
   drive,
   groupControl,
   okAfter,
+  probeChannel,
   readProviderMembers,
+  settle,
   snapshot,
   syncSnapshot,
   useAgyRig,
@@ -33,90 +35,112 @@ const CLOSE = `close:${AGY_GROUP}`
 
 useAgyRig()
 
-describe('probeSingleNode：先确认能把结论算到这个节点头上', () => {
-  it('组还没生成：不启动 agy，不切组，返回不下结论且不中止', async () => {
+const CHANNEL_PROXY = 'http://127.0.0.1:17899'
+
+describe('probeSingleNode：只走隐藏探测通道，结论只归属通道上的节点', () => {
+  it('把通道固定到目标节点再跑 agy，线上组一概不碰', async () => {
+    await groupControl().probeSingleNode('日本-1', 90_000)
+
+    assert.deepEqual(world.calls, ['channel:日本-1'])
+    assert.deepEqual(world.probedVia, ['日本-1'])
+    assert.equal(world.selection, '台湾-1', '线上出口在探测期间不变')
+  })
+
+  it('agy 进程的全部出站都指向通道的代理地址', async () => {
+    await groupControl().probeSingleNode('日本-1', 90_000)
+
+    assert.equal(world.spawns[0].env.HTTPS_PROXY, CHANNEL_PROXY)
+  })
+
+  it('线上组不存在也能探测：探测不依赖它', async () => {
     world.groupMissing = true
 
     const outcome = await groupControl().probeSingleNode('台湾-1', 90_000)
 
-    assert.deepEqual(outcome, { verdict: 'unknown', rttMs: 0, fatal: false })
-    assert.equal(world.spawns.length, 0)
-    assert.deepEqual(world.calls, [DETAIL])
+    assert.deepEqual(outcome, { verdict: 'usable', rttMs: 1, fatal: false })
+    assert.deepEqual(world.probedVia, ['台湾-1'])
   })
 
-  it('组里没有选中节点（空选择）同样不可归因', async () => {
-    world.selection = undefined
-
-    const outcome = await groupControl().probeSingleNode('台湾-1', 90_000)
-
-    assert.deepEqual(outcome, { verdict: 'unknown', rttMs: 0, fatal: false })
-    assert.equal(world.spawns.length, 0)
-  })
-
-  it('单字符的节点名也是有效选择', async () => {
-    world.members = ['X', 'Y']
-    world.selection = 'X'
-
-    await groupControl().probeSingleNode('X', 90_000)
-
-    assert.deepEqual(world.probedVia, ['X'])
-  })
-
-  it('目标不是当前选择：先切组再断连，之后同一节点不必再切、再断', async () => {
-    await groupControl().probeSingleNode('日本-1', 90_000)
-
-    // 第一次观察到选择 台湾-1 就先断一次旧连接，再切到日本-1 并断开切组前的连接。
-    assert.deepEqual(world.calls, [DETAIL, CLOSE, 'change:日本-1', CLOSE])
-    assert.deepEqual(world.probedVia, ['日本-1'])
-
-    await groupControl().probeSingleNode('日本-1', 90_000)
-
-    assert.deepEqual(world.calls.slice(4), [DETAIL])
-  })
-
-  it('选择被别处改动过：先补断旧连接，再探测', async () => {
+  it('连续探测不同节点：每次都先把通道固定到各自的节点', async () => {
     await groupControl().probeSingleNode('台湾-1', 90_000)
-    assert.deepEqual(world.calls, [DETAIL, CLOSE])
-
-    world.selection = '日本-1'
     await groupControl().probeSingleNode('日本-1', 90_000)
 
-    assert.deepEqual(world.calls.slice(2), [DETAIL, CLOSE])
+    assert.deepEqual(world.calls, ['channel:台湾-1', 'channel:日本-1'])
     assert.deepEqual(world.probedVia, ['台湾-1', '日本-1'])
+  })
+
+  it('通道被别的探测占着时排队：它放手之后才固定节点、启动 agy', async () => {
+    let release!: () => void
+    const held = probeChannel().withLocalProbeChannelLock(
+      '韩国-1',
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        })
+    )
+    await settle()
+
+    const probing = groupControl().probeSingleNode('日本-1', 90_000)
+    await settle()
+
+    assert.deepEqual(world.calls, ['channel:韩国-1'])
+    assert.equal(world.spawns.length, 0)
+
+    release()
+    await held
+    await probing
+
+    assert.deepEqual(world.calls, ['channel:韩国-1', 'channel:日本-1'])
+    assert.deepEqual(world.probedVia, ['日本-1'])
+  })
+
+  it('通道不会把别的探测遗留的节点算到这次头上：每次启动都以自己固定的节点为准', async () => {
+    world.channelNode = '韩国-1'
+
+    await groupControl().probeSingleNode('日本-1', 90_000)
+
+    assert.deepEqual(world.probedVia, ['日本-1'])
   })
 
   for (const [title, setup] of [
     [
-      '切换被 mihomo 拒绝',
+      '订阅里已经没有这个节点',
       () => {
-        world.changeRefused = new Set(['日本-1'])
+        world.profileProxies = [TW1]
       }
     ],
     [
-      '切换接口报错',
+      '通道拒绝切到这个节点',
       () => {
-        world.changeFailure = true
+        world.channelRefused = new Set(['日本-1'])
+      }
+    ],
+    [
+      '控制器不可用',
+      () => {
+        world.channelFailure = true
       }
     ]
   ] as const) {
-    it(`${title}：不启动 agy，也不再断连，返回不下结论`, async () => {
+    it(`${title}：不启动 agy，返回不下结论且不中止`, async () => {
       setup()
 
       const outcome = await groupControl().probeSingleNode('日本-1', 90_000)
 
       assert.deepEqual(outcome, { verdict: 'unknown', rttMs: 0, fatal: false })
       assert.equal(world.spawns.length, 0)
-      assert.deepEqual(world.calls, [DETAIL, CLOSE, 'change:日本-1'])
+      assert.deepEqual(world.calls, ['channel:日本-1'])
     })
   }
 
-  it('断不掉旧连接就不能归因：返回不下结论，不启动 agy', async () => {
-    world.closeFailure = true
+  it('通道在切换失败后不会卡死：下一个探测照常进行', async () => {
+    world.channelRefused = new Set(['日本-1'])
+    await groupControl().probeSingleNode('日本-1', 90_000)
 
-    const outcome = await groupControl().probeSingleNode('日本-1', 90_000)
+    const outcome = await groupControl().probeSingleNode('台湾-1', 90_000)
 
-    assert.deepEqual(outcome, { verdict: 'unknown', rttMs: 0, fatal: false })
-    assert.equal(world.spawns.length, 0)
+    assert.equal(outcome.verdict, 'usable')
+    assert.deepEqual(world.probedVia, ['台湾-1'])
   })
 })
 
@@ -208,7 +232,7 @@ describe('convergeAgyProvider：provider 收敛到目标集合', () => {
     assert.deepEqual(world.members, POOL)
   })
 
-  it('重载让组选择变了：断开旧连接，并记住新选择，之后探测它不必再断', async () => {
+  it('重载让组选择变了：断开旧连接', async () => {
     const cache = new Map([[cacheKey(TW1), cacheRecord(false)]])
 
     const names = await groupControl().convergeAgyProvider(NODES, DEFAULT_PRIORITY, cache)
@@ -217,10 +241,6 @@ describe('convergeAgyProvider：provider 收敛到目标集合', () => {
     assert.deepEqual(names, POOL.slice(1))
     assert.equal(world.selection, '台湾-2')
     assert.deepEqual(world.calls, [DETAIL, DETAIL, 'update:sparkle-agy', DETAIL, CLOSE])
-
-    await groupControl().probeSingleNode('台湾-2', 90_000)
-
-    assert.deepEqual(world.calls.slice(5), [DETAIL])
   })
 
   it('重载没改变组选择：不断连', async () => {
@@ -308,11 +328,13 @@ describe('selectAgyNode：切换选择', () => {
     })
   }
 
-  it('切换成功后记住新选择：随后探测它不必再切、再断', async () => {
+  it('切换之后探测别的节点：线上选择不会被探测改回去', async () => {
     await groupControl().selectAgyNode(['日本-1'])
-    await groupControl().probeSingleNode('日本-1', 90_000)
 
-    assert.deepEqual(world.calls.slice(3), [DETAIL])
+    await groupControl().probeSingleNode('台湾-1', 90_000)
+
+    assert.equal(world.selection, '日本-1')
+    assert.deepEqual(world.calls.slice(3), ['channel:台湾-1'])
   })
 
   it('切换后断连失败不影响结果', async () => {

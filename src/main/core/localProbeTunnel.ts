@@ -1,4 +1,4 @@
-// [INPUT] sparkleMailProviderCore::MAIL_PROBE_LISTENER_PORT (POS: 邮件 provider 与分组配置)
+// [INPUT] sparkleMailProviderCore::MAIL_PROBE_LISTENER_HOST/MAIL_PROBE_LISTENER_PORT (POS: 邮件 provider 与分组配置)
 // [OUTPUT] openLocalProbeTunnel · LocalProbeTunnel · LocalProbeTunnelOptions · LocalProbeFailure
 // [POS] 本地隐藏探测监听器 `127.0.0.1:17899` 的传输层：HTTP CONNECT 隧道 + TLS 握手（严格校验证书）。
 // 邮件端口、Gemini 地区、吞吐探测共用，各自只负责隧道建立后的应用层读写与超时。
@@ -6,9 +6,7 @@
 
 import net from 'node:net'
 import tls from 'node:tls'
-import { MAIL_PROBE_LISTENER_PORT } from './sparkleMailProviderCore'
-
-const LISTENER_HOST = '127.0.0.1'
+import { MAIL_PROBE_LISTENER_HOST, MAIL_PROBE_LISTENER_PORT } from './sparkleMailProviderCore'
 
 /** CONNECT 应答头的字符上限：超过仍没有空行，说明对端不是 HTTP 代理。 */
 const CONNECT_REPLY_MAX_CHARS = 2048
@@ -42,7 +40,7 @@ export interface LocalProbeTunnel {
  */
 export function openLocalProbeTunnel(options: LocalProbeTunnelOptions): LocalProbeTunnel {
   const { host, port, alpnProtocols, onSecure, onFailure } = options
-  const rawSocket = net.connect(MAIL_PROBE_LISTENER_PORT, LISTENER_HOST)
+  const rawSocket = net.connect(MAIL_PROBE_LISTENER_PORT, MAIL_PROBE_LISTENER_HOST)
   let tlsSocket: tls.TLSSocket | undefined
   let accepted = false
   const fail = (): void => onFailure(accepted ? 'node' : 'listener')

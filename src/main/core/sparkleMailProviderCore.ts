@@ -2,7 +2,7 @@
 //         cursorProxyGroup::CURSOR_DEDICATED_DIRECT_PROXY/MAIL_DEDICATED_GROUP_NAME/MAIL_DELAY_TEST_URL/MAIL_PROBE_HIDDEN_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
-// [OUTPUT] MAIL_NODE_PROVIDER_ID · orderMailProxies · buildSparkleMailProviderDocument · buildMailGroupConfig（`fallback`）·
+// [OUTPUT] MAIL_NODE_PROVIDER_ID · MAIL_PROBE_LISTENER_HOST/PORT · orderMailProxies · buildSparkleMailProviderDocument · buildMailGroupConfig（`fallback`）·
 //          buildMailProbeHiddenGroupConfig · ensureMailProbeListener · mailProviderMembershipChanged
 // [POS] `📧 邮件专用` 的专属 provider 与组配置生成逻辑：
 // 只保留通过了 `imap.gmail.com:993` 与 `smtp.gmail.com:465` 双端口 TLS 握手与 Banner 校验的节点；
@@ -21,6 +21,7 @@ import { isBlockedRegionNodeName, nodeMatchesRegion } from './regionPriority'
 export const MAIL_NODE_PROVIDER_ID = 'sparkle-mail' as const
 export const MAIL_NODE_PROVIDER_FILENAME = 'sparkle-mail-proxies.yaml' as const
 export const MAIL_PROBE_LISTENER_NAME = 'sparkle-mail-probe' as const
+export const MAIL_PROBE_LISTENER_HOST = '127.0.0.1' as const
 export const MAIL_PROBE_LISTENER_PORT = 17899 as const
 
 export type MailProxyRecord = Record<string, unknown>
@@ -252,7 +253,7 @@ export function ensureMailProbeListener(
       name: MAIL_PROBE_LISTENER_NAME,
       type: 'mixed',
       port: MAIL_PROBE_LISTENER_PORT,
-      listen: '127.0.0.1',
+      listen: MAIL_PROBE_LISTENER_HOST,
       proxy: MAIL_PROBE_HIDDEN_GROUP_NAME
     }
   ] as MihomoConfig['listeners']

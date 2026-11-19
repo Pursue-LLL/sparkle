@@ -97,18 +97,20 @@ describe('sparkleAgyProbe bootstrap: healthy pin', () => {
 
     assert.deepEqual(world.probedVia, ['台湾-1', '台湾-1'])
     assert.equal(callsStarting('update:').length, 1)
-    assert.equal(callsStarting('close:').length, 1, 'same selection, nothing to cut')
+    assert.equal(callsStarting('close:').length, 0, 'a healthy pin is never disturbed')
   })
 
-  it('cuts old connections once the selection was changed from outside', async () => {
+  it('follows a selection changed from outside without cutting anything', async () => {
     await runBootstrap(agy())
     world.selection = '台湾-2'
     world.members = [...POOL]
 
     await runBootstrap(agy())
 
-    assert.equal(callsStarting('close:').length, 2)
     assert.deepEqual(world.probedVia, ['台湾-1', '台湾-2'])
+    assert.equal(callsStarting('close:').length, 0)
+    assert.equal(callsStarting('change:').length, 0)
+    assert.equal(world.selection, '台湾-2')
   })
 
   it('confirms a location rejection once before judging the pin', async () => {
