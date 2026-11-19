@@ -1,5 +1,5 @@
 // [INPUT] node:assert · proxyNodeFingerprintCore
-// [OUTPUT] NOW · 时间常量 · 节点夹具（TW1…US1/HK1/ANYTLS/NODES/POOL）· cacheKey/cacheRecord · CliOutcome 及常用结局 · dialFailureLine · world · resetWorld · callsStarting · outcomesByNode · assertLog/assertNoLog
+// [OUTPUT] NOW · 时间常量 · 节点夹具（TW1…US1/HK1/ANYTLS/NODES/POOL）· cacheKey/cacheRecord · CliOutcome 及常用结局（含只有 CLI 日志里才有 aicode 拒绝 / 超时记录的两种日志与结局）· dialFailureLine · world · resetWorld · callsStarting · outcomesByNode · assertLog/assertNoLog
 // [POS] sparkleAgyProbe 行为测试的共享状态与夹具数据：world 是替身（配置、mihomo 控制器、假 agy CLI）读写的唯一状态，
 // 用例通过它编排场景、读取观察结果。仅供测试使用。
 
@@ -46,7 +46,10 @@ export function cacheRecord(
   return { usable, rttMs, checkedAt: NOW - ageMs }
 }
 
-/** 假 agy CLI 的结局；rttMs 是这次请求「花掉」的耗时，默认 1ms。 */
+/**
+ * 假 agy CLI 的结局；rttMs 是这次请求「花掉」的耗时，默认 1ms；
+ * log 是进程退出前按 `--log-file` 写到磁盘的日志，不给就不写（真实 CLI 没写出日志的情形）。
+ */
 export type CliOutcome = (
   | { kind: 'ok' }
   | { kind: 'location' }
@@ -54,12 +57,27 @@ export type CliOutcome = (
   | { kind: 'error' }
   | { kind: 'throw' }
   | { kind: 'chunks'; chunks: Array<{ stream: 'stdout' | 'stderr'; text: string }>; code: number }
-) & { rttMs?: number }
+) & { rttMs?: number; log?: string }
 
 export const OK: CliOutcome = { kind: 'ok' }
 export const LOCATION: CliOutcome = { kind: 'location' }
 export const HANG: CliOutcome = { kind: 'hang' }
 export const okAfter = (rttMs: number): CliOutcome => ({ kind: 'ok', rttMs })
+
+/** 官方 CLI 日志里 aicode 拒绝出口地区的片段（真实日志的形状：先超时，再带着 403 重试）。 */
+export const AICODE_REJECTION_LOG = [
+  'W1119 15:05:46.363174     296 code_assist_client.go:509] CCPA routed this account to AICode, but AICode FetchConfig failed, serving CCPA\'s flags: failed to make AI Code FetchConfig request: Get "https://aicode.googleapis.com/v1alpha:fetchConfig": context deadline exceeded',
+  'W1119 15:05:47.028126     472 code_assist_client.go:475] AICode FetchConfig failed, falling back to CCPA ListExperiments: failed to make AI Code FetchConfig request: "403 Forbidden"',
+  '    "message": "Your location is not eligible for this service at this time. Detected location: CN.",',
+  '        "reason": "LOCATION_NOT_ELIGIBLE",'
+].join('\n')
+
+/** aicode 只是超时、没有拒绝地区的日志（健康出口上同样会出现）。 */
+export const AICODE_TIMEOUT_LOG =
+  'W1119 15:35:51.473676     320 code_assist_client.go:509] CCPA routed this account to AICode, but AICode FetchConfig failed, serving CCPA\'s flags: failed to make AI Code FetchConfig request: Get "https://aicode.googleapis.com/v1alpha:fetchConfig": context deadline exceeded'
+
+/** 生成请求成功（退出码 0），但 aicode 在日志里拒绝了这个出口的地区。 */
+export const OK_BUT_AICODE_REJECTED: CliOutcome = { kind: 'ok', log: AICODE_REJECTION_LOG }
 
 /** 内核对一条拨号失败的 TCP 连接打的 warning（真实日志的形状，见 verify:failover 对真实内核的校验）。 */
 export const dialFailureLine = (group: string, source = '198.18.0.1:62341(agy)'): string =>

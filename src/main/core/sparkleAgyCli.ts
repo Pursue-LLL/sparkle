@@ -1,15 +1,19 @@
 // [INPUT] 官方 agy CLI（~/.local/bin/agy，keychain 登录）· 探测专用干净目录 ·
+//         sparkleAgyProviderCore::AGY_LOCATION_REJECTION (POS: agy provider 与分组配置) ·
 //         utils/dirs::dataDir (POS: 应用目录与路径常量)
 // [OUTPUT] AGY_PROBE_MODEL · requestNativeAgy · NativeAgyResponse
-// [POS] 跑一次官方 agy CLI 的真实请求，把输出归类成 HTTP 状态：地区被拒 → 400，退出码 0 → 200，登录问题 → 403，其余 → 500。
+// [POS] 跑一次官方 agy CLI 的真实请求，把这次运行归类成 HTTP 状态：地区被拒 → 400，退出码 0 → 200，登录问题 → 403，其余 → 500。
+// 地区被拒有两处证据：生成请求的 400 在 CLI 输出里；aicode 的 403 `LOCATION_NOT_ELIGIBLE` 只写进 CLI 日志，
+// 此时生成请求常常仍返回 200，所以每次运行都指定独立的日志文件并读取它。
 // 干净目录不加载用户的 skills / MCP / 全局规则（34k → 6.9k input），同时保留官方客户端的全部请求特征。
 
 import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
 import { homedir } from 'node:os'
-import { copyFile, mkdir, readdir, stat, unlink } from 'fs/promises'
+import { copyFile, mkdir, readdir, readFile, stat, unlink } from 'fs/promises'
 import path from 'path'
 import { dataDir } from '../utils/dirs'
+import { AGY_LOCATION_REJECTION } from './sparkleAgyProviderCore'
 
 const AGY_BIN = path.join(homedir(), '.local/bin/agy')
 export const AGY_PROBE_MODEL = 'gemini-3.8-flash-low'
@@ -19,8 +23,21 @@ export const AGY_PROBE_MODEL = 'gemini-3.8-flash-low'
  * 单次 print 的 input 从 6.9k 膨胀到 34k（实测）。
  */
 const AGY_PROBE_DIR = path.join(dataDir(), 'agy-probe')
-/** 探测会话只用于进程内的一次性请求；保留 24h 便于排查，之后清掉，避免每天 ~22MB 的 DB 累积。 */
-const AGY_PROBE_CONVERSATION_TTL_MS = 24 * 60 * 60 * 1000
+const AGY_PROBE_CLI_DIR = path.join(AGY_PROBE_DIR, 'antigravity-cli')
+const AGY_PROBE_LOG_SUBDIR = 'log'
+/**
+ * 探测产物只用于事后排查，保留 24h 后清掉：
+ * 一次性会话的 SQLite 每次约 448KB（每天约 22MB），每次运行的 CLI 日志约 25KB。
+ */
+const AGY_PROBE_ARTIFACT_TTL_MS = 24 * 60 * 60 * 1000
+const AGY_PROBE_ARTIFACTS = [
+  { dir: 'conversations', pattern: /\.db(?:-(?:wal|shm))?$/ },
+  { dir: AGY_PROBE_LOG_SUBDIR, pattern: /\.log$/ }
+] as const
+/** 判定依据截取命中处前后各多少字符：既要让命中的文案留在里面，又不把整份日志带出去。 */
+const EVIDENCE_CONTEXT_CHARS = 120
+/** 输出里的登录 / 权限问题：与出口无关，不能怪到节点头上。 */
+const AUTH_PROBLEM = /FAILED_PRECONDITION|PERMISSION_DENIED|not logged|sign in|authentication/i
 
 /** 一次 agy CLI 探测的原始结果：拿到响应（已归类成 HTTP 状态）、CLI 起不来，或超时被杀。 */
 export type NativeAgyResponse =
@@ -28,24 +45,20 @@ export type NativeAgyResponse =
   | { kind: 'unreachable' }
   | { kind: 'timeout' }
 
-/**
- * 清理探测目录里的历史会话：探测是一次性请求，保留 24h 足够排查；
- * 不清理的话每次 print 都会新建一个 ~448KB 的 SQLite（每天约 22MB）。
- */
-async function pruneAgyProbeConversations(cliDir: string): Promise<void> {
-  const conversationsDir = path.join(cliDir, 'conversations')
+/** 清掉目录里超过保留期、且名字符合 `pattern` 的文件；目录不存在或单个文件删不掉都不影响探测。 */
+async function pruneStaleFiles(dir: string, pattern: RegExp): Promise<void> {
   let entries: string[]
   try {
-    entries = await readdir(conversationsDir)
+    entries = await readdir(dir)
   } catch {
     return
   }
-  const cutoff = Date.now() - AGY_PROBE_CONVERSATION_TTL_MS
+  const cutoff = Date.now() - AGY_PROBE_ARTIFACT_TTL_MS
   await Promise.all(
     entries
-      .filter((name) => /\.db(?:-(?:wal|shm))?$/.test(name))
+      .filter((name) => pattern.test(name))
       .map(async (name) => {
-        const filePath = path.join(conversationsDir, name)
+        const filePath = path.join(dir, name)
         try {
           const info = await stat(filePath)
           if (info.mtimeMs < cutoff) {
@@ -66,27 +79,84 @@ function ensureAgyProbeDir(): Promise<void> {
     return agyProbeDirReady
   }
   agyProbeDirReady = (async () => {
-    const cliDir = path.join(AGY_PROBE_DIR, 'antigravity-cli')
-    await mkdir(cliDir, { recursive: true })
+    await mkdir(AGY_PROBE_CLI_DIR, { recursive: true })
     // 复用主目录的 installation_id：同一台机器不应因为探测目录多出一个“新设备”。
     try {
       await copyFile(
         path.join(homedir(), '.gemini/antigravity-cli/installation_id'),
-        path.join(cliDir, 'installation_id'),
+        path.join(AGY_PROBE_CLI_DIR, 'installation_id'),
         constants.COPYFILE_EXCL
       )
     } catch {
       // 已存在或主目录没有该文件：保持现状即可。
     }
-    await pruneAgyProbeConversations(cliDir)
+    await Promise.all(
+      AGY_PROBE_ARTIFACTS.map(({ dir, pattern }) =>
+        pruneStaleFiles(path.join(AGY_PROBE_CLI_DIR, dir), pattern)
+      )
+    )
   })().catch(() => undefined)
   return agyProbeDirReady
+}
+
+let probeLogSequence = 0
+
+/** 每次运行独占一个日志文件：默认的日志按启动时间（秒）命名，并发运行会撞名，读取时也无法确定哪一份属于这次运行。 */
+function nextProbeLogFile(): string {
+  probeLogSequence += 1
+  return path.join(
+    AGY_PROBE_CLI_DIR,
+    AGY_PROBE_LOG_SUBDIR,
+    `probe-${Date.now()}-${probeLogSequence}.log`
+  )
+}
+
+/** 本次运行的 CLI 日志；读不到（CLI 没写出来、文件不可读）就当没有证据，不因此给节点定性。 */
+async function readProbeLog(file: string): Promise<string> {
+  try {
+    return await readFile(file, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+/** 命中地区拒绝文案时返回命中处前后的一小段原文，作为判定依据；没命中返回 undefined。 */
+function locationRejectionEvidence(text: string): string | undefined {
+  const hit = AGY_LOCATION_REJECTION.exec(text)
+  if (!hit) {
+    return undefined
+  }
+  return text.slice(
+    Math.max(0, hit.index - EVIDENCE_CONTEXT_CHARS),
+    hit.index + hit[0].length + EVIDENCE_CONTEXT_CHARS
+  )
+}
+
+interface CliRun {
+  code: number | null
+  /** stdout + stderr。 */
+  output: string
+  /** 本次运行的 CLI 日志；读不到时为空串。 */
+  log: string
+}
+
+/** 一次运行归类成 HTTP 状态；地区被拒先于退出码判断，因为 aicode 拒绝的出口上生成请求常常仍然成功。 */
+function classifyCliRun({ code, output, log }: CliRun): { status: number; body: string } {
+  const rejection = locationRejectionEvidence(output) ?? locationRejectionEvidence(log)
+  if (rejection !== undefined) {
+    return { status: 400, body: rejection }
+  }
+  if (code === 0) {
+    return { status: 200, body: output }
+  }
+  return { status: AUTH_PROBLEM.test(output) ? 403 : 500, body: output }
 }
 
 export async function requestNativeAgy(timeoutMs: number): Promise<NativeAgyResponse> {
   await ensureAgyProbeDir()
   return new Promise((resolve) => {
     const printTimeoutSec = Math.max(15, Math.floor(timeoutMs / 1000) - 5)
+    const logFile = nextProbeLogFile()
     const env = { ...process.env }
     delete env.GEMINI_API_KEY
     delete env.GOOGLE_GEMINI_BASE_URL
@@ -99,6 +169,8 @@ export async function requestNativeAgy(timeoutMs: number): Promise<NativeAgyResp
         [
           '--gemini_dir',
           AGY_PROBE_DIR,
+          '--log-file',
+          logFile,
           '--print',
           'Reply with exactly: OK',
           '--model',
@@ -145,20 +217,12 @@ export async function requestNativeAgy(timeoutMs: number): Promise<NativeAgyResp
     })
     child.on('error', () => finish({ kind: 'unreachable' }))
     child.on('close', (code) => {
-      const body = `${stdout}\n${stderr}`
-      if (/User location is not supported/i.test(body)) {
-        finish({ kind: 'response', status: 400, body })
-        return
-      }
-      if (code === 0) {
-        finish({ kind: 'response', status: 200, body })
-        return
-      }
-      if (/FAILED_PRECONDITION|PERMISSION_DENIED|not logged|sign in|authentication/i.test(body)) {
-        finish({ kind: 'response', status: 403, body })
-        return
-      }
-      finish({ kind: 'response', status: 500, body })
+      void readProbeLog(logFile).then((log) => {
+        finish({
+          kind: 'response',
+          ...classifyCliRun({ code, output: `${stdout}\n${stderr}`, log })
+        })
+      })
     })
   })
 }

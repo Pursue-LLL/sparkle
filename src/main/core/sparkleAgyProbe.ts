@@ -11,7 +11,8 @@
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
 //         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析)
 // [OUTPUT] bootstrapSparkleAgyProvider · repairSparkleAgyPinOnDialFailures · startSparkleAgyProbeLoop
-// [POS] 用官方 agy CLI 的真实请求给节点定性：200 = 可用，400 `User location is not supported` = 不可用。
+// [POS] 用官方 agy CLI 的真实请求给节点定性：200 = 可用，地区被拒（生成请求的 400 `User location is not supported`，
+// 或 aicode 的 `LOCATION_NOT_ELIGIBLE`）= 不可用。
 // 本模块只做巡检编排：pin 就地复测 → 必要时修复扫描 → 收敛 provider；
 // 修复扫描有两个入口：定时复测判定 pin 不可用，或生产流量在 agy 出口上的拨号失败风暴（被动触发，越过 pin 复测）。
 // CLI 请求在 sparkleAgyCli，对 `🎯 agy 专用` 组的操作在 sparkleAgyGroupControl。

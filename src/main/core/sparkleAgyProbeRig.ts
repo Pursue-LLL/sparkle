@@ -136,8 +136,20 @@ export function emitAlerts(payload: string, count = 1): void {
   }
 }
 
+/** 假 CLI 像真的一样按 `--log-file` 把日志写到磁盘，在进程退出之前写完；没有这个参数就不写。 */
+function writeCliLog(args: string[], log: string | undefined): void {
+  const flagAt = args.indexOf('--log-file')
+  if (log === undefined || flagAt < 0) {
+    return
+  }
+  const file = args[flagAt + 1]
+  mkdirSync(path.dirname(file), { recursive: true })
+  writeFileSync(file, log, 'utf8')
+}
+
 function emitOutcome(child: FakeChild, outcome: CliOutcome, args: string[]): void {
   queueMicrotask(() => {
+    writeCliLog(args, outcome.log)
     if (outcome.kind !== 'hang') {
       world.perfNowMs += outcome.rttMs ?? 1
     }

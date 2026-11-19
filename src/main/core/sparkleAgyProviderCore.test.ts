@@ -7,7 +7,6 @@ import {
   buildAgyGroupConfig,
   buildAgyProbeSnapshot,
   buildSparkleAgyProviderDocument,
-  classifyAgyProbeResponse,
   collectEligibleAgyProxies,
   isEligibleAgyNode,
   orderAgyProxies,
@@ -44,29 +43,6 @@ function cacheOf(
 ): Map<string, AgyNodeProbeRecord> {
   return new Map(entries.map(([proxy, probe]) => [computeProxyNodeFingerprint(proxy), probe]))
 }
-
-describe('classifyAgyProbeResponse', () => {
-  it('treats HTTP 200 as a usable node', () => {
-    assert.equal(classifyAgyProbeResponse(200, '{"choices":[]}'), 'usable')
-  })
-
-  it('treats the location violation as unusable', () => {
-    const body =
-      '{"error":{"message":"Antigravity: User location is not supported for the API use."}}'
-    assert.equal(classifyAgyProbeResponse(400, body), 'unusable')
-  })
-
-  it('keeps other 400s and rate limits undecided', () => {
-    assert.equal(classifyAgyProbeResponse(400, '{"error":{"message":"bad request"}}'), 'unknown')
-    assert.equal(classifyAgyProbeResponse(429, '{"error":{"message":"quota"}}'), 'unknown')
-    assert.equal(classifyAgyProbeResponse(500, 'oops'), 'unknown')
-  })
-
-  it('flags 404/405 as fatal (magpie model/route mismatch)', () => {
-    assert.equal(classifyAgyProbeResponse(404, 'not found'), 'fatal')
-    assert.equal(classifyAgyProbeResponse(405, 'method not allowed'), 'fatal')
-  })
-})
 
 describe('isEligibleAgyNode', () => {
   it('accepts named nodes of any protocol and rejects nameless and Hong Kong nodes', () => {

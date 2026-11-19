@@ -2,7 +2,7 @@
 //         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
-// [OUTPUT] AGY_NODE_PROVIDER_ID · orderAgyProxies · orderAgyRepairProxies · buildSparkleAgyProviderDocument · buildAgyGroupConfig
+// [OUTPUT] AGY_NODE_PROVIDER_ID · AGY_LOCATION_REJECTION · classifyAgyProbeResponse · orderAgyProxies · orderAgyRepairProxies · buildSparkleAgyProviderDocument · buildAgyGroupConfig
 // [POS] `🎯 agy 专用` 的专属 provider：只收录通过了真实 agy 请求（HTTP 200）的节点。
 // 为什么不能复用 gemini.google.com 探测：cloudcode-pa 的地域校验发生在认证之后，无凭证请求
 // 只会拿到 401，无法区分「地区被拒」与「未认证」；只有让 magpie 真的发一次请求才能判定。
@@ -17,7 +17,7 @@ export const AGY_NODE_PROVIDER_FILENAME = 'sparkle-agy-proxies.yaml' as const
 export type AgyProxyRecord = Record<string, unknown>
 
 export interface AgyNodeProbeRecord {
-  /** 只有真实 agy 请求返回 200 才是 true；明确的 `User location is not supported` 为 false。 */
+  /** 只有真实 agy 请求返回 200 才是 true；Google 明确拒绝了出口地区（见 `AGY_LOCATION_REJECTION`）为 false。 */
   usable: boolean
   /** 探测往返耗时，用于同一地区段内排序。 */
   rttMs: number
@@ -29,19 +29,25 @@ export type AgyNodeProbeCache = ReadonlyMap<string, AgyNodeProbeRecord>
 /**
  * 真实 agy 请求的判定结果：
  * - `usable`：HTTP 200，节点确实能过 cloudcode-pa；
- * - `unusable`：明确的 `User location is not supported`，这个出口被 Google 拒绝；
+ * - `unusable`：Google 明确拒绝了这个出口的地区（见 `AGY_LOCATION_REJECTION`）；
  * - `unknown`：限流/超时/其它 4xx，不足以给节点定性；
  * - `fatal`：magpie 侧问题（模型不存在等），继续测其他节点没有意义。
  */
 export type AgyProbeVerdict = 'usable' | 'unusable' | 'unknown' | 'fatal'
 
-const LOCATION_VIOLATION_MARKER = 'location is not supported'
+/**
+ * Google 拒绝出口地区的两种文案：
+ * - 生成请求：400 `User location is not supported for the API use`；
+ * - aicode：403 reason `LOCATION_NOT_ELIGIBLE`（`Detected location: CN`），同一出口上的生成请求常常仍返回 200。
+ * 探测请求（sparkleAgyCli）与判定（classifyAgyProbeResponse）共用这一条，两处认的是同一组文案。
+ */
+export const AGY_LOCATION_REJECTION = /location is not supported|LOCATION_NOT_ELIGIBLE/i
 
 export function classifyAgyProbeResponse(status: number, body: string): AgyProbeVerdict {
   if (status === 200) {
     return 'usable'
   }
-  if (status === 400 && body.toLowerCase().includes(LOCATION_VIOLATION_MARKER)) {
+  if (status === 400 && AGY_LOCATION_REJECTION.test(body)) {
     return 'unusable'
   }
   if (status === 404 || status === 405) {

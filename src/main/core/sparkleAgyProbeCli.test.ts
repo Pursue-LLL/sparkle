@@ -46,10 +46,13 @@ describe('sparkleAgyProbe agy CLI request', () => {
     await runBootstrap(agy())
 
     const [spawned] = world.spawns
+    const logFile = spawned.args[spawned.args.indexOf('--log-file') + 1]
     assert.equal(spawned.bin, path.join(homeDir(), '.local/bin/agy'))
     assert.deepEqual(spawned.args, [
       '--gemini_dir',
       probeDir(),
+      '--log-file',
+      logFile,
       '--print',
       'Reply with exactly: OK',
       '--model',
