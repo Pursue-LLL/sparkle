@@ -1,5 +1,5 @@
-// [INPUT] sparkleAgyProbe（经 sparkleAgyProbeRig 装配：假 agy CLI / mihomo / 配置 / 生产证据，真实临时文件）· sparkleAgyEvidenceCore 与 sparkleAgyProbeCore 的阈值常量
-// [OUTPUT] 生产证据驱动修复、限速、截止时间、探测超时否决权的行为断言
+// [INPUT] sparkleAgyProbe（经 sparkleAgyProbeRig 装配：假 agy CLI / mihomo / 配置 / 生产证据，真实临时文件）· sparkleAgyProbeScenes · sparkleAgyEvidenceCore 与 sparkleAgyProbeCore 的阈值常量
+// [OUTPUT] 生产证据驱动修复、限速与退避、探测超时否决权的行为断言
 // [POS] 生产流量自己的日志是比探测更直接的证据：判定出口被拒就不等复测直接修复；
 // 但日志可能属于别的出口 / 账号级问题，所以修复有限速，且只靠探测超时不足以推翻「线上刚正常工作」的证据。
 
@@ -23,7 +23,6 @@ import {
   US1,
   assertLog,
   assertNoLog,
-  cacheFileExists,
   cacheKey,
   outcomesByNode,
   productionEvidence,
@@ -35,34 +34,16 @@ import {
   world,
   writeState
 } from './sparkleAgyProbeRig'
+import {
+  rejectPinInProduction,
+  seedTenuredPin,
+  showPinWorkingInProduction
+} from './sparkleAgyProbeScenes'
 
 const agy = useAgyRig()
 
 const logCount = (fragment: string): number =>
   world.logs.filter((line) => line.includes(fragment)).length
-
-/** 已经在位 20 分钟的 pin，复测刚做过：只有生产证据能让这一拍动手。 */
-function seedTenuredPin(extra: Record<string, unknown> = {}): void {
-  writeState({
-    pin: { name: '台湾-1', sinceMs: NOW - 20 * MINUTE_MS },
-    lastPinCheckMs: NOW,
-    ...extra
-  })
-}
-
-/** 在位 pin 上最近 3 条地区拒绝（刚好够判定被拒）。 */
-function rejectPinInProduction(): void {
-  const now = Date.now()
-  world.evidence = productionEvidence({
-    rejections: [now - 3 * MINUTE_MS, now - 2 * MINUTE_MS, now - MINUTE_MS],
-    lastActivityMs: now - MINUTE_MS
-  })
-}
-
-/** agy 会话刚刚还在经过这个出口干活，且日志里没有任何拒绝。 */
-function showPinWorkingInProduction(): void {
-  world.evidence = productionEvidence({ lastActivityMs: Date.now() - MINUTE_MS })
-}
 
 describe('生产证据判定被拒', () => {
   it('不等复测直接修复：pin 不被探测，只实测候选，并记下判决依据', async () => {
@@ -250,91 +231,6 @@ describe('生产证据修复的限速与退避', () => {
     const limited = attempts.slice(AGY_EVIDENCE_REPAIR_LIMIT - 1)
     assert.ok(new Set(limited).size === 1, `达到上限后不再有探测: ${attempts.join(',')}`)
     assert.equal((readState()?.evidenceRepairs as number[]).length, AGY_EVIDENCE_REPAIR_LIMIT)
-  })
-})
-
-describe('截止时间内的修复', () => {
-  it('离截止不够发一次探测：什么都不做，名额退还，复测时间不推进', async () => {
-    seedTenuredPin()
-    rejectPinInProduction()
-
-    await runDueDuty(agy(), NOW + 20_000)
-
-    assert.equal(world.spawns.length, 0)
-    assertNoLog('repair start')
-    assert.deepEqual(readState()?.evidenceRepairs, [])
-    assert.equal(readState()?.lastPinCheckMs, NOW)
-  })
-
-  it('扫描里的每次探测超时都收紧到截止之前', async () => {
-    seedTenuredPin()
-    rejectPinInProduction()
-
-    await runDueDuty(agy(), NOW + 50_000)
-
-    const args = world.spawns[0]!.args
-    assert.equal(args[args.indexOf('--print-timeout') + 1], '45s')
-  })
-
-  it('时间只够一次探测：第一个候选超时后不再开新的，也不把这当成「全灭」去拉长退避', async () => {
-    seedTenuredPin()
-    rejectPinInProduction()
-    outcomesByNode({ '台湾-2': HANG })
-
-    await runDueDuty(agy(), NOW + 60_000)
-
-    assert.equal(world.spawns.length, 1)
-    assert.equal(world.selection, '台湾-1')
-    assertLog('scan cut short by the deadline (probed=0); keep 台湾-1')
-    assertNoLog('WARN no node passed')
-    assert.equal(readState()?.emptyRounds, 0)
-    assert.equal(readState()?.repairSkipUntilMs, 0)
-  })
-
-  it('被截断的扫描下次接着扫：已试的节点排到后面，不会每次都从同一个候选开始', async () => {
-    seedTenuredPin()
-    rejectPinInProduction()
-    outcomesByNode({ '台湾-2': HANG })
-    await runDueDuty(agy(), NOW + 60_000)
-    assert.deepEqual(world.probedVia, ['台湾-2'])
-
-    rejectPinInProduction()
-    await runDueDuty(agy())
-
-    assert.deepEqual(world.probedVia, ['台湾-2', '台湾-AnyTLS'])
-    assert.equal(world.selection, '台湾-AnyTLS')
-  })
-})
-
-describe('截止时间内的 pin 复测', () => {
-  it('判定要修复、却没时间修：这次复测不算数，下一次照样到期', async () => {
-    seedTenuredPin({ lastPinCheckMs: NOW - AGY_PIN_CHECK_INTERVAL_MS, pinUnknownStreak: 1 })
-    outcomesByNode({ '台湾-1': HANG })
-
-    await runDueDuty(agy(), NOW + 100_000)
-
-    assert.equal(world.spawns.length, 1, '只有 pin 的那次探测')
-    assert.equal(readState()?.pinUnknownStreak, 2)
-    assert.equal(readState()?.lastPinCheckMs, NOW - AGY_PIN_CHECK_INTERVAL_MS)
-    assertNoLog('repair start')
-  })
-
-  it('第一次探测被拒、却来不及再确认：不下结论，也不记入被拒记忆', async () => {
-    seedTenuredPin({ lastPinCheckMs: NOW - AGY_PIN_CHECK_INTERVAL_MS })
-    world.outcomes = [LOCATION]
-    // 第一次探测期间过去了 70 秒：离截止只剩 25 秒，不够再发第二次。
-    world.onSpawn = (count) => {
-      if (count === 1) {
-        queueMicrotask(() => mock.timers.tick(70_000))
-      }
-    }
-
-    await runDueDuty(agy(), NOW + 95_000)
-
-    assert.equal(world.spawns.length, 1)
-    assert.deepEqual(readState()?.flags ?? {}, {})
-    assert.equal(cacheFileExists(), false)
-    assert.equal(readState()?.lastPinCheckMs, NOW - AGY_PIN_CHECK_INTERVAL_MS)
   })
 })
 
