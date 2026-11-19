@@ -245,3 +245,65 @@ describe('resolveAgyAuditBackoffMs', () => {
     assert.equal(resolveAgyAuditBackoffMs(INTERVAL, -1), 0)
   })
 })
+
+describe('runAgyAudit remembers rejections', () => {
+  const [sg, us, jp] = NODES as [AgyProxyRecord, AgyProxyRecord, AgyProxyRecord]
+  const verdictByNode = (verdicts: Record<string, AgyAuditOutcome['verdict']>) => ({
+    now: () => 5000,
+    probeNode: async (node: string): Promise<AgyAuditOutcome> =>
+      outcomeOf(verdicts[node] ?? 'unknown')
+  })
+
+  it('flags only the nodes whose exit was judged unusable, with the judgement time', async () => {
+    const flags = new Map<string, number>()
+
+    await runAgyAudit(
+      { pending: NODES, cache: new Map(), budgetMs: 60_000, flags },
+      verdictByNode({ '新加坡-优化2-GPT': 'unusable', '美国LA-优化2-GPT': 'usable' })
+    )
+
+    assert.deepEqual([...flags], [[computeProxyNodeFingerprint(sg), 5000]])
+  })
+
+  it('lets a later passing probe leave an earlier flag standing', async () => {
+    const flags = new Map([[computeProxyNodeFingerprint(us), 1000]])
+
+    await runAgyAudit(
+      { pending: [us], cache: new Map(), budgetMs: 60_000, flags },
+      verdictByNode({ '美国LA-优化2-GPT': 'usable' })
+    )
+
+    assert.equal(flags.get(computeProxyNodeFingerprint(us)), 1000)
+  })
+
+  it('refreshes the flag when a flagged node is judged unusable again', async () => {
+    const flags = new Map([[computeProxyNodeFingerprint(jp), 1000]])
+
+    await runAgyAudit(
+      { pending: [jp], cache: new Map(), budgetMs: 60_000, flags },
+      verdictByNode({ '🇯🇵 日本 02': 'unusable' })
+    )
+
+    assert.equal(flags.get(computeProxyNodeFingerprint(jp)), 5000)
+  })
+
+  it('does not flag a node that only timed out', async () => {
+    const flags = new Map<string, number>()
+
+    await runAgyAudit(
+      { pending: NODES, cache: new Map(), budgetMs: 60_000, flags },
+      verdictByNode({})
+    )
+
+    assert.equal(flags.size, 0)
+  })
+
+  it('audits normally when no flag memory is supplied', async () => {
+    const result = await runAgyAudit(
+      { pending: [sg], cache: new Map(), budgetMs: 60_000 },
+      verdictByNode({ '新加坡-优化2-GPT': 'unusable' })
+    )
+
+    assert.equal(result.probed, 1)
+  })
+})

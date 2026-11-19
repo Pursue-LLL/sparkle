@@ -121,9 +121,10 @@ async function reloadAgyProvider(): Promise<void> {
 export async function convergeAgyProvider(
   proxies: readonly AgyProxyRecord[],
   regionPriority: readonly string[],
-  probeCache: AgyNodeProbeCache | undefined
+  probeCache: AgyNodeProbeCache | undefined,
+  flags?: ReadonlyMap<string, number>
 ): Promise<string[]> {
-  const document = buildSparkleAgyProviderDocument({ proxies, regionPriority, probeCache })
+  const document = buildSparkleAgyProviderDocument({ proxies, regionPriority, probeCache, flags })
   const names = providerNames(document.proxies)
   if (names.length === 0) {
     return []

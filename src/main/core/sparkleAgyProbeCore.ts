@@ -1,6 +1,7 @@
 // [INPUT] 待巡检节点 · 已有缓存 · 内核 warning 告警 · 依赖注入（单点探测 / 时钟） ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
-//         sparkleAgyProviderCore::agyProxyName/AgyNodeProbeRecord/AgyProbeVerdict/AgyProxyRecord (POS: agy provider 与分组配置)
+//         sparkleAgyProviderCore::agyProxyName/AgyNodeProbeRecord/AgyProbeVerdict/AgyProxyRecord (POS: agy provider 与分组配置) ·
+//         sparkleAgyReputation::flagAgyNode/AgyFlags (POS: agy 节点被拒记忆)
 // [OUTPUT] runAgyAudit · shouldRepairAgyPin · resolveAgyAuditBackoffMs · AGY_PIN_CHECK_INTERVAL_MS · AGY_PIN_UNKNOWN_STREAK_LIMIT · AgyAuditResult ·
 //          parseTcpDialFailureGroup · createAgyDialFailureWatch · AGY_DIAL_STORM_* / AGY_DIAL_OUTAGE_THRESHOLD
 // [POS] agy 巡检状态机（纯编排，无 I/O）：决定哪些节点被测、何时中止、缓存如何演进，以及何时不等定时复测、
@@ -14,6 +15,7 @@ import {
   type AgyProbeVerdict,
   type AgyProxyRecord
 } from './sparkleAgyProviderCore'
+import { flagAgyNode, type AgyFlags } from './sparkleAgyReputation'
 
 export interface AgyAuditOutcome {
   verdict: AgyProbeVerdict
@@ -36,6 +38,8 @@ export interface AgyAuditInput {
   stopOnUsable?: boolean
   /** 本轮尝试过的节点（含超时这种不下结论的），供下一轮排序跳过、保证进度。 */
   attempted?: Map<string, number>
+  /** 被拒记忆：探测判定出口不可用的节点记进去（通过的探测不会抹掉它）。 */
+  flags?: AgyFlags
 }
 
 export interface AgyAuditResult {
@@ -104,7 +108,8 @@ export async function runAgyAudit(
     }
 
     const name = agyProxyName(proxy)
-    input.attempted?.set(computeProxyNodeFingerprint(proxy), now())
+    const fingerprint = computeProxyNodeFingerprint(proxy)
+    input.attempted?.set(fingerprint, now())
     const outcome = await deps.probeNode(name)
     if (outcome.fatal) {
       return { probed, usable, aborted: true, usableNode }
@@ -114,11 +119,14 @@ export async function runAgyAudit(
       continue
     }
 
-    input.cache.set(computeProxyNodeFingerprint(proxy), {
+    input.cache.set(fingerprint, {
       usable: outcome.verdict === 'usable',
       rttMs: outcome.rttMs,
       checkedAt: now()
     })
+    if (outcome.verdict === 'unusable' && input.flags) {
+      flagAgyNode(input.flags, fingerprint, now())
+    }
     probed += 1
     if (outcome.verdict === 'usable') {
       usable += 1

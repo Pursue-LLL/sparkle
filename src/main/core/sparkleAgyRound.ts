@@ -8,8 +8,9 @@
 //         sparkleAgyProbeCache::loadSparkleAgyProbeCache (POS: agy 探测缓存读写) ·
 //         sparkleAgyProbeSnapshot::syncAgyProbeSnapshot (POS: agy 展示快照) ·
 //         sparkleAgyProviderCore::agyProxyName/AgyNodeProbeRecord/AgyProxyRecord (POS: agy provider 与分组配置) ·
+//         sparkleAgyReputation::flagAgyNode (POS: agy 节点被拒记忆) ·
 //         sparkleAgyState::AgyState (POS: agy 巡检状态持久化)
-// [OUTPUT] AgyRound · openRound · countUsable
+// [OUTPUT] AgyRound · openRound · countUsable · flagPin
 // [POS] 一轮巡检的共用上下文：订阅里的候选节点、探测缓存、巡检状态与当前 pin；
 // 没有可巡检的对象（未选订阅 / 订阅无节点 / 组未生成）时没有上下文，整轮跳过。
 
@@ -26,6 +27,7 @@ import {
   type AgyNodeProbeRecord,
   type AgyProxyRecord
 } from './sparkleAgyProviderCore'
+import { flagAgyNode } from './sparkleAgyReputation'
 import type { AgyState } from './sparkleAgyState'
 
 export interface AgyRound {
@@ -71,4 +73,11 @@ export function countUsable(round: AgyRound): number {
   return round.proxies.filter(
     (proxy) => round.cache.get(computeProxyNodeFingerprint(proxy))?.usable === true
   ).length
+}
+
+/** 把当前 pin 记入被拒记忆；pin 不在订阅里时没有可记的对象。 */
+export function flagPin(round: AgyRound, nowMs: number): void {
+  if (round.pinProxy) {
+    flagAgyNode(round.state.flags, computeProxyNodeFingerprint(round.pinProxy), nowMs)
+  }
 }

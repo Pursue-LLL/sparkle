@@ -1,7 +1,7 @@
 // [INPUT] node:fs 临时目录 · utils/yaml::parseYaml (POS: YAML 解析与序列化) ·
 //         sparkleAgyProviderCore::AGY_NODE_PROVIDER_FILENAME (POS: agy provider 与分组配置) ·
 //         sparkleAgyProbeWorld::Proxy (POS: agy 探针测试的共享状态与夹具数据)
-// [OUTPUT] homeDir/dataDirPath/profilesDirPath/probeDir/probeCliDir · resetAgyDirs · writeCache/readCache/cacheFileExists · readState/blockStateWrites · readProviderMembers
+// [OUTPUT] homeDir/dataDirPath/profilesDirPath/probeDir/probeCliDir · resetAgyDirs · writeCache/readCache/cacheFileExists · readState/writeState/blockStateWrites · readProviderMembers
 // [POS] sparkleAgy 行为测试的临时文件系统：整个测试进程共用一个临时根目录，用例之间各自重建 home / data / profiles；
 // 探测缓存、provider 文件与探测目录都是这里的真实文件。仅供测试使用。
 
@@ -58,6 +58,11 @@ export function readState(): Record<string, unknown> | undefined {
   } catch {
     return undefined
   }
+}
+
+/** 预置磁盘上的巡检状态：模拟之前的进程留下的记忆。 */
+export function writeState(state: Record<string, unknown>): void {
+  writeFileSync(stateFile(), JSON.stringify(state), 'utf8')
 }
 
 /** 让状态文件写不进去（原位置是个目录），模拟磁盘写失败。 */

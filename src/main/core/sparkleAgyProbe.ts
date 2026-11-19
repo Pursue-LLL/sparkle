@@ -4,7 +4,8 @@
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         sparkleAgyProbeCore::AGY_PIN_CHECK_INTERVAL_MS/createAgyDialFailureWatch/shouldRepairAgyPin/AgyAuditOutcome (POS: agy 巡检状态机) ·
 //         sparkleAgyProviderCore::AgyNodeProbeRecord/AgyProbeVerdict/AgyProxyRecord (POS: agy provider 与分组配置) ·
-//         sparkleAgyRepair::repairPin (POS: agy 修复扫描) · sparkleAgyRound::openRound/AgyRound (POS: agy 一轮巡检上下文) ·
+//         sparkleAgyReputation::flagAgyNode (POS: agy 节点被拒记忆) ·
+//         sparkleAgyRepair::repairPin (POS: agy 修复扫描) · sparkleAgyRound::openRound/flagPin/AgyRound (POS: agy 一轮巡检上下文) ·
 //         utils/errorMessage::describeError (POS: 失败路径上的异常文本化) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
 //         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析)
@@ -31,9 +32,10 @@ import {
   type AgyAuditOutcome
 } from './sparkleAgyProbeCore'
 import { syncAgyProbeSnapshot } from './sparkleAgyProbeSnapshot'
-import type { AgyNodeProbeRecord, AgyProbeVerdict, AgyProxyRecord } from './sparkleAgyProviderCore'
+import type { AgyProbeVerdict, AgyProxyRecord } from './sparkleAgyProviderCore'
 import { repairPin } from './sparkleAgyRepair'
-import { openRound, type AgyRound } from './sparkleAgyRound'
+import { flagAgyNode } from './sparkleAgyReputation'
+import { flagPin, openRound, type AgyRound } from './sparkleAgyRound'
 import { clearAgyRepairBackoff, openAgyState, type AgyState } from './sparkleAgyState'
 import { runWhenEnabled, type DedicatedGroupGate } from './dedicatedGroups'
 
@@ -45,11 +47,13 @@ const PIN_PROBE_TIMEOUT_MS = 90_000
 
 let probeInFlight = false
 
+/** 写入 pin 的复测结论（被拒的同时记入被拒记忆）；返回结论相对缓存里的旧记录是否变了。 */
 function recordPinOutcome(
-  cache: Map<string, AgyNodeProbeRecord>,
+  round: AgyRound,
   proxy: AgyProxyRecord,
   outcome: AgyAuditOutcome
 ): boolean {
+  const { cache, state } = round
   const fingerprint = computeProxyNodeFingerprint(proxy)
   const previous = cache.get(fingerprint)
   const usable = outcome.verdict === 'usable'
@@ -58,6 +62,9 @@ function recordPinOutcome(
     rttMs: outcome.rttMs,
     checkedAt: Date.now()
   })
+  if (outcome.verdict === 'unusable') {
+    flagAgyNode(state.flags, fingerprint, Date.now())
+  }
   return !previous || previous.usable !== usable
 }
 
@@ -87,7 +94,7 @@ async function checkPin(round: AgyRound): Promise<PinCheck> {
     }
   }
   if (outcome.verdict !== 'unknown') {
-    const changed = recordPinOutcome(cache, pinProxy, outcome)
+    const changed = recordPinOutcome(round, pinProxy, outcome)
     if (changed) {
       await saveSparkleAgyProbeCache(cache)
     }
@@ -103,7 +110,12 @@ async function checkPin(round: AgyRound): Promise<PinCheck> {
  */
 async function keepPin(round: AgyRound, pinVerdict: AgyProbeVerdict | null): Promise<void> {
   const { state } = round
-  const ordered = await convergeAgyProvider(round.proxies, round.regionPriority, round.cache)
+  const ordered = await convergeAgyProvider(
+    round.proxies,
+    round.regionPriority,
+    round.cache,
+    state.flags
+  )
   await selectAgyNode(ordered, round.pinName)
   if (pinVerdict !== 'usable') {
     return
@@ -156,7 +168,11 @@ export async function bootstrapSparkleAgyProvider(): Promise<void> {
       await keepPin(round, pin.verdict)
       return
     }
-    await repairPin(round, `verdict=${pin.verdict ?? 'none'} streak=${state.pinUnknownStreak}`)
+    await repairPin(round, {
+      reason: `verdict=${pin.verdict ?? 'none'} streak=${state.pinUnknownStreak}`,
+      // 只是探测超时：pin 并没被证明不可用，不能为了换而换。
+      strict: pin.verdict === 'unknown'
+    })
   })
 }
 
@@ -168,7 +184,8 @@ export async function repairSparkleAgyPinOnDialFailures(): Promise<void> {
   await runExclusiveRound(async (state) => {
     const round = await openRound(state)
     if (round) {
-      await repairPin(round, 'trigger=dial-failures')
+      flagPin(round, Date.now())
+      await repairPin(round, { reason: 'trigger=dial-failures', strict: false })
     }
   })
 }

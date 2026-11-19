@@ -1,12 +1,14 @@
-// [INPUT] dataDir()/sparkle-agy-state.json
+// [INPUT] dataDir()/sparkle-agy-state.json ·
+//         sparkleAgyReputation::AGY_FLAG_MEMORY_MS/AgyFlags (POS: agy 节点被拒记忆)
 // [OUTPUT] openAgyState · clearAgyRepairBackoff · AgyState · AgyStateHandle · AgyPhase
-// [POS] agy 巡检编排状态的唯一读写入口：退避、超时累计、修复扫描的「已试」记录都落盘。
+// [POS] agy 巡检编排状态的唯一读写入口：退避、超时累计、修复扫描的「已试」记录与节点被拒记忆都落盘。
 // 为什么落盘：无头调度任务每次都是新进程，内存里的状态活不过一轮；状态一丢，退避失效、同一批坏节点被反复重试。
 // 状态只是巡检的辅助记忆，不是真相：文件缺失、损坏或字段不合法都退回默认值，最坏结果是多做一轮探测，不会卡住巡检。
 
 import { readFile, writeFile } from 'fs/promises'
 import path from 'path'
 import { dataDir } from '../utils/dirs'
+import { AGY_FLAG_MEMORY_MS, type AgyFlags } from './sparkleAgyReputation'
 
 const STATE_FILENAME = 'sparkle-agy-state.json'
 
@@ -26,6 +28,8 @@ export interface AgyState {
   pinUnknownStreak: number
   /** 修复扫描的「本轮已试」记录（节点指纹 → 时间）：超时不会写探测缓存，必须单独记，否则下一轮重复同一批节点。 */
   attempts: Map<string, number>
+  /** 节点被拒记忆：只有落盘，无头调度的每个新进程才记得住 24 小时前谁出过问题。 */
+  flags: AgyFlags
 }
 
 export interface AgyStateHandle {
@@ -40,6 +44,7 @@ interface SerializedAgyState {
   repairSkipUntilMs: number
   pinUnknownStreak: number
   attempts: Record<string, number>
+  flags: Record<string, number>
 }
 
 const PHASES: readonly AgyPhase[] = ['healthy', 'repairing', 'exhausted']
@@ -56,17 +61,18 @@ function nonNegativeNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0
 }
 
-function parseAttempts(value: unknown, nowMs: number): Map<string, number> {
-  const attempts = new Map<string, number>()
+/** 节点指纹 → 时间戳的映射：只留年龄不到 `retentionMs` 的合法记录，过期的在读出时就丢掉。 */
+function parseTimestamps(value: unknown, nowMs: number, retentionMs: number): Map<string, number> {
+  const timestamps = new Map<string, number>()
   if (!isRecord(value)) {
-    return attempts
+    return timestamps
   }
-  for (const [fingerprint, attemptedAt] of Object.entries(value)) {
-    if (typeof attemptedAt === 'number' && nowMs - attemptedAt <= ATTEMPT_RETENTION_MS) {
-      attempts.set(fingerprint, attemptedAt)
+  for (const [fingerprint, at] of Object.entries(value)) {
+    if (typeof at === 'number' && nowMs - at < retentionMs) {
+      timestamps.set(fingerprint, at)
     }
   }
-  return attempts
+  return timestamps
 }
 
 function parseState(raw: unknown, nowMs: number): AgyState {
@@ -76,7 +82,8 @@ function parseState(raw: unknown, nowMs: number): AgyState {
     emptyRounds: nonNegativeNumber(source.emptyRounds),
     repairSkipUntilMs: nonNegativeNumber(source.repairSkipUntilMs),
     pinUnknownStreak: nonNegativeNumber(source.pinUnknownStreak),
-    attempts: parseAttempts(source.attempts, nowMs)
+    attempts: parseTimestamps(source.attempts, nowMs, ATTEMPT_RETENTION_MS),
+    flags: parseTimestamps(source.flags, nowMs, AGY_FLAG_MEMORY_MS)
   }
 }
 
@@ -86,7 +93,8 @@ function serialize(state: AgyState): string {
     emptyRounds: state.emptyRounds,
     repairSkipUntilMs: state.repairSkipUntilMs,
     pinUnknownStreak: state.pinUnknownStreak,
-    attempts: Object.fromEntries(state.attempts)
+    attempts: Object.fromEntries(state.attempts),
+    flags: Object.fromEntries(state.flags)
   }
   return JSON.stringify(document)
 }

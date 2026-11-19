@@ -1,7 +1,8 @@
 // [INPUT] 当前订阅节点 · 地区优先级 · agy（daily-cloudcode-pa）真实请求探测缓存 ·
 //         cursorProxyGroup::AGY_DEDICATED_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
-//         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配)
+//         regionPriority::isBlockedRegionNodeName/nodeMatchesRegion (POS: 地区优先级与地区匹配) ·
+//         sparkleAgyReputation::partitionByReputation (POS: agy 节点被拒记忆)
 // [OUTPUT] AGY_NODE_PROVIDER_ID · AGY_LOCATION_REJECTION · classifyAgyProbeResponse · orderAgyProxies · orderAgyRepairProxies · buildSparkleAgyProviderDocument · buildAgyGroupConfig
 // [POS] `🎯 agy 专用` 的专属 provider：只收录通过了真实 agy 请求（HTTP 200）的节点。
 // 为什么不能复用 gemini.google.com 探测：cloudcode-pa 的地域校验发生在认证之后，无凭证请求
@@ -10,6 +11,7 @@
 import { AGY_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { isBlockedRegionNodeName, nodeMatchesRegion } from './regionPriority'
+import { partitionByReputation } from './sparkleAgyReputation'
 
 export const AGY_NODE_PROVIDER_ID = 'sparkle-agy' as const
 export const AGY_NODE_PROVIDER_FILENAME = 'sparkle-agy-proxies.yaml' as const
@@ -144,31 +146,47 @@ function orderByRegion(
 }
 
 /**
- * 生成 `sparkle-agy` provider 的节点集合：
- * 1. 有已验证可用节点时，**只**返回这些节点（“只包含能正常访问 agy 的节点”）；
- * 2. 尚无结论（冷启动 / 缓存过期）时，返回「未被确认不可用」的候选，保证 provider 不为空；
- * 3. 全部被确认不可用时仍然返回候选池 —— 空 provider 会让整组静默退化为 COMPATIBLE 直连，
+ * provider 的成员：
+ * 1. 有已验证可用节点时，**只**取这些节点（“只包含能正常访问 agy 的节点”）；
+ * 2. 尚无结论（冷启动 / 缓存过期）时，取「未被确认不可用」的候选，保证 provider 不为空；
+ * 3. 全部被确认不可用时仍然取候选池 —— 空 provider 会让整组静默退化为 COMPATIBLE 直连，
  *    此时由探测模块写日志告警，而不是悄悄断开代理。
+ */
+function selectProviderPool(
+  eligible: readonly AgyProxyRecord[],
+  probeCache: AgyNodeProbeCache | undefined
+): AgyProxyRecord[] {
+  const usableOf = (proxy: AgyProxyRecord): boolean | undefined =>
+    probeCache?.get(computeProxyNodeFingerprint(proxy))?.usable
+
+  const verified = eligible.filter((proxy) => usableOf(proxy) === true)
+  if (verified.length > 0) {
+    return verified
+  }
+  const notConfirmedUnusable = eligible.filter((proxy) => usableOf(proxy) !== false)
+  return notConfirmedUnusable.length > 0 ? notConfirmedUnusable : [...eligible]
+}
+
+/**
+ * 生成 `sparkle-agy` provider 的节点集合（成员见 `selectProviderPool`）。
+ * 顺序决定组选择失效时落到哪个节点（第一个）：最近被判定出口不可用的节点（见 sparkleAgyReputation）排在最后。
  */
 export function orderAgyProxies(
   proxies: readonly AgyProxyRecord[],
   regionPriority: readonly string[],
-  probeCache?: AgyNodeProbeCache
+  probeCache?: AgyNodeProbeCache,
+  flags?: ReadonlyMap<string, number>,
+  nowMs: number = Date.now()
 ): AgyProxyRecord[] {
-  const eligible = collectEligibleAgyProxies(proxies)
-
-  const verified = eligible.filter(
-    (proxy) => probeCache?.get(computeProxyNodeFingerprint(proxy))?.usable === true
+  const pool = selectProviderPool(collectEligibleAgyProxies(proxies), probeCache)
+  // 缓存里的「不可用」结论已由 selectProviderPool 处理；这里只按被拒记忆调整顺序。
+  const { clean, avoided } = partitionByReputation(
+    orderByRegion(pool, regionPriority, probeCache),
+    undefined,
+    flags,
+    nowMs
   )
-  if (verified.length > 0) {
-    return orderByRegion(verified, regionPriority, probeCache)
-  }
-
-  const notConfirmedUnusable = eligible.filter(
-    (proxy) => probeCache?.get(computeProxyNodeFingerprint(proxy))?.usable !== false
-  )
-  const pool = notConfirmedUnusable.length > 0 ? notConfirmedUnusable : eligible
-  return orderByRegion(pool, regionPriority, probeCache)
+  return [...clean, ...avoided]
 }
 
 /** 最近 30 分钟内验证过可用的记录才算「新鲜证据」，超过这个窗口的旧结论不参与排序加权。 */
@@ -177,23 +195,29 @@ const FRESH_VERIFIED_MS = 30 * 60 * 1000
 /** 本轮修复扫描刚试过的节点在 15 分钟内降级到「已尝试」组，保证下一轮先试没试过的候选（防止超时节点饿死后面的地区）。 */
 const REPAIR_ATTEMPT_WINDOW_MS = 15 * 60 * 1000
 
-/** 同一地区内：最近 30 分钟验证过的按 rtt 在前，其余保持订阅顺序。 */
+/**
+ * 同一地区内：最近 30 分钟验证过的按 rtt 在前，其次是更早验证过可用的（缓存有效期内）按 rtt，
+ * 从没测过的保持订阅顺序垫底 —— 有过通过记录的节点比毫无记录的更值得先试。
+ */
 function prioritizeFreshWithinRegion(
   bucket: readonly AgyProxyRecord[],
   probeCache: AgyNodeProbeCache | undefined,
   nowMs: number
 ): AgyProxyRecord[] {
   const fresh: SampledProxy[] = []
+  const verified: SampledProxy[] = []
   const others: AgyProxyRecord[] = []
   for (const proxy of bucket) {
     const record = probeCache?.get(computeProxyNodeFingerprint(proxy))
-    if (record?.usable === true && nowMs - record.checkedAt < FRESH_VERIFIED_MS) {
+    if (record?.usable !== true) {
+      others.push(proxy)
+    } else if (nowMs - record.checkedAt < FRESH_VERIFIED_MS) {
       fresh.push({ proxy, rttMs: record.rttMs })
     } else {
-      others.push(proxy)
+      verified.push({ proxy, rttMs: record.rttMs })
     }
   }
-  return [...sortByRtt(fresh), ...others]
+  return [...sortByRtt(fresh), ...sortByRtt(verified), ...others]
 }
 
 /** 严格按地区优先级分段（台湾 → 日本 → 韩国 → 新加坡 → 美国 → 其余）。 */
@@ -222,7 +246,8 @@ function orderWithinRegions(
 
 /**
  * 修复巡检顺序：**严格按地区优先级**（台湾 → 日本 → 韩国 → 新加坡 → 美国 → 其余），
- * 已确认不可用的节点统一排到最后；地区内优先「最近 30 分钟验证过」的节点（按 rtt），其余保持订阅顺序。
+ * 最近被判定出口不可用的节点（探测缓存里的「不可用」结论或 24 小时被拒记忆，见 sparkleAgyReputation）
+ * 统一排到最后、最久远被拒的在前；地区内的次序见 `prioritizeFreshWithinRegion`。
  *
  * 进度保证：`attempted` 记录本轮/近期刚试过的节点（含超时这种「不下结论」的），
  * 这些节点会被降级到「已尝试」组，下一轮先试没试过的候选 —— 否则 12 个全超时的 TW/JP 候选
@@ -234,20 +259,20 @@ export function orderAgyRepairProxies(
   probeCache: AgyNodeProbeCache | undefined,
   limit: number,
   nowMs: number = Date.now(),
-  attempted?: ReadonlyMap<string, number>
+  attempted?: ReadonlyMap<string, number>,
+  flags?: ReadonlyMap<string, number>
 ): AgyProxyRecord[] {
-  const eligible = collectEligibleAgyProxies(proxies)
-  const rejected: AgyProxyRecord[] = []
+  const { clean, avoided } = partitionByReputation(
+    collectEligibleAgyProxies(proxies),
+    probeCache,
+    flags,
+    nowMs
+  )
   const untried: AgyProxyRecord[] = []
   const recentlyTried: AgyProxyRecord[] = []
 
-  for (const proxy of eligible) {
-    const fingerprint = computeProxyNodeFingerprint(proxy)
-    if (probeCache?.get(fingerprint)?.usable === false) {
-      rejected.push(proxy)
-      continue
-    }
-    const lastAttempt = attempted?.get(fingerprint)
+  for (const proxy of clean) {
+    const lastAttempt = attempted?.get(computeProxyNodeFingerprint(proxy))
     if (lastAttempt !== undefined && nowMs - lastAttempt < REPAIR_ATTEMPT_WINDOW_MS) {
       recentlyTried.push(proxy)
     } else {
@@ -258,7 +283,7 @@ export function orderAgyRepairProxies(
   const ordered = [
     ...orderWithinRegions(untried, regionPriority, probeCache, nowMs),
     ...orderWithinRegions(recentlyTried, regionPriority, probeCache, nowMs),
-    ...rejected
+    ...avoided
   ]
 
   const max = Math.max(0, Math.floor(limit))
@@ -284,9 +309,10 @@ export function buildSparkleAgyProviderDocument(input: {
   proxies: readonly AgyProxyRecord[]
   regionPriority: readonly string[]
   probeCache?: AgyNodeProbeCache
+  flags?: ReadonlyMap<string, number>
 }): { proxies: AgyProxyRecord[] } {
   return {
-    proxies: orderAgyProxies(input.proxies, input.regionPriority, input.probeCache)
+    proxies: orderAgyProxies(input.proxies, input.regionPriority, input.probeCache, input.flags)
   }
 }
 

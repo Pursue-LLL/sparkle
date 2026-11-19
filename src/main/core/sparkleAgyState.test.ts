@@ -39,7 +39,8 @@ describe('sparkleAgyState', () => {
       emptyRounds: 0,
       repairSkipUntilMs: 0,
       pinUnknownStreak: 0,
-      attempts: new Map()
+      attempts: new Map(),
+      flags: new Map()
     })
   })
 
@@ -62,6 +63,7 @@ describe('sparkleAgyState', () => {
     first.state.repairSkipUntilMs = NOW + 30 * MINUTE_MS
     first.state.pinUnknownStreak = 1
     first.state.attempts.set('node-a', NOW - 5 * MINUTE_MS)
+    first.state.flags.set('node-b', NOW - 3 * HOUR_MS)
     await first.commit()
 
     const second = await store.openAgyState(NOW + MINUTE_MS)
@@ -77,7 +79,8 @@ describe('sparkleAgyState', () => {
         emptyRounds: -1,
         repairSkipUntilMs: 'soon',
         pinUnknownStreak: 3,
-        attempts: { good: NOW - MINUTE_MS, text: 'yesterday', missing: null }
+        attempts: { good: NOW - MINUTE_MS, text: 'yesterday', missing: null },
+        flags: ['not', 'a', 'map']
       }),
       'utf8'
     )
@@ -89,6 +92,7 @@ describe('sparkleAgyState', () => {
     assert.equal(state.repairSkipUntilMs, 0)
     assert.equal(state.pinUnknownStreak, 3)
     assert.deepEqual([...state.attempts], [['good', NOW - MINUTE_MS]])
+    assert.equal(state.flags.size, 0)
   })
 
   it('drops attempts older than the retention window and keeps the rest', async () => {
@@ -97,8 +101,8 @@ describe('sparkleAgyState', () => {
       JSON.stringify({
         attempts: {
           fresh: NOW - 1,
-          insideWindow: NOW - HOUR_MS,
-          outsideWindow: NOW - HOUR_MS - 1
+          insideWindow: NOW - HOUR_MS + 1,
+          outsideWindow: NOW - HOUR_MS
         }
       }),
       'utf8'
@@ -107,6 +111,24 @@ describe('sparkleAgyState', () => {
     const { state } = await store.openAgyState(NOW)
 
     assert.deepEqual([...state.attempts.keys()].sort(), ['fresh', 'insideWindow'])
+  })
+
+  it('forgets flags after 24 hours and remembers them before that', async () => {
+    writeFileSync(
+      stateFile(),
+      JSON.stringify({
+        flags: {
+          justFlagged: NOW,
+          insideMemory: NOW - 24 * HOUR_MS + 1,
+          outsideMemory: NOW - 24 * HOUR_MS
+        }
+      }),
+      'utf8'
+    )
+
+    const { state } = await store.openAgyState(NOW)
+
+    assert.deepEqual([...state.flags.keys()].sort(), ['insideMemory', 'justFlagged'])
   })
 
   it('writes nothing when nothing changed, and only once per change', async () => {
