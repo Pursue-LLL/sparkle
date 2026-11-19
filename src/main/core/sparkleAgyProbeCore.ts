@@ -1,7 +1,7 @@
 // [INPUT] 待巡检节点 · 已有缓存 · 内核 warning 告警 · 依赖注入（单点探测 / 时钟） ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         sparkleAgyProviderCore::agyProxyName/AgyNodeProbeRecord/AgyProbeVerdict/AgyProxyRecord (POS: agy provider 与分组配置)
-// [OUTPUT] runAgyAudit · shouldRepairAgyPin · resolveAgyAuditBackoffMs · AgyAuditResult ·
+// [OUTPUT] runAgyAudit · shouldRepairAgyPin · resolveAgyAuditBackoffMs · AGY_PIN_CHECK_INTERVAL_MS · AGY_PIN_UNKNOWN_STREAK_LIMIT · AgyAuditResult ·
 //          parseTcpDialFailureGroup · createAgyDialFailureWatch · AGY_DIAL_STORM_* / AGY_DIAL_OUTAGE_THRESHOLD
 // [POS] agy 巡检状态机（纯编排，无 I/O）：决定哪些节点被测、何时中止、缓存如何演进，以及何时不等定时复测、
 // 由生产流量的拨号失败风暴直接触发修复。
@@ -45,6 +45,13 @@ export interface AgyAuditResult {
   /** 本轮第一个判定可用的节点名；修复扫描用它作为最终选择。 */
   usableNode: string | null
 }
+
+/**
+ * pin（当前钉住的节点）就地复测周期：只发 1 个 1-token 请求、不切组、不断流。
+ * 可用缓存 TTL 是 12h（sparkleAgyProbeCache），30 分钟一轮已有 24 倍余量；
+ * 5 分钟一轮纯属浪费官方账号配额（实测 6.9k input/次）。
+ */
+export const AGY_PIN_CHECK_INTERVAL_MS = 30 * 60 * 1000
 
 /** pin 连续超时的容忍轮数：一次超时可能只是模型排队 / 上游整体变慢，连续两轮才认为出口不能用。 */
 export const AGY_PIN_UNKNOWN_STREAK_LIMIT = 2

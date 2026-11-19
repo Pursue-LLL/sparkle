@@ -4,7 +4,7 @@
 //         sparkleAgyCli (POS: 官方 agy CLI 请求) ·
 //         sparkleAgyGroupControl (POS: agy 组操作) ·
 //         sparkleAgyProbeSnapshot (POS: agy 展示快照)
-// [OUTPUT] useAgyRig · snapshot/syncSnapshot/groupControl/agyCli/probeChannel · runBootstrap/runDialFailureRepair/emitAlerts/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeDirs 与 sparkleAgyProbeWorld 的全部夹具
+// [OUTPUT] useAgyRig · restartProbe · snapshot/syncSnapshot/groupControl/agyCli/probeChannel · runBootstrap/runDialFailureRepair/emitAlerts/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeDirs 与 sparkleAgyProbeWorld 的全部夹具
 // [POS] sparkleAgyProbe 行为测试夹具的入口：装配模块替身、每个用例重建临时目录与被测模块，并提供驱动被测代码的异步辅助。
 // 替身见 sparkleAgyProbeMocks，临时文件系统见 sparkleAgyProbeDirs，场景状态见 sparkleAgyProbeWorld。仅供测试使用。
 
@@ -80,6 +80,8 @@ const AGY_MODULES = [
   './sparkleAgyCli',
   './sparkleAgyProbeSnapshot',
   './sparkleAgyGroupControl',
+  './sparkleAgyRound',
+  './sparkleAgyRepair',
   './sparkleAgyProbe'
 ] as const
 
@@ -118,8 +120,19 @@ const SECRET_ENV_NAMES = [
   'CLOUD_CODE_URL'
 ] as const
 
+/** 本用例里当前的探针模块实例。 */
+let probe: typeof AgyProbe
+
+/** 模拟进程重启：被测模块丢掉全部内存状态，只剩磁盘上的文件；配置与 mihomo（world）原样保留。 */
+export function restartProbe(): typeof AgyProbe {
+  for (const module of AGY_MODULES) {
+    delete require.cache[require.resolve(module)]
+  }
+  probe = require('./sparkleAgyProbe') as typeof AgyProbe
+  return probe
+}
+
 export function useAgyRig(): () => typeof AgyProbe {
-  let probe: typeof AgyProbe
   const savedEnv = new Map<string, string | undefined>()
 
   before(() => {
@@ -141,10 +154,7 @@ export function useAgyRig(): () => typeof AgyProbe {
     resetWorld()
     resetAgyDirs()
     mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: NOW })
-    for (const module of AGY_MODULES) {
-      delete require.cache[require.resolve(module)]
-    }
-    probe = require('./sparkleAgyProbe') as typeof AgyProbe
+    restartProbe()
   })
   afterEach(() => {
     mock.timers.reset()
