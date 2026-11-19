@@ -5,10 +5,14 @@ import {
   AGY_EVIDENCE_GRACE_MS,
   AGY_EVIDENCE_MIN_TENURE_MS,
   AGY_EVIDENCE_REJECTION_THRESHOLD,
+  AGY_EVIDENCE_REPAIR_LIMIT,
+  AGY_EVIDENCE_REPAIR_WINDOW_MS,
   AGY_EVIDENCE_WINDOW_MS,
+  canRepairOnEvidence,
   extractAgyRejections,
   judgeAgyPinByProduction,
   parseAgyLogFilePaths,
+  recentEvidenceRepairs,
   type AgyRejections
 } from './sparkleAgyEvidenceCore'
 import {
@@ -234,5 +238,38 @@ describe('judgeAgyPinByProduction', () => {
     const records = [recent(MINUTE_MS), recent(MINUTE_MS), recent(MINUTE_MS)]
 
     assert.equal(judge({ aicode: records }, { lastActivityMs: null }).verdict, 'rejected')
+  })
+})
+
+describe('evidence repair rate limit', () => {
+  const repairsAt = (...agoMs: number[]): number[] => agoMs.map((ago) => NOW - ago)
+
+  it('allows repairs until the hourly limit is reached', () => {
+    const history = Array.from({ length: AGY_EVIDENCE_REPAIR_LIMIT }, (_, index) => NOW - index)
+
+    assert.equal(canRepairOnEvidence([], NOW), true)
+    assert.equal(canRepairOnEvidence(history.slice(1), NOW), true)
+    assert.equal(canRepairOnEvidence(history, NOW), false)
+  })
+
+  it('counts a repair until exactly one window has passed since it', () => {
+    const history = repairsAt(
+      AGY_EVIDENCE_REPAIR_WINDOW_MS - 1,
+      AGY_EVIDENCE_REPAIR_WINDOW_MS - 2,
+      AGY_EVIDENCE_REPAIR_WINDOW_MS - 3
+    )
+
+    assert.equal(canRepairOnEvidence(history, NOW), false)
+    assert.equal(canRepairOnEvidence(history, NOW + 3), true)
+  })
+
+  it('keeps only the repairs that are still inside the window', () => {
+    const inside = repairsAt(MINUTE_MS, AGY_EVIDENCE_REPAIR_WINDOW_MS - 1)
+    const outside = repairsAt(
+      AGY_EVIDENCE_REPAIR_WINDOW_MS,
+      AGY_EVIDENCE_REPAIR_WINDOW_MS + MINUTE_MS
+    )
+
+    assert.deepEqual(recentEvidenceRepairs([...outside, ...inside], NOW), inside)
   })
 })

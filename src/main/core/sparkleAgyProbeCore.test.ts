@@ -35,7 +35,7 @@ describe('runAgyAudit', () => {
     ])
 
     const result = await runAgyAudit(
-      { pending: NODES, cache, budgetMs: 60_000 },
+      { pending: NODES, cache, budgetMs: 60_000, probeTimeoutMs: 60_000 },
       {
         now: () => 1000,
         probeNode: async (node) => {
@@ -50,6 +50,7 @@ describe('runAgyAudit', () => {
       probed: 2,
       usable: 1,
       aborted: false,
+      outOfTime: false,
       usableNode: '美国LA-优化2-GPT'
     })
     assert.deepEqual(cache.get(computeProxyNodeFingerprint(NODES[0]!)), {
@@ -71,7 +72,7 @@ describe('runAgyAudit', () => {
     const probed: string[] = []
 
     const result = await runAgyAudit(
-      { pending: NODES, cache, budgetMs: 60_000, stopOnUsable: true },
+      { pending: NODES, cache, budgetMs: 60_000, probeTimeoutMs: 60_000, stopOnUsable: true },
       {
         probeNode: async (node) => {
           probed.push(node)
@@ -85,6 +86,7 @@ describe('runAgyAudit', () => {
       probed: 1,
       usable: 1,
       aborted: false,
+      outOfTime: false,
       usableNode: '新加坡-优化2-GPT'
     })
     assert.equal(cache.size, 1)
@@ -95,7 +97,7 @@ describe('runAgyAudit', () => {
     const probed: string[] = []
 
     const result = await runAgyAudit(
-      { pending: NODES, cache, budgetMs: 60_000, stopOnUsable: true },
+      { pending: NODES, cache, budgetMs: 60_000, probeTimeoutMs: 60_000, stopOnUsable: true },
       {
         probeNode: async (node) => {
           probed.push(node)
@@ -105,7 +107,13 @@ describe('runAgyAudit', () => {
     )
 
     assert.deepEqual(probed, ['新加坡-优化2-GPT', '美国LA-优化2-GPT', '🇯🇵 日本 02'])
-    assert.deepEqual(result, { probed: 3, usable: 1, aborted: false, usableNode: '🇯🇵 日本 02' })
+    assert.deepEqual(result, {
+      probed: 3,
+      usable: 1,
+      aborted: false,
+      outOfTime: false,
+      usableNode: '🇯🇵 日本 02'
+    })
   })
 
   it('records every attempted node (including undecided timeouts) for repair progress', async () => {
@@ -113,7 +121,7 @@ describe('runAgyAudit', () => {
     const attempted = new Map<string, number>()
 
     await runAgyAudit(
-      { pending: NODES, cache, budgetMs: 60_000, attempted },
+      { pending: NODES, cache, budgetMs: 60_000, probeTimeoutMs: 60_000, attempted },
       {
         now: () => 1000,
         probeNode: async (node) =>
@@ -132,7 +140,7 @@ describe('runAgyAudit', () => {
     const probed: string[] = []
 
     const result = await runAgyAudit(
-      { pending: NODES, cache, budgetMs: 60_000 },
+      { pending: NODES, cache, budgetMs: 60_000, probeTimeoutMs: 60_000 },
       {
         now: () => 1000,
         probeNode: async (node) => {
@@ -149,6 +157,7 @@ describe('runAgyAudit', () => {
       probed: 1,
       usable: 1,
       aborted: true,
+      outOfTime: false,
       usableNode: '新加坡-优化2-GPT'
     })
   })
@@ -158,7 +167,7 @@ describe('runAgyAudit', () => {
     let clock = 0
 
     const result = await runAgyAudit(
-      { pending: NODES, cache, budgetMs: 500 },
+      { pending: NODES, cache, budgetMs: 500, probeTimeoutMs: 60_000 },
       {
         now: () => clock,
         probeNode: async () => {
@@ -172,6 +181,7 @@ describe('runAgyAudit', () => {
       probed: 1,
       usable: 1,
       aborted: true,
+      outOfTime: false,
       usableNode: '新加坡-优化2-GPT'
     })
   })
@@ -181,7 +191,7 @@ describe('runAgyAudit', () => {
     let clock = 0
 
     const result = await runAgyAudit(
-      { pending: NODES, cache, budgetMs: 500 },
+      { pending: NODES, cache, budgetMs: 500, probeTimeoutMs: 60_000 },
       {
         now: () => clock,
         probeNode: async () => {
@@ -192,15 +202,27 @@ describe('runAgyAudit', () => {
     )
 
     // 第 2 个节点开始时恰好用掉 500ms：预算「超过」才中止，所以第 2 个还要测；第 3 个开始时已超出。
-    assert.deepEqual(result, { probed: 2, usable: 0, aborted: true, usableNode: null })
+    assert.deepEqual(result, {
+      probed: 2,
+      usable: 0,
+      aborted: true,
+      outOfTime: false,
+      usableNode: null
+    })
   })
 
   it('handles an empty pending list', async () => {
     const result = await runAgyAudit(
-      { pending: [], cache: new Map(), budgetMs: 1000 },
+      { pending: [], cache: new Map(), budgetMs: 1000, probeTimeoutMs: 60_000 },
       { probeNode: async () => outcomeOf('usable') }
     )
-    assert.deepEqual(result, { probed: 0, usable: 0, aborted: false, usableNode: null })
+    assert.deepEqual(result, {
+      probed: 0,
+      usable: 0,
+      aborted: false,
+      outOfTime: false,
+      usableNode: null
+    })
   })
 })
 
@@ -258,7 +280,7 @@ describe('runAgyAudit remembers rejections', () => {
     const flags = new Map<string, number>()
 
     await runAgyAudit(
-      { pending: NODES, cache: new Map(), budgetMs: 60_000, flags },
+      { pending: NODES, cache: new Map(), budgetMs: 60_000, probeTimeoutMs: 60_000, flags },
       verdictByNode({ '新加坡-优化2-GPT': 'unusable', '美国LA-优化2-GPT': 'usable' })
     )
 
@@ -269,7 +291,7 @@ describe('runAgyAudit remembers rejections', () => {
     const flags = new Map([[computeProxyNodeFingerprint(us), 1000]])
 
     await runAgyAudit(
-      { pending: [us], cache: new Map(), budgetMs: 60_000, flags },
+      { pending: [us], cache: new Map(), budgetMs: 60_000, probeTimeoutMs: 60_000, flags },
       verdictByNode({ '美国LA-优化2-GPT': 'usable' })
     )
 
@@ -280,7 +302,7 @@ describe('runAgyAudit remembers rejections', () => {
     const flags = new Map([[computeProxyNodeFingerprint(jp), 1000]])
 
     await runAgyAudit(
-      { pending: [jp], cache: new Map(), budgetMs: 60_000, flags },
+      { pending: [jp], cache: new Map(), budgetMs: 60_000, probeTimeoutMs: 60_000, flags },
       verdictByNode({ '🇯🇵 日本 02': 'unusable' })
     )
 
@@ -291,7 +313,7 @@ describe('runAgyAudit remembers rejections', () => {
     const flags = new Map<string, number>()
 
     await runAgyAudit(
-      { pending: NODES, cache: new Map(), budgetMs: 60_000, flags },
+      { pending: NODES, cache: new Map(), budgetMs: 60_000, probeTimeoutMs: 60_000, flags },
       verdictByNode({})
     )
 
@@ -300,7 +322,7 @@ describe('runAgyAudit remembers rejections', () => {
 
   it('audits normally when no flag memory is supplied', async () => {
     const result = await runAgyAudit(
-      { pending: [sg], cache: new Map(), budgetMs: 60_000 },
+      { pending: [sg], cache: new Map(), budgetMs: 60_000, probeTimeoutMs: 60_000 },
       verdictByNode({ '新加坡-优化2-GPT': 'unusable' })
     )
 

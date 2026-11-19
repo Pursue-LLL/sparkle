@@ -2,7 +2,7 @@
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         sparkleAgyProviderCore::agyProxyName/AgyNodeProbeRecord/AgyProbeVerdict/AgyProxyRecord (POS: agy provider 与分组配置) ·
 //         sparkleAgyReputation::flagAgyNode/AgyFlags (POS: agy 节点被拒记忆)
-// [OUTPUT] runAgyAudit · shouldRepairAgyPin · resolveAgyAuditBackoffMs · AGY_PIN_CHECK_INTERVAL_MS · AGY_PIN_UNKNOWN_STREAK_LIMIT · AgyAuditResult ·
+// [OUTPUT] runAgyAudit · shouldRepairAgyPin · isPinCheckDue · resolveAgyAuditBackoffMs · resolveProbeTimeoutMs · AGY_PIN_CHECK_INTERVAL_MS · AGY_DUTY_TICK_MS · AGY_HEADLESS_DEADLINE_MS · AGY_MIN_PROBE_TIMEOUT_MS · AGY_PIN_UNKNOWN_STREAK_LIMIT · AgyAuditResult ·
 //          parseTcpDialFailureGroup · createAgyDialFailureWatch · AGY_DIAL_STORM_* / AGY_DIAL_OUTAGE_THRESHOLD
 // [POS] agy 巡检状态机（纯编排，无 I/O）：决定哪些节点被测、何时中止、缓存如何演进，以及何时不等定时复测、
 // 由生产流量的拨号失败风暴直接触发修复。
@@ -25,7 +25,8 @@ export interface AgyAuditOutcome {
 }
 
 export interface AgyAuditDeps {
-  probeNode: (nodeName: string) => Promise<AgyAuditOutcome>
+  /** timeoutMs 已按截止时间收紧：探测不会拖过截止时间。 */
+  probeNode: (nodeName: string, timeoutMs: number) => Promise<AgyAuditOutcome>
   now?: () => number
 }
 
@@ -34,6 +35,10 @@ export interface AgyAuditInput {
   cache: Map<string, AgyNodeProbeRecord>
   /** 整轮巡检预算；超时后剩余节点留待下一轮。 */
   budgetMs: number
+  /** 单个节点探测的超时上限；慢 ≠ 坏，超时只记 unknown。 */
+  probeTimeoutMs: number
+  /** 绝对截止时间（ms）：剩余时间不够一次有意义的探测就不再开新的；省略表示不设限。 */
+  deadlineAtMs?: number
   /** 修复扫描：拿到第一个 usable 就停，避免为了补全面把用户流量在更多候选节点之间来回拖。 */
   stopOnUsable?: boolean
   /** 本轮尝试过的节点（含超时这种不下结论的），供下一轮排序跳过、保证进度。 */
@@ -46,6 +51,8 @@ export interface AgyAuditResult {
   probed: number
   usable: number
   aborted: boolean
+  /** 因截止时间到了而中止：没扫完候选，不代表池子里没有可用节点。 */
+  outOfTime: boolean
   /** 本轮第一个判定可用的节点名；修复扫描用它作为最终选择。 */
   usableNode: string | null
 }
@@ -56,6 +63,36 @@ export interface AgyAuditResult {
  * 5 分钟一轮纯属浪费官方账号配额（实测 6.9k input/次）。
  */
 export const AGY_PIN_CHECK_INTERVAL_MS = 30 * 60 * 1000
+
+/** 常驻进程里「到期巡检」的节拍：每拍只读日志和状态（毫秒级），真正发探测请求的节奏由各自的到期时间决定。 */
+export const AGY_DUTY_TICK_MS = 60 * 1000
+
+/**
+ * 无头调度进程从启动起必须收尾的时限：调度间隔 5 分钟，进程要在下一次被唤起之前退出，
+ * 来不及的步骤留给下一次（状态落盘，不会丢）。
+ */
+export const AGY_HEADLESS_DEADLINE_MS = 210 * 1000
+
+/** 低于这个时长的超时没有意义：CLI 冷启动加一次模型请求都跑不完，宁可不发。 */
+export const AGY_MIN_PROBE_TIMEOUT_MS = 30 * 1000
+
+/**
+ * 一次探测在截止时间约束下能用的超时：不超过上限，也不超过截止前剩下的时间；
+ * 剩下的时间不够一次有意义的探测时返回 undefined，调用方不发。
+ */
+export function resolveProbeTimeoutMs(
+  limitMs: number,
+  deadlineAtMs: number,
+  nowMs: number
+): number | undefined {
+  const timeoutMs = Math.min(limitMs, deadlineAtMs - nowMs)
+  return timeoutMs >= AGY_MIN_PROBE_TIMEOUT_MS ? timeoutMs : undefined
+}
+
+/** 距上次复测已满一个周期；系统时钟被回拨时按到期处理，不能因此永远不复测。 */
+export function isPinCheckDue(lastCheckMs: number, nowMs: number): boolean {
+  return nowMs < lastCheckMs || nowMs - lastCheckMs >= AGY_PIN_CHECK_INTERVAL_MS
+}
 
 /** pin 连续超时的容忍轮数：一次超时可能只是模型排队 / 上游整体变慢，连续两轮才认为出口不能用。 */
 export const AGY_PIN_UNKNOWN_STREAK_LIMIT = 2
@@ -104,15 +141,23 @@ export async function runAgyAudit(
 
   for (const proxy of input.pending) {
     if (now() - startedAt > input.budgetMs) {
-      return { probed, usable, aborted: true, usableNode }
+      return { probed, usable, aborted: true, outOfTime: false, usableNode }
+    }
+    const timeoutMs = resolveProbeTimeoutMs(
+      input.probeTimeoutMs,
+      input.deadlineAtMs ?? Number.POSITIVE_INFINITY,
+      now()
+    )
+    if (timeoutMs === undefined) {
+      return { probed, usable, aborted: true, outOfTime: true, usableNode }
     }
 
     const name = agyProxyName(proxy)
     const fingerprint = computeProxyNodeFingerprint(proxy)
     input.attempted?.set(fingerprint, now())
-    const outcome = await deps.probeNode(name)
+    const outcome = await deps.probeNode(name, timeoutMs)
     if (outcome.fatal) {
-      return { probed, usable, aborted: true, usableNode }
+      return { probed, usable, aborted: true, outOfTime: false, usableNode }
     }
     // 限流 / 超时等无法定性的结果不写缓存，避免把健康节点误判成不可用。
     if (outcome.verdict === 'unknown') {
@@ -137,7 +182,7 @@ export async function runAgyAudit(
     }
   }
 
-  return { probed, usable, aborted: false, usableNode }
+  return { probed, usable, aborted: false, outOfTime: false, usableNode }
 }
 
 /** 窗口内 agy 组的拨号失败达到该条数，判定当前出口已不可用：生产流量的失败是比定时复测更强的证据。 */

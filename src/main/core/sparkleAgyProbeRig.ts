@@ -4,7 +4,7 @@
 //         sparkleAgyCli (POS: 官方 agy CLI 请求) ·
 //         sparkleAgyGroupControl (POS: agy 组操作) ·
 //         sparkleAgyProbeSnapshot (POS: agy 展示快照)
-// [OUTPUT] useAgyRig · restartProbe · snapshot/syncSnapshot/groupControl/agyCli/probeChannel · runBootstrap/runDialFailureRepair/emitAlerts/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeDirs 与 sparkleAgyProbeWorld 的全部夹具
+// [OUTPUT] useAgyRig · restartProbe · snapshot/syncSnapshot/groupControl/agyCli/probeChannel · runBootstrap/runDueDuty/runDialFailureRepair/emitAlerts/drive/expireHangingProbe/settle · 重导出 sparkleAgyProbeDirs 与 sparkleAgyProbeWorld 的全部夹具
 // [POS] sparkleAgyProbe 行为测试夹具的入口：装配模块替身、每个用例重建临时目录与被测模块，并提供驱动被测代码的异步辅助。
 // 替身见 sparkleAgyProbeMocks，临时文件系统见 sparkleAgyProbeDirs，场景状态见 sparkleAgyProbeWorld。仅供测试使用。
 
@@ -60,6 +60,11 @@ export function runBootstrap(agy: typeof AgyProbe): Promise<void> {
   return drive(agy.bootstrapSparkleAgyProvider())
 }
 
+/** 跑完一次到期巡检（常驻进程每分钟一拍 / 无头调度进程每次被唤起一次）；deadlineAtMs 省略表示不设限。 */
+export function runDueDuty(agy: typeof AgyProbe, deadlineAtMs?: number): Promise<void> {
+  return drive(agy.runSparkleAgyDueDuty({ deadlineAtMs }))
+}
+
 /** 跑完一轮被动入口（拨号失败风暴触发的修复）。 */
 export function runDialFailureRepair(agy: typeof AgyProbe): Promise<void> {
   return drive(agy.repairSparkleAgyPinOnDialFailures())
@@ -81,6 +86,7 @@ const AGY_MODULES = [
   './sparkleAgyProbeSnapshot',
   './sparkleAgyGroupControl',
   './sparkleAgyRound',
+  './sparkleAgyPinCheck',
   './sparkleAgyRepair',
   './sparkleAgyProbe'
 ] as const

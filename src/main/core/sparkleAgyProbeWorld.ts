@@ -1,10 +1,11 @@
-// [INPUT] node:assert · proxyNodeFingerprintCore
-// [OUTPUT] NOW · 时间常量 · 节点夹具（TW1…US1/HK1/ANYTLS/NODES/POOL）· cacheKey/cacheRecord · CliOutcome 及常用结局（含只有 CLI 日志里才有 aicode 拒绝 / 超时记录的两种日志与结局）· dialFailureLine · world · resetWorld · callsStarting · outcomesByNode · assertLog/assertNoLog
+// [INPUT] node:assert · proxyNodeFingerprintCore · sparkleAgyEvidence::AgyProductionEvidence (POS: agy 出口生产证据采集)
+// [OUTPUT] NOW · 时间常量 · 节点夹具（TW1…US1/HK1/ANYTLS/NODES/POOL）· cacheKey/cacheRecord · CliOutcome 及常用结局（含只有 CLI 日志里才有 aicode 拒绝 / 超时记录的两种日志与结局）· dialFailureLine · productionEvidence · world · resetWorld · callsStarting · outcomesByNode · assertLog/assertNoLog
 // [POS] sparkleAgyProbe 行为测试的共享状态与夹具数据：world 是替身（配置、mihomo 控制器、假 agy CLI）读写的唯一状态，
 // 用例通过它编排场景、读取观察结果。仅供测试使用。
 
 import assert from 'node:assert/strict'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
+import type { AgyProductionEvidence } from './sparkleAgyEvidence'
 
 export const NOW = 1_700_000_000_000
 export const MINUTE_MS = 60 * 1000
@@ -83,6 +84,16 @@ export const OK_BUT_AICODE_REJECTED: CliOutcome = { kind: 'ok', log: AICODE_REJE
 export const dialFailureLine = (group: string, source = '198.18.0.1:62341(agy)'): string =>
   `[TCP] dial ${group} (match DomainKeyword/cloudcode-pa) ${source} --> daily-cloudcode-pa.googleapis.com:443 error: 36.232.22.213:18115 connect error: dial tcp 36.232.22.213:18115: i/o timeout`
 
+/** 用户真实 agy 会话的生产证据：`rejections` 是生成请求被拒的记录时间，`lastActivityMs` 是最近一次会话写日志的时间。 */
+export function productionEvidence(
+  input: { rejections?: number[]; lastActivityMs?: number | null } = {}
+): AgyProductionEvidence {
+  return {
+    rejections: { generation: input.rejections ?? [], aicode: [] },
+    lastActivityMs: input.lastActivityMs ?? null
+  }
+}
+
 export interface Spawned {
   bin: string
   args: string[]
@@ -128,6 +139,8 @@ export const world = {
   onSpawn: undefined as undefined | ((count: number) => void),
   /** subscribeMihomoAlerts 登记的监听器；用例经 emitAlert 向它们投递内核告警。 */
   alertListeners: [] as Array<(log: ControllerLog) => void>,
+  /** 用户真实 agy 会话日志里的生产证据；collectAgyProductionEvidence 的替身读它。 */
+  evidence: productionEvidence(),
   calls: [] as string[],
   logs: [] as string[],
   logFailure: false
@@ -161,6 +174,7 @@ export function resetWorld(): void {
   world.hangingTimeoutMs = undefined
   world.onSpawn = undefined
   world.alertListeners = []
+  world.evidence = productionEvidence()
   world.calls = []
   world.logs = []
   world.logFailure = false

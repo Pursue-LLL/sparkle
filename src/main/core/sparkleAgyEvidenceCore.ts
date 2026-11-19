@@ -1,5 +1,5 @@
 // [INPUT] 官方 agy CLI 的运行日志文本（glog 格式）· agy 进程命令行文本 · 当前时间 · pin 上任时间
-// [OUTPUT] AGY_EVIDENCE_* · extractAgyRejections · parseAgyLogFilePaths · judgeAgyPinByProduction · AgyRejections · AgyProductionJudgement
+// [OUTPUT] AGY_EVIDENCE_* · extractAgyRejections · parseAgyLogFilePaths · judgeAgyPinByProduction · recentEvidenceRepairs · canRepairOnEvidence · AgyRejections · AgyProductionVerdict · AgyProductionJudgement
 // [POS] agy 出口的生产证据（纯函数，无 I/O）：用户真实 agy 会话自己的日志逐条记着 Google 对出口地区的每一次拒绝，
 // 这比任何探测都直接 —— 探测是对节点抽样，日志是用户流量本身。
 // 判定是无状态的（只看最近一个窗口），不依赖进程内记忆：GUI 重启、无头调度进程每次从头判定，结论一致。
@@ -136,4 +136,21 @@ export function judgeAgyPinByProduction(input: {
     verdict: observedSincePin && tenuredLongEnough && records === 0 ? 'healthy' : 'unobserved',
     records
   }
+}
+
+/**
+ * 生产证据触发的修复，每小时最多这么多次。日志里的拒绝不一定属于这个出口（会话绕开了 Sparkle 的路由）、
+ * 也可能是账号级问题，换节点救不了；不设上限，出口会因为同一批记录一个接一个地被换掉，连带切断正在进行的会话。
+ */
+export const AGY_EVIDENCE_REPAIR_LIMIT = 3
+export const AGY_EVIDENCE_REPAIR_WINDOW_MS = 60 * 60_000
+
+/** 仍在限速窗口内的证据修复时间。 */
+export function recentEvidenceRepairs(history: readonly number[], nowMs: number): number[] {
+  return history.filter((at) => nowMs - at < AGY_EVIDENCE_REPAIR_WINDOW_MS)
+}
+
+/** 窗口内已做的证据修复未达上限，才允许再做一次。 */
+export function canRepairOnEvidence(history: readonly number[], nowMs: number): boolean {
+  return recentEvidenceRepairs(history, nowMs).length < AGY_EVIDENCE_REPAIR_LIMIT
 }

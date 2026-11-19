@@ -4,7 +4,7 @@
 // 冷却、订阅幂等、异常自愈。纯判定见 sparkleAgyProbeDialWatch.test.ts，修复扫描的分支见 sparkleAgyProbeRepair.test.ts。
 
 import assert from 'node:assert/strict'
-import { describe, it, mock } from 'node:test'
+import { beforeEach, describe, it, mock } from 'node:test'
 import { GATE_OPEN } from './dedicatedGroupsRig'
 import {
   AGY_DIAL_OUTAGE_THRESHOLD,
@@ -16,6 +16,7 @@ import {
   HANG,
   LOCATION,
   MINUTE_MS,
+  NOW,
   assertLog,
   assertNoLog,
   callsStarting,
@@ -27,7 +28,8 @@ import {
   runDialFailureRepair,
   settle,
   useAgyRig,
-  world
+  world,
+  writeState
 } from './sparkleAgyProbeRig'
 
 const agy = useAgyRig()
@@ -149,9 +151,20 @@ describe('sparkleAgyProbe 被动入口：与定时轮互斥', () => {
 describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
   const agyFailure = dialFailureLine(AGY_GROUP)
 
+  beforeEach(() => {
+    // 常驻巡检每分钟一拍：这组用例钉死的是被动入口，推进时钟时不能让 pin 复测顺带到期。
+    writeState({ lastPinCheckMs: NOW })
+  })
+
   /** 订阅触发的修复是脱离调用方的后台任务：让它在假时钟下跑完。 */
   async function drain(): Promise<void> {
     await settle()
+    await settle()
+  }
+
+  /** 推进假时钟，并让途中到点的常驻巡检拍跑完：它们占着「进行中」，来不及跑完时被动修复会让路。 */
+  async function advance(ms: number): Promise<void> {
+    mock.timers.tick(ms)
     await settle()
   }
 
@@ -187,7 +200,7 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
     assertQuiet()
 
     open = true
-    mock.timers.tick(AGY_DIAL_STORM_COOLDOWN_MS)
+    await advance(AGY_DIAL_STORM_COOLDOWN_MS)
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
     await drain()
 
@@ -229,12 +242,12 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
     await drain()
     assert.equal(logCount('repaired pin'), 1)
 
-    mock.timers.tick(AGY_DIAL_STORM_COOLDOWN_MS - 1)
+    await advance(AGY_DIAL_STORM_COOLDOWN_MS - 1)
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
     await drain()
     assert.equal(logCount('repaired pin'), 1, '冷却中')
 
-    mock.timers.tick(1)
+    await advance(1)
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
     await drain()
     assert.equal(logCount('repaired pin'), 2)
@@ -249,7 +262,7 @@ describe('sparkleAgyProbe 被动入口：内核告警订阅', () => {
 
     world.profileFailure = undefined
     world.logFailure = false
-    mock.timers.tick(AGY_DIAL_STORM_COOLDOWN_MS)
+    await advance(AGY_DIAL_STORM_COOLDOWN_MS)
     emitAlerts(agyFailure, AGY_DIAL_STORM_THRESHOLD)
     await drain()
 

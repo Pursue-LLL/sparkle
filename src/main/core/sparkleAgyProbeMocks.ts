@@ -2,7 +2,7 @@
 //         cursorProxyGroup::MAIL_PROBE_HIDDEN_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         syncFsPromisesRig::mockFsPromisesSync (POS: fs/promises 同步化夹具)
 // [OUTPUT] installMocks
-// [POS] sparkleAgy 行为测试的模块替身：配置、mihomo 控制器与日志用 world 驱动的替身，agy CLI 用可编排结局的假子进程。
+// [POS] sparkleAgy 行为测试的模块替身：配置、mihomo 控制器、生产证据与日志用 world 驱动的替身，agy CLI 用可编排结局的假子进程。
 // 隐藏探测通道与线上 `🎯 agy 专用` 组是两个不同的组：通道固定的节点记在 world.channelNode，线上选择记在 world.selection。
 // 仅供测试使用。
 
@@ -145,6 +145,11 @@ export function installMocks(): void {
         return world.profile
       },
       getProfile: async () => ({ proxies: world.profileProxies })
+    }
+  })
+  mock.module('./sparkleAgyEvidence', {
+    exports: {
+      collectAgyProductionEvidence: async () => structuredClone(world.evidence)
     }
   })
   mock.module('./provider', {

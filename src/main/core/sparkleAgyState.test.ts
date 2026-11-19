@@ -35,12 +35,15 @@ describe('sparkleAgyState', () => {
     const { state } = await store.openAgyState(NOW)
 
     assert.deepEqual(state, {
+      pin: null,
+      lastPinCheckMs: 0,
       phase: 'healthy',
       emptyRounds: 0,
       repairSkipUntilMs: 0,
       pinUnknownStreak: 0,
       attempts: new Map(),
-      flags: new Map()
+      flags: new Map(),
+      evidenceRepairs: []
     })
   })
 
@@ -64,6 +67,9 @@ describe('sparkleAgyState', () => {
     first.state.pinUnknownStreak = 1
     first.state.attempts.set('node-a', NOW - 5 * MINUTE_MS)
     first.state.flags.set('node-b', NOW - 3 * HOUR_MS)
+    first.state.pin = { name: 'node-a', sinceMs: NOW - 20 * MINUTE_MS }
+    first.state.lastPinCheckMs = NOW - 10 * MINUTE_MS
+    first.state.evidenceRepairs = [NOW - 30 * MINUTE_MS]
     await first.commit()
 
     const second = await store.openAgyState(NOW + MINUTE_MS)
@@ -80,7 +86,10 @@ describe('sparkleAgyState', () => {
         repairSkipUntilMs: 'soon',
         pinUnknownStreak: 3,
         attempts: { good: NOW - MINUTE_MS, text: 'yesterday', missing: null },
-        flags: ['not', 'a', 'map']
+        flags: ['not', 'a', 'map'],
+        pin: { name: '', sinceMs: NOW },
+        lastPinCheckMs: -5,
+        evidenceRepairs: [NOW - MINUTE_MS, 'recently', null, Number.NaN]
       }),
       'utf8'
     )
@@ -93,6 +102,35 @@ describe('sparkleAgyState', () => {
     assert.equal(state.pinUnknownStreak, 3)
     assert.deepEqual([...state.attempts], [['good', NOW - MINUTE_MS]])
     assert.equal(state.flags.size, 0)
+    assert.equal(state.pin, null)
+    assert.equal(state.lastPinCheckMs, 0)
+    assert.deepEqual(state.evidenceRepairs, [NOW - MINUTE_MS])
+  })
+
+  it('rejects a pin that lacks a name or a numeric tenure start', async () => {
+    for (const pin of [
+      null,
+      'node',
+      { name: 'node' },
+      { sinceMs: NOW },
+      { name: 1, sinceMs: NOW }
+    ]) {
+      writeFileSync(stateFile(), JSON.stringify({ pin }), 'utf8')
+
+      assert.equal((await store.openAgyState(NOW)).state.pin, null, JSON.stringify(pin))
+    }
+  })
+
+  it('forgets evidence repairs once they leave the rate-limit window', async () => {
+    writeFileSync(
+      stateFile(),
+      JSON.stringify({ evidenceRepairs: [NOW - HOUR_MS, NOW - HOUR_MS + 1, NOW] }),
+      'utf8'
+    )
+
+    const { state } = await store.openAgyState(NOW)
+
+    assert.deepEqual(state.evidenceRepairs, [NOW - HOUR_MS + 1, NOW])
   })
 
   it('drops attempts older than the retention window and keeps the rest', async () => {
