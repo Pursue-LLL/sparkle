@@ -129,6 +129,12 @@ describe('agent-sparkle-upgrade.sh docs gate', () => {
       /Remote sync: .*skipped/,
       '迷你仓库不是 git 仓库：提示跑了，且只是跳过'
     )
-    assert.ok(result.calls.length > 0, '门禁放行之后升级应当继续走下一步')
+    // CI 提示的探针被桩弄失败了（退出 99），升级照样继续走到装前清理——提示不拦截。
+    assert.match(result.stderr, /CI status: probe did not run — skipped/)
+    assert.deepEqual(
+      result.calls.map((call) => path.basename(call)),
+      ['ciStatusCli.mts', 'sparkle-pre-install-hygiene.mts'],
+      '门禁放行之后：先是 CI 提示，再是装前清理'
+    )
   })
 })

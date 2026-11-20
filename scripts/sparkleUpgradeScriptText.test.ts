@@ -277,17 +277,30 @@ describe('install transaction structure', () => {
     }
   })
 
-  it('reports remote divergence after the docs gate and before any step that touches files, and only ever warns', () => {
+  it('reports remote state after the docs gate and before any step that touches files, and only ever warns', () => {
     const script = readScript('agent-sparkle-upgrade.sh')
     const gate = script.indexOf('scripts/docDrift/docDriftCli.mts"')
-    const report = script.indexOf('\nreport_remote_sync\n')
+    const sync = script.indexOf('\nreport_remote_sync\n')
+    const ci = script.indexOf('\nreport_ci_status\n')
     const hygiene = script.indexOf('scripts/sparkle-pre-install-hygiene.mts"')
-    assert.ok(gate !== -1 && report !== -1 && hygiene !== -1, 'all three call sites must exist')
-    assert.ok(gate < report && report < hygiene, 'order: docs gate, remote sync report, hygiene')
-    // 联网会让装包路径多一个被代理抖动打断的失败点；fail / exit 会让一件与构建无关的状态拦住装包。
-    const body = code(functionBody(script, 'report_remote_sync'))
-    assert.doesNotMatch(body, /\bgit\s+(fetch|pull|push|ls-remote|remote|clone)\b/)
-    assert.doesNotMatch(body, /\b(fail|exit)\b/)
+    assert.ok(
+      [gate, sync, ci, hygiene].every((at) => at !== -1),
+      'all four call sites must exist'
+    )
+    assert.ok(
+      gate < sync && sync < ci && ci < hygiene,
+      'order: docs gate, remote sync report, CI status report, hygiene'
+    )
+    // 同步提示只读本地引用：联网会让装包路径多一个被代理抖动打断的失败点；
+    // fail / exit 会让一件与构建无关的状态拦住装包。
+    const syncBody = code(functionBody(script, 'report_remote_sync'))
+    assert.doesNotMatch(syncBody, /\bgit\s+(fetch|pull|push|ls-remote|remote|clone)\b/)
+    assert.doesNotMatch(syncBody, /\b(fail|exit)\b/)
+    // CI 提示是构建与安装之前唯一联网的一步，所以它不能成为失败点：函数里没有 fail / exit，
+    // 探针（唯一联网的部分）的失败被吞掉，stderr 里的 Node 警告不进日志。
+    const ciBody = code(functionBody(script, 'report_ci_status'))
+    assert.doesNotMatch(ciBody, /\b(fail|exit)\b/)
+    assert.match(ciBody, /ciStatusCli\.mts" 2>\/dev\/null \|\| true\)"/)
   })
 
   it('removes the pnpm shim directory it creates on every way out of the script', () => {

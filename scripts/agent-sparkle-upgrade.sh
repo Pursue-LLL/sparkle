@@ -6,12 +6,15 @@
 #         scripts/install-sparkle-local.sh (POS: 本地安装的唯一入口，可回滚事务) ·
 #         scripts/upgrade-sparkle-local.sh (POS: 构建 + 安装的完整本地升级链路) ·
 #         scripts/sparkle-data-plane-readiness.mts (POS: 装后数据面就绪探测 SSOT) ·
+#         scripts/ciStatusCli.mts (POS: 远程分支 CI 状态提示的命令行入口，对 GitHub 状态徽章发一次限时请求，永远退出 0) ·
 #         SPARKLE_AGENT_FORCE_FULL_BUILD · SPARKLE_UPGRADE_ENTRY_LOCK_DIR · 本机 git 里已有的 upstream 引用（只读，不联网）
 # [OUTPUT] 一次完整的本地升级（先过文档门禁，必要时构建，再安装，再过装后门禁与订阅 due-check）· 日志行
 #          AGENT_UPGRADE_RESULT: version=… data_plane=PASS | SKIPPED_ALREADY_HEALTHY · 非零退出 = 升级失败或被拒绝 ·
-#          日志行 Remote sync: 本地与远程同步 / 有未推送的提交 / 落后 / 分叉（只提示，不影响退出码）
+#          日志行 Remote sync: 本地与远程同步 / 有未推送的提交 / 落后 / 分叉（只提示，不影响退出码）·
+#          日志行 CI status: 远程分支的 CI 是 passing / failing / 无状态，或「跳过」（只提示，不影响退出码）
 # [POS] Agent 本地升级的唯一入口（SSOT）：入口持原子锁，已有升级在跑就拒绝启动；文档与代码对不上就拒绝升级，
-#       这道门禁在所有清理、构建、安装之前；门禁之后只读地提示本地与远程有没有分叉。
+#       这道门禁在所有清理、构建、安装之前；门禁之后先只读地提示本地与远程有没有分叉（不联网），
+#       再提示远程分支的 CI 是红是绿（构建与安装开始之前唯一联网的一步，限时、只警告）。
 # Usage: bash scripts/agent-sparkle-upgrade.sh
 set -euo pipefail
 
@@ -101,6 +104,17 @@ report_remote_sync() {
   fi
 }
 report_remote_sync
+
+# 远程分支的 CI 红了没人看到，就会一直红下去，所以每次装包也顺带提示一次它此刻是红是绿。
+# 只警告、不拦截；有且只有一行 `CI status:` 日志（取不到或探针没跑起来也说一声「跳过」）。
+# 这是构建与安装开始之前唯一联网的一步：对 GitHub 的状态徽章发一次限时的 GET（上限见 ciStatusCore.ts），
+# 不走 REST API，不占匿名接口的每小时配额；失败只会多等到时限，不会改变退出码。
+report_ci_status() {
+  local line
+  line="$("$TSX" "$ROOT/scripts/ciStatusCli.mts" 2>/dev/null || true)"
+  log "${line:-CI status: probe did not run — skipped}"
+}
+report_ci_status
 
 log "Pre-install hygiene (journal truncate + disk pressure gate)..."
 if ! "$TSX" "$ROOT/scripts/sparkle-pre-install-hygiene.mts"; then
