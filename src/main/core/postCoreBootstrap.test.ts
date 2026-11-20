@@ -91,6 +91,7 @@ describe('postCoreBootstrap', () => {
         GATED
       )
       for (const background of [
+        'gemini:guard',
         'gemini:bootstrap',
         'gemini:loop',
         'mail:current-node',
@@ -103,6 +104,11 @@ describe('postCoreBootstrap', () => {
       ]) {
         assert.ok(calls.includes(background), background)
       }
+      assert.ok(
+        calls.indexOf('gemini:guard') < calls.indexOf('gemini:bootstrap') &&
+          calls.indexOf('gemini:bootstrap') < calls.indexOf('gemini:loop'),
+        'gemini guard starts before the audit'
+      )
       assert.ok(
         calls.indexOf('mail:current-node') < calls.indexOf('mail:bootstrap') &&
           calls.indexOf('mail:bootstrap') < calls.indexOf('mail:loop'),
@@ -153,6 +159,7 @@ describe('postCoreBootstrap', () => {
       behavior.failing = new Set([
         'sync',
         'fast:bootstrap',
+        'gemini:guard',
         'gemini:bootstrap',
         'mail:current-node',
         'mail:bootstrap',
@@ -170,6 +177,7 @@ describe('postCoreBootstrap', () => {
       for (const prefix of [
         '[PostCoreBootstrap]: runtime config sync failed: sync boom',
         '[SparkleFastOrder]: failed: fast:bootstrap boom',
+        '[SparkleGeminiGuard]: head guard start failed: gemini:guard boom',
         '[SparkleGeminiProbe]: bootstrap failed: gemini:bootstrap boom',
         '[SparkleMailProbe]: current node probe start failed: mail:current-node boom',
         '[SparkleMailProbe]: bootstrap failed: mail:bootstrap boom',

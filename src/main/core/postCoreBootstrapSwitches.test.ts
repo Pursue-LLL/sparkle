@@ -16,7 +16,7 @@ describe('postCoreBootstrap · 专用组开关', () => {
 
   const LOOPS_BY_GROUP: Record<DedicatedGroupId, string[]> = {
     grok: ['grok:loop'],
-    gemini: ['gemini:loop'],
+    gemini: ['gemini:guard', 'gemini:loop'],
     mail: ['mail:current-node', 'mail:loop'],
     agy: ['agy:loop']
   }

@@ -3,17 +3,19 @@ import { describe, it } from 'node:test'
 import {
   assertLog,
   cacheRecord,
-  dataFileNames,
   DAY_MS,
   HOUR_MS,
   NOW,
-  readCache,
   regionCache,
+  useGeminiRig
+} from './sparkleGeminiProbeRig'
+import {
+  dataFileNames,
+  readCache,
   removeDataDir,
-  useGeminiRig,
   writeCache,
   writeCacheRaw
-} from './sparkleGeminiProbeRig'
+} from './sparkleGeminiFilesHarness'
 
 describe('sparkleGeminiRegionCache load', () => {
   useGeminiRig()

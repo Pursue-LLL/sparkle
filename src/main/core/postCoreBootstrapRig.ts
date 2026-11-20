@@ -143,6 +143,9 @@ export function usePostCoreBootstrapRig(): () => typeof PostCoreBootstrap {
         startSparkleGeminiRegionAuditLoop: loopStep('gemini:loop')
       }
     })
+    mock.module('./sparkleGeminiCurrentNodeGuard', {
+      exports: { startSparkleGeminiCurrentNodeGuardLoop: loopStep('gemini:guard') }
+    })
     mock.module('./sparkleMailProbe', {
       exports: {
         bootstrapSparkleMailProvider: step('mail:bootstrap'),

@@ -1,6 +1,6 @@
 // [INPUT] sparkleMailProbe::loadCurrentMailProxies/loadSparkleMailProbeCache/writeSparkleMailProviderFromCache/ensureMailProviderReloaded (POS: 邮件 provider 同步) ·
 //         sparkleMailPortProbe::probeSingleNodeMailPorts (POS: 单节点 993/465 TLS Banner 校验) ·
-//         sparkleMailActivityCore::connectionChainsIncludeGroup/isMailGroupRecentlyActive (POS: 邮件活动判定) ·
+//         groupActivityCore::connectionChainsIncludeGroup/nextGroupActivityAtMs/isGroupRecentlyActive (POS: 专用组活动判定) ·
 //         mailTrafficRuleInjection::MAIL_TRAFFIC_RULE_BASES (POS: 邮件域名分流规则) ·
 //         mihomoApi::mihomoGetConnections/mihomoGroupDetail/subscribeMihomoLogs (POS: mihomo 控制器访问层) ·
 //         config::getAppConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
@@ -16,16 +16,16 @@
 import { getAppConfig } from '../config'
 import { appendAppLog } from '../utils/log'
 import { MAIL_DEDICATED_GROUP_NAME, MAIL_PROBE_HIDDEN_GROUP_NAME } from './cursorProxyGroup'
+import {
+  connectionChainsIncludeGroup,
+  isGroupRecentlyActive,
+  nextGroupActivityAtMs
+} from './groupActivityCore'
 import { MAIL_TRAFFIC_RULE_BASES } from './mailTrafficRuleInjection'
 import { mihomoGetConnections, mihomoGroupDetail, subscribeMihomoLogs } from './mihomoApi'
 import { isMihomoApiResourceNotFoundError } from './mihomoProxyDelayCore'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { resolveEffectiveRegionPriority } from './regionPriority'
-import {
-  connectionChainsIncludeGroup,
-  isMailGroupRecentlyActive,
-  nextMailActivityAtMs
-} from './sparkleMailActivityCore'
 import {
   ensureMailProviderReloaded,
   loadCurrentMailProxies,
@@ -38,6 +38,8 @@ import { probeSingleNodeMailPorts } from './sparkleMailPortProbe'
 import { runWhenEnabled, type DedicatedGroupGate } from './dedicatedGroups'
 
 const CURRENT_NODE_RECHECK_INTERVAL_MS = 5 * 60 * 1000
+/** 邮件组最近一次活动后的观察窗口：窗口内继续按需复测，避免节点刚挂掉就停止探测。 */
+const MAIL_ACTIVITY_WINDOW_MS = 30 * 60 * 1000
 /** 邮件活动日志后延迟触发一次当前节点复测；避免 Mail.app 连续重连时形成探测风暴。 */
 const ACTIVITY_PROBE_DELAY_MS = 30 * 1000
 
@@ -84,8 +86,8 @@ async function checkCurrentMailNode(): Promise<void> {
   try {
     const connections = await mihomoGetConnections().catch(() => undefined)
     const activeNow = connectionChainsIncludeGroup(connections, MAIL_DEDICATED_GROUP_NAME)
-    lastMailActivityAtMs = nextMailActivityAtMs(lastMailActivityAtMs, activeNow, Date.now())
-    if (!isMailGroupRecentlyActive(lastMailActivityAtMs, Date.now())) {
+    lastMailActivityAtMs = nextGroupActivityAtMs(lastMailActivityAtMs, activeNow, Date.now())
+    if (!isGroupRecentlyActive(lastMailActivityAtMs, Date.now(), MAIL_ACTIVITY_WINDOW_MS)) {
       return
     }
 

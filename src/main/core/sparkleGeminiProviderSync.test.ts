@@ -7,31 +7,26 @@ import {
   cacheRecord,
   callsStarting,
   DAY_MS,
+  manyNodes,
   NODES,
   NOW,
   providerSync,
-  readGeminiProviderOrder,
+  settle,
   UNUSABLE_PROFILES,
   useGeminiRig,
-  world,
+  world
+} from './sparkleGeminiProbeRig'
+import {
+  readGeminiProviderOrder,
   writeCache,
   writeLedger,
   writeLedgerRaw
-} from './sparkleGeminiProbeRig'
+} from './sparkleGeminiFilesHarness'
 
 const TW1 = NODES[0]
 const TW2 = NODES[1]
 const JP1 = NODES[2]
 const ALL_NAMES = ['台湾-1', '台湾-2', '日本-1']
-
-function manyNodes(count: number): Array<Record<string, unknown>> {
-  return Array.from({ length: count }, (_, index) => ({
-    name: `节点-${String(index + 1).padStart(2, '0')}`,
-    type: 'ss',
-    server: `s${index}.example.com`,
-    port: 443
-  }))
-}
 
 describe('sparkleGeminiProviderSync gating', () => {
   useGeminiRig()
@@ -234,5 +229,46 @@ describe('sparkleGeminiProviderSync evicted connections', () => {
     assertLog('could not close connections of evicted node "台湾-1": controller busy')
     assertLog('could not close connections of evicted node "台湾-2": controller busy')
     assertNoLog('rebuild gemini provider failed')
+  })
+})
+
+describe('sparkleGeminiProviderSync serialization', () => {
+  useGeminiRig()
+
+  it('lets a rebuild start only after the one before it has finished', async () => {
+    let reading = false
+    let release: () => void = () => undefined
+    world.onProvidersRead = () =>
+      new Promise<void>((resolve) => {
+        reading = true
+        release = resolve
+      })
+
+    const first = providerSync().rebuildAndReloadGeminiProvider()
+    const second = providerSync().rebuildAndReloadGeminiProvider()
+    await settle()
+
+    assert.ok(reading, 'the first rebuild is waiting on the controller')
+    assert.equal(world.profileReads, 1, 'the second rebuild has not started')
+
+    world.onProvidersRead = undefined
+    release()
+    await Promise.all([first, second])
+
+    assert.equal(world.profileReads, 2)
+  })
+
+  it('is not blocked for good by a rebuild that failed outright', async () => {
+    writeCache({ [cacheKey(TW1)]: cacheRecord(true) })
+    world.geminiProvider = ALL_NAMES
+    world.providersFailure = { reason: new Error('controller down') }
+    world.logFails = true
+    await assert.rejects(providerSync().rebuildAndReloadGeminiProvider(), /disk full/)
+
+    world.providersFailure = undefined
+    world.logFails = false
+    await providerSync().rebuildAndReloadGeminiProvider()
+
+    assert.deepEqual(callsStarting('update:'), ['update:gemini专用'])
   })
 })

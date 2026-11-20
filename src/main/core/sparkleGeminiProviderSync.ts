@@ -17,7 +17,7 @@
 // [POS] `gemini专用` provider 与地区缓存、稳定度台账的对账：按当前判定重建 provider 文件并热重载。
 // 只有成员集合增删时才写盘 + `PUT /providers/proxies`，顺序与延迟变化不打断已建立的连接；
 // 因被判封锁而出池的节点，同时断开它名下经本组的连接（mihomo 重载 provider 只影响新连接，长连接会一直留在坏出口上）；
-// 容量挤出与记录过期造成的出池不断连，免得打断正在流式输出的回答。
+// 容量挤出与记录过期造成的出池不断连，免得打断正在流式输出的回答；多处触发的重建排队串行执行，不会互相覆盖。
 
 import { writeFile } from 'fs/promises'
 import path from 'path'
@@ -81,7 +81,7 @@ async function closeEvictedConnections(nodeName: string): Promise<void> {
  * 按当前地区缓存与稳定度台账重建 `gemini专用` provider 并热重载：
  * provider 尚未进入运行配置（旧配置）或订阅无节点时静默跳过，文件仍会落盘供下次生成引用。
  */
-export async function rebuildAndReloadGeminiProvider(): Promise<void> {
+async function rebuildOnce(): Promise<void> {
   try {
     const proxies = await resolveCurrentProfileProxies()
     if (proxies.length === 0) {
@@ -136,4 +136,17 @@ export async function rebuildAndReloadGeminiProvider(): Promise<void> {
       `[SparkleGeminiProbe]: rebuild gemini provider failed: ${describeError(error)}\n`
     )
   }
+}
+
+let rebuildQueue: Promise<void> = Promise.resolve()
+
+/**
+ * 重建串行执行：审计收尾与队首守护都会触发，并发时各自读 provider、各自写文件，
+ * 后写的一份可能是基于旧判定算出来的；排队后每一次都读到上一次已经重载完的状态。
+ * 队列尾部吞掉异常，某一次重建彻底失败（连失败日志都写不出）也不会挡住后面的重建。
+ */
+export function rebuildAndReloadGeminiProvider(): Promise<void> {
+  const run = rebuildQueue.then(rebuildOnce)
+  rebuildQueue = run.catch(() => undefined)
+  return run
 }

@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   connectionChainsIncludeGroup,
-  isMailGroupRecentlyActive,
-  MAIL_ACTIVITY_WINDOW_MS,
-  nextMailActivityAtMs
-} from './sparkleMailActivityCore'
+  isGroupRecentlyActive,
+  nextGroupActivityAtMs
+} from './groupActivityCore'
 
 const MAIL_GROUP = '📧 邮件专用'
+const WINDOW_MS = 30 * 60 * 1000
 
 function connectionsWithChains(chainsList: string[][]): ControllerConnections {
   return {
@@ -28,8 +28,8 @@ function connectionsWithChains(chainsList: string[][]): ControllerConnections {
   }
 }
 
-describe('sparkleMailActivityCore', () => {
-  it('detects the mail group in active connection chains', () => {
+describe('groupActivityCore', () => {
+  it('detects the group in active connection chains', () => {
     const connections = connectionsWithChains([
       ['🚀 节点选择', 'Sparkle-日本', '日本-优化'],
       ['🚀 节点选择', MAIL_GROUP, '日本-优化']
@@ -52,13 +52,14 @@ describe('sparkleMailActivityCore', () => {
   })
 
   it('keeps the previous timestamp when no active connection is observed', () => {
-    assert.equal(nextMailActivityAtMs(1000, false, 2000), 1000)
-    assert.equal(nextMailActivityAtMs(1000, true, 2000), 2000)
+    assert.equal(nextGroupActivityAtMs(1000, false, 2000), 1000)
+    assert.equal(nextGroupActivityAtMs(1000, true, 2000), 2000)
   })
 
-  it('only considers mail activity within the window', () => {
-    assert.equal(isMailGroupRecentlyActive(0, 1000), false)
-    assert.equal(isMailGroupRecentlyActive(1000, 1000 + MAIL_ACTIVITY_WINDOW_MS - 1), true)
-    assert.equal(isMailGroupRecentlyActive(1000, 1000 + MAIL_ACTIVITY_WINDOW_MS), false)
+  it('only considers activity within the window it is given', () => {
+    assert.equal(isGroupRecentlyActive(0, 1000, WINDOW_MS), false)
+    assert.equal(isGroupRecentlyActive(1000, 1000 + WINDOW_MS - 1, WINDOW_MS), true)
+    assert.equal(isGroupRecentlyActive(1000, 1000 + WINDOW_MS, WINDOW_MS), false)
+    assert.equal(isGroupRecentlyActive(1000, 1000 + 60_000, 60_000), false)
   })
 })

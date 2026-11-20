@@ -14,11 +14,12 @@
 //         profileUpdater::initProfileUpdater (POS: 订阅自动更新) ·
 //         providerLeafProbe::verifyUnconfirmedFailures (POS: provider 叶子低并发拨测) ·
 //         sparkleAgyProbe::bootstrapSparkleAgyProvider/startSparkleAgyProbeLoop (POS: agy 巡检编排) ·
+//         sparkleGeminiCurrentNodeGuard::startSparkleGeminiCurrentNodeGuardLoop (POS: gemini专用 队首守护) ·
 //         sparkleGeminiProbe::bootstrapSparkleGeminiRegionAudit/startSparkleGeminiRegionAuditLoop (POS: Gemini 地区探测与缓存) ·
 //         sparkleGrokProbe::bootstrapSparkleGrokProvider/startSparkleGrokProbeLoop (POS: grok 选路探针) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志)
 // [OUTPUT] runPostCoreBootstrap: 内核就绪后的单一启动编排入口 · waitForMihomoControllerReady
-// [POS] 内核就绪后的单一启动编排入口。运行时配置对齐与自动组固定释放、延迟序、Gemini 地区审计 / 邮件 / grok / agy 探测（后台并行）、粘性固定、故障转移、订阅更新、Cursor 默认节点、地区组按需预热。
+// [POS] 内核就绪后的单一启动编排入口。运行时配置对齐与自动组固定释放、延迟序、Gemini 地区审计与队首守护 / 邮件 / grok / agy 探测（后台并行）、粘性固定、故障转移、订阅更新、Cursor 默认节点、地区组按需预热。
 //       每个服务各自隔离：任一服务启动失败只记日志，不影响其余服务（尤其是故障转移）；日志写入失败同样不改变启动流程。
 
 import { bestEffortLog } from '../utils/bestEffortLog'
@@ -116,6 +117,11 @@ async function runPostReadyServices(): Promise<void> {
     const { bootstrapSparkleGeminiRegionAudit, startSparkleGeminiRegionAuditLoop } =
       await import('./sparkleGeminiProbe')
     const isEnabled = dedicatedGroupGate('gemini')
+    await guarded('[SparkleGeminiGuard]: head guard start failed', async () => {
+      const { startSparkleGeminiCurrentNodeGuardLoop } =
+        await import('./sparkleGeminiCurrentNodeGuard')
+      startSparkleGeminiCurrentNodeGuardLoop(isEnabled)
+    })
     await runWhenEnabled(isEnabled, bootstrapSparkleGeminiRegionAudit)
     startSparkleGeminiRegionAuditLoop(isEnabled)
   })

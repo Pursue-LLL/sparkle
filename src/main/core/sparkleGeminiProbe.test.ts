@@ -2,21 +2,23 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   assertLog,
-  cacheFileExists,
   cacheKey,
   cacheRecord,
   callsStarting,
   HOUR_MS,
   NODES,
   NOW,
+  UNUSABLE_PROFILES,
+  useGeminiRig,
+  world
+} from './sparkleGeminiProbeRig'
+import {
+  cacheFileExists,
   readCache,
   readLedger,
   readProviderOrder,
-  UNUSABLE_PROFILES,
-  useGeminiRig,
-  world,
   writeCache
-} from './sparkleGeminiProbeRig'
+} from './sparkleGeminiFilesHarness'
 
 const TW1 = NODES[0]
 const TW2 = NODES[1]

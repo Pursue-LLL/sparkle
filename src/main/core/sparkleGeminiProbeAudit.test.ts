@@ -11,16 +11,14 @@ import {
   leaf,
   NODES,
   NOW,
-  readCache,
-  readProviderOrder,
   REFRESH_AFTER_MS,
   settle,
   tickAudit,
   UNUSABLE_PROFILES,
   useGeminiRig,
-  world,
-  writeCache
+  world
 } from './sparkleGeminiProbeRig'
+import { readCache, readProviderOrder, writeCache } from './sparkleGeminiFilesHarness'
 import { spyOnTimer } from './timerSpyHarness'
 
 const TW1 = NODES[0]
