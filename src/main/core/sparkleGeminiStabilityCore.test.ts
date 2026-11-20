@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   canRecordPenalty,
+  isInPenaltyPeriod,
   isNodeStable,
   parseStabilityLedger,
   PENALTY_BURST_LIMIT,
@@ -12,6 +13,27 @@ import {
 } from './sparkleGeminiStabilityCore'
 
 const NOW = 1_700_000_000_000
+
+describe('sparkleGeminiStabilityCore isInPenaltyPeriod', () => {
+  it('is not in a penalty period when it was never judged blocked', () => {
+    assert.equal(isInPenaltyPeriod(undefined, NOW), false)
+    assert.equal(isInPenaltyPeriod({ samples: 50 }, NOW), false)
+  })
+
+  it('stays in the penalty period for exactly the clean window after the last block', () => {
+    const entry = { samples: 1, lastBadAt: NOW - STABLE_CLEAN_WINDOW_MS + 1 }
+
+    assert.equal(isInPenaltyPeriod(entry, NOW), true)
+    assert.equal(
+      isInPenaltyPeriod({ ...entry, lastBadAt: NOW - STABLE_CLEAN_WINDOW_MS }, NOW),
+      false
+    )
+  })
+
+  it('counts a block time from the future of this clock as inside the period', () => {
+    assert.equal(isInPenaltyPeriod({ samples: 1, lastBadAt: NOW + 1000 }, NOW), true)
+  })
+})
 
 describe('sparkleGeminiStabilityCore isNodeStable', () => {
   it('does not trust a node nobody has judged', () => {

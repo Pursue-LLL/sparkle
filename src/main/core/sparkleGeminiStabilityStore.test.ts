@@ -131,6 +131,40 @@ describe('sparkleGeminiStabilityStore', () => {
     assert.ok(logged('skipped penalty for "第三个"'))
   })
 
+  it('does not charge repeat verdicts on an already penalized node to the burst limit', async () => {
+    await store.noteGeminiRegionSample('长期被封', true, NOW)
+    for (let repeat = 1; repeat <= PENALTY_BURST_LIMIT; repeat++) {
+      await store.noteGeminiRegionSample('长期被封', true, NOW + repeat)
+    }
+
+    for (let node = 0; node < PENALTY_BURST_LIMIT - 1; node++) {
+      await store.noteGeminiRegionSample(`偶发翻转${node}`, true, NOW + 100 + node)
+    }
+
+    const ledger = await store.loadGeminiStabilityLedger()
+    assert.equal(ledger.get('长期被封')?.samples, PENALTY_BURST_LIMIT + 1, 'every repeat counted')
+    for (let node = 0; node < PENALTY_BURST_LIMIT - 1; node++) {
+      assert.equal(ledger.get(`偶发翻转${node}`)?.lastBadAt, NOW + 100 + node)
+    }
+    assert.equal(logged('skipped penalty'), false)
+  })
+
+  it('charges a node whose penalty period is over as a newly penalized node again', async () => {
+    await store.noteGeminiRegionSample('旧案', true, NOW)
+    const later = NOW + STABLE_CLEAN_WINDOW_MS
+    for (let node = 0; node < PENALTY_BURST_LIMIT - 1; node++) {
+      await store.noteGeminiRegionSample(`新案${node}`, true, later + node)
+    }
+
+    await store.noteGeminiRegionSample('旧案', true, later + 10)
+    await store.noteGeminiRegionSample('多余的', true, later + 20)
+
+    const ledger = await store.loadGeminiStabilityLedger()
+    assert.equal(ledger.get('旧案')?.lastBadAt, later + 10, 'took the last of the quota')
+    assert.equal(ledger.get('多余的'), undefined)
+    assert.ok(logged('skipped penalty for "多余的"'))
+  })
+
   it('charges penalties again once the earlier ones are a full window old', async () => {
     for (let node = 0; node < PENALTY_BURST_LIMIT; node++) {
       await store.noteGeminiRegionSample(`节点${node}`, true, NOW)

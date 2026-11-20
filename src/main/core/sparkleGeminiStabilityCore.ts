@@ -1,11 +1,13 @@
 // [INPUT] 无（纯函数：台账记录、时间戳与节点名都由调用方传入）
 // [OUTPUT] STABLE_MIN_SAMPLES · STABLE_CLEAN_WINDOW_MS · PENALTY_BURST_LIMIT · PENALTY_BURST_WINDOW_MS ·
-//          GeminiStabilityEntry · GeminiStabilityLedger · isNodeStable · recordSample · canRecordPenalty · parseStabilityLedger
+//          GeminiStabilityEntry · GeminiStabilityLedger · isInPenaltyPeriod · isNodeStable · recordSample · canRecordPenalty · parseStabilityLedger
 // [POS] Gemini 节点稳定度台账的纯规则。Google 对出口的地区判定是概率事件（同一节点同一时刻 12 次里 8 次 ZZ），
 // 单次「合格」不能当成节点的属性，所以每个节点累计明确判定的次数与最近一次被判封锁的时刻：
-// 稳定 = 至少 STABLE_MIN_SAMPLES 次明确判定，且最近一次封锁已过 STABLE_CLEAN_WINDOW_MS。
-// 封锁罚分限流：PENALTY_BURST_WINDOW_MS 内最多 PENALTY_BURST_LIMIT 条罚分入账，
-// 超出的当作系统性事件（比如探测通道自己走了直连，所有节点同时返回 CN）不入账，免得一次故障抹掉全部历史。
+// 稳定 = 至少 STABLE_MIN_SAMPLES 次明确判定，且最近一次封锁已过 STABLE_CLEAN_WINDOW_MS（之内即惩罚期）。
+// 封锁罚分限流只数把节点翻进惩罚期的罚分：PENALTY_BURST_WINDOW_MS 内最多 PENALTY_BURST_LIMIT 条入账，
+// 超出的当作系统性事件（比如探测通道自己走了直连，所有节点同时返回 CN）不入账，免得一次故障抹掉全部历史；
+// 已在惩罚期内的节点再被判封锁只是重复确认、不占额度——长期被封的节点每轮复验都会再中一次，
+// 占了额度就会把别的节点真实的偶发翻转挡在台账之外，让它带着干净的记录继续算稳定。
 
 export const STABLE_MIN_SAMPLES = 10
 export const STABLE_CLEAN_WINDOW_MS = 14 * 24 * 60 * 60 * 1000
@@ -22,11 +24,15 @@ export interface GeminiStabilityEntry {
 /** 节点名 → 稳定度记录；节点名是订阅里的展示名，改名即视为新节点（从零积累，安全方向）。 */
 export type GeminiStabilityLedger = ReadonlyMap<string, GeminiStabilityEntry>
 
+/** 最近一次封锁还没过 STABLE_CLEAN_WINDOW_MS：节点此刻在惩罚期内（来自未来的时间戳也算）。 */
+export function isInPenaltyPeriod(entry: GeminiStabilityEntry | undefined, nowMs: number): boolean {
+  return entry?.lastBadAt !== undefined && nowMs - entry.lastBadAt < STABLE_CLEAN_WINDOW_MS
+}
+
 export function isNodeStable(entry: GeminiStabilityEntry | undefined, nowMs: number): boolean {
-  if (!entry || entry.samples < STABLE_MIN_SAMPLES) {
-    return false
-  }
-  return entry.lastBadAt === undefined || nowMs - entry.lastBadAt >= STABLE_CLEAN_WINDOW_MS
+  return (
+    entry !== undefined && entry.samples >= STABLE_MIN_SAMPLES && !isInPenaltyPeriod(entry, nowMs)
+  )
 }
 
 /** 记入一次明确判定：次数加一；被判封锁则刷新最近封锁时刻，合格则保留原有时刻。 */

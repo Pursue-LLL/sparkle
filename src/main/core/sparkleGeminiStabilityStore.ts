@@ -3,7 +3,7 @@
 //         utils/bestEffortLog::bestEffortLog (POS: 永不 reject 的日志包装) ·
 //         utils/dirs::dataDir (POS: 应用目录与路径常量) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
-//         sparkleGeminiStabilityCore::canRecordPenalty/isNodeStable/parseStabilityLedger/recordSample/PENALTY_BURST_LIMIT/PENALTY_BURST_WINDOW_MS/GeminiStabilityEntry/GeminiStabilityLedger (POS: Gemini 节点稳定度台账的纯规则)
+//         sparkleGeminiStabilityCore::canRecordPenalty/isInPenaltyPeriod/isNodeStable/parseStabilityLedger/recordSample/PENALTY_BURST_LIMIT/PENALTY_BURST_WINDOW_MS/GeminiStabilityEntry/GeminiStabilityLedger (POS: Gemini 节点稳定度台账的纯规则)
 // [OUTPUT] loadGeminiStabilityLedger · noteGeminiRegionSample
 // [POS] Gemini 节点稳定度台账（`sparkle-gemini-stability.json`，节点名 → 判定次数与最近封锁时刻）的持久化与记账。
 // 内存为准、原子写穿磁盘；文件缺失按空台账，损坏按空台账并记一行日志（失败开放：回到「没有历史」，不比没有台账更差）；
@@ -17,6 +17,7 @@ import { dataDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import {
   canRecordPenalty,
+  isInPenaltyPeriod,
   isNodeStable,
   parseStabilityLedger,
   PENALTY_BURST_LIMIT,
@@ -33,7 +34,7 @@ const writeLog = bestEffortLog(appendAppLog)
 /** 首次访问时从磁盘载入，之后只改内存。 */
 let ledgerPromise: Promise<Map<string, GeminiStabilityEntry>> | undefined
 
-/** 最近入账的封锁罚分时刻，只用来限流。 */
+/** 最近入账的新增惩罚时刻（节点被翻进惩罚期的那次），只用来限流。 */
 let recentPenaltyAtMs: number[] = []
 
 function ledgerFilePath(): string {
@@ -79,7 +80,7 @@ async function persist(ledger: ReadonlyMap<string, GeminiStabilityEntry>): Promi
   }
 }
 
-/** 封锁罚分在窗口内用完额度就不再入账；返回是否放行。 */
+/** 把节点翻进惩罚期的罚分在窗口内用完额度就不再入账；返回是否放行。 */
 function admitPenalty(nowMs: number): boolean {
   recentPenaltyAtMs = recentPenaltyAtMs.filter((at) => nowMs - at < PENALTY_BURST_WINDOW_MS)
   if (!canRecordPenalty(recentPenaltyAtMs, nowMs)) {
@@ -96,13 +97,13 @@ export async function noteGeminiRegionSample(
   nowMs: number = Date.now()
 ): Promise<void> {
   const ledger = await loadMutableLedger()
-  if (bad && !admitPenalty(nowMs)) {
+  const before = ledger.get(nodeName)
+  if (bad && !isInPenaltyPeriod(before, nowMs) && !admitPenalty(nowMs)) {
     await writeLog(
-      `[SparkleGeminiStability]: skipped penalty for "${nodeName}": ${PENALTY_BURST_LIMIT} penalties within ${PENALTY_BURST_WINDOW_MS / 60_000} minutes, treating it as a systemic event\n`
+      `[SparkleGeminiStability]: skipped penalty for "${nodeName}": ${PENALTY_BURST_LIMIT} nodes newly penalized within ${PENALTY_BURST_WINDOW_MS / 60_000} minutes, treating it as a systemic event\n`
     )
     return
   }
-  const before = ledger.get(nodeName)
   const after = recordSample(before, bad, nowMs)
   ledger.set(nodeName, after)
   const wasStable = isNodeStable(before, nowMs)
