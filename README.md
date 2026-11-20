@@ -212,7 +212,7 @@ pnpm run agent:upgrade:mac
 # 等价：bash scripts/agent-sparkle-upgrade.sh
 ```
 
-逻辑：先跑文档与代码一致性门禁（`pnpm run check:docs`，对不上就拒绝升级，此时没有任何清理、构建或安装发生）、装前卫生与 GUI 看门狗熔断门禁；若 `dist/mac-arm64/Sparkle.app` 版本已匹配、签名有效且源码指纹未过期 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后跑数据面就绪门禁（`sparkle-data-plane-readiness.mts`）与 profile due-check。入口持原子锁，已有升级在跑时直接拒绝启动。
+逻辑：先跑文档与代码一致性门禁（`pnpm run check:docs`，对不上就拒绝升级，此时没有任何清理、构建或安装发生）、本地与远程有没有分叉的提示（只读、只警告，不拦截）、装前卫生与 GUI 看门狗熔断门禁；若 `dist/mac-arm64/Sparkle.app` 版本已匹配、签名有效且源码指纹未过期 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后跑数据面就绪门禁（`sparkle-data-plane-readiness.mts`）与 profile due-check。入口持原子锁，已有升级在跑时直接拒绝启动。
 
 **人工 dev 一条龙**：
 

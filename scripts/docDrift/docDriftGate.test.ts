@@ -124,6 +124,11 @@ describe('agent-sparkle-upgrade.sh docs gate', () => {
   it('lets the upgrade go on to its next step when the docs match the code', () => {
     const result = runAgentUpgrade(createRepo(CONSISTENT_ROOT_DOC))
     assert.match(result.stdout, /文档与代码一致/)
+    assert.match(
+      result.stderr,
+      /Remote sync: .*skipped/,
+      '迷你仓库不是 git 仓库：提示跑了，且只是跳过'
+    )
     assert.ok(result.calls.length > 0, '门禁放行之后升级应当继续走下一步')
   })
 })

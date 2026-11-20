@@ -6,11 +6,12 @@
 #         scripts/install-sparkle-local.sh (POS: 本地安装的唯一入口，可回滚事务) ·
 #         scripts/upgrade-sparkle-local.sh (POS: 构建 + 安装的完整本地升级链路) ·
 #         scripts/sparkle-data-plane-readiness.mts (POS: 装后数据面就绪探测 SSOT) ·
-#         SPARKLE_AGENT_FORCE_FULL_BUILD · SPARKLE_UPGRADE_ENTRY_LOCK_DIR
+#         SPARKLE_AGENT_FORCE_FULL_BUILD · SPARKLE_UPGRADE_ENTRY_LOCK_DIR · 本机 git 里已有的 upstream 引用（只读，不联网）
 # [OUTPUT] 一次完整的本地升级（先过文档门禁，必要时构建，再安装，再过装后门禁与订阅 due-check）· 日志行
-#          AGENT_UPGRADE_RESULT: version=… data_plane=PASS | SKIPPED_ALREADY_HEALTHY · 非零退出 = 升级失败或被拒绝
+#          AGENT_UPGRADE_RESULT: version=… data_plane=PASS | SKIPPED_ALREADY_HEALTHY · 非零退出 = 升级失败或被拒绝 ·
+#          日志行 Remote sync: 本地与远程同步 / 有未推送的提交 / 落后 / 分叉（只提示，不影响退出码）
 # [POS] Agent 本地升级的唯一入口（SSOT）：入口持原子锁，已有升级在跑就拒绝启动；文档与代码对不上就拒绝升级，
-#       这道门禁在所有清理、构建、安装之前。
+#       这道门禁在所有清理、构建、安装之前；门禁之后只读地提示本地与远程有没有分叉。
 # Usage: bash scripts/agent-sparkle-upgrade.sh
 set -euo pipefail
 
@@ -72,6 +73,34 @@ log "Pre-install docs/code consistency gate..."
 if ! "$TSX" "$ROOT/scripts/docDrift/docDriftCli.mts"; then
   fail "docs drift from the code — fix what is listed above (see scripts/_ARCH.md, section 文档守护), then run again"
 fi
+
+# 本地与远程分叉会在每个工作段里悄悄加重，而每次装包都要经过这里，所以顺带提示。
+# 只警告、不拦截：拦截会让紧急装包被一件与构建无关的事卡住。只读、不联网：读的是最近一次 fetch / push 之后的
+# upstream 引用，不让装包路径上多一个会被代理抖动打断的失败点；代价是看不到远端刚发生的新提交。
+report_remote_sync() {
+  local upstream counts behind="" ahead=""
+  upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+  if [[ -z "$upstream" ]]; then
+    log "Remote sync: no upstream branch to compare with — skipped"
+    return 0
+  fi
+  counts="$(git rev-list --left-right --count "${upstream}...HEAD" 2>/dev/null || true)"
+  read -r behind ahead <<< "$counts"
+  if ! [[ "$behind" =~ ^[0-9]+$ && "$ahead" =~ ^[0-9]+$ ]]; then
+    log "Remote sync: could not compare with $upstream — skipped"
+    return 0
+  fi
+  if [[ "$behind" -eq 0 && "$ahead" -eq 0 ]]; then
+    log "Remote sync: in sync with $upstream (as of the last fetch)"
+  elif [[ "$behind" -eq 0 ]]; then
+    log "WARN remote sync: $ahead local commit(s) not pushed to $upstream — push so the remote always holds the latest code"
+  elif [[ "$ahead" -eq 0 ]]; then
+    log "WARN remote sync: $upstream has $behind commit(s) this checkout lacks — fast-forward first (git merge --ff-only $upstream)"
+  else
+    log "WARN remote sync: DIVERGED from $upstream (behind $behind, ahead $ahead) — merge them before more work piles up; never rewrite history or force-push"
+  fi
+}
+report_remote_sync
 
 log "Pre-install hygiene (journal truncate + disk pressure gate)..."
 if ! "$TSX" "$ROOT/scripts/sparkle-pre-install-hygiene.mts"; then

@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
+import { functionBody } from './testing/shellText'
 
 /**
  * 升级链路的结构性护栏：行为由沙箱测试（installPipeline / installFaultInjection / installCrashRecovery）
@@ -45,13 +46,6 @@ function nonTestScriptFiles(): string[] {
   return readdirSync(SCRIPTS_DIR, { recursive: true, encoding: 'utf8' }).filter(
     (name) => /\.(sh|mts|ts)$/.test(name) && !name.endsWith('.test.ts')
   )
-}
-
-/** 取一个顶格定义的 shell 函数的完整函数体。 */
-function functionBody(text: string, name: string): string {
-  const match = new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`, 'm').exec(text)
-  assert.ok(match, `function ${name}() not found`)
-  return match[0]
 }
 
 describe('install path safety', () => {
@@ -281,6 +275,19 @@ describe('install transaction structure', () => {
       assert.match(text, /mkdir "\$[A-Z_]*LOCK_DIR"/, `${name} must take an atomic mkdir lock`)
       assert.match(text, /trap /, `${name} must release the lock on exit`)
     }
+  })
+
+  it('reports remote divergence after the docs gate and before any step that touches files, and only ever warns', () => {
+    const script = readScript('agent-sparkle-upgrade.sh')
+    const gate = script.indexOf('scripts/docDrift/docDriftCli.mts"')
+    const report = script.indexOf('\nreport_remote_sync\n')
+    const hygiene = script.indexOf('scripts/sparkle-pre-install-hygiene.mts"')
+    assert.ok(gate !== -1 && report !== -1 && hygiene !== -1, 'all three call sites must exist')
+    assert.ok(gate < report && report < hygiene, 'order: docs gate, remote sync report, hygiene')
+    // 联网会让装包路径多一个被代理抖动打断的失败点；fail / exit 会让一件与构建无关的状态拦住装包。
+    const body = code(functionBody(script, 'report_remote_sync'))
+    assert.doesNotMatch(body, /\bgit\s+(fetch|pull|push|ls-remote|remote|clone)\b/)
+    assert.doesNotMatch(body, /\b(fail|exit)\b/)
   })
 
   it('removes the pnpm shim directory it creates on every way out of the script', () => {
