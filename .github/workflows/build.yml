@@ -237,7 +237,7 @@ jobs:
           BUILD_OUTCOME: ${{ steps.build_app.outcome }}
         shell: bash
         run: |
-          # Actions 日志要登录才能读：把失败那一步的输出末尾写进 job summary（公开可读），并给关键行打错误注解
+          # Actions 日志要登录才能读：把失败那一步的输出末尾写进 job summary，并给报错行打错误注解（未登录访客在运行页面上读得到注解）
           if [ "$BUILD_OUTCOME" = failure ]; then
             step="Build"; file="ci-build.log"
           elif [ "$INSTALL_OUTCOME" = failure ]; then
