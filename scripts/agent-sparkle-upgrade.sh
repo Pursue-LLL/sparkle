@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# [INPUT] scripts/sparkle-pre-install-hygiene.mts (POS: 装前清理：截断过大的生命周期日志、磁盘压力过高就拦下) ·
+# [INPUT] scripts/docDrift/docDriftCli.mts (POS: 文档与代码一致性对账的命令行入口，有漂移退出 1) ·
+#         scripts/sparkle-pre-install-hygiene.mts (POS: 装前清理：截断过大的生命周期日志、磁盘压力过高就拦下) ·
 #         scripts/test-gui-watchdog-fuse.sh (POS: 装前门禁：GUI 看门狗熔断台账不依赖 node 也能计数) ·
 #         scripts/evaluate-sparkle-dist-freshness.mts (POS: dist 与当前源码指纹一致退出 0，过期退出 1) ·
 #         scripts/install-sparkle-local.sh (POS: 本地安装的唯一入口，可回滚事务) ·
 #         scripts/upgrade-sparkle-local.sh (POS: 构建 + 安装的完整本地升级链路) ·
 #         scripts/sparkle-data-plane-readiness.mts (POS: 装后数据面就绪探测 SSOT) ·
 #         SPARKLE_AGENT_FORCE_FULL_BUILD · SPARKLE_UPGRADE_ENTRY_LOCK_DIR
-# [OUTPUT] 一次完整的本地升级（必要时构建，再安装，再过装后门禁与订阅 due-check）· 日志行
+# [OUTPUT] 一次完整的本地升级（先过文档门禁，必要时构建，再安装，再过装后门禁与订阅 due-check）· 日志行
 #          AGENT_UPGRADE_RESULT: version=… data_plane=PASS | SKIPPED_ALREADY_HEALTHY · 非零退出 = 升级失败或被拒绝
-# [POS] Agent 本地升级的唯一入口（SSOT）：入口持原子锁，已有升级在跑就拒绝启动。
+# [POS] Agent 本地升级的唯一入口（SSOT）：入口持原子锁，已有升级在跑就拒绝启动；文档与代码对不上就拒绝升级，
+#       这道门禁在所有清理、构建、安装之前。
 # Usage: bash scripts/agent-sparkle-upgrade.sh
 set -euo pipefail
 
@@ -63,6 +65,13 @@ trap 'handle_entry_signal' INT TERM
 EXPECTED_VER="$(node -p "require('./package.json').version")"
 DIST_APP="$ROOT/dist/mac-arm64/Sparkle.app"
 TSX="$ROOT/node_modules/.bin/tsx"
+
+# 文档与代码对不上就拒绝：门禁只读，排在装前清理（会截断日志）之前，被拒绝时没有任何清理、构建或安装发生。
+# 它判的是本脚本所在的这份工作树，共享工作区里别的会话写到一半的改动也算在内；遇到这种情况从干净的 git worktree 升级。
+log "Pre-install docs/code consistency gate..."
+if ! "$TSX" "$ROOT/scripts/docDrift/docDriftCli.mts"; then
+  fail "docs drift from the code — fix what is listed above (see scripts/_ARCH.md, section 文档守护), then run again"
+fi
 
 log "Pre-install hygiene (journal truncate + disk pressure gate)..."
 if ! "$TSX" "$ROOT/scripts/sparkle-pre-install-hygiene.mts"; then

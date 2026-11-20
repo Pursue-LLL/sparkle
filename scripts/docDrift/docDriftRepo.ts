@@ -1,8 +1,9 @@
 // [INPUT] docDriftIndex::RepoSnapshot/isCodePath (POS: 文档漂移守护的数据模型与源码索引，规则层只和内存快照打交道) · node:fs · node:module · node:path · 根 package.json
-// [OUTPUT] loadRepoSnapshot: 从磁盘装载仓库快照——递归遍历（跳过依赖与产物目录），收录全部文件路径、源码文本、文档与外部模块名 ·
-//          SKIPPED_ROOT_DIRS: 从仓库根起算的跳过目录，必须都在 `.gitignore` 里
+// [OUTPUT] loadRepoSnapshot: 从磁盘装载仓库快照——递归遍历（跳过依赖与产物目录），收录全部文件路径、源码文本、文档与外部模块名；
+//          根目录下没有 `ARCHITECTURE.md` 时抛错 · SKIPPED_ROOT_DIRS: 从仓库根起算的跳过目录，必须都在 `.gitignore` 里
 // [POS] 文档漂移守护的磁盘装载层，守护里唯一碰文件系统的一环。遍历磁盘而不是读 git 索引，
 //       这样刚新建、还没 `git add` 的文件（正是最容易忘记登记 `_ARCH.md` 的时刻）也在扫描范围内。
+//       根文档缺失按装载失败处理：规则层在没有它时会放过模块导航检查，扫描结果不可信，不能让「什么都没查」表现成「通过」。
 import { readdirSync, readFileSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import path from 'node:path'
@@ -80,5 +81,8 @@ export function loadRepoSnapshot(root: string): RepoSnapshot {
   }
 
   visit('')
+  if (!docs.has(ROOT_DOC)) {
+    throw new Error(`${root} 下没有 ${ROOT_DOC}：仓库根目录定位错了，或者 L1 文档被删了`)
+  }
   return { paths, sources, docs, externalModules: externalModulesOf(root) }
 }

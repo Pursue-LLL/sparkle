@@ -1,16 +1,17 @@
 // [INPUT] docDriftRepo::loadRepoSnapshot/SKIPPED_ROOT_DIRS (POS: 文档漂移守护的磁盘装载层，守护里唯一碰文件系统的一环) ·
-//         docDriftCore::checkDocDrift/formatFinding/formatFindings (POS: 文档漂移守护的入口，一次判完文件头、_ARCH.md、ARCHITECTURE.md 与代码是否一致) ·
+//         docDriftCore::checkDocDrift/formatDriftReport/formatFinding (POS: 文档漂移守护的入口，一次判完文件头、_ARCH.md、ARCHITECTURE.md 与代码是否一致) ·
 //         docDriftParse::hasAnyTag/parseHeader (POS: 文档漂移守护的文本解析层，从源码文本读出文件头、导出与标识符) ·
 //         testing/tempDirs::makeTempDir (POS: 脚本测试共用的临时目录，退出时自动删除)
 // [OUTPUT] （无导出，仅测试）
-// [POS] 文档漂移守护的出口：真实仓库的文件头、_ARCH.md、ARCHITECTURE.md 此刻必须与代码一致，有漂移 `pnpm test` 就红；
-//       另验证磁盘装载层的收录范围（跳过依赖与产物目录、收录文档与外部模块名），以及它跳过的目录都确实在 `.gitignore` 里。
+// [POS] 文档漂移守护的出口：真实仓库的文件头、_ARCH.md、ARCHITECTURE.md 此刻必须与代码一致，有漂移 `pnpm run test:node-quality` 就红；
+//       另验证磁盘装载层的收录范围（跳过依赖与产物目录、收录文档与外部模块名）、没有根 `ARCHITECTURE.md` 的目录拒绝装载，
+//       以及它跳过的目录都确实在 `.gitignore` 里。
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it } from 'node:test'
 import { makeTempDir } from '../testing/tempDirs'
-import { checkDocDrift, formatFinding, formatFindings } from './docDriftCore'
+import { checkDocDrift, formatDriftReport, formatFinding } from './docDriftCore'
 import { hasAnyTag, parseHeader } from './docDriftParse'
 import { loadRepoSnapshot, SKIPPED_ROOT_DIRS } from './docDriftRepo'
 
@@ -37,11 +38,7 @@ describe('the repository docs match the code', () => {
 
   it('has no drift between file headers, _ARCH.md, ARCHITECTURE.md and the code', () => {
     const findings = checkDocDrift(snapshot)
-    assert.equal(
-      findings.length,
-      0,
-      `文档与代码不一致，共 ${findings.length} 处（改代码后同步文档，或改文档对齐代码）：\n${formatFindings(findings)}`
-    )
+    assert.equal(findings.length, 0, formatDriftReport(findings))
   })
 })
 
@@ -118,6 +115,16 @@ describe('loadRepoSnapshot', () => {
 
     writeFiles(root, { 'src/a/_ARCH.md': '`listed.ts` `new.ts`' })
     assert.deepEqual(checkDocDrift(loadRepoSnapshot(root)), [])
+  })
+
+  it('refuses a tree without the root ARCHITECTURE.md instead of passing by checking nothing', () => {
+    const root = makeTempDir('doc-drift-no-root-doc-')
+    writeFiles(root, {
+      'package.json': '{}',
+      'src/a/_ARCH.md': '`a.ts`',
+      'src/a/a.ts': 'export const a = 1'
+    })
+    assert.throws(() => loadRepoSnapshot(root), /ARCHITECTURE\.md/)
   })
 
   it('only skips directories that .gitignore ignores', () => {

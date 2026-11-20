@@ -132,6 +132,7 @@ sparkle/
 - `pnpm lint` - 运行代码检查
 - `pnpm format` - 格式化代码
 - `pnpm test:node-quality` - 核心纯函数单测（含 P16/P17/P18 partition · transport ingest）
+- `pnpm run check:docs` - 文档与代码一致性对账：文件头、`_ARCH.md`、`ARCHITECTURE.md` 里点了名的东西必须真实存在，有漂移列明并退出 1（`agent:upgrade:mac` 装包前先跑它）
 - `pnpm write-build-stamp` - 写入 `src/shared/buildStamp.ts`（`dev`/`build:*` 已自动调用）
 
 #### 构建命令
@@ -139,7 +140,7 @@ sparkle/
 - `pnpm build:win` - 构建 Windows 版本
 - `pnpm build:mac` - 构建 macOS 版本（含 pkg）
 - `pnpm run upgrade:mac` - **本地 dev 一条龙**：编译 + 安装到 `/Applications`
-- `pnpm run agent:upgrade:mac` - **Agent SSOT**：dist 就绪则仅 install，否则 full upgrade + post gate（自动化推荐）
+- `pnpm run agent:upgrade:mac` - **Agent SSOT**：先过文档门禁，再 dist 就绪则仅 install，否则 full upgrade + post gate（自动化推荐）
 - `pnpm build:linux` - 构建 Linux 版本
 
 #### 其他命令
@@ -211,7 +212,7 @@ pnpm run agent:upgrade:mac
 # 等价：bash scripts/agent-sparkle-upgrade.sh
 ```
 
-逻辑：先跑装前卫生与 GUI 看门狗熔断门禁；若 `dist/mac-arm64/Sparkle.app` 版本已匹配、签名有效且源码指纹未过期 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后跑数据面就绪门禁（`sparkle-data-plane-readiness.mts`）与 profile due-check。入口持原子锁，已有升级在跑时直接拒绝启动。
+逻辑：先跑文档与代码一致性门禁（`pnpm run check:docs`，对不上就拒绝升级，此时没有任何清理、构建或安装发生）、装前卫生与 GUI 看门狗熔断门禁；若 `dist/mac-arm64/Sparkle.app` 版本已匹配、签名有效且源码指纹未过期 → 仅 `install-sparkle-local.sh`；否则 → `upgrade-sparkle-local.sh`。装后跑数据面就绪门禁（`sparkle-data-plane-readiness.mts`）与 profile due-check。入口持原子锁，已有升级在跑时直接拒绝启动。
 
 **人工 dev 一条龙**：
 

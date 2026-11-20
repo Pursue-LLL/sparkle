@@ -33,7 +33,8 @@
     "verify:agygeo": "tsx scripts/verify-antigravity-geo-routing.mts",
     "verify:failover": "tsx scripts/verify-group-failover.mts",
     "verify:anytls-reuse": "tsx scripts/verify-anytls-reuse-option.mts",
-    "check:drift": "tsx scripts/check-build-drift.ts"
+    "check:drift": "tsx scripts/check-build-drift.ts",
+    "check:docs": "tsx scripts/docDrift/docDriftCli.mts"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

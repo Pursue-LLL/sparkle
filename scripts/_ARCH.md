@@ -8,7 +8,7 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 
 | 文件 | 职责 |
 | --- | --- |
-| `agent-sparkle-upgrade.sh` | **Agent SSOT**：安装前先跑 `sparkle-pre-install-hygiene.mts` 与 `test-gui-watchdog-fuse.sh`；dist 与源码指纹一致则仅 install，否则 full upgrade；装后数据面就绪门禁 + profile due-check（后台 worker 由安装器预检阶段保证就位，这里不安装）。入口持原子锁（`${TMPDIR}/sparkle-agent-upgrade-entry.lock`），已有升级在跑直接拒绝启动 |
+| `agent-sparkle-upgrade.sh` | **Agent SSOT**：持锁之后最先跑文档门禁 `docDrift/docDriftCli.mts`（文档与代码对不上就拒绝，此时没有任何清理、构建或安装发生），再跑 `sparkle-pre-install-hygiene.mts` 与 `test-gui-watchdog-fuse.sh`；dist 与源码指纹一致则仅 install，否则 full upgrade；装后数据面就绪门禁 + profile due-check（后台 worker 由安装器预检阶段保证就位，这里不安装）。入口持原子锁（`${TMPDIR}/sparkle-agent-upgrade-entry.lock`），已有升级在跑直接拒绝启动 |
 | `upgrade-sparkle-local.sh` | 本地 dev 一条龙：**原子互斥锁**（`${TMPDIR}/sparkle-agent-upgrade.lock`，持有者 pid 已死或超时才接管；退出时不论成功、失败还是 `INT/TERM`，都释放锁并删除自己建的 pnpm 垫片目录 `${TMPDIR}/sparkle-pnpm-shim.*`）→ 清理 `out/` → vite → Stage-A bundle 门禁 → electron-builder dir → Stage-B asar 门禁 → 写 dist build meta → install → 装后检查（进程在运行；close 烟测未就绪只告警）→ PostCoreBootstrap `mihomo API ready` 门控（macOS 26 且未设 `macos26ForceGui` 走 headless 分支，否则走 GUI 就绪门禁）；门控 90 秒内不就绪就 `fail`，**停留现场、不自动重启 App 重试**（重试要么被退出确认框拦住而无效，要么把「装一次」变成反复启停；由操作者读日志定位根因，`sparkleUpgradeScriptText.test.ts` 守住这一点） |
 | `install-sparkle-local.sh` | 仅安装 `dist/mac-arm64/Sparkle.app` → `/Applications`，**整个安装是一个可回滚的事务**（见下方「事务化安装」）：预检（拒绝并发、恢复上次被打断的事务、校验源包、基线探测、**幂等短路**、确认后台 worker 认静默标记且 launchd 调度的就是这份副本、空间与权限）→ 暂存（同目录拷贝并校验签名与 CDHash，再按需补 setuid）→ 静默（写标记、退出 GUI、让服务停掉托管内核、清僵尸 mihomo socket）→ 换装（两次 rename，旧包留作备份；备份位被占用则在写阶段文件之前拒绝）→ 启动并过门禁 → 提交或回滚。提交之后的收尾（记 CDHash、把重复的 `~/Applications/Sparkle.app` 改名为 `.bak.<UTC 时间>` 留存并只留这一份、服务二进制变化提示、Gatekeeper 手动放行提示）只是记账：失败只告警，不改变已成功的结果。重复副本的备份只留最近一份：新备份落地后，本脚本更早留下的备份（`.bak.` 后面精确是 UTC 时间戳；符号链接与手工命名的不动）先向 LaunchServices 注销其中所有 `.app` 子包（Helper）的登记，再删除——只删不注销会留下指向不存在路径的登记，Dock 随后出现幽灵图标；`lsregister -u` 对本来没登记的路径返回 1 并报 `-10814`，按「本来就没登记」处理，其余错误则保留该备份、留给下次安装重试（工具路径可由 `SPARKLE_LSREGISTER` 覆盖，沙箱用桩替换）；改名失败时不删任何备份。Gatekeeper 提示依赖的 `spctl` 评估在真机上要几秒到二十秒（随系统负载而变），所以只在装进来的 CDHash 与之前不同（含首次安装）时才做，被拒绝才输出手动放行的办法；同一份字节重装不做。退出码：0 成功 · 1 失败（系统未变或已恢复）· 3 新包被门禁拒绝并已回滚 · 4 自动回滚失败（需人工，现场保留）。每一步写入 `~/.sparkle/install-last.log`（上一轮为 `install-prev.log`）；`SPARKLE_FORCE_REINSTALL=1` 绕过短路 |
 | `.shellcheckrc`（仓库根） | shellcheck 配置：`external-sources=true` + `source-path=SCRIPTDIR`，让 shellcheck 沿 `source` 追到 `scripts/lib/*.sh`（库之间互相 source，路径相对当前脚本所在目录） |
@@ -87,23 +87,25 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 
 ## 文档守护
 
-`docDrift/` 把「文档与代码是否一致」做成测试：文件头（L4 的 `[INPUT]` / `[OUTPUT]` / `[POS]`）、各目录 `_ARCH.md`（L3）、根 `ARCHITECTURE.md`（L1）里点了名的东西，必须真实存在于代码里；漂移会让 `pnpm run test:node-quality` 变红，报错带文件、规则名与（定位得到时的）行号。只判定「写了就必须是真的」：没有任何标签的文件、自由写法的 INPUT（没有 `模块::符号` 或没有 POS）、OUTPUT 没列全某个导出、散文里没挂常量名的数字都不判定，这些靠人审，守护不猜。守护只做正则级解析（不引入 TypeScript 编译器），所以随每次测试运行；规则层只读内存快照、不碰磁盘，每条规则的正反例都是几行字符串。
+`docDrift/` 把「文档与代码是否一致」做成可执行的检查：文件头（L4 的 `[INPUT]` / `[OUTPUT]` / `[POS]`）、各目录 `_ARCH.md`（L3）、根 `ARCHITECTURE.md`（L1）里点了名的东西，必须真实存在于代码里。**两个强制点**：漂移会让 `pnpm run test:node-quality` 变红；也会让 `pnpm run check:docs`（命令行入口 `docDriftCli.mts`，只对真实仓库对账一次，装载失败同样非零）以 1 退出，而 `agent-sparkle-upgrade.sh` 持锁之后最先跑它，装包前就被拦下。报错都带文件、规则名与（定位得到时的）行号。只判定「写了就必须是真的」：没有任何标签的文件（shell 脚本里 `#` 写法的文件头也读不到）、自由写法的 INPUT（没有 `模块::符号` 或没有 POS）、OUTPUT 没列全某个导出、散文里没挂常量名的数字都不判定，这些靠人审，守护不猜。守护只做正则级解析（不引入 TypeScript 编译器），对账一次很轻，所以能随每次测试、每次装包运行；规则层只读内存快照、不碰磁盘，每条规则的正反例都是几行字符串。
 
 | 文件 | 职责 |
 | --- | --- |
-| `docDrift/docDriftCore.ts` | 入口 `checkDocDrift`：对一份仓库快照跑全部规则，返回按文件、行号、规则排序的漂移列表；`formatFinding` / `formatFindings` 出报错文本。守护自己的测试与夹具里全是编造的示例名字，不计入「代码事实」（算进去会让文档里同名的过期标识符也查得到），守护的生产代码照常计入 |
+| `docDrift/docDriftCore.ts` | 入口 `checkDocDrift`：对一份仓库快照跑全部规则，返回按文件、行号、规则排序的漂移列表；`formatFinding` / `formatFindings` 出逐条报错文本，`formatDriftReport` 出整份报告（条数、怎么改、逐条明细；过与拦由调用方按漂移列表是否为空判定，不依赖报告文字）。守护自己的测试与夹具里全是编造的示例名字，不计入「代码事实」（算进去会让文档里同名的过期标识符也查得到），守护的生产代码照常计入 |
 | `docDrift/docDriftParse.ts` | 文本解析层：文件头三段（行注释与块注释两种写法，同一标签以第一次出现为准，只扫开头 60 行）、INPUT 的规范写法 `模块::符号 (POS: …)`、OUTPUT 点名的导出（`a/b` 并列、`名字: 说明`、`*` 通配；整条含说明文字的当散文跳过）、文件的真实导出（含 `export *` 转发、`export default` 表达式里的名字、`.d.ts` 的全局声明）、代码里出现过的标识符 |
 | `docDrift/docDriftIndex.ts` | 数据模型（`RepoSnapshot`、`DriftFinding`、`DriftRule`）、路径分类与源码索引：INPUT 里的模块写法按路径后缀解析成源码文件，同名多个时取离引用方最近的，仍分不出才算歧义（跳过，不猜）；以仓库路径或相对路径写的按整条路径精确匹配；导出集合追进 `export *`，转发环有保护 |
 | `docDrift/docDriftHeaderRules.ts` | 文件头规则：三段齐全（`header-incomplete`）、OUTPUT 点名的导出真实存在（`output-not-exported`）、INPUT 点名的模块与符号真实存在（`input-module-missing` / `input-not-exported`；npm 依赖与 Node 内置模块不算缺失） |
 | `docDrift/docDriftDocRules.ts` | 文档规则：反引号里的源码文件名与 UPPER_SNAKE / 驼峰标识符仍在（`doc-file-missing` / `doc-identifier-missing`，存在与否按「代码里是否出现过这个词」判，注释里的词也算；文档里合法出现、但不在本仓库代码里的外部名字登记在 `EXTERNAL_NAMES`）、相对链接可达（`doc-link-broken`）、根 `ARCHITECTURE.md` 的模块导航链到每份 `_ARCH.md`（`arch-not-linked`）、`_ARCH.md` 登记了本目录的每个源码文件（`arch-file-unlisted`；测试、`.d.ts`、`*Rig` / `*Harness` / `*World` 夹具与子目录除外）；围栏代码块里的内容不读 |
 | `docDrift/docDriftNumberRules.ts` | 数值规则：文档写成「`常量名`（数值）」或「`常量名` = 数值」时与代码常量比对（`doc-number-mismatch`）；时间常量按名字后缀折算到毫秒（`30 分钟` = 1,800,000），其余按个数；常量值只认数字、已知常量与四则、括号；同名常量在不同文件里值不同视为歧义，不判定 |
-| `docDrift/docDriftRepo.ts` | 磁盘装载层，守护里唯一碰文件系统的一环：遍历仓库（跳过 `node_modules`、`.git` 与 `SKIPPED_ROOT_DIRS` 里 `.gitignore` 已忽略的产物、下载资源与草稿目录），收录全部文件路径、源码与脚本文本、根 `ARCHITECTURE.md` 与各 `_ARCH.md`、`package.json` 依赖与 Node 内置模块名。遍历磁盘而不是读 git 索引，刚新建、还没 `git add` 的文件也在范围内 |
+| `docDrift/docDriftRepo.ts` | 磁盘装载层，守护里唯一碰文件系统的一环：遍历仓库（跳过 `node_modules`、`.git` 与 `SKIPPED_ROOT_DIRS` 里 `.gitignore` 已忽略的产物、下载资源与草稿目录），收录全部文件路径、源码与脚本文本、根 `ARCHITECTURE.md` 与各 `_ARCH.md`、`package.json` 依赖与 Node 内置模块名。遍历磁盘而不是读 git 索引，刚新建、还没 `git add` 的文件也在范围内；目录里没有根 `ARCHITECTURE.md` 就抛错（规则层没有它会放过模块导航检查，不能让「什么都没查」表现成通过） |
+| `docDrift/docDriftCli.mts` | 命令行入口（`pnpm run check:docs`）：对脚本所在的这份工作树对账一次，一致就打印一行结论、退出 0，有漂移把报告打到 stderr、退出 1；装载失败抛错，同样非零。`agent-sparkle-upgrade.sh` 的装包前门禁直接调用它，不跑守护自己的测试，输出里只有漂移本身 |
 | `docDrift/docDriftRig.ts` | 各测试共用的夹具：几行字符串拼出内存快照与文件头 |
 | `docDrift/docDriftParse.test.ts` / `docDriftHeaderRules.test.ts` / `docDriftDocRules.test.ts` / `docDriftNumberRules.test.ts` | 解析文法与每条规则的正反例（内存快照）：哪些写法算「点名」要核对、哪些是说明文字不核对，歧义、外部模块、通配、转发环、围栏代码块、单位换算等边界 |
-| `docDrift/docDriftRepo.test.ts` | 守护的出口：**真实仓库此刻必须零漂移**，有漂移就红；并要求扫到足够多的 `_ARCH.md`、源码与带文件头的文件（装载层坏了不会因为「什么都没扫到」而通过）；装载范围用临时目录里的迷你仓库验证，`SKIPPED_ROOT_DIRS` 的每一项都必须在 `.gitignore` 里 |
+| `docDrift/docDriftRepo.test.ts` | 守护的出口：**真实仓库此刻必须零漂移**，有漂移就红；并要求扫到足够多的 `_ARCH.md`、源码与带文件头的文件（装载层坏了不会因为「什么都没扫到」而通过）；装载范围用临时目录里的迷你仓库验证，`SKIPPED_ROOT_DIRS` 的每一项都必须在 `.gitignore` 里，没有根 `ARCHITECTURE.md` 的目录拒绝装载 |
+| `docDrift/docDriftGate.test.ts` | 装包前门禁的出口测试：在迷你仓库（复制守护的生产代码与 `scripts/package.json`，后者把 `scripts/` 声明成 ESM）里真实运行命令行入口——一致时退出 0 并打印结论、有漂移在 stderr 列明并退出 1、缺根文档时失败；再把真实的 `agent-sparkle-upgrade.sh` 复制进去，`tsx` 换成桩（只放行文档门禁，其余步骤只记录调用并失败；HOME、TMPDIR 与入口锁都指向临时目录，沙箱里没有安装脚本），验证漂移时在任何其他步骤之前拒绝升级、一致时放行到下一步 |
 | `docDrift/docDriftMutation.test.ts` | 灵敏度验证：在真实仓库快照的内存副本上注入漂移（改名被 INPUT 引用的导出、OUTPUT 多写不存在的名字、缺 `[POS]`、删掉文档点名的文件、抹掉 `_ARCH.md` 对某文件的登记、模块导航少链一份、文档写不存在的标识符与链接、文档给常量写的数值与代码对不上），每一种都必须被抓出来；不碰磁盘 |
 
-改代码后守护报错时：改名 / 删除导出 → 同步该文件的 `[OUTPUT]` 与引用方的 `[INPUT]`；新增 / 删除源码文件 → 同步所在目录的 `_ARCH.md`；新增 `_ARCH.md` → 在根 `ARCHITECTURE.md` 的模块导航加一行；改常量值 → 改文档里写过的数值；文档里出现外部名字 → 登记 `EXTERNAL_NAMES`，不要为过测试改文档措辞。
+改代码后守护报错时：改名 / 删除导出 → 同步该文件的 `[OUTPUT]` 与引用方的 `[INPUT]`；新增 / 删除源码文件 → 同步所在目录的 `_ARCH.md`；新增 `_ARCH.md` → 在根 `ARCHITECTURE.md` 的模块导航加一行；改常量值 → 改文档里写过的数值；文档里出现外部名字 → 登记 `EXTERNAL_NAMES`，不要为过测试改文档措辞。`pnpm run check:docs` 随时可以单独跑，改完文档当场验证，不必等整套测试。
 
 ## Agent 升级（唯一入口）
 
@@ -113,6 +115,8 @@ bash scripts/agent-sparkle-upgrade.sh
 ```
 
 等价 `pnpm run agent:upgrade:mac`。禁止 Agent 裸跑 `pnpm build:mac` 或后台 build 后忘记 install。
+
+**文档门禁（持锁后的第一步）**：`docDrift/docDriftCli.mts` 对脚本所在的工作树做文档与代码的一致性对账，有漂移就 `fail` 退出。此时还没有装前清理（会截断日志）、构建与安装，所以被拒绝等于什么都没动；报错逐条列出「文件:行 [规则名] 说明」，照「文档守护」一节末段的对照改文档，再重跑。门禁没有绕过开关（环境变量或参数）。它判的是整个工作树，共享工作区里别的会话写到一半的文件会让它变红，此时从干净的 `git worktree` 升级；单独运行 `upgrade-sparkle-local.sh`（`pnpm run upgrade:mac`）不经过它。`docDrift/docDriftGate.test.ts` 用桩替换其余步骤，验证漂移时在任何其他步骤之前拒绝、一致时放行。
 
 **一次到位（铁律）**：改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交）再触发升级；一次升级命令只跑一次、只对应一次 App 启停，禁止并发或重复触发；命令被中断后先用 `evaluate-sparkle-dist-freshness.mts`、`/Applications/Sparkle.app` 落盘时间与 App 日志核查已完成到哪一步，再决定续跑或收尾，禁止不查状态直接重跑；装后验收只用只读门禁（`mihomo API ready` 日志、`sparkle-data-plane-readiness.mts`），失败先离线定位根因，不拿反复重装试错（事故记录：`scripts_20261107_20261113_BUGFIX_LOG.md` BUG-2026-11-13-003）。
 
