@@ -1,6 +1,7 @@
 // [INPUT] `https://gemini.google.com` 流式解压后的 HTML 片段 · 订阅节点列表 · 地区探测缓存
-// [OUTPUT] BLOCKED_GEMINI_COUNTRY_CODES · evaluateGeminiHtmlEligibility · resolveGeminiBlockedNodeNames
-// [POS] 识别「HTTP 200 但被 Google GeoIP 判定为送中/不支持地区（如 vXmutd="ZZ"/"CN"/"HK" 或 google.cn）」的假存活节点。
+// [OUTPUT] BLOCKED_GEMINI_COUNTRY_CODES · evaluateGeminiHtmlEligibility · lookupGeminiRegionRecord · resolveGeminiBlockedNodeNames
+// [POS] 识别「HTTP 200 但被 Google GeoIP 判定为送中/不支持地区（如 vXmutd="ZZ"/"CN"/"HK" 或 google.cn）」的假存活节点，
+// 并统一「节点 → 判定记录」的查找口径（指纹优先、节点名兜底）。
 // 纯函数模块（无 I/O 与 Electron 依赖），便于单元测试。
 
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
@@ -91,6 +92,18 @@ export function evaluateGeminiHtmlEligibility(htmlPrefix: string): GeminiHtmlEli
 }
 
 /**
+ * 节点的地区判定记录：优先按节点唯一指纹（`name|type|server|port`，服务器或端口变了就不沿用旧结论），
+ * 其次按纯节点名（订阅里找不到该节点时只能以名字记账）。
+ */
+export function lookupGeminiRegionRecord(
+  cache: GeminiRegionProbeCache,
+  nodeName: string,
+  fingerprint?: string
+): GeminiRegionProbeRecord | undefined {
+  return (fingerprint === undefined ? undefined : cache.get(fingerprint)) ?? cache.get(nodeName)
+}
+
+/**
  * 根据持久化缓存，提取当前订阅中已确认为「Gemini 锁区/送中」（`eligible === false`）的节点名称集合。
  * 同时兼容按节点唯一指纹（`name|type|server|port`）和按纯节点名查找。
  */
@@ -108,7 +121,7 @@ export function resolveGeminiBlockedNodeNames(
     if (!name) {
       continue
     }
-    const record = cache.get(computeProxyNodeFingerprint(proxy)) ?? cache.get(name)
+    const record = lookupGeminiRegionRecord(cache, name, computeProxyNodeFingerprint(proxy))
     if (record && record.eligible === false) {
       blocked.add(name)
     }

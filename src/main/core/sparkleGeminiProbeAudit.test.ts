@@ -7,9 +7,13 @@ import {
   cacheKey,
   cacheRecord,
   callsStarting,
+  HOUR_MS,
   leaf,
   NODES,
+  NOW,
+  readCache,
   readProviderOrder,
+  REFRESH_AFTER_MS,
   settle,
   tickAudit,
   UNUSABLE_PROFILES,
@@ -20,6 +24,7 @@ import {
 import { spyOnTimer } from './timerSpyHarness'
 
 const TW1 = NODES[0]
+const TW2 = NODES[1]
 const JP1 = NODES[2]
 const RESTRICTED = { definitive: true, eligible: false, countryCode: 'ZZ' }
 const ELIGIBLE = { definitive: true, eligible: true, countryCode: 'TW' }
@@ -164,6 +169,45 @@ describe('sparkleGeminiProbe audit', () => {
   it('does nothing when every live node already has a verdict', async () => {
     world.leaves = [leaf('台湾-1', true)]
     writeCache({ '台湾-1': cacheRecord(true) })
+
+    await gemini().bootstrapSparkleGeminiRegionAudit()
+
+    assert.deepEqual(callsStarting('lock:'), [])
+  })
+
+  it('re-verifies an eligible record once it is inside the refresh window and renews it', async () => {
+    world.leaves = [leaf('台湾-1', true), leaf('台湾-2', true), leaf('日本-1', true)]
+    writeCache({
+      [cacheKey(TW1)]: cacheRecord(true, 'TW', REFRESH_AFTER_MS - 1),
+      [cacheKey(TW2)]: cacheRecord(true, 'TW', REFRESH_AFTER_MS),
+      [cacheKey(JP1)]: cacheRecord(true, 'JP', 12 * HOUR_MS - 1)
+    })
+    world.verdictOf = () => ELIGIBLE
+
+    await gemini().bootstrapSparkleGeminiRegionAudit()
+
+    assert.deepEqual(callsStarting('lock:'), ['lock:台湾-2', 'lock:日本-1'])
+    const cache = readCache()
+    assert.equal(cache[cacheKey(TW1)].checkedAt, NOW - (REFRESH_AFTER_MS - 1))
+    assert.equal(cache[cacheKey(TW2)].checkedAt, NOW)
+    assert.equal(cache[cacheKey(JP1)].checkedAt, NOW)
+  })
+
+  it('evicts a node whose refreshed verdict turned restricted like any new rejection', async () => {
+    world.leaves = [leaf('台湾-1', true)]
+    writeCache({ [cacheKey(TW1)]: cacheRecord(true, 'TW', REFRESH_AFTER_MS) })
+    world.verdictOf = () => RESTRICTED
+
+    await gemini().bootstrapSparkleGeminiRegionAudit()
+
+    assert.equal(readCache()[cacheKey(TW1)].eligible, false)
+    assert.deepEqual(callsStarting('update:'), ['update:sparkle-fast'])
+    assertLog('audit finished probed=1 newly_evicted=1')
+  })
+
+  it('does not re-verify a restricted record before it expires, however old', async () => {
+    world.leaves = [leaf('台湾-1', true)]
+    writeCache({ [cacheKey(TW1)]: cacheRecord(false, 'ZZ', 6 * HOUR_MS - 1) })
 
     await gemini().bootstrapSparkleGeminiRegionAudit()
 

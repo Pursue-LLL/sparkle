@@ -47,10 +47,13 @@ describe('AnyTLS session reuse guard across every Sparkle provider file', () => 
     mock.module('./mihomoApi', { exports: { mihomoUpdateProxyProviders: async () => undefined } })
     mock.module('./sparkleFastLatencyOrder', { exports: { loadSparkleFastDelaySnapshot: empty } })
     mock.module('./sparkleGeminiProbe', {
-      exports: {
-        loadGeminiBlockedNodeNames: async (): Promise<Set<string>> => new Set(),
-        loadSparkleGeminiRegionCache: empty
-      }
+      exports: { loadGeminiBlockedNodeNames: async (): Promise<Set<string>> => new Set() }
+    })
+    mock.module('./sparkleGeminiRegionCache', {
+      exports: { loadSparkleGeminiRegionCache: empty }
+    })
+    mock.module('./sparkleGeminiStabilityStore', {
+      exports: { loadGeminiStabilityLedger: empty }
     })
     mock.module('./sparkleNodeQualityCache', {
       exports: { loadSunkNodeNames: async (): Promise<Set<string>> => new Set() }

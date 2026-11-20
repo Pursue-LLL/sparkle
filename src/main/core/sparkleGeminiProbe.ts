@@ -1,33 +1,35 @@
 // [INPUT] localProbeChannel::withLocalProbeChannelLock (POS: 本地隐藏探测监听器串行化入口) ·
-//         sparkleGeminiStreamProbe::streamProbeGeminiRegionViaLocalListener (POS: 流式地区探测) · 当前订阅节点 · sparkle-gemini-nodes.json ·
-//         config::getAppConfig/getProfile/getProfileConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
+//         sparkleGeminiStreamProbe::streamProbeGeminiRegionViaLocalListener (POS: 流式地区探测) · 当前订阅节点 ·
+//         config::getAppConfig (POS: 应用 / 内核 / 订阅 / 覆写配置读写) ·
 //         cursorProxyGroup::AUTO_SELECT_GROUP_NAME (POS: Sparkle 分组名常量与判定谓词) ·
 //         defaultAutoSwitchProxy::AUTO_SELECT_DELAY_PROBE_URL (POS: 自动选择与地区组默认配置) ·
 //         mihomoApi::mihomoGroupDetail/mihomoProxyProviders/mihomoUnfixedProxy/mihomoUpdateProxyProviders (POS: mihomo 控制器访问层) ·
-//         provider::extractProxies (POS: 订阅节点 → provider 文件) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
 //         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
 //         sparkleFastProviderCore::buildSparkleFastProviderDocument/FAST_NODE_PROVIDER_FILENAME/FAST_NODE_PROVIDER_ID (POS: sparkle-fast provider 文件生成) ·
 //         sparkleFastProviderExclusions::loadFastProviderExclusions (POS: sparkle-fast 剔除/沉底依据) ·
-//         sparkleGeminiProbeCore::resolveGeminiBlockedNodeNames/GeminiRegionProbeRecord (POS: Gemini 地区判定纯函数) ·
-//         sparkleGeminiProviderCore::buildSparkleGeminiProviderDocument/GEMINI_NODE_PROVIDER_FILENAME/GEMINI_NODE_PROVIDER_ID/geminiProviderMembershipChanged (POS: gemini provider 与分组配置) ·
+//         sparkleGeminiProbeCore::lookupGeminiRegionRecord/resolveGeminiBlockedNodeNames/GeminiRegionProbeRecord (POS: Gemini 地区判定纯函数) ·
+//         sparkleGeminiProviderSync::rebuildAndReloadGeminiProvider/resolveCurrentProfileProxies (POS: gemini专用 provider 与判定的对账) ·
+//         sparkleGeminiRegionCache::ELIGIBLE_CACHE_TTL_MS/loadSparkleGeminiRegionCache/saveSparkleGeminiRegionCache (POS: Gemini 地区判定缓存) ·
+//         sparkleGeminiStabilityStore::noteGeminiRegionSample (POS: Gemini 节点稳定度台账) ·
 //         sparkleMailProviderCore::MailProxyRecord (POS: 邮件 provider 与分组配置) ·
-//         utils/dirs::dataDir/profilesDir (POS: 应用目录与路径常量) ·
+//         utils/dirs::profilesDir (POS: 应用目录与路径常量) ·
 //         utils/log::appendAppLog (POS: 应用日志与内核日志) ·
 //         utils/yaml::stringifyYaml (POS: YAML 解析与序列化) ·
 //         dedicatedGroups::runWhenEnabled (POS: 可开关专用组注册表与开关解析)
-// [OUTPUT] loadSparkleGeminiRegionCache · loadGeminiBlockedNodeNames · verifyNodeGeminiRegion · rebuildAndReloadSparkleFastProvider · rebuildAndReloadGeminiProvider · bootstrapSparkleGeminiRegionAudit · startSparkleGeminiRegionAuditLoop
+// [OUTPUT] loadGeminiBlockedNodeNames · verifyNodeGeminiRegion · rebuildAndReloadSparkleFastProvider · bootstrapSparkleGeminiRegionAudit · startSparkleGeminiRegionAuditLoop
 // [POS] 识别「HTTP 200 但被 Google GeoIP 判定为送中/不支持地区（如 vXmutd="ZZ"/"CN"/"HK" 或 google.cn）」的节点：
 // 确认锁区/送中的节点从 `sparkle-fast-proxies.yaml`（`自动选择`）中剔除，确认解锁的节点维护进 `gemini专用` provider，
-// 两条线共用同一份地区缓存与同一轮审计，成员集合变化才热重载。
+// 两条线共用同一份地区缓存与同一轮审计，成员集合变化才热重载；每个明确结论同时记入稳定度台账（判定是概率事件，不是节点属性）。
+// 合格记录在过期前就被审计复验（刷新前置），稳定的节点不会因为记录过期而周期性掉出 `gemini专用` 池。
 // 网络超时或连接瞬断绝不误判为锁区（仅当明确提取到不支持的地区码时才记入锁区缓存）。
 // 后台定时审计经开关门控：`gemini专用` 关闭则整轮跳过、不发任何请求；`自动选择` 挑节点时的按需地区校验（`verifyNodeGeminiRegion`）不经门控，不受开关影响。
 
-import { readFile, writeFile } from 'fs/promises'
+import { writeFile } from 'fs/promises'
 import path from 'path'
-import { getAppConfig, getProfile, getProfileConfig } from '../config'
-import { dataDir, profilesDir } from '../utils/dirs'
+import { getAppConfig } from '../config'
+import { profilesDir } from '../utils/dirs'
 import { appendAppLog } from '../utils/log'
 import { stringifyYaml } from '../utils/yaml'
 import { AUTO_SELECT_GROUP_NAME } from './cursorProxyGroup'
@@ -38,7 +40,6 @@ import {
   mihomoUnfixedProxy,
   mihomoUpdateProxyProviders
 } from './mihomoApi'
-import { extractProxies } from './provider'
 import { resolveEffectiveRegionPriority } from './regionPriority'
 import {
   buildSparkleFastProviderDocument,
@@ -47,79 +48,33 @@ import {
 } from './sparkleFastProviderCore'
 import { loadFastProviderExclusions } from './sparkleFastProviderExclusions'
 import {
+  lookupGeminiRegionRecord,
   resolveGeminiBlockedNodeNames,
   type GeminiRegionProbeRecord
 } from './sparkleGeminiProbeCore'
 import {
-  buildSparkleGeminiProviderDocument,
-  GEMINI_NODE_PROVIDER_FILENAME,
-  GEMINI_NODE_PROVIDER_ID,
-  geminiProviderMembershipChanged
-} from './sparkleGeminiProviderCore'
+  rebuildAndReloadGeminiProvider,
+  resolveCurrentProfileProxies
+} from './sparkleGeminiProviderSync'
+import {
+  ELIGIBLE_CACHE_TTL_MS,
+  loadSparkleGeminiRegionCache,
+  saveSparkleGeminiRegionCache
+} from './sparkleGeminiRegionCache'
+import { noteGeminiRegionSample } from './sparkleGeminiStabilityStore'
 import { streamProbeGeminiRegionViaLocalListener } from './sparkleGeminiStreamProbe'
 import type { MailProxyRecord } from './sparkleMailProviderCore'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { withLocalProbeChannelLock } from './localProbeChannel'
 import { runWhenEnabled, type DedicatedGroupGate } from './dedicatedGroups'
 
-const CACHE_FILENAME = 'sparkle-gemini-nodes.json'
-const ELIGIBLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000
-const INELIGIBLE_CACHE_TTL_MS = 6 * 60 * 60 * 1000
 const AUDIT_INTERVAL_MS = 30 * 60 * 1000
 
-let memoryCache: Map<string, GeminiRegionProbeRecord> | null = null
-
-function cacheFilePath(): string {
-  return path.join(dataDir(), CACHE_FILENAME)
-}
-
-function isRecordFresh(record: GeminiRegionProbeRecord, nowMs: number): boolean {
-  const ttl = record.eligible ? ELIGIBLE_CACHE_TTL_MS : INELIGIBLE_CACHE_TTL_MS
-  return nowMs - record.checkedAt < ttl
-}
-
-export async function loadSparkleGeminiRegionCache(
-  nowMs: number = Date.now()
-): Promise<Map<string, GeminiRegionProbeRecord>> {
-  if (memoryCache) {
-    for (const [key, val] of memoryCache.entries()) {
-      if (!isRecordFresh(val, nowMs)) {
-        memoryCache.delete(key)
-      }
-    }
-    return memoryCache
-  }
-  try {
-    const raw = JSON.parse(await readFile(cacheFilePath(), 'utf8')) as Record<
-      string,
-      GeminiRegionProbeRecord
-    >
-    const map = new Map<string, GeminiRegionProbeRecord>()
-    for (const [key, val] of Object.entries(raw)) {
-      if (
-        val &&
-        typeof val.eligible === 'boolean' &&
-        typeof val.countryCode === 'string' &&
-        typeof val.checkedAt === 'number' &&
-        isRecordFresh(val, nowMs)
-      ) {
-        map.set(key, val)
-      }
-    }
-    memoryCache = map
-    return map
-  } catch {
-    memoryCache = new Map()
-    return memoryCache
-  }
-}
-
-async function saveSparkleGeminiRegionCache(
-  cache: ReadonlyMap<string, GeminiRegionProbeRecord>
-): Promise<void> {
-  const serialized = Object.fromEntries(cache.entries())
-  await writeFile(cacheFilePath(), JSON.stringify(serialized, null, 2), 'utf8')
-}
+/**
+ * 合格记录用到只剩两个审计周期（再加 5 分钟余量）就提前复验：
+ * 连续错过一轮审计，记录也在过期前被换新，稳定节点不会因为过期被挤出 `gemini专用` 池。
+ */
+const REFRESH_AFTER_MS = ELIGIBLE_CACHE_TTL_MS - 2 * AUDIT_INTERVAL_MS - 5 * 60 * 1000
 
 export async function loadGeminiBlockedNodeNames(
   proxies?: readonly MailProxyRecord[]
@@ -149,19 +104,6 @@ export async function loadGeminiBlockedNodeNames(
     }
   }
   return fallback
-}
-
-async function resolveCurrentProfileProxies(): Promise<MailProxyRecord[]> {
-  try {
-    const { current } = await getProfileConfig()
-    if (!current || current === 'default') {
-      return []
-    }
-    const currentProfile = await getProfile(current)
-    return extractProxies(currentProfile) as MailProxyRecord[]
-  } catch {
-    return []
-  }
 }
 
 /** 当新发现锁区/送中节点时，立即重写 `sparkle-fast-proxies.yaml` 并通知 mihomo 热重载。 */
@@ -202,13 +144,14 @@ export async function rebuildAndReloadSparkleFastProvider(): Promise<void> {
 
 /**
  * 校验单个节点是否真正解锁 Gemini 地区限制（非送中/锁区）：
- * - 命中缓存时直接 O(1) 返回；
- * - 未命中缓存时通过隐藏探测监听器流式检查 `https://gemini.google.com/app` 的 `vXmutd` 地区码；
+ * - 命中缓存且记录不比 `maxAgeMs` 老（不传则只要没过期）时直接 O(1) 返回；
+ * - 否则通过隐藏探测监听器流式检查 `https://gemini.google.com/app` 的 `vXmutd` 地区码，
+ *   明确的结论同时记入地区缓存与稳定度台账；
  * - 若确认锁区（如 `ZZ`/`CN`/`HK`），立即记入黑名单并触发 `sparkle-fast` 热重载剔除该节点。
  */
 export async function verifyNodeGeminiRegion(
   nodeName: string,
-  options?: { skipProviderReloadOnReject?: boolean }
+  options?: { skipProviderReloadOnReject?: boolean; maxAgeMs?: number }
 ): Promise<{ eligible: boolean; countryCode?: string; definitive: boolean }> {
   const trimmed = nodeName.trim()
   if (!trimmed) {
@@ -218,10 +161,13 @@ export async function verifyNodeGeminiRegion(
   const cache = await loadSparkleGeminiRegionCache()
   const proxies = await resolveCurrentProfileProxies()
   const matchedProxy = proxies.find((p) => String(p.name ?? '').trim() === trimmed)
-  const cacheKey = matchedProxy ? computeProxyNodeFingerprint(matchedProxy) : trimmed
+  const fingerprint = matchedProxy ? computeProxyNodeFingerprint(matchedProxy) : undefined
 
-  const existing = cache.get(cacheKey) ?? cache.get(trimmed)
-  if (existing) {
+  const existing = lookupGeminiRegionRecord(cache, trimmed, fingerprint)
+  if (
+    existing &&
+    Date.now() - existing.checkedAt < (options?.maxAgeMs ?? Number.POSITIVE_INFINITY)
+  ) {
     return {
       eligible: existing.eligible,
       countryCode: existing.countryCode,
@@ -242,9 +188,10 @@ export async function verifyNodeGeminiRegion(
       countryCode: res.countryCode,
       checkedAt: Date.now()
     }
-    cache.set(cacheKey, record)
+    cache.set(fingerprint ?? trimmed, record)
     cache.set(trimmed, record)
     await saveSparkleGeminiRegionCache(cache)
+    await noteGeminiRegionSample(trimmed, !res.eligible)
 
     if (!res.eligible) {
       await appendAppLog(
@@ -269,66 +216,10 @@ export async function verifyNodeGeminiRegion(
   }
 }
 
-/**
- * 按当前地区缓存重建 `gemini专用` provider 并热重载：
- * 只有成员集合增删时才写盘 + `PUT /providers/proxies`，顺序与延迟变化不打断已建立的连接；
- * provider 尚未进入运行配置（旧配置）或订阅无节点时静默跳过，文件仍会落盘供下次生成引用。
- */
-export async function rebuildAndReloadGeminiProvider(): Promise<void> {
-  try {
-    const proxies = await resolveCurrentProfileProxies()
-    if (proxies.length === 0) {
-      return
-    }
-    const { proxySwitchPriority = [] } = await getAppConfig()
-    const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
-    const [delaySnapshot, regionCache] = await Promise.all([
-      loadSparkleFastDelaySnapshot(proxies),
-      loadSparkleGeminiRegionCache()
-    ])
-    const doc = buildSparkleGeminiProviderDocument({
-      proxies,
-      regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
-      regionCache,
-      delayMs: delaySnapshot
-    })
-    if (doc.proxies.length === 0) {
-      return
-    }
-    const nextNames = doc.proxies.map((proxy) => String(proxy.name ?? '').trim())
-    const provider = (await mihomoProxyProviders()).providers[GEMINI_NODE_PROVIDER_ID]
-    if (!provider) {
-      await writeFile(
-        path.join(profilesDir(), GEMINI_NODE_PROVIDER_FILENAME),
-        stringifyYaml(doc),
-        'utf8'
-      )
-      return
-    }
-    const currentNames = (provider.proxies ?? []).map((leaf) => leaf.name)
-    if (!geminiProviderMembershipChanged(currentNames, nextNames)) {
-      return
-    }
-    await writeFile(
-      path.join(profilesDir(), GEMINI_NODE_PROVIDER_FILENAME),
-      stringifyYaml(doc),
-      'utf8'
-    )
-    await mihomoUpdateProxyProviders(GEMINI_NODE_PROVIDER_ID)
-    await appendAppLog(
-      `[SparkleGeminiProbe]: gemini provider reloaded members=${nextNames.length}\n`
-    )
-  } catch (error) {
-    await appendAppLog(
-      `[SparkleGeminiProbe]: rebuild gemini provider failed: ${error instanceof Error ? error.message : String(error)}\n`
-    )
-  }
-}
-
 let auditInFlight = false
 
 /**
- * 后台巡检 `sparkle-fast` 中 mihomo 判定为 `alive: true` 但尚未缓存 Gemini 地区码的节点，
+ * 后台巡检 `sparkle-fast` 中 mihomo 判定为 `alive: true` 且没有地区判定、或合格判定已临近过期的节点，
  * 提前把潜伏的“送中”节点剔除出 `自动选择` 候选池，并把确认解锁的节点维护进 `gemini专用`。
  */
 export async function bootstrapSparkleGeminiRegionAudit(): Promise<void> {
@@ -351,18 +242,22 @@ export async function bootstrapSparkleGeminiRegionAudit(): Promise<void> {
       if (n) fingerprintByName.set(n, computeProxyNodeFingerprint(p))
     }
 
-    const unverifiedAliveNames = leaves
+    const nowMs = Date.now()
+    const dueAliveNames = leaves
       .filter((leaf) => {
         const alive = leaf.extra?.[AUTO_SELECT_DELAY_PROBE_URL]?.alive ?? leaf.alive
         if (!alive) return false
-        const fp = fingerprintByName.get(leaf.name)
-        return !(fp && cache.has(fp)) && !cache.has(leaf.name)
+        const record = lookupGeminiRegionRecord(cache, leaf.name, fingerprintByName.get(leaf.name))
+        return !record || (record.eligible && nowMs - record.checkedAt >= REFRESH_AFTER_MS)
       })
       .map((leaf) => leaf.name)
 
     let newlyRejected = 0
-    for (const name of unverifiedAliveNames) {
-      const res = await verifyNodeGeminiRegion(name, { skipProviderReloadOnReject: true })
+    for (const name of dueAliveNames) {
+      const res = await verifyNodeGeminiRegion(name, {
+        skipProviderReloadOnReject: true,
+        maxAgeMs: REFRESH_AFTER_MS
+      })
       if (res.definitive && !res.eligible) {
         newlyRejected += 1
       }
@@ -371,7 +266,7 @@ export async function bootstrapSparkleGeminiRegionAudit(): Promise<void> {
     if (newlyRejected > 0) {
       await rebuildAndReloadSparkleFastProvider()
       await appendAppLog(
-        `[SparkleGeminiProbe]: audit finished probed=${unverifiedAliveNames.length} newly_evicted=${newlyRejected}\n`
+        `[SparkleGeminiProbe]: audit finished probed=${dueAliveNames.length} newly_evicted=${newlyRejected}\n`
       )
     }
     // 同一轮审计的地区结论同步维护 gemini专用：合格节点入池、失效节点出池，集合没变时内部自动跳过。

@@ -1,22 +1,26 @@
-// [INPUT] 当前订阅节点 · 地区优先级 · Gemini 地区探测缓存（vXmutd）· 节点延迟样本 ·
+// [INPUT] 当前订阅节点 · 地区优先级 · Gemini 地区探测缓存（vXmutd）· 节点稳定度台账 · 节点延迟样本 ·
 //         cursorProxyGroup::GEMINI_DEDICATED_GROUP_NAME/DEFAULT_GENERAL_DELAY_TEST_URL (POS: Sparkle 分组名常量与判定谓词) ·
 //         proxyNodeFingerprintCore::computeProxyNodeFingerprint (POS: 节点指纹) ·
 //         regionPriority::nodeMatchesRegion (POS: 地区优先级与地区匹配) ·
-//         sparkleGeminiProbeCore::GeminiRegionProbeCache (POS: Gemini 地区判定纯函数)
-// [OUTPUT] GEMINI_NODE_PROVIDER_ID · GEMINI_NODE_PROVIDER_FILENAME · orderGeminiProxies ·
+//         sparkleGeminiProbeCore::lookupGeminiRegionRecord/GeminiRegionProbeCache (POS: Gemini 地区判定纯函数) ·
+//         sparkleGeminiStabilityCore::isNodeStable/GeminiStabilityLedger (POS: Gemini 节点稳定度台账的纯规则)
+// [OUTPUT] GEMINI_NODE_PROVIDER_ID · GEMINI_NODE_PROVIDER_FILENAME · GEMINI_POOL_MAX_SIZE · GeminiStabilityView · orderGeminiProxies ·
 //          buildSparkleGeminiProviderDocument · buildGeminiGroupConfig · geminiProviderMembershipChanged
 // [POS] `gemini专用` 的专属 provider 与组配置生成逻辑：
-// 只保留经 vXmutd 流式探测明确判定「地区已解锁」的节点，按地区优先级分段、段内延迟升序，最多 12 个；
+// 只保留经 vXmutd 流式探测明确判定「地区已解锁」的节点；稳定档（台账里累计足够多次明确判定、近期没被判过封锁）排在前面，
+// 因为单次「合格」只是一次抽样、不是节点的属性；档内按地区优先级分段、段内延迟升序，最多 12 个；
 // 组为 `fallback`（按 provider 顺序取首个存活节点），健康检查只用轻量 204 量存活，不拿 Gemini 首页测速；
 // 冷启动尚无已验证节点时排除已确认锁区的节点兜底，绝不返回空 provider（空 provider 会让整组退化为 COMPATIBLE 直连）。
 
-import {
-  DEFAULT_GENERAL_DELAY_TEST_URL,
-  GEMINI_DEDICATED_GROUP_NAME
-} from './cursorProxyGroup'
+import { DEFAULT_GENERAL_DELAY_TEST_URL, GEMINI_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
 import { nodeMatchesRegion } from './regionPriority'
-import type { GeminiRegionProbeCache, GeminiRegionProbeRecord } from './sparkleGeminiProbeCore'
+import {
+  lookupGeminiRegionRecord,
+  type GeminiRegionProbeCache,
+  type GeminiRegionProbeRecord
+} from './sparkleGeminiProbeCore'
+import { isNodeStable, type GeminiStabilityLedger } from './sparkleGeminiStabilityCore'
 import type { MailProxyRecord } from './sparkleMailProviderCore'
 
 export const GEMINI_NODE_PROVIDER_ID = 'gemini专用' as const
@@ -26,6 +30,12 @@ export const GEMINI_NODE_PROVIDER_FILENAME = 'gemini专用-proxies.yaml' as cons
 export const GEMINI_POOL_MAX_SIZE = 12
 
 export type GeminiProxyRecord = MailProxyRecord
+
+/** 排序时判定「稳定档」所依据的台账与当前时刻（时刻由调用方传入，排序本身保持纯函数）。 */
+export interface GeminiStabilityView {
+  ledger: GeminiStabilityLedger
+  nowMs: number
+}
 
 function proxyName(proxy: GeminiProxyRecord): string {
   return String(proxy.name ?? '').trim()
@@ -38,7 +48,7 @@ function regionRecordOf(
   if (!regionCache || regionCache.size === 0) {
     return undefined
   }
-  return regionCache.get(computeProxyNodeFingerprint(proxy)) ?? regionCache.get(proxyName(proxy))
+  return lookupGeminiRegionRecord(regionCache, proxyName(proxy), computeProxyNodeFingerprint(proxy))
 }
 
 /** 地区优先级分段（优先地区在前、其余垫底），段内按实测延迟升序，无样本垫段尾。 */
@@ -80,13 +90,15 @@ function orderByRegionThenDelay(
  * 1. 已有明确判定合格（`eligible === true`）的节点时，只保留这些 100% 确认地区解锁的节点；
  * 2. 冷启动尚无合格样本时，排除已确认锁区/送中（`eligible === false`）的节点，未知节点按序兜底；
  * 3. 极端兜底：绝不返回空数组（除非输入本身为空），防止空 provider 让整组退化为 COMPATIBLE 直连；
- * 4. 最终按地区优先级分段、段内延迟升序，最多保留 {@link GEMINI_POOL_MAX_SIZE} 个。
+ * 4. 稳定档（见 {@link GeminiStabilityView}）整体排在未证明档之前，各档内按地区优先级分段、段内延迟升序，
+ *    最多保留 {@link GEMINI_POOL_MAX_SIZE} 个；不传台账时所有节点同属一档。
  */
 export function orderGeminiProxies(
   proxies: readonly GeminiProxyRecord[],
   regionPriority: readonly string[],
   regionCache?: GeminiRegionProbeCache,
-  delayMs?: ReadonlyMap<string, number>
+  delayMs?: ReadonlyMap<string, number>,
+  stability?: GeminiStabilityView
 ): GeminiProxyRecord[] {
   const seenNames = new Set<string>()
   const unique: GeminiProxyRecord[] = []
@@ -109,7 +121,16 @@ export function orderGeminiProxies(
   const pool =
     verified.length > 0 ? verified : notConfirmedBlocked.length > 0 ? notConfirmedBlocked : unique
 
-  return orderByRegionThenDelay(pool, regionPriority, delayMs).slice(0, GEMINI_POOL_MAX_SIZE)
+  const isStable = (proxy: GeminiProxyRecord): boolean =>
+    stability !== undefined && isNodeStable(stability.ledger.get(proxyName(proxy)), stability.nowMs)
+  return [
+    ...orderByRegionThenDelay(pool.filter(isStable), regionPriority, delayMs),
+    ...orderByRegionThenDelay(
+      pool.filter((proxy) => !isStable(proxy)),
+      regionPriority,
+      delayMs
+    )
+  ].slice(0, GEMINI_POOL_MAX_SIZE)
 }
 
 export function buildSparkleGeminiProviderDocument(input: {
@@ -117,13 +138,15 @@ export function buildSparkleGeminiProviderDocument(input: {
   regionPriority: readonly string[]
   regionCache?: GeminiRegionProbeCache
   delayMs?: ReadonlyMap<string, number>
+  stability?: GeminiStabilityView
 }): { proxies: GeminiProxyRecord[] } {
   return {
     proxies: orderGeminiProxies(
       input.proxies,
       input.regionPriority,
       input.regionCache,
-      input.delayMs
+      input.delayMs,
+      input.stability
     )
   }
 }

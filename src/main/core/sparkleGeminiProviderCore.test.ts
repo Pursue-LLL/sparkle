@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { GEMINI_DEDICATED_GROUP_NAME } from './cursorProxyGroup'
 import { computeProxyNodeFingerprint } from './proxyNodeFingerprintCore'
-import type {
-  GeminiRegionProbeCache,
-  GeminiRegionProbeRecord
-} from './sparkleGeminiProbeCore'
+import type { GeminiRegionProbeCache, GeminiRegionProbeRecord } from './sparkleGeminiProbeCore'
 import {
   buildGeminiGroupConfig,
   buildSparkleGeminiProviderDocument,
@@ -13,11 +10,26 @@ import {
   GEMINI_NODE_PROVIDER_ID,
   GEMINI_POOL_MAX_SIZE,
   orderGeminiProxies,
-  type GeminiProxyRecord
+  type GeminiProxyRecord,
+  type GeminiStabilityView
 } from './sparkleGeminiProviderCore'
+import {
+  STABLE_CLEAN_WINDOW_MS,
+  STABLE_MIN_SAMPLES,
+  type GeminiStabilityEntry
+} from './sparkleGeminiStabilityCore'
+
+const NOW = 1_700_000_000_000
+const STABLE: GeminiStabilityEntry = { samples: STABLE_MIN_SAMPLES }
 
 function node(name: string, server = 'example.com'): GeminiProxyRecord {
   return { name, type: 'vless', server, port: 443 }
+}
+
+function stabilityOf(
+  entries: Array<[name: string, entry: GeminiStabilityEntry]>
+): GeminiStabilityView {
+  return { ledger: new Map(entries), nowMs: NOW }
 }
 
 function cacheOf(
@@ -99,7 +111,12 @@ describe('sparkleGeminiProviderCore', () => {
 
     assert.deepEqual(
       namesOf(
-        orderGeminiProxies([america, slowTaiwan, japan, fastTaiwan], ['台湾', '日本'], cache, delays)
+        orderGeminiProxies(
+          [america, slowTaiwan, japan, fastTaiwan],
+          ['台湾', '日本'],
+          cache,
+          delays
+        )
       ),
       ['台湾 01', '台湾 02', '日本 01', '美国 01']
     )
@@ -109,14 +126,163 @@ describe('sparkleGeminiProviderCore', () => {
     const proxies = Array.from({ length: GEMINI_POOL_MAX_SIZE + 3 }, (_, index) =>
       node(`台湾 ${String(index + 1).padStart(2, '0')}`, `tw${index}.example.com`)
     )
-    const cache = cacheOf(
-      proxies.map((proxy) => ({ proxy, eligible: true, countryCode: 'TW' }))
-    )
+    const cache = cacheOf(proxies.map((proxy) => ({ proxy, eligible: true, countryCode: 'TW' })))
 
     const ordered = orderGeminiProxies(proxies, ['台湾'], cache)
 
     assert.equal(ordered.length, GEMINI_POOL_MAX_SIZE)
     assert.deepEqual(namesOf(ordered), namesOf(proxies.slice(0, GEMINI_POOL_MAX_SIZE)))
+  })
+
+  describe('stability tiers', () => {
+    const taiwan = node('台湾 01', 'tw.example.com')
+    const taiwanFast = node('台湾 02', 'tw2.example.com')
+    const japan = node('日本 01', 'jp.example.com')
+    const korea = node('韩国 01', 'kr.example.com')
+    const eligible = (...proxies: GeminiProxyRecord[]): GeminiRegionProbeCache =>
+      cacheOf(proxies.map((proxy) => ({ proxy, eligible: true, countryCode: 'TW' })))
+
+    it('puts a proven node ahead of a higher-priority region that is still unproven', () => {
+      const ordered = orderGeminiProxies(
+        [taiwan, japan],
+        ['台湾', '日本'],
+        eligible(taiwan, japan),
+        undefined,
+        stabilityOf([['日本 01', STABLE]])
+      )
+
+      assert.deepEqual(namesOf(ordered), ['日本 01', '台湾 01'])
+    })
+
+    it('still follows region priority, then delay, inside each tier', () => {
+      const delays = new Map([
+        ['台湾 01', 300],
+        ['台湾 02', 100],
+        ['日本 01', 50],
+        ['韩国 01', 40]
+      ])
+
+      const ordered = orderGeminiProxies(
+        [taiwan, taiwanFast, japan, korea],
+        ['台湾', '日本', '韩国'],
+        eligible(taiwan, taiwanFast, japan, korea),
+        delays,
+        stabilityOf([
+          ['台湾 01', STABLE],
+          ['日本 01', STABLE]
+        ])
+      )
+
+      assert.deepEqual(namesOf(ordered), ['台湾 01', '日本 01', '台湾 02', '韩国 01'])
+    })
+
+    it('does not trust a node that was blocked inside the clean window, and trusts it again after', () => {
+      const recent = { samples: 50, lastBadAt: NOW - STABLE_CLEAN_WINDOW_MS + 1 }
+      const healed = { samples: 50, lastBadAt: NOW - STABLE_CLEAN_WINDOW_MS }
+      const cache = eligible(taiwan, japan)
+
+      assert.deepEqual(
+        namesOf(
+          orderGeminiProxies(
+            [taiwan, japan],
+            ['台湾', '日本'],
+            cache,
+            undefined,
+            stabilityOf([['台湾 01', recent]])
+          )
+        ),
+        ['台湾 01', '日本 01'],
+        'nobody is proven, so the region priority decides'
+      )
+      assert.deepEqual(
+        namesOf(
+          orderGeminiProxies(
+            [taiwan, japan],
+            ['台湾', '日本'],
+            cache,
+            undefined,
+            stabilityOf([
+              ['台湾 01', recent],
+              ['日本 01', STABLE]
+            ])
+          )
+        ),
+        ['日本 01', '台湾 01']
+      )
+      assert.deepEqual(
+        namesOf(
+          orderGeminiProxies(
+            [taiwan, japan],
+            ['台湾', '日本'],
+            cache,
+            undefined,
+            stabilityOf([
+              ['台湾 01', healed],
+              ['日本 01', STABLE]
+            ])
+          )
+        ),
+        ['台湾 01', '日本 01']
+      )
+    })
+
+    it('never lets a proven node past the region verdict: blocked or unverified stays out', () => {
+      const blocked = cacheOf([
+        { proxy: japan, eligible: false, countryCode: 'ZZ' },
+        { proxy: taiwan, eligible: true, countryCode: 'TW' }
+      ])
+
+      const ordered = orderGeminiProxies(
+        [japan, taiwan, korea],
+        ['日本'],
+        blocked,
+        undefined,
+        stabilityOf([
+          ['日本 01', STABLE],
+          ['韩国 01', STABLE]
+        ])
+      )
+
+      assert.deepEqual(namesOf(ordered), ['台湾 01'])
+    })
+
+    it('fills the capped pool with proven nodes first', () => {
+      const proxies = Array.from({ length: GEMINI_POOL_MAX_SIZE + 3 }, (_, index) =>
+        node(`台湾 ${String(index + 1).padStart(2, '0')}`, `tw${index}.example.com`)
+      )
+      const lastThree = proxies.slice(-3)
+
+      const ordered = orderGeminiProxies(
+        proxies,
+        ['台湾'],
+        eligible(...proxies),
+        undefined,
+        stabilityOf(lastThree.map((proxy) => [String(proxy.name), STABLE]))
+      )
+
+      assert.equal(ordered.length, GEMINI_POOL_MAX_SIZE)
+      assert.deepEqual(namesOf(ordered).slice(0, 3), namesOf(lastThree))
+    })
+
+    it('keeps an empty ledger equivalent to no ledger at all', () => {
+      const cache = eligible(taiwan, japan)
+
+      assert.deepEqual(
+        orderGeminiProxies([japan, taiwan], ['台湾'], cache, undefined, stabilityOf([])),
+        orderGeminiProxies([japan, taiwan], ['台湾'], cache)
+      )
+    })
+
+    it('carries the ledger through the provider document', () => {
+      const doc = buildSparkleGeminiProviderDocument({
+        proxies: [taiwan, japan],
+        regionPriority: ['台湾'],
+        regionCache: eligible(taiwan, japan),
+        stability: stabilityOf([['日本 01', STABLE]])
+      })
+
+      assert.deepEqual(namesOf(doc.proxies), ['日本 01', '台湾 01'])
+    })
   })
 
   it('dedupes by name and drops nameless nodes', () => {

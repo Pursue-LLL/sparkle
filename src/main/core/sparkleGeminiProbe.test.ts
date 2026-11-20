@@ -10,74 +10,16 @@ import {
   NODES,
   NOW,
   readCache,
+  readLedger,
   readProviderOrder,
   UNUSABLE_PROFILES,
   useGeminiRig,
   world,
-  writeCache,
-  writeCacheRaw
+  writeCache
 } from './sparkleGeminiProbeRig'
 
 const TW1 = NODES[0]
 const TW2 = NODES[1]
-
-describe('sparkleGeminiProbe cache', () => {
-  const gemini = useGeminiRig()
-
-  it('starts empty when there is no cache file', async () => {
-    assert.equal((await gemini().loadSparkleGeminiRegionCache(NOW)).size, 0)
-  })
-
-  it('keeps well-formed fresh records and drops stale or malformed ones', async () => {
-    writeCache({
-      fresh: cacheRecord(true, 'TW', HOUR_MS),
-      justInsideEligibleTtl: cacheRecord(true, 'TW', 12 * HOUR_MS - 1),
-      atEligibleTtl: cacheRecord(true, 'TW', 12 * HOUR_MS),
-      justInsideRestrictedTtl: cacheRecord(false, 'ZZ', 6 * HOUR_MS - 1),
-      atRestrictedTtl: cacheRecord(false, 'ZZ', 6 * HOUR_MS),
-      noCountry: { eligible: true, checkedAt: NOW },
-      badFlag: { eligible: 'yes', countryCode: 'TW', checkedAt: NOW },
-      badTime: { eligible: true, countryCode: 'TW', checkedAt: '2026' },
-      nothing: null
-    })
-
-    const cache = await gemini().loadSparkleGeminiRegionCache(NOW)
-
-    assert.deepEqual(
-      [...cache.keys()].sort(),
-      ['fresh', 'justInsideEligibleTtl', 'justInsideRestrictedTtl'].sort()
-    )
-  })
-
-  it('treats an unreadable cache file as empty', async () => {
-    writeCacheRaw('{not json')
-
-    assert.equal((await gemini().loadSparkleGeminiRegionCache(NOW)).size, 0)
-  })
-
-  it('serves later calls from memory and prunes the records that expired meanwhile', async () => {
-    writeCache({
-      eligible: cacheRecord(true),
-      restricted: cacheRecord(false)
-    })
-    assert.equal((await gemini().loadSparkleGeminiRegionCache(NOW)).size, 2)
-
-    const afterSevenHours = await gemini().loadSparkleGeminiRegionCache(NOW + 7 * HOUR_MS)
-    assert.deepEqual([...afterSevenHours.keys()], ['eligible'])
-
-    const afterThirteenHours = await gemini().loadSparkleGeminiRegionCache(NOW + 13 * HOUR_MS)
-    assert.equal(afterThirteenHours.size, 0)
-  })
-
-  it('does not read the file again once it has been loaded', async () => {
-    writeCache({ first: cacheRecord(true) })
-    await gemini().loadSparkleGeminiRegionCache(NOW)
-
-    writeCache({ second: cacheRecord(true) })
-
-    assert.deepEqual([...(await gemini().loadSparkleGeminiRegionCache(NOW)).keys()], ['first'])
-  })
-})
 
 describe('sparkleGeminiProbe blocked node names', () => {
   const gemini = useGeminiRig()
@@ -279,5 +221,75 @@ describe('sparkleGeminiProbe verifyNodeGeminiRegion', () => {
       definitive: false
     })
     assert.equal(cacheFileExists(), false)
+  })
+
+  it('serves a record younger than maxAgeMs from the cache and probes again for an older one', async () => {
+    writeCache({ [cacheKey(TW1)]: cacheRecord(true, 'TW', 2 * HOUR_MS) })
+    world.verdictOf = () => ({ definitive: true, eligible: true, countryCode: 'JP' })
+
+    const young = await gemini().verifyNodeGeminiRegion('台湾-1', { maxAgeMs: 3 * HOUR_MS })
+    assert.deepEqual(young, { eligible: true, countryCode: 'TW', definitive: true })
+    assert.deepEqual(callsStarting('lock:'), [])
+
+    const old = await gemini().verifyNodeGeminiRegion('台湾-1', { maxAgeMs: 2 * HOUR_MS })
+    assert.deepEqual(old, { eligible: true, countryCode: 'JP', definitive: true })
+    assert.deepEqual(callsStarting('lock:'), ['lock:台湾-1'])
+    assert.equal(readCache()[cacheKey(TW1)].countryCode, 'JP')
+  })
+
+  it('keeps the old record when the fresh probe has no verdict', async () => {
+    writeCache({ [cacheKey(TW1)]: cacheRecord(true, 'TW', 2 * HOUR_MS) })
+    world.verdictOf = () => ({ definitive: false, eligible: false })
+
+    const verdict = await gemini().verifyNodeGeminiRegion('台湾-1', { maxAgeMs: HOUR_MS })
+
+    assert.deepEqual(verdict, { eligible: true, definitive: false })
+    assert.deepEqual(readCache(), { [cacheKey(TW1)]: cacheRecord(true, 'TW', 2 * HOUR_MS) })
+  })
+})
+
+describe('sparkleGeminiProbe verdict bookkeeping', () => {
+  const gemini = useGeminiRig()
+
+  it('counts an eligible verdict as one good sample', async () => {
+    world.verdictOf = () => ({ definitive: true, eligible: true, countryCode: 'TW' })
+
+    await gemini().verifyNodeGeminiRegion('台湾-1')
+
+    assert.deepEqual(readLedger(), { '台湾-1': { samples: 1 } })
+  })
+
+  it('counts a restricted verdict as a sample stamped with the time of the failure', async () => {
+    world.verdictOf = () => ({ definitive: true, eligible: false, countryCode: 'ZZ' })
+
+    await gemini().verifyNodeGeminiRegion('台湾-1')
+
+    assert.deepEqual(readLedger(), { '台湾-1': { samples: 1, lastBadAt: NOW } })
+  })
+
+  it('counts every fresh probe of the same node', async () => {
+    world.verdictOf = () => ({ definitive: true, eligible: true, countryCode: 'TW' })
+    writeCache({ [cacheKey(TW1)]: cacheRecord(true, 'TW', 2 * HOUR_MS) })
+
+    await gemini().verifyNodeGeminiRegion('台湾-1', { maxAgeMs: HOUR_MS })
+    await gemini().verifyNodeGeminiRegion('台湾-1', { maxAgeMs: 0 })
+
+    assert.deepEqual(readLedger(), { '台湾-1': { samples: 2 } })
+  })
+
+  it('does not count an answer served from the cache', async () => {
+    writeCache({ [cacheKey(TW1)]: cacheRecord(true) })
+
+    await gemini().verifyNodeGeminiRegion('台湾-1')
+
+    assert.throws(readLedger, { code: 'ENOENT' })
+  })
+
+  it('does not count a probe that reached no verdict', async () => {
+    world.verdictOf = () => ({ definitive: false, eligible: false })
+
+    await gemini().verifyNodeGeminiRegion('台湾-1')
+
+    assert.throws(readLedger, { code: 'ENOENT' })
   })
 })

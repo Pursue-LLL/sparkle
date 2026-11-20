@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   evaluateGeminiHtmlEligibility,
   isGeminiCountryCodeEligible,
+  lookupGeminiRegionRecord,
   resolveGeminiBlockedNodeNames,
   type GeminiRegionProbeRecord
 } from './sparkleGeminiProbeCore'
@@ -124,6 +125,40 @@ describe('sparkleGeminiProbeCore', () => {
     assert.deepEqual(
       [...blocked],
       ['🇸🇬 日本 V0 | 移动优化、新开机 | 2x', '🇰🇷 韩国 I1 | IEPL、ChatGPT、动态IP | 3x']
+    )
+  })
+})
+
+describe('sparkleGeminiProbeCore lookupGeminiRegionRecord', () => {
+  const byFingerprint: GeminiRegionProbeRecord = { eligible: true, countryCode: 'JP', checkedAt: 1 }
+  const byName: GeminiRegionProbeRecord = { eligible: false, countryCode: 'ZZ', checkedAt: 2 }
+
+  it('prefers the fingerprint record over the plain-name record', () => {
+    const cache = new Map([
+      ['日本 01|ss|jp.example.com|443', byFingerprint],
+      ['日本 01', byName]
+    ])
+
+    assert.equal(
+      lookupGeminiRegionRecord(cache, '日本 01', '日本 01|ss|jp.example.com|443'),
+      byFingerprint
+    )
+  })
+
+  it('falls back to the plain name when the fingerprint has no record or is unknown', () => {
+    const cache = new Map([['日本 01', byName]])
+
+    assert.equal(
+      lookupGeminiRegionRecord(cache, '日本 01', '日本 01|ss|moved.example.com|443'),
+      byName
+    )
+    assert.equal(lookupGeminiRegionRecord(cache, '日本 01'), byName)
+  })
+
+  it('finds nothing for a node nobody has judged', () => {
+    assert.equal(
+      lookupGeminiRegionRecord(new Map(), '日本 01', '日本 01|ss|jp.example.com|443'),
+      undefined
     )
   })
 })

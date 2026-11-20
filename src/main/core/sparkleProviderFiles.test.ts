@@ -38,6 +38,7 @@ const state: {
   agyCache: Map<string, unknown>
   grokCache: Map<string, unknown>
   geminiCache: Map<string, unknown>
+  geminiLedger: Map<string, unknown>
   failing: Set<string>
 } = {
   proxies: [],
@@ -49,6 +50,7 @@ const state: {
   agyCache: new Map(),
   grokCache: new Map(),
   geminiCache: new Map(),
+  geminiLedger: new Map(),
   failing: new Set()
 }
 
@@ -97,10 +99,13 @@ describe('writeSparkleProviderFiles', () => {
       exports: { loadSparkleFastDelaySnapshot: loader('fast-delays', () => state.delays) }
     })
     mock.module('./sparkleGeminiProbe', {
-      exports: {
-        loadGeminiBlockedNodeNames: loader('gemini', () => state.blocked),
-        loadSparkleGeminiRegionCache: loader('gemini-cache', () => state.geminiCache)
-      }
+      exports: { loadGeminiBlockedNodeNames: loader('gemini', () => state.blocked) }
+    })
+    mock.module('./sparkleGeminiRegionCache', {
+      exports: { loadSparkleGeminiRegionCache: loader('gemini-cache', () => state.geminiCache) }
+    })
+    mock.module('./sparkleGeminiStabilityStore', {
+      exports: { loadGeminiStabilityLedger: loader('gemini-ledger', () => state.geminiLedger) }
     })
     mock.module('./sparkleNodeQualityCache', {
       exports: { loadSunkNodeNames: loader('sunk', () => state.sunk) }
@@ -130,6 +135,7 @@ describe('writeSparkleProviderFiles', () => {
     state.agyCache = new Map()
     state.grokCache = new Map()
     state.geminiCache = new Map()
+    state.geminiLedger = new Map()
     state.failing = new Set()
   })
 
@@ -257,6 +263,20 @@ describe('writeSparkleProviderFiles', () => {
     assert.deepEqual(namesIn('gemini'), ['台湾 01', '日本 01'], 'only region-verified nodes')
   })
 
+  it('puts the nodes the stability ledger proved ahead of the other verified ones in gemini', async () => {
+    state.geminiCache = new Map(
+      [taiwan, japan, hongKong].map((proxy) => [
+        computeProxyNodeFingerprint(proxy),
+        { eligible: true, countryCode: 'XX', checkedAt: NOW }
+      ])
+    )
+    state.geminiLedger = new Map([['日本 01', { samples: 10 }]])
+
+    await write(profile, ['台湾', '日本'], ALL_GROUPS_ON)
+
+    assert.deepEqual(namesIn('gemini'), ['日本 01', '台湾 01', '香港 01'])
+  })
+
   it('never reads a provider’s input from another provider’s cache', async () => {
     state.mailCache = new Map([
       [computeProxyNodeFingerprint(japan), { alive: true, rttMs: 50, checkedAt: NOW }]
@@ -322,7 +342,8 @@ describe('writeSparkleProviderFiles', () => {
       ['mail-cache', 'mail'],
       ['agy-cache', 'agy'],
       ['grok-cache', 'grok'],
-      ['gemini-cache', 'gemini']
+      ['gemini-cache', 'gemini'],
+      ['gemini-ledger', 'gemini']
     ]
 
     for (const [failing, affected] of CASES) {

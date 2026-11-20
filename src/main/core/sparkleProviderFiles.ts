@@ -5,8 +5,9 @@
 //         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
 //         sparkleFastProviderCore::buildSparkleFastProviderDocument/FAST_NODE_PROVIDER_FILENAME (POS: sparkle-fast provider 文件生成) ·
 //         sparkleFastProviderExclusions::loadFastProviderExclusions (POS: sparkle-fast 剔除/沉底依据) ·
-//         sparkleGeminiProbe::loadSparkleGeminiRegionCache (POS: Gemini 地区探测与缓存) ·
 //         sparkleGeminiProviderCore::buildSparkleGeminiProviderDocument/GEMINI_NODE_PROVIDER_FILENAME (POS: gemini provider 与分组配置) ·
+//         sparkleGeminiRegionCache::loadSparkleGeminiRegionCache (POS: Gemini 地区判定缓存) ·
+//         sparkleGeminiStabilityStore::loadGeminiStabilityLedger (POS: Gemini 节点稳定度台账) ·
 //         sparkleGrokProbeCache::loadSparkleGrokProbeCache (POS: grok 探测缓存) ·
 //         sparkleGrokProviderCore::buildSparkleGrokProviderDocument/GROK_NODE_PROVIDER_FILENAME (POS: grok provider 与快照) ·
 //         sparkleMailProbe::loadSparkleMailProbeCache (POS: 邮件 provider 全量探测) ·
@@ -110,10 +111,12 @@ const buildGrokProviderFile: ProviderFileBuilder = async ({ proxies }) => {
 const buildGeminiProviderFile: ProviderFileBuilder = async ({ proxies, regionPriority }) => {
   const { buildSparkleGeminiProviderDocument, GEMINI_NODE_PROVIDER_FILENAME } =
     await import('./sparkleGeminiProviderCore')
-  const { loadSparkleGeminiRegionCache } = await import('./sparkleGeminiProbe')
+  const { loadSparkleGeminiRegionCache } = await import('./sparkleGeminiRegionCache')
+  const { loadGeminiStabilityLedger } = await import('./sparkleGeminiStabilityStore')
   const { loadSparkleFastDelaySnapshot } = await import('./sparkleFastLatencyOrder')
-  const [regionCache, delaySnapshot] = await Promise.all([
+  const [regionCache, ledger, delaySnapshot] = await Promise.all([
     loadSparkleGeminiRegionCache(),
+    loadGeminiStabilityLedger(),
     loadSparkleFastDelaySnapshot(proxies)
   ])
   return {
@@ -122,7 +125,8 @@ const buildGeminiProviderFile: ProviderFileBuilder = async ({ proxies, regionPri
       proxies,
       regionPriority,
       regionCache,
-      delayMs: delaySnapshot
+      delayMs: delaySnapshot,
+      stability: { ledger, nowMs: Date.now() }
     })
   }
 }

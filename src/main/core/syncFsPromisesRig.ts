@@ -9,6 +9,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -30,6 +31,7 @@ export function mockFsPromisesSync(): void {
       copyFile: async (source: string, destination: string, mode?: number): Promise<void> =>
         copyFileSync(source, destination, mode),
       readdir: async (dir: string): Promise<string[]> => readdirSync(dir),
+      rename: async (from: string, to: string): Promise<void> => renameSync(from, to),
       stat: async (file: string) => statSync(file),
       unlink: async (file: string): Promise<void> => unlinkSync(file)
     }
