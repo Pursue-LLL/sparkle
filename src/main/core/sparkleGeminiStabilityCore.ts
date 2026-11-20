@@ -1,7 +1,7 @@
 // [INPUT] 无（纯函数：台账记录、时间戳与节点名都由调用方传入）
 // [OUTPUT] STABLE_MIN_SAMPLES · STABLE_CLEAN_WINDOW_MS · PENALTY_BURST_LIMIT · PENALTY_BURST_WINDOW_MS ·
 //          GeminiStabilityEntry · GeminiStabilityLedger · isInPenaltyPeriod · isNodeStable · recordSample · canRecordPenalty · parseStabilityLedger
-// [POS] Gemini 节点稳定度台账的纯规则。Google 对出口的地区判定是概率事件（同一节点同一时刻 12 次里 8 次 ZZ），
+// [POS] Gemini 节点稳定度台账的纯规则。Google 对出口的地区判定是概率事件（同一个节点的判定会时而 TW、时而 ZZ），
 // 单次「合格」不能当成节点的属性，所以每个节点累计明确判定的次数与最近一次被判封锁的时刻：
 // 稳定 = 至少 STABLE_MIN_SAMPLES 次明确判定，且最近一次封锁已过 STABLE_CLEAN_WINDOW_MS（之内即惩罚期）。
 // 封锁罚分限流只数把节点翻进惩罚期的罚分：PENALTY_BURST_WINDOW_MS 内最多 PENALTY_BURST_LIMIT 条入账，
