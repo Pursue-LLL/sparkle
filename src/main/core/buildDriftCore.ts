@@ -7,9 +7,6 @@ import { SPARKLE_GIT_COMMIT, SPARKLE_GIT_DIRTY } from '../../shared/buildStamp'
 import { createGitRunner, evaluateBuildDrift, type GitRunner } from './buildDriftGit'
 import { appendAppLog } from '../utils/log'
 
-/** 部署态仓库根：构建机路径兜底，用于 GUI cwd 不在仓库内时定位。 */
-const REPO_ROOT_FALLBACK = '/Users/user/projects/OpenSource/sparkle'
-
 /** 开发态向上最多找几级祖先目录。 */
 const MAX_ANCESTOR_DEPTH = 6
 
@@ -18,7 +15,7 @@ let driftLogged = false
 /**
  * 定位仓库并返回绑定到它的 git 执行器；找不到时返回 undefined，判定结果即「需重建」。
  *
- * 先从 cwd 向上逐级找含 `.git` 的祖先目录（开发态），再试源码固定位置（部署态）：
+ * 先从 cwd 向上逐级找含 `.git` 的祖先目录（开发态），再试 `~/projects/OpenSource/sparkle`（部署态）：
  * GUI 由 LaunchAgent 拉起时 cwd 是 `/`，只靠 cwd 会找不到仓库。
  */
 function locateRepoGit(): GitRunner | undefined {
@@ -32,7 +29,7 @@ function locateRepoGit(): GitRunner | undefined {
     }
     dir = parent
   }
-  candidates.push(REPO_ROOT_FALLBACK, path.join(os.homedir(), 'projects', 'OpenSource', 'sparkle'))
+  candidates.push(path.join(os.homedir(), 'projects', 'OpenSource', 'sparkle'))
 
   for (const candidate of candidates) {
     const git = createGitRunner(candidate)

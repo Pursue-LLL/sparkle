@@ -24,7 +24,7 @@ describe('isBinaryRelevantPath', () => {
     for (const path of [
       'README.md',
       'src/main/core/_ARCH.md',
-      'scripts/scripts_20261107_20261113_BUGFIX_LOG.md',
+      'ARCHITECTURE.md',
       'NOTES.MD',
       'src/main/core/factory.test.ts',
       'scripts/sparkleBakedBuildStampCore.test.ts',
@@ -126,7 +126,7 @@ describe('detectBuildDrift', () => {
 
     it('is not drift when the commits in between only touched docs, tests and the stamp', () => {
       const r = detectBuildDrift(app, repo, () => [
-        'BUGFIX_LOG.md',
+        'ARCHITECTURE.md',
         'src/main/core/factory.test.ts',
         'src/shared/buildStamp.ts'
       ])

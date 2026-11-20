@@ -11,7 +11,7 @@
 # [POS] 本地安装的唯一入口：整个安装是一个可回滚的事务，任何一步失败（含 Ctrl-C、被 kill）都把旧包原样放回；
 #       同时清走会造成 service/GUI 脑裂的 ~/Applications/Sparkle.app 重复安装（改名留存，只留最近一份）。
 #
-# AI Agent: see BUGFIX_LOG.md §「AI Agent 操作约束」. Launch via Finder POSIX open (not open -a).
+# AI Agent: Launch via Finder POSIX open (not open -a).
 #
 # Signing: pnpm run build:mac already deep-signs via afterSign (deepSignMac.cjs).
 # Do NOT re-sign here — a second adhoc sign changes CDHash and invalidates Gatekeeper approval.

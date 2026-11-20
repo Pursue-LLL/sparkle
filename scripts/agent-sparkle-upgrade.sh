@@ -21,7 +21,7 @@ cd "$ROOT"
 log() { echo "[agent-sparkle-upgrade] $*" >&2; }
 fail() { log "FAIL: $*"; exit 1; }
 
-# 入口互斥：两个 agent 升级同时跑会并发写 dist 与 /Applications（BUG-2026-11-13-004）。
+# 入口互斥：两个 agent 升级同时跑会并发写 dist 与 /Applications。
 # 内部 upgrade-sparkle-local.sh 自己也有锁，但入口层先拦住可以避免「先做一半准备工作再失败」。
 # 纯 bash 实现：安装路径上不依赖 `tsx -e` / `node -e` 传参（参数会被当成 node 选项）。
 ENTRY_LOCK_DIR="${SPARKLE_UPGRADE_ENTRY_LOCK_DIR:-${TMPDIR:-/tmp}/sparkle-agent-upgrade-entry.lock}"

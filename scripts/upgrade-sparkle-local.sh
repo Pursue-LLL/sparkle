@@ -2,9 +2,6 @@
 # Build Sparkle (vite + electron-builder dir) and install to /Applications.
 # SSOT for local dev upgrades — avoids stale asar, Gatekeeper flash-exit, and ditto overlay.
 #
-# AI Agent: read BUGFIX_LOG.md §「Sparkle 本地安装」+ §「AI Agent 操作约束」 before any install.
-# Do NOT edit BUGFIX_LOG_315.md for Sparkle issues.
-#
 # Usage: bash scripts/upgrade-sparkle-local.sh
 # Requires: pnpm, network for electron-builder deps scan (~2min first time after clean)
 set -euo pipefail
@@ -15,7 +12,7 @@ cd "$ROOT"
 fail() { echo "[upgrade-sparkle] FAIL: $*" >&2; exit 1; }
 log() { echo "[upgrade-sparkle] $*" >&2; }
 
-# 原子互斥：并发构建会同时 rm -rf dist 与 /Applications，把 asar 写坏（BUG-2026-11-13-004），
+# 原子互斥：并发构建会同时 rm -rf dist 与 /Applications，把 asar 写坏，
 # App 启动即退且无日志。用 mkdir 的原子性做锁；持有者已死或超时才接管，避免残留锁永久卡死。
 # 全部用纯 bash 判定：安装/构建路径上出现 `tsx -e` 传参会把参数当 node 选项而崩溃。
 LOCK_DIR="${SPARKLE_UPGRADE_LOCK_DIR:-${TMPDIR:-/tmp}/sparkle-agent-upgrade.lock}"
@@ -184,7 +181,7 @@ if ! run_electron_builder_dir; then
   run_electron_builder_dir || fail "electron-builder --mac dir failed twice (see log above)"
 fi
 
-[[ -d "$APP" ]] || fail "missing $APP after build (dist may have Electron.app only — BUG-2026-07-23-005)"
+[[ -d "$APP" ]] || fail "missing $APP after build (dist may have Electron.app only)"
 
 BUILT_VER="$(defaults read "$APP/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "")"
 [[ "$BUILT_VER" == "$EXPECTED_VER" ]] || fail "version mismatch: package.json=$EXPECTED_VER dist=$BUILT_VER"

@@ -55,7 +55,6 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 | `mihomoIsolatedHarness.ts` | 隔离 mihomo 端到端校验的公共夹具：随机回环端口、模拟 HTTP 目标与 SOCKS5 节点、内核子进程与控制器客户端；只接触自己创建的进程、端口与目录 |
 | `verify-anytls-reuse-option.mts` | `pnpm run verify:anytls-reuse [内核路径]`：AnyTLS 会话复用防护对真实 mihomo 内核的契约校验（`mihomo -t`，约 1 秒，不启动内核）；防护写出的节点必须被接受，同一个键给非 bool 值必须被拒绝（内核对未知键静默忽略，只测前者证明不了选项被识别）；升级或切换内核（含 alpha）后运行，选项改名或被忽略时失败 |
 | `verify-antigravity-geo-routing.mts` | `pnpm run verify:agygeo`：agy / cloudcode-pa 流量必须落入 `🎯 agy 专用` |
-| `verify-vps-provider-split.sh` | 装后校验 VPS provider 拆分（日本四个标准叶子），非零退出 = 失败 |
 | `validate-dns-fix.sh` | DNS 修复验证清单：google 解析为 fake-ip、TUN 与 7890 代理访问 google / chatgpt、本机 sub2api 健康检查；汇总通过 / 失败数，有失败则退出 1 |
 
 ## GUI 看门狗
@@ -85,7 +84,6 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 | `regenerate-work-config.mjs` / `regenerate-work-config.ts` / `tsconfig.regen.json` / `electron-hook.mjs` / `electron-mock.mjs` / `electron-toolkit-mock.mjs` | 在 Electron 之外调用 `generateProfile()` 重写 `work/config.yaml`：加载钩子把 `electron` 与 `@electron-toolkit/utils` 换成桩 |
 | `patch-work-config.cjs` / `patch-work-config.ts` | 不启动 App，对现有 `work/config.yaml` 就地补跑分组注入（专用分组按应用配置里的开关注入，与 App 同口径）、规则目标修复、分组归一与自动选路组，输出 `PATCH_OK` |
 | `reload-mihomo-via-service.mts` | 经 `/tmp/sparkle-service.sock` 的 `SPARKLE-AUTH-V2` 签名请求（共享签名库 `lib/serviceSignedRequest.ts`），对 service 模式内核执行 `PUT /configs?force=true`（整配置重载，输出 `reload_ok`） |
-| `vps-deploy/` | VPS 侧 sing-box 部署与运维脚本（首尔 Cursor 节点 / 东京通用节点安装、迁移为纯 sing-box、审计日志、2 GB swap 与 OOM 防护），经 ssh 在 VPS 上执行，不被 App 构建链引用 |
 
 ## 文档守护
 
@@ -120,11 +118,11 @@ bash scripts/agent-sparkle-upgrade.sh
 
 **文档门禁（持锁后的第一步）**：`docDrift/docDriftCli.mts` 对脚本所在的工作树做文档与代码的一致性对账，有漂移就 `fail` 退出。此时还没有装前清理（会截断日志）、构建与安装，所以被拒绝等于什么都没动；报错逐条列出「文件:行 [规则名] 说明」，照「文档守护」一节末段的对照改文档，再重跑。门禁没有绕过开关（环境变量或参数）。它判的是整个工作树，共享工作区里别的会话写到一半的文件会让它变红，此时从干净的 `git worktree` 升级；单独运行 `upgrade-sparkle-local.sh`（`pnpm run upgrade:mac`）不经过它。`docDrift/docDriftGate.test.ts` 用桩替换其余步骤，验证漂移时在任何其他步骤之前拒绝、一致时放行。
 
-**远程同步提示（门禁之后、装前清理之前）**：`report_remote_sync` 读当前分支已有的 upstream 引用，与 `HEAD` 比较领先、落后的提交数，打一行 `Remote sync:` 日志——同步；有未推送的提交；落后（给出 `git merge --ff-only` 的快进做法）；分叉（说明先合并、不改写历史、不强制推送）；没有 upstream、游离 HEAD、不在 git 仓库、PATH 里没有 git 时只说跳过。**只警告，永远不影响退出码**（拦截会让紧急装包被一件与构建无关的事卡住）；**只读、不联网**（联网会让装包路径多一个会被代理抖动打断的失败点），所以只反映最近一次 `fetch` / `push` 之后的状态，看不到远端刚发生的新提交；本地领先是工作中的常态，所以这是提醒而不是门禁。它存在的原因是分叉每个工作段都在悄悄加重、此前没有任何步骤会提醒（`src/main/core/core_20261114_20261120_BUGFIX_LOG.md` 第四节「本地与远程分叉」）。`agentUpgradeRemoteSync.test.ts` 验证每种状态的文字与退出码，`sparkleUpgradeScriptText.test.ts` 守住位置与「不联网、不拦截」；单独运行的 `upgrade-sparkle-local.sh` 不经过它。
+**远程同步提示（门禁之后、装前清理之前）**：`report_remote_sync` 读当前分支已有的 upstream 引用，与 `HEAD` 比较领先、落后的提交数，打一行 `Remote sync:` 日志——同步；有未推送的提交；落后（给出 `git merge --ff-only` 的快进做法）；分叉（说明先合并、不改写历史、不强制推送）；没有 upstream、游离 HEAD、不在 git 仓库、PATH 里没有 git 时只说跳过。**只警告，永远不影响退出码**（拦截会让紧急装包被一件与构建无关的事卡住）；**只读、不联网**（联网会让装包路径多一个会被代理抖动打断的失败点），所以只反映最近一次 `fetch` / `push` 之后的状态，看不到远端刚发生的新提交；本地领先是工作中的常态，所以这是提醒而不是门禁。它存在的原因是分叉每个工作段都在悄悄加重、此前没有任何步骤会提醒。`agentUpgradeRemoteSync.test.ts` 验证每种状态的文字与退出码，`sparkleUpgradeScriptText.test.ts` 守住位置与「不联网、不拦截」；单独运行的 `upgrade-sparkle-local.sh` 不经过它。
 
-**一次到位（铁律）**：改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交）再触发升级；一次升级命令只跑一次、只对应一次 App 启停，禁止并发或重复触发；命令被中断后先用 `evaluate-sparkle-dist-freshness.mts`、`/Applications/Sparkle.app` 落盘时间与 App 日志核查已完成到哪一步，再决定续跑或收尾，禁止不查状态直接重跑；装后验收只用只读门禁（`mihomo API ready` 日志、`sparkle-data-plane-readiness.mts`），失败先离线定位根因，不拿反复重装试错（事故记录：`scripts_20261107_20261113_BUGFIX_LOG.md` BUG-2026-11-13-003）。
+**一次到位（铁律）**：改动先在源码层闭环（全量测试 + typecheck + lint 全绿、已提交）再触发升级；一次升级命令只跑一次、只对应一次 App 启停，禁止并发或重复触发；命令被中断后先用 `evaluate-sparkle-dist-freshness.mts`、`/Applications/Sparkle.app` 落盘时间与 App 日志核查已完成到哪一步，再决定续跑或收尾，禁止不查状态直接重跑；装后验收只用只读门禁（`mihomo API ready` 日志、`sparkle-data-plane-readiness.mts`），失败先离线定位根因，不拿反复重装试错。
 
-**重跑前必须确认没有构建进程**（BUG-2026-11-13-004 的唯一成因）：工具层报「命令中断」只表示调用方放弃等待，**构建进程可能仍在后台写 `dist/` 与 `out/`**。任何重跑前先执行 `ps aux | rg "electron-builder|agent-sparkle-upgrade|upgrade-sparkle-local"`，有残留必须先杀掉再重跑；两个构建并发写同一份 `dist` 会产出截断的 `app.asar`，表现为 App 启动零输出立即退出。App 装后打不开时的最短排查链：`node --check out/main/index.js` → 解析 asar header 长度 → 读包内 `package.json` 是否为合法 JSON → 检查 `SingletonLock` 是否指向已死 pid。
+**重跑前必须确认没有构建进程**（这是 `app.asar` 损坏的唯一成因）：工具层报「命令中断」只表示调用方放弃等待，**构建进程可能仍在后台写 `dist/` 与 `out/`**。任何重跑前先执行 `ps aux | rg "electron-builder|agent-sparkle-upgrade|upgrade-sparkle-local"`，有残留必须先杀掉再重跑；两个构建并发写同一份 `dist` 会产出截断的 `app.asar`，表现为 App 启动零输出立即退出。App 装后打不开时的最短排查链：`node --check out/main/index.js` → 解析 asar header 长度 → 读包内 `package.json` 是否为合法 JSON → 检查 `SingletonLock` 是否指向已死 pid。
 
 **内核权限（setuid）的口径**：`ditto` 不保留 root 属主与 setuid 位，每次安装都会丢掉内核的 setuid。内核拿到 TUN 权限有两条路：`elevated`（内核自带 setuid，GUI 以普通用户拉起它）与 `service`（内核是 root 服务的子进程，**不看 setuid**）。App 的 `tunStartupGuard` 与安装脚本用同一口径（`requiresCoreSetuid`：TUN 开启且有效模式不是 service，口径由 `coreSetuidScriptParity.test.ts` 对齐），只在需要时才要求 setuid：需要时在**暂存副本**上给当前启用的内核补 setuid 并断言——它是整条流水线里唯一可能弹密码框、被取消的步骤，排在所有不可逆动作之前；service 模式既不补也不弹；装后不自动重启重试（自动重试只会把「装一次」变成反复启停；门控不就绪就停在现场）；服务托管的内核经签名 API（`POST /core/stop`）停掉，不提权杀服务。
 
@@ -135,5 +133,3 @@ bash scripts/agent-sparkle-upgrade.sh
 ## 依赖
 
 - `package.json` version = 目标 semver
-- `BUGFIX_LOG.md` §「Sparkle 本地安装」· §「AI Agent 操作约束」
-- 本目录按「模块 + 7 日」归档的缺陷日志 `scripts_<起>_<止>_BUGFIX_LOG.md`，最新一份 [scripts_20261114_20261120_BUGFIX_LOG.md](scripts_20261114_20261120_BUGFIX_LOG.md)（升级管线事务化、测试临时目录、重复备份回收、本周装包流水、装包入口的文档门禁），上一份 [scripts_20261107_20261113_BUGFIX_LOG.md](scripts_20261107_20261113_BUGFIX_LOG.md)（构建 chunk、测试门禁、Dock 残留注册、`check:drift` 误报）

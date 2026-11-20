@@ -143,9 +143,9 @@ describe('doc-link-broken', () => {
     const snapshot = snapshotOf({
       docs: {
         'ARCHITECTURE.md':
-          '[f](VERSION_LOG.md#top) · [d](src) · [u](https://x.dev/a) · [m](mailto:a@b.c) · [s](/abs) · [h](#local)'
+          '[f](NOTES.md#top) · [d](src) · [u](https://x.dev/a) · [m](mailto:a@b.c) · [s](/abs) · [h](#local)'
       },
-      paths: ['VERSION_LOG.md', 'src/a.ts']
+      paths: ['NOTES.md', 'src/a.ts']
     })
     assert.deepEqual(findingsOf(snapshot), [])
   })

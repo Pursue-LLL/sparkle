@@ -227,14 +227,12 @@ pnpm run upgrade:mac
 
 **禁止**：
 
-1. **禁止** `ditto` / `cp -R` **覆盖**旧 app（DYLD Team ID 不一致，见 [BUG-003](BUGFIX_LOG.md)）
-2. **禁止** 跳过 `electron-vite build` 只跑 electron-builder（asar 缺新代码，见 [BUG-004](BUGFIX_LOG.md)）
-3. **禁止** install 后二次 `codesign`（CDHash 变 · Gatekeeper 批准作废，见 [BUG-002](BUGFIX_LOG.md)）
-4. **禁止** `~/Applications/Sparkle.app` 与 `/Applications` 并存（split-brain，见 [BUG-001](BUGFIX_LOG.md)）
+1. **禁止** `ditto` / `cp -R` **覆盖**旧 app（DYLD Team ID 不一致）
+2. **禁止** 跳过 `electron-vite build` 只跑 electron-builder（asar 缺新代码）
+3. **禁止** install 后二次 `codesign`（CDHash 变 · Gatekeeper 批准作废）
+4. **禁止** `~/Applications/Sparkle.app` 与 `/Applications` 并存（split-brain）
 
 **pkg 流程**（可选）：`pnpm run build:mac` → `sudo rm -rf /Applications/Sparkle.app` → `sudo installer -pkg dist/sparkle-macos-*-arm64.pkg -target /`
-
-完整 SSOT 见 [BUGFIX_LOG.md — Sparkle 本地安装](BUGFIX_LOG.md)。
 
 **升级后配置**：`~/Library/Application Support/sparkle/config.yaml` 通常保留；若目录被清空或首次安装，会写入 `src/main/utils/template.ts` 默认值。安装状态（CDHash 等）在 **`~/.sparkle/`**（与 Application Support 分离），重装 app 一般不删。
 

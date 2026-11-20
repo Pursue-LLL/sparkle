@@ -1,6 +1,6 @@
 // [INPUT] profilesDir disk yaml · factory generateProfile · provider reloadMihomoProfileProviders
 // [OUTPUT] recoverProfileConfigFromDisk · syncProfileItemUpdatedFromDisk · isBlankProfileConfigRaw
-// [POS] profile.yaml 损坏/空文件时的订阅索引恢复 SSOT（BUG-2026-09-03-003）
+// [POS] profile.yaml 损坏/空文件时的订阅索引恢复 SSOT
 
 import { existsSync } from 'fs'
 import { readdir, readFile, stat } from 'fs/promises'
