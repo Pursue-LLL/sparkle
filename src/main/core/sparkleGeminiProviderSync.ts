@@ -5,7 +5,7 @@
 //         regionPriority::resolveEffectiveRegionPriority (POS: 地区优先级与地区匹配) ·
 //         sparkleFastLatencyOrder::loadSparkleFastDelaySnapshot (POS: sparkle-fast 延迟序运行时) ·
 //         sparkleGeminiProbeCore::resolveGeminiBlockedNodeNames (POS: Gemini 地区判定纯函数) ·
-//         sparkleGeminiProviderCore::buildSparkleGeminiProviderDocument/geminiProviderMembershipChanged/GEMINI_NODE_PROVIDER_FILENAME/GEMINI_NODE_PROVIDER_ID (POS: gemini provider 与分组配置) ·
+//         sparkleGeminiProviderCore::buildSparkleGeminiProviderDocument/geminiHeadUpgradeAvailable/geminiProviderMembershipChanged/GEMINI_NODE_PROVIDER_FILENAME/GEMINI_NODE_PROVIDER_ID (POS: gemini provider 与分组配置) ·
 //         sparkleGeminiRegionCache::loadSparkleGeminiRegionCache (POS: Gemini 地区判定缓存) ·
 //         sparkleGeminiStabilityCore::isNodeStable (POS: Gemini 节点稳定度台账的纯规则) ·
 //         sparkleGeminiStabilityStore::loadGeminiStabilityLedger (POS: Gemini 节点稳定度台账) ·
@@ -15,7 +15,7 @@
 //         utils/yaml::stringifyYaml (POS: YAML 解析与序列化)
 // [OUTPUT] resolveCurrentProfileProxies · rebuildAndReloadGeminiProvider
 // [POS] `gemini专用` provider 与地区缓存、稳定度台账的对账：按当前判定重建 provider 文件并热重载。
-// 只有成员集合增删时才写盘 + `PUT /providers/proxies`，顺序与延迟变化不打断已建立的连接；
+// 只有成员集合增删、或队首从不稳定节点升级成稳定节点时才写盘 + `PUT /providers/proxies`，其余顺序与延迟变化不打断已建立的连接；
 // 因被判封锁而出池的节点，同时断开它名下经本组的连接（mihomo 重载 provider 只影响新连接，长连接会一直留在坏出口上）；
 // 容量挤出与记录过期造成的出池不断连，免得打断正在流式输出的回答；多处触发的重建排队串行执行，不会互相覆盖。
 
@@ -38,6 +38,7 @@ import {
   buildSparkleGeminiProviderDocument,
   GEMINI_NODE_PROVIDER_FILENAME,
   GEMINI_NODE_PROVIDER_ID,
+  geminiHeadUpgradeAvailable,
   geminiProviderMembershipChanged
 } from './sparkleGeminiProviderCore'
 import { loadSparkleGeminiRegionCache } from './sparkleGeminiRegionCache'
@@ -95,6 +96,7 @@ async function rebuildOnce(): Promise<void> {
       loadGeminiStabilityLedger()
     ])
     const nowMs = Date.now()
+    const isStable = (name: string): boolean => isNodeStable(ledger.get(name), nowMs)
     const doc = buildSparkleGeminiProviderDocument({
       proxies,
       regionPriority: resolveEffectiveRegionPriority(proxySwitchPriority),
@@ -113,13 +115,16 @@ async function rebuildOnce(): Promise<void> {
       return
     }
     const currentNames = (provider.proxies ?? []).map((leaf) => leaf.name)
-    if (!geminiProviderMembershipChanged(currentNames, nextNames)) {
+    if (
+      !geminiProviderMembershipChanged(currentNames, nextNames) &&
+      !geminiHeadUpgradeAvailable(currentNames, nextNames, isStable)
+    ) {
       return
     }
     await writeFile(providerFile, stringifyYaml(doc), 'utf8')
     await mihomoUpdateProxyProviders(GEMINI_NODE_PROVIDER_ID)
 
-    const stableCount = nextNames.filter((name) => isNodeStable(ledger.get(name), nowMs)).length
+    const stableCount = nextNames.filter(isStable).length
     await appendAppLog(
       `[SparkleGeminiProbe]: gemini provider reloaded members=${nextNames.length} stable=${stableCount} first=${nextNames[0]}${stableCount === 0 ? ' degraded=no-stable-node' : ''}\n`
     )

@@ -5,7 +5,7 @@
 //         sparkleGeminiProbeCore::lookupGeminiRegionRecord/GeminiRegionProbeCache (POS: Gemini 地区判定纯函数) ·
 //         sparkleGeminiStabilityCore::isNodeStable/GeminiStabilityLedger (POS: Gemini 节点稳定度台账的纯规则)
 // [OUTPUT] GEMINI_NODE_PROVIDER_ID · GEMINI_NODE_PROVIDER_FILENAME · GEMINI_POOL_MAX_SIZE · GeminiStabilityView · orderGeminiProxies ·
-//          buildSparkleGeminiProviderDocument · buildGeminiGroupConfig · geminiProviderMembershipChanged
+//          buildSparkleGeminiProviderDocument · buildGeminiGroupConfig · geminiProviderMembershipChanged · geminiHeadUpgradeAvailable
 // [POS] `gemini专用` 的专属 provider 与组配置生成逻辑：
 // 只保留经 vXmutd 流式探测明确判定「地区已解锁」的节点；稳定档（台账里累计足够多次明确判定、近期没被判过封锁）排在前面，
 // 因为单次「合格」只是一次抽样、不是节点的属性；档内按地区优先级分段、段内延迟升序，最多 12 个；
@@ -151,7 +151,7 @@ export function buildSparkleGeminiProviderDocument(input: {
   }
 }
 
-/** provider 成员集合是否变化；顺序变化不触发热重载，只有增删节点才需要让 mihomo 重读。 */
+/** provider 成员集合是否变化；单纯的顺序变化不触发热重载，增删节点才需要让 mihomo 重读。 */
 export function geminiProviderMembershipChanged(
   previousNames: readonly string[],
   nextNames: readonly string[]
@@ -167,6 +167,25 @@ export function geminiProviderMembershipChanged(
     }
   }
   return false
+}
+
+/**
+ * 成员不变时唯一值得重载的顺序变化：当前队首不稳定、而新队首是稳定节点。
+ * 稳定档内换队首只是延迟抖动，却等于换出口 IP，不值得为它打断。
+ */
+export function geminiHeadUpgradeAvailable(
+  previousNames: readonly string[],
+  nextNames: readonly string[],
+  isStable: (name: string) => boolean
+): boolean {
+  const [previousHead] = previousNames
+  const [nextHead] = nextNames
+  return (
+    previousHead !== undefined &&
+    nextHead !== undefined &&
+    isStable(nextHead) &&
+    !isStable(previousHead)
+  )
 }
 
 export interface GeminiProxyGroupShape {

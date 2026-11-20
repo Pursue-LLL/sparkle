@@ -6,6 +6,7 @@ import type { GeminiRegionProbeCache, GeminiRegionProbeRecord } from './sparkleG
 import {
   buildGeminiGroupConfig,
   buildSparkleGeminiProviderDocument,
+  geminiHeadUpgradeAvailable,
   geminiProviderMembershipChanged,
   GEMINI_NODE_PROVIDER_ID,
   GEMINI_POOL_MAX_SIZE,
@@ -304,6 +305,22 @@ describe('sparkleGeminiProviderCore', () => {
     assert.equal(geminiProviderMembershipChanged(['A'], ['A', 'B']), true)
     assert.equal(geminiProviderMembershipChanged(['A', 'B'], ['A', 'C']), true)
     assert.equal(geminiProviderMembershipChanged([], []), false)
+  })
+
+  it('upgrades the head only from an unstable node to a stable one', () => {
+    const stable = (name: string): boolean => name.startsWith('稳')
+
+    assert.equal(geminiHeadUpgradeAvailable(['台湾', '稳日'], ['稳日', '台湾'], stable), true)
+    assert.equal(
+      geminiHeadUpgradeAvailable(['稳日', '稳韩'], ['稳韩', '稳日'], stable),
+      false,
+      'stable to stable is delay jitter'
+    )
+    assert.equal(geminiHeadUpgradeAvailable(['稳日', '台湾'], ['台湾', '稳日'], stable), false)
+    assert.equal(geminiHeadUpgradeAvailable(['台湾', '美国'], ['美国', '台湾'], stable), false)
+    assert.equal(geminiHeadUpgradeAvailable(['台湾', '稳日'], ['台湾', '稳日'], stable), false)
+    assert.equal(geminiHeadUpgradeAvailable([], ['稳日'], stable), false)
+    assert.equal(geminiHeadUpgradeAvailable(['台湾'], [], stable), false)
   })
 
   it('builds a fallback group over the gemini provider in provider mode', () => {

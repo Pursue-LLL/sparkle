@@ -121,6 +121,29 @@ describe('sparkleGeminiProviderSync stability', () => {
     assertNoLog('degraded')
   })
 
+  it('reloads for a stable head even though the members did not change', async () => {
+    verifiedEverywhere()
+    writeLedger({ '日本-1': { samples: 10 } })
+    world.geminiProvider = ALL_NAMES
+
+    await providerSync().rebuildAndReloadGeminiProvider()
+
+    assert.deepEqual(readGeminiProviderOrder(), ['日本-1', '台湾-1', '台湾-2'])
+    assert.deepEqual(world.calls, ['update:gemini专用'])
+    assertLog('gemini provider reloaded members=3 stable=1 first=日本-1')
+  })
+
+  it('keeps a stable head where it is when another stable node would only sort ahead of it', async () => {
+    verifiedEverywhere()
+    writeLedger({ '台湾-1': { samples: 10 }, '日本-1': { samples: 10 } })
+    world.geminiProvider = ['日本-1', '台湾-1', '台湾-2']
+
+    await providerSync().rebuildAndReloadGeminiProvider()
+
+    assert.equal(readGeminiProviderOrder(), undefined)
+    assert.deepEqual(world.calls, [])
+  })
+
   it('does not count a node that was judged restricted recently', async () => {
     verifiedEverywhere()
     writeLedger({ '台湾-2': { samples: 50, lastBadAt: NOW - DAY_MS } })
