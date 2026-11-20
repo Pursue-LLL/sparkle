@@ -19,7 +19,11 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    env:
+      SPARKLE_CI_LABEL: ${{ matrix.os }}-${{ matrix.arch }}${{ matrix.format && '-' || '' }}${{ matrix.format || '' }}
     strategy:
+      # 一个目标失败时不取消其余目标：一次运行就能看到所有平台各自的结果
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -128,11 +132,16 @@ jobs:
           SKIP_PREPARE=1 pnpm install @loongdotjs/electron-builder@26.8.2-3 -D --ignore-scripts
 
       - name: Install Dependencies and Prepare
+        id: install_deps
         env:
           npm_config_arch: ${{ matrix.arch }}
           npm_config_target_arch: ${{ matrix.arch }}
         shell: bash
         run: |
+          # 输出同时落盘，失败时由最后的「Report Failure」写进 job summary（Actions 日志要登录才能读）
+          if [ -z "$CI_STEP_LOGGED" ]; then export CI_STEP_LOGGED=1; bash -eo pipefail "$0" 2>&1 | tee "$RUNNER_TEMP/ci-install.log"; exit "${PIPESTATUS[0]}"; fi
+          _step_end() { status=$?; if [ "$status" -ne 0 ]; then echo "::error title=Install Dependencies and Prepare failed (${SPARKLE_CI_LABEL})::exit $status"; fi; return "$status"; }
+          trap _step_end EXIT
           case "${{ matrix.os }}-${{ matrix.arch }}" in
             windows-latest-x64) PNPM_TARGET_FLAGS="--os=current --os=win32 --cpu=current --cpu=x64"; SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-win32-x64-msvc" ;;
             windows-latest-arm64) PNPM_TARGET_FLAGS="--os=current --os=win32 --cpu=current --cpu=arm64"; SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-win32-arm64-msvc" ;;
@@ -168,11 +177,15 @@ jobs:
           pnpm prepare --${{ matrix.arch }}
 
       - name: Build
+        id: build_app
         env:
           npm_config_arch: ${{ matrix.arch }}
           npm_config_target_arch: ${{ matrix.arch }}
         shell: bash
         run: |
+          if [ -z "$CI_STEP_LOGGED" ]; then export CI_STEP_LOGGED=1; bash -eo pipefail "$0" 2>&1 | tee "$RUNNER_TEMP/ci-build.log"; exit "${PIPESTATUS[0]}"; fi
+          _step_end() { status=$?; if [ "$status" -ne 0 ]; then echo "::error title=Build failed (${SPARKLE_CI_LABEL})::exit $status"; fi; return "$status"; }
+          trap _step_end EXIT
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             pnpm build:win ${{ matrix.format }} --${{ matrix.arch }}
           elif [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
@@ -216,6 +229,44 @@ jobs:
             !dist/sparkle*blockmap*
             latest.yml
             changelog.md
+
+      - name: Report Failure
+        if: failure()
+        env:
+          INSTALL_OUTCOME: ${{ steps.install_deps.outcome }}
+          BUILD_OUTCOME: ${{ steps.build_app.outcome }}
+        shell: bash
+        run: |
+          # Actions 日志要登录才能读：把失败那一步的输出末尾写进 job summary（公开可读），并给关键行打错误注解
+          if [ "$BUILD_OUTCOME" = failure ]; then
+            step="Build"; file="ci-build.log"
+          elif [ "$INSTALL_OUTCOME" = failure ]; then
+            step="Install Dependencies and Prepare"; file="ci-install.log"
+          else
+            exit 0 # 失败发生在这两步之外：两份日志属于已成功的步骤，不能当作失败原因
+          fi
+          label="$SPARKLE_CI_LABEL"
+          log="$RUNNER_TEMP/$file"
+          if [ ! -s "$log" ]; then
+            echo "::error title=${step} failed (${label})::没有可附的输出：${file} 不存在或为空"
+            exit 0
+          fi
+          tail_file="$RUNNER_TEMP/ci-failure-tail.log"
+          tail -n 120 "$log" | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' > "$tail_file"
+          {
+            echo "### ${step} failed: ${label}"
+            echo
+            echo "<details open><summary>${file}（最后 120 行）</summary>"
+            echo
+            echo '```text'
+            cat "$tail_file"
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          { grep -E '⨯|[Ee]rror|ERR_|[Ff]ailed' "$tail_file" | tail -n 10 | sed 's/%/%25/g' | while IFS= read -r line; do
+            echo "::error title=${step} failed (${label})::${line}"
+          done; } || true
 
   pre-release:
     needs: [build]
