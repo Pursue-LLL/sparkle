@@ -1,5 +1,6 @@
 appId: sparkle.app
 productName: Sparkle
+beforePack: scripts/beforePack.ts
 afterSign: scripts/deepSignMac.cjs
 directories:
   buildResources: build
@@ -46,7 +47,7 @@ nsis:
 mac:
   target:
     - pkg
-  identity: "-"
+  identity: '-'
   gatekeeperAssess: false
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

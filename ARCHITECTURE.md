@@ -86,6 +86,7 @@ mihomo (TUN) → 节点 leaf → 目标站点
     - **改代码就同步文档，报错指到文件与规则**：改名 / 删除导出 → 改该文件的 `[OUTPUT]` 与引用方的 `[INPUT]`；新增 / 删除源码文件 → 改所在目录的 `_ARCH.md`；新增 `_ARCH.md` → 在本文件的模块导航加一行；改常量值 → 改文档里写过的数值；文档里合法出现、但不在本仓库代码里的外部名字登记到 `EXTERNAL_NAMES`（`docDriftDocRules.ts`），不要为过测试改文档措辞。各规则与文法见 `scripts/_ARCH.md` 的「文档守护」。
     - **只判定「写了就必须是真的」**：没有任何标签的文件（目前有主进程里的一部分源码、`scripts/` 下的一部分 `.ts` / `.mts`、绝大多数测试文件与渲染进程的 `.tsx` 组件，以及全部 shell 脚本——shell 里 `#` 写法的文件头守护读不到）、自由写法的 `[INPUT]`、`[OUTPUT]` 没列全某个导出、散文里没挂常量名的数字、同名模块有多个且分不出最近的，都不判定；标识符存在与否按「代码里是否出现过这个词」判，注释里的词也算。这些靠人审，守护不猜，所以测试通过不等于文档完全准确。
     - **守护自己不会悄悄失效**：`docDriftMutation.test.ts` 在真实仓库快照的内存副本上注入各类漂移（改名被引用的导出、`[OUTPUT]` 写谎、缺 `[POS]`、删文档点名的文件、抹掉 `_ARCH.md` 的登记、导航少链、文档写不存在的标识符与链接、文档给常量写的数值与代码对不上），每种都必须被抓出来；`docDriftRepo.test.ts` 要求真实仓库扫到足够多的 `_ARCH.md`、源码与带文件头的文件，装载层坏了不会因为「什么都没扫到」而通过，没有根 `ARCHITECTURE.md` 的目录直接拒绝装载；`docDriftGate.test.ts` 在迷你仓库里真实运行命令行入口与升级入口脚本（`tsx` 换成桩），验证漂移时拒绝、一致时放行、缺根文档时失败。
+26. **安装包必须带着 mihomo 内核，校验放在打包边界而不是装依赖时** — `electron-builder.yml` 把 `extra/` 原样拷进安装包，缺了 `extra/sidecar/mihomo`（Windows 为 `mihomo.exe`）就会打出一启动就没有内核的包。`scripts/beforePack.ts` 是 electron-builder 的 `beforePack` 钩子，打包前确认该文件存在、非空、是普通文件，缺了就拒绝并写明补救办法；CI、`pnpm build:*`、`upgrade-sparkle-local.sh` 不论从哪条路进入打包都过这一道。`prepare.ts` 在 `SKIP_PREPARE=1` 时只跳过、永远以 0 退出：CI 先 `SKIP_PREPARE=1 pnpm install`（pnpm 装完依赖会自动再跑一次根 `prepare`），之后才单独 `pnpm prepare` 下载内核，装依赖时内核本来就还不存在，在那里要求它会让 CI 的第一步必红（`prepareSkip.test.ts` 在空目录里真实执行这条分支守住）。事故记录：`scripts/scripts_20261114_20261120_BUGFIX_LOG.md` BUG-2026-11-20-008。
 
 ## 外部依赖
 

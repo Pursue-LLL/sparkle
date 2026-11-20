@@ -221,7 +221,7 @@ cd /path/to/sparkle
 pnpm run upgrade:mac
 ```
 
-等价 `bash scripts/upgrade-sparkle-local.sh`：vite 编译 → **`rm -rf dist/mac-arm64`** → electron-builder dir（`mac.identity: "-"` + deepSign · 失败自动重试）→ **`verify-sparkle-main-asar.mts`**（SSOT asar 门禁）→ 安装到 `/Applications` → **PostCoreBootstrap 就绪门控**（日志出现 `mihomo API ready` · 90s）→ Finder 启动。网络不可达时：`SKIP_PREPARE=1 bash scripts/upgrade-sparkle-local.sh`。
+等价 `bash scripts/upgrade-sparkle-local.sh`：vite 编译 → **`rm -rf dist/mac-arm64`** → electron-builder dir（`mac.identity: "-"` + deepSign · 打包前 `beforePack` 钩子确认 `extra/sidecar/mihomo` 在位，缺了直接拒绝并写明补救办法 · 失败自动重试）→ **`verify-sparkle-main-asar.mts`**（SSOT asar 门禁）→ 安装到 `/Applications` → **PostCoreBootstrap 就绪门控**（日志出现 `mihomo API ready` · 90s）→ Finder 启动。网络不可达时：`SKIP_PREPARE=1 bash scripts/upgrade-sparkle-local.sh`。
 
 **仅安装已构建 dist**：`bash scripts/install-sparkle-local.sh`——整个安装是一个可回滚的事务：新包先在 `/Applications` 同目录暂存并校验，再用两次 `rename` 换装，过门禁（代理端口 + 数据面；service 模式再要求新内核与 TUN 监听）才提交，否则自动换回旧版并重新拉起。退出码：`0` 成功（含「同一份字节已装好且健康」的空操作）· `1` 失败（系统未变或已恢复）· `3` 新包被门禁拒绝并已回滚 · `4` 自动回滚失败（需人工，现场保留）。每一步写入 `~/.sparkle/install-last.log`；`SPARKLE_FORCE_REINSTALL=1` 强制重装。
 
