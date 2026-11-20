@@ -132,4 +132,4 @@ bash scripts/agent-sparkle-upgrade.sh
 
 - `package.json` version = 目标 semver
 - `BUGFIX_LOG.md` §「Sparkle 本地安装」· §「AI Agent 操作约束」
-- 本目录按「模块 + 7 日」归档的缺陷日志 `scripts_<起>_<止>_BUGFIX_LOG.md`，最新一份 [scripts_20261114_20261120_BUGFIX_LOG.md](scripts_20261114_20261120_BUGFIX_LOG.md)（升级管线事务化、测试临时目录、重复备份回收、本周装包流水），上一份 [scripts_20261107_20261113_BUGFIX_LOG.md](scripts_20261107_20261113_BUGFIX_LOG.md)（构建 chunk、测试门禁、Dock 残留注册、`check:drift` 误报）
+- 本目录按「模块 + 7 日」归档的缺陷日志 `scripts_<起>_<止>_BUGFIX_LOG.md`，最新一份 [scripts_20261114_20261120_BUGFIX_LOG.md](scripts_20261114_20261120_BUGFIX_LOG.md)（升级管线事务化、测试临时目录、重复备份回收、本周装包流水、装包入口的文档门禁），上一份 [scripts_20261107_20261113_BUGFIX_LOG.md](scripts_20261107_20261113_BUGFIX_LOG.md)（构建 chunk、测试门禁、Dock 残留注册、`check:drift` 误报）
