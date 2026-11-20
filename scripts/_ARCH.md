@@ -85,6 +85,26 @@ Shell/TS 脚本：本地升级与安装、安装前后门禁、post-upgrade 验�
 | `reload-mihomo-via-service.mts` | 经 `/tmp/sparkle-service.sock` 的 `SPARKLE-AUTH-V2` 签名请求（共享签名库 `lib/serviceSignedRequest.ts`），对 service 模式内核执行 `PUT /configs?force=true`（整配置重载，输出 `reload_ok`） |
 | `vps-deploy/` | VPS 侧 sing-box 部署与运维脚本（首尔 Cursor 节点 / 东京通用节点安装、迁移为纯 sing-box、审计日志、2 GB swap 与 OOM 防护），经 ssh 在 VPS 上执行，不被 App 构建链引用 |
 
+## 文档守护
+
+`docDrift/` 把「文档与代码是否一致」做成测试：文件头（L4 的 `[INPUT]` / `[OUTPUT]` / `[POS]`）、各目录 `_ARCH.md`（L3）、根 `ARCHITECTURE.md`（L1）里点了名的东西，必须真实存在于代码里；漂移会让 `pnpm run test:node-quality` 变红，报错带文件、规则名与（定位得到时的）行号。只判定「写了就必须是真的」：没有任何标签的文件、自由写法的 INPUT（没有 `模块::符号` 或没有 POS）、OUTPUT 没列全某个导出、散文里没挂常量名的数字都不判定，这些靠人审，守护不猜。守护只做正则级解析（不引入 TypeScript 编译器），所以随每次测试运行；规则层只读内存快照、不碰磁盘，每条规则的正反例都是几行字符串。
+
+| 文件 | 职责 |
+| --- | --- |
+| `docDrift/docDriftCore.ts` | 入口 `checkDocDrift`：对一份仓库快照跑全部规则，返回按文件、行号、规则排序的漂移列表；`formatFinding` / `formatFindings` 出报错文本。守护自己的测试与夹具里全是编造的示例名字，不计入「代码事实」（算进去会让文档里同名的过期标识符也查得到），守护的生产代码照常计入 |
+| `docDrift/docDriftParse.ts` | 文本解析层：文件头三段（行注释与块注释两种写法，同一标签以第一次出现为准，只扫开头 60 行）、INPUT 的规范写法 `模块::符号 (POS: …)`、OUTPUT 点名的导出（`a/b` 并列、`名字: 说明`、`*` 通配；整条含说明文字的当散文跳过）、文件的真实导出（含 `export *` 转发、`export default` 表达式里的名字、`.d.ts` 的全局声明）、代码里出现过的标识符 |
+| `docDrift/docDriftIndex.ts` | 数据模型（`RepoSnapshot`、`DriftFinding`、`DriftRule`）、路径分类与源码索引：INPUT 里的模块写法按路径后缀解析成源码文件，同名多个时取离引用方最近的，仍分不出才算歧义（跳过，不猜）；以仓库路径或相对路径写的按整条路径精确匹配；导出集合追进 `export *`，转发环有保护 |
+| `docDrift/docDriftHeaderRules.ts` | 文件头规则：三段齐全（`header-incomplete`）、OUTPUT 点名的导出真实存在（`output-not-exported`）、INPUT 点名的模块与符号真实存在（`input-module-missing` / `input-not-exported`；npm 依赖与 Node 内置模块不算缺失） |
+| `docDrift/docDriftDocRules.ts` | 文档规则：反引号里的源码文件名与 UPPER_SNAKE / 驼峰标识符仍在（`doc-file-missing` / `doc-identifier-missing`，存在与否按「代码里是否出现过这个词」判，注释里的词也算；文档里合法出现、但不在本仓库代码里的外部名字登记在 `EXTERNAL_NAMES`）、相对链接可达（`doc-link-broken`）、根 `ARCHITECTURE.md` 的模块导航链到每份 `_ARCH.md`（`arch-not-linked`）、`_ARCH.md` 登记了本目录的每个源码文件（`arch-file-unlisted`；测试、`.d.ts`、`*Rig` / `*Harness` / `*World` 夹具与子目录除外）；围栏代码块里的内容不读 |
+| `docDrift/docDriftNumberRules.ts` | 数值规则：文档写成「`常量名`（数值）」或「`常量名` = 数值」时与代码常量比对（`doc-number-mismatch`）；时间常量按名字后缀折算到毫秒（`30 分钟` = 1,800,000），其余按个数；常量值只认数字、已知常量与四则、括号；同名常量在不同文件里值不同视为歧义，不判定 |
+| `docDrift/docDriftRepo.ts` | 磁盘装载层，守护里唯一碰文件系统的一环：遍历仓库（跳过 `node_modules`、`.git` 与 `SKIPPED_ROOT_DIRS` 里 `.gitignore` 已忽略的产物、下载资源与草稿目录），收录全部文件路径、源码与脚本文本、根 `ARCHITECTURE.md` 与各 `_ARCH.md`、`package.json` 依赖与 Node 内置模块名。遍历磁盘而不是读 git 索引，刚新建、还没 `git add` 的文件也在范围内 |
+| `docDrift/docDriftRig.ts` | 各测试共用的夹具：几行字符串拼出内存快照与文件头 |
+| `docDrift/docDriftParse.test.ts` / `docDriftHeaderRules.test.ts` / `docDriftDocRules.test.ts` / `docDriftNumberRules.test.ts` | 解析文法与每条规则的正反例（内存快照）：哪些写法算「点名」要核对、哪些是说明文字不核对，歧义、外部模块、通配、转发环、围栏代码块、单位换算等边界 |
+| `docDrift/docDriftRepo.test.ts` | 守护的出口：**真实仓库此刻必须零漂移**，有漂移就红；并要求扫到足够多的 `_ARCH.md`、源码与带文件头的文件（装载层坏了不会因为「什么都没扫到」而通过）；装载范围用临时目录里的迷你仓库验证，`SKIPPED_ROOT_DIRS` 的每一项都必须在 `.gitignore` 里 |
+| `docDrift/docDriftMutation.test.ts` | 灵敏度验证：在真实仓库快照的内存副本上注入漂移（改名被 INPUT 引用的导出、OUTPUT 多写不存在的名字、缺 `[POS]`、删掉文档点名的文件、抹掉 `_ARCH.md` 对某文件的登记、模块导航少链一份、文档写不存在的标识符与链接、文档给常量写的数值与代码对不上），每一种都必须被抓出来；不碰磁盘 |
+
+改代码后守护报错时：改名 / 删除导出 → 同步该文件的 `[OUTPUT]` 与引用方的 `[INPUT]`；新增 / 删除源码文件 → 同步所在目录的 `_ARCH.md`；新增 `_ARCH.md` → 在根 `ARCHITECTURE.md` 的模块导航加一行；改常量值 → 改文档里写过的数值；文档里出现外部名字 → 登记 `EXTERNAL_NAMES`，不要为过测试改文档措辞。
+
 ## Agent 升级（唯一入口）
 
 ```bash

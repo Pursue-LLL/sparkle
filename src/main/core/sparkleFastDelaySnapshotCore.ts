@@ -1,5 +1,5 @@
 // [INPUT] sparkleFastProviderCore::NodeDelayMap (POS: sparkle-fast provider 文件生成与延迟类型) · sparkle-fast-delays.json
-// [OUTPUT] buildProviderFingerprint · snapshotCoverage · hasSufficientSnapshotCoverage · parse/serializeSparkleFastDelaySnapshot
+// [OUTPUT] buildProviderFingerprint · snapshotCoverage · hasSufficientSnapshotCoverage · parseSparkleFastDelaySnapshot · serializeSparkleFastDelaySnapshot
 // [POS] 延迟快照的纯数据层：只有节点配置指纹一致且覆盖率足够的成功样本才可用于排序。
 // 指纹忽略 provider 运行时字段并做稳定序列化，文件重排不会误判为配置变化；SNI/端口/服务器变化会改变指纹。
 
