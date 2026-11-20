@@ -32,12 +32,5 @@ export function assertSidecarPresent(projectDir: string, platform: string): void
 }
 
 export default async function beforePack(context: BeforePackContext): Promise<void> {
-  // CI 红灯演练（临时，下一个提交会回退）：只让三个目标故意失败，其余目标照常跑完。
-  const drillLabel = process.env.SPARKLE_CI_LABEL ?? ''
-  if (
-    ['ubuntu-latest-x64-deb', 'windows-latest-x64-7z', 'macos-latest-arm64'].includes(drillLabel)
-  ) {
-    throw new Error(`CI red drill: intentional failure for ${drillLabel}`)
-  }
   assertSidecarPresent(context.packager.projectDir, context.electronPlatformName)
 }
